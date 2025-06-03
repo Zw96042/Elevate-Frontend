@@ -1,45 +1,84 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
-import { Platform } from 'react-native';
+import { View, Text, ImageBackground } from 'react-native'
+import React from 'react'
+import { Tabs } from 'expo-router'
+import { images } from '@/constants/images'
+import { Image } from 'react-native'
+import { icons } from '@/constants/icons'
+import { Ionicons } from '@expo/vector-icons'
 
-import { HapticTab } from '@/components/HapticTab';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import TabBarBackground from '@/components/ui/TabBarBackground';
-import { Colors } from '@/constants/Colors';
-import { useColorScheme } from '@/hooks/useColorScheme';
-
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
+const _layout = () => {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+        tabBarShowLabel: false,
+        tabBarItemStyle: {
+          flex: 1,
+        },
+        tabBarStyle: {
+          backgroundColor: '#302c2c',
+          borderTopWidth: 0,
+          height: 70,
+          paddingBottom: 8,
+          position: 'absolute',
+        }
+      }}
+    >
+    <Tabs.Screen 
+    name="index"
+    options={{
+        title: "Courses",
         headerShown: false,
-        tabBarButton: HapticTab,
-        tabBarBackground: TabBarBackground,
-        tabBarStyle: Platform.select({
-          ios: {
-            // Use a transparent background on iOS to show the blur effect
-            position: 'absolute',
-          },
-          default: {},
-        }),
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
-        }}
-      />
+        tabBarIcon: ({ focused }) => (
+        <View className="items-center justify-center w-[180%] mt-5 h-[80%]">
+            <Ionicons name="school-outline" size={22} color={focused ? '#2A52BE' : '#A8B5DB'} />
+            <Text style={{ color: focused ? '#2A52BE' : '#A8B5DB', fontSize: 12, marginTop: 5 }}>Courses</Text>
+        </View>
+        )
+    }}
+    />
+    <Tabs.Screen 
+    name="assignments"
+    options={{
+        title: "Assignments",
+        headerShown: false,
+        tabBarIcon: ({ focused }) => (
+        <View className="items-center justify-center w-[240%] mt-5 h-[80%]">
+            <Ionicons name="document-text-outline" size={22} color={focused ? '#2A52BE' : '#A8B5DB'} />
+            <Text style={{ color: focused ? '#2A52BE' : '#A8B5DB', fontSize: 12, marginTop: 5 }}>Assignments</Text>
+        </View>
+        )
+    }}
+    />
+    <Tabs.Screen 
+      name="inbox"
+      options={{
+        title: "Inbox",
+        headerShown: false,
+        tabBarIcon: ({ focused }) => (
+          <View className="items-center justify-center w-[180%] mt-5 h-[80%]">
+            <Ionicons name="file-tray-outline" size={22} color={focused ? '#2A52BE' : '#A8B5DB'} />
+            <Text style={{ color: focused ? '#2A52BE' : '#A8B5DB', fontSize: 12, marginTop: 5 }}>Inbox</Text>
+          </View>
+        )
+      }}
+    />
+    <Tabs.Screen 
+    name="profile"
+    options={{
+        title: "Settings",
+        headerShown: false,
+        tabBarIcon: ({ focused }) => (
+        <View className="items-center justify-center w-[180%] mt-5 h-[80%]">
+            <Ionicons name="settings-outline" size={22} color={focused ? '#2A52BE' : '#A8B5DB'} />
+            <Text style={{ color: focused ? '#2A52BE' : '#A8B5DB', fontSize: 12, marginTop: 5 }}>Settings</Text>
+        </View>
+        )
+    }}
+    />
+
+    
     </Tabs>
-  );
+  )
 }
+
+export default _layout
