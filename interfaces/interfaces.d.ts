@@ -16,7 +16,13 @@ interface Movie {
 }
 
 
-
+interface Message {
+  className: string;
+  subject: string;
+  from: string;
+  date: string;
+  content: string;
+}
 
 interface Class {
   name: string;
