@@ -9,6 +9,7 @@ const ASSIN = [
     {
         className: "BIOLOGY_1_HONORS",
         name: "Pig Practical",
+        term: "Q1",
         category: "Major",
         grade: 96,
         outOf: 100,
@@ -17,6 +18,7 @@ const ASSIN = [
     {
         className: "BIOLOGY_1_HONORS",
         name: "Pig Disection #1",
+        term: "Q1",
         category: "Lab",
         grade: 95,
         outOf: 100,
@@ -25,6 +27,7 @@ const ASSIN = [
     {
         className: "BIOLOGY_1_HONORS",
         name: "Biodiv. Threats",
+        term: "Q2",
         category: "Daily",
         grade: 100,
         outOf: 100,
@@ -33,6 +36,7 @@ const ASSIN = [
     {
         className: "AP_PRECALCULUS",
         name: "Test Intro to Trig",
+        term: "SM1",
         category: "Major",
         grade: 89,
         outOf: 100,
@@ -44,9 +48,11 @@ const ClassDetails = () => {
   const router = useRouter();
   const { class: classParam } = useLocalSearchParams();
   const formattedName = formatClassName(classParam.toString());
-  const filteredAssignments = ASSIN.filter(item => item.className === classParam);
+  
+
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
   const [selectedCategory, setSelectedCategory] = React.useState("Q1 Grades");
+  const filteredAssignments = ASSIN.filter(item => item.className === classParam && item.term === selectedCategory.split(" ")[0]);
   return (
     <View className='bg-primary flex-1'>
         <View className="bg-blue-600">
