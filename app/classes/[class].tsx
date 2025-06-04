@@ -1,5 +1,5 @@
 import { View, Text, ScrollView, TouchableOpacity, FlatList, StyleSheet, Button } from 'react-native'
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { ReactElement, useCallback, useMemo, useRef } from 'react';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router'
 import formatClassName from '@/utils/formatClassName';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,16 +43,72 @@ const ASSIN = [
         dueDate: "04/10/25"
     },
 ];
+type TermLabel =
+  | "Q1 Grades"
+  | "Q2 Grades"
+  | "SM1 Grade"
+  | "Q3 Grades"
+  | "Q4 Grades"
+  | "SM2 Grades";
 
 const ClassDetails = () => {
   const router = useRouter();
-  const { class: classParam } = useLocalSearchParams();
+  
+  const searchParams = useLocalSearchParams();
+
+  const term = searchParams.term as TermLabel;
+  const classParam = searchParams.class;
+
+  const parseTermData = (param: string | string[] | undefined): TermData => {
+    if (typeof param === "string") {
+      try {
+        return JSON.parse(param);
+      } catch {
+        return { categories: { names: [], grades: [] }, total: 0 };
+      }
+    }
+    return { categories: { names: [], grades: [] }, total: 0 };
+  };
+
+  const t1 = parseTermData(searchParams.t1);
+  const t2 = parseTermData(searchParams.t2);
+  const s1 = parseTermData(searchParams.s1);
+  const t3 = parseTermData(searchParams.t3);
+  const t4 = parseTermData(searchParams.t4);
+  const s2 = parseTermData(searchParams.s2);
+  
+  const termMap: Record<TermLabel, TermData> = {
+        "Q1 Grades": t1,
+        "Q2 Grades": t2,
+        "SM1 Grade": s1,
+        "Q3 Grades": t3,
+        "Q4 Grades": t4,
+        "SM2 Grades": s2,
+    };
+
+    type TermData = {
+        categories: {
+            names: string[];
+            grades: number[];
+        };
+        total: number;
+    };
+
   const formattedName = formatClassName(classParam.toString());
   
 
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
-  const [selectedCategory, setSelectedCategory] = React.useState("Q1 Grades");
+
+
+  const [selectedCategory, setSelectedCategory] = React.useState<TermLabel>(term);
   const filteredAssignments = ASSIN.filter(item => item.className === classParam && item.term === selectedCategory.split(" ")[0]);
+
+  const currTerm = termMap[selectedCategory];
+
+  // const categoriesArray = typeof currTerm.categories.names === "string"
+  // ? currTerm.categories.names
+  // : currTerm.categories.names;
+  
   return (
     <View className='bg-primary flex-1'>
         <View className="bg-blue-600">
@@ -68,7 +124,8 @@ const ClassDetails = () => {
             </View>
         </View>
         <ScrollView>
-            <View className="mt-4 px-4 ">
+            <Text className='text-slate-400 font-bold ml-4 mt-3 text-sm'>Term</Text>
+            <View className="mt-2 px-4">
               <TouchableOpacity
                 onPress={() => setDropdownOpen(!dropdownOpen)}
                 className="flex-row items-center justify-between bg-slate-800 px-4 py-3 rounded-full"
@@ -79,20 +136,69 @@ const ClassDetails = () => {
 
               {dropdownOpen && (
                 <View className="mt-2 bg-slate-800 rounded-xl">
-                  {["Q1 Grades", "Q2 Grades", "SM1 Grade", "Q3 Grades", "Q4 Grades", "SM2 Grades"].map((label) => (
-                    <TouchableOpacity
-                      key={label}
-                      onPress={() => {
-                        setSelectedCategory(label);
-                        setDropdownOpen(false);
-                      }}
-                      className="px-4 py-3"
-                    >
-                      <Text className="text-slate-300">{label}</Text>
-                    </TouchableOpacity>
-                  ))}
+                  {(["Q1 Grades", "Q2 Grades", "SM1 Grade", "Q3 Grades", "Q4 Grades", "SM2 Grades"] as TermLabel[]).map((label) => (
+                  <TouchableOpacity
+                    key={label}
+                    onPress={() => {
+                      setSelectedCategory(label);
+                      setDropdownOpen(false);
+                    }}
+                    className="px-4 py-3"
+                  >
+                    <Text className="text-slate-300">{label}</Text>
+                  </TouchableOpacity>
+                ))}
                 </View>
               )}
+            </View>
+            <View className='flex-row mt-4'>
+              <View className='flex-1 items-center'>
+                <Text className='text-[#7398e6] font-bold text-sm'>Grade</Text>
+                <View className='w-10 h-10 rounded-full bg-[#3b5795] items-center justify-center mt-2'>
+                    <Text className='text-[#7398e6] font-bold text-xs'>{termMap[selectedCategory].total ?? "--"}%</Text>
+                </View>
+              </View>
+              <View className='flex-1 items-center'>
+                <Text className='text-[#7398e6] font-bold text-sm mb-2'>Category</Text>
+                  <View>
+                  {currTerm.categories.names
+                  .map((item, index) => (
+                    <View
+                      key={`${item}-${index}`}
+                      className="self-start rounded-md bg-[#3b5795] px-2"
+                      style={{ marginBottom: index !== currTerm.categories.names.length - 1 ? 8 : 0 }}
+                    >
+                      <Text className="text-sm text-[#7398e6] font-bold">{item}</Text>
+                    </View>
+                ))}
+                </View>
+              </View>
+              <View className='flex-1 items-center'>
+                <Text className='text-[#7398e6] font-bold text-sm mb-2'>Real</Text>
+                <View>
+                  {currTerm.categories.grades
+                    .map((item, index) => (
+                      <Text 
+                      key={`grade-${index}`} 
+                      className="text-sm text-slate-400 font-bold"
+                      style={{ marginBottom: index !== currTerm.categories.names.length - 1 ? 8 : 0 }}
+                      >{item.toFixed(1)}%</Text>
+                    ))}
+                </View>
+              </View>
+              <View className='flex-1 items-center'>
+                <Text className='text-[#7398e6] font-bold text-sm mb-2'>Calculated</Text>
+                <View>
+                  {currTerm.categories.grades
+                    .map((item, index) => (
+                      <Text 
+                      key={`grade-${index}`} 
+                      className="text-sm text-slate-400 font-bold"
+                      style={{ marginBottom: index !== currTerm.categories.names.length - 1 ? 8 : 0 }}
+                      >{item.toFixed(1)}%</Text>
+                    ))}
+                </View>
+              </View>
             </View>
             <FlatList
             data={filteredAssignments}

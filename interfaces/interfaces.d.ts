@@ -15,11 +15,54 @@ interface Movie {
   vote_count: number;
 }
 
+
+
+
 interface Class {
   name: string;
   teacher: string;
-  s1: number;
-  s2: number;
+  t1: {
+        categories: {
+            names: string[];
+            grades: number[];
+        };
+        total: number;
+    };
+  t2: {
+        categories: {
+            names: string[];
+            grades: number[];
+        };
+        total: number;
+    };
+  s1: {
+        categories: {
+            names: string[];
+            grades: number[];
+        };
+        total: number;
+    };
+  t3: {
+        categories: {
+            names: string[];
+            grades: number[];
+        };
+        total: number;
+    };
+  t4: {
+        categories: {
+            names: string[];
+            grades: number[];
+        };
+        total: number;
+    };
+  s2: {
+        categories: {
+            names: string[];
+            grades: number[];
+        };
+        total: number;
+    };
 }
 
 interface Assignment {

@@ -45,6 +45,7 @@ const AssignmentCard = ({ className, name, category, grade, outOf, dueDate }: As
                     </View>
                     <Ionicons name="chevron-forward" size={24} color="#cbd5e1" className='mr-3'/>
                 </View>
+                
             </View>
         </TouchableOpacity>
     </Link>

@@ -26,15 +26,11 @@ const AssignmentDetails = () => {
             <Text className='text-slate-200 font-medium text-xl mt-4 ml-4'>{name?.toString() || ''}</Text>
             <View className='flex-row mt-4'>
                 <View className='flex-1 items-center'>
-                    <Text className='text-[#7398e6] font-bold text-sm'>
-                        Due Date
-                    </Text>
+                    <Text className='text-[#7398e6] font-bold text-sm'>Due Date</Text>
                     <Text className='text-slate-200'>{dueDate?.toString().replaceAll("/", "-") || ''}</Text>
                 </View>
                 <View className='flex-1 items-center'>
-                    <Text className='text-[#7398e6] font-bold text-sm'>
-                        Percentage
-                    </Text>
+                    <Text className='text-[#7398e6] font-bold text-sm'>Percentage</Text>
                     <Text className='text-slate-200'>{((Number(grade) / Number(outOf)) * 100).toFixed(2)}%</Text>
                 </View>
             </View>
