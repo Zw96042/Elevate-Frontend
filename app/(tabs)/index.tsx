@@ -374,7 +374,7 @@ export default function Index() {
       </View>
       <ScrollView className="flex-1 px-5" showsVerticalScrollIndicator={false} contentContainerStyle={{minHeight: '100%', paddingBottom: 10}}>
         <Text className='text-slate-400 font-bold ml-4 mt-3 text-sm'>Term</Text>
-            <View className="mt-2 px-4">
+            <View className="my-2 px-4">
               <TouchableOpacity
                 onPress={() => setDropdownOpen(!dropdownOpen)}
                 className="flex-row items-center justify-between bg-slate-800 px-4 py-3 rounded-full"

@@ -75,7 +75,7 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
               asChild
             > */}
         <TouchableOpacity  className='w-[100%]'>
-            <View className='w-full h-28 rounded-lg bg-slate-800 flex-row items-center justify-between'>
+            <View className='w-full h-28 rounded-3xl bg-slate-800 flex-row items-center justify-between'>
                 <View>
                     <Text className='text-lg text-gray-200 font-normal ml-5'>{formatClassName(name)}</Text>
                     <Text className='text-sm text-gray-300 ml-5'>{formatClassName(teacher)}</Text>
