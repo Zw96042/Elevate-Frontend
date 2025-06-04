@@ -38,7 +38,7 @@ const AssignmentDateCard = ({ className, name, category, grade, outOf, dueDate }
                     </View>
                 </View>
                 <View className='flex-row items-center'>
-                    <View className="flex-row items-center gap-2 mr-1">
+                    <View className="flex-row items-center gap-2 mr-4">
                         <View className={`w-10 h-10 rounded-full border-[#3b5795] border-2 items-center justify-center`} >
                             <Text className='text-[#7398e6] font-bold text-sm'>{grade}</Text>
                         </View>
@@ -47,7 +47,7 @@ const AssignmentDateCard = ({ className, name, category, grade, outOf, dueDate }
                             <Text className='text-[#7398e6] font-bold text-sm'>{outOf}</Text>
                         </View>
                     </View>
-                    <Ionicons name="chevron-forward" size={24} color="#cbd5e1" className='mr-3'/>
+                  
                 </View>
                 
             </View>
