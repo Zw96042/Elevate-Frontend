@@ -5,7 +5,7 @@ import formatClassName from '@/utils/formatClassName';
 import { Ionicons } from '@expo/vector-icons';
 import AssignmentCard from '@/components/AssignmentCard';
 
-const ASSIN = [
+export const ASSIN = [
     {
         className: "BIOLOGY_1_HONORS",
         name: "Pig Practical",
@@ -43,6 +43,7 @@ const ASSIN = [
         dueDate: "04/10/25"
     },
 ];
+
 type TermLabel =
   | "Q1 Grades"
   | "Q2 Grades"
@@ -124,8 +125,8 @@ const ClassDetails = () => {
             </View>
         </View>
         <ScrollView>
-            <Text className='text-slate-400 font-bold ml-4 mt-3 text-sm'>Term</Text>
-            <View className="mt-2 px-4">
+            <Text className='text-slate-400 font-bold ml-5 mt-3 text-sm'>Term</Text>
+            <View className="mt-2 px-5">
               <TouchableOpacity
                 onPress={() => setDropdownOpen(!dropdownOpen)}
                 className="flex-row items-center justify-between bg-slate-800 px-4 py-3 rounded-full"

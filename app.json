@@ -33,13 +33,19 @@
           "image": "./assets/images/logo.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#030014"
         }
       ],
       "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2f8bf76b-e1cb-42e0-82af-08f39690b834"
+      }
     }
   }
 }

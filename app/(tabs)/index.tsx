@@ -190,7 +190,7 @@ const DATA = [
         names: ["Daily", "Labs", "Major"],
         grades: [90, 85, 99]
       },
-      total: 95
+      total: 85
     },
   },
   {
@@ -373,8 +373,8 @@ export default function Index() {
         <Text className="text-white text-3xl font-bold">Courses</Text>
       </View>
       <ScrollView className="flex-1 px-5" showsVerticalScrollIndicator={false} contentContainerStyle={{minHeight: '100%', paddingBottom: 10}}>
-        <Text className='text-slate-400 font-bold ml-4 mt-3 text-sm'>Term</Text>
-            <View className="my-2 px-4">
+        <Text className='text-slate-400 font-bold mt-3 text-sm'>Term</Text>
+            <View className="my-2 px-0">
               <TouchableOpacity
                 onPress={() => setDropdownOpen(!dropdownOpen)}
                 className="flex-row items-center justify-between bg-slate-800 px-4 py-3 rounded-full"
