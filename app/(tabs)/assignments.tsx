@@ -56,7 +56,7 @@ const assignments = () => {
         renderItem={({ item, index }) => {
           if (item.type === 'header') {
             return (
-              <Text className="text-slate-400 font-bold text-lg px-5 mt-4">
+              <Text className="text-slate-400 font-bold text-lg mt-4">
                 {item.date}
               </Text>
             );
