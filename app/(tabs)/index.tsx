@@ -339,14 +339,12 @@ export default function Index() {
   useEffect(() => {
     const checkCredentials = async () => {
       try {
-        const data = await SecureStore.getItemAsync('person_info');
-        if (data) {
-          const { link, username, password } = JSON.parse(data);
-          const isComplete = !!link && !!username && !!password;
-          setCredentialsSet(isComplete);
-        } else {
-          setCredentialsSet(false);
-        }
+        const [link, username, password] = await Promise.all([
+          SecureStore.getItemAsync('skywardUser'),
+          SecureStore.getItemAsync('skywardPass'),
+          SecureStore.getItemAsync('skywardLink'),
+        ]);
+        setCredentialsSet(!!link && !!username && !!password);
       } catch (e) {
         console.error("Error loading credentials:", e);
         setCredentialsSet(false);
@@ -427,7 +425,7 @@ export default function Index() {
                   {credentialsSet === null ? (
                     <Text className="text-center text-gray-500">Checking credentials...</Text>
                   ) : credentialsSet ? (
-                    <Text className="text-center text-gray-500">Server error. Try again later.</Text>
+                    <Text className="text-center text-gray-500">No classes found.</Text>
                   ) : (
                     <Text className="text-center text-gray-500">
                       No credentials found.{" "}

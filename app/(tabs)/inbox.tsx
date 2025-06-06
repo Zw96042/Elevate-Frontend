@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import MessageCard from '@/components/MessageCard';
 import { fetchSkywardMessages } from '@/lib/skywardClient';
+import { Link as RouterLink } from 'expo-router';
 
 type SkywardMessage = {
   subject: string;
@@ -15,31 +16,34 @@ type SkywardMessage = {
 const Inbox = () => {
   const [messages, setMessages] = useState<SkywardMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [credentialsSet, setCredentialsSet] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadMessages = async () => {
+    try {
+      const user = await AsyncStorage.getItem('skywardUser');
+      const pass = await AsyncStorage.getItem('skywardPass');
+      const link = await AsyncStorage.getItem('skywardLink');
+
+      const allCredentialsExist = !!user && !!pass && !!link;
+      setCredentialsSet(allCredentialsExist);
+
+      if (!allCredentialsExist) {
+        console.error("Missing Skyward credentials or link");
+        setMessages([]);
+        return;
+      }
+
+      const data = await fetchSkywardMessages(user, pass, link);
+      const sorted = data.sort((a: SkywardMessage, b: SkywardMessage) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setMessages(sorted);
+    } catch (err) {
+      console.error("Failed to fetch messages:", err);
+    }
+  };
 
   useEffect(() => {
-    const loadMessages = async () => {
-      try {
-        const user = await AsyncStorage.getItem('skywardUser');
-        const pass = await AsyncStorage.getItem('skywardPass');
-        const link = await AsyncStorage.getItem('skywardLink');
-
-        if (!user || !pass || !link) {
-          console.error("Missing Skyward credentials or link");
-          setLoading(false);
-          return;
-        }
-
-        const data = await fetchSkywardMessages(user, pass, link);
-        const sorted = data.sort((a: SkywardMessage, b: SkywardMessage) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        setMessages(sorted);
-      } catch (err) {
-        console.error("Failed to fetch messages:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadMessages();
+    loadMessages().finally(() => setLoading(false));
   }, []);
 
   if (loading) {
@@ -56,13 +60,13 @@ const Inbox = () => {
         <Text className="text-white text-3xl font-bold">Inbox</Text>
       </View>
       <FlatList
-        className='mt-4 px-5'
+        className='mt-4 px-5 mb-24'
         data={messages}
         renderItem={({ item }) => (
           <MessageCard 
             subject={item.subject.length > 35
-  ? item.subject.slice(0, 35).replace(/\s+\S*$/, '') + '...' 
-  : item.subject}
+              ? item.subject.slice(0, 35).replace(/\s+\S*$/, '') + '...' 
+              : item.subject}
             className={item.className}
             from={item.from}
             date={item.date}
@@ -71,6 +75,25 @@ const Inbox = () => {
         )}
         keyExtractor={(item, index) => `${item.subject}-${index}`}
         ItemSeparatorComponent={() => <View className="h-4" />}
+        refreshing={refreshing}
+        onRefresh={async () => {
+          setRefreshing(true);
+          await loadMessages();
+          setRefreshing(false);
+        }}
+        ListEmptyComponent={
+          <Text className="text-center text-gray-500 mt-10">
+            {credentialsSet ? 'No messages found.' : (
+              <>
+                No credentials found.{" "}
+                <RouterLink href="/profile" className="text-blue-400 underline">
+                  Go to Settings
+                </RouterLink>{" "}
+                to configure your account.
+              </>
+            )}
+          </Text>
+        }
       />
     </View>
   );
