@@ -26,10 +26,19 @@ export const fetchSkywardMessages = async ({
   });
 
   if (!res.ok) {
-    throw new Error(`Failed to fetch messages: ${res.statusText}`);
+    // console.log(JSON.stringify(res));
+    // console.log(res.status);
+    if (res.status === 401) {
+        // console.log("Session Expired");
+        throw new Error(`Session Expired`);
+    } else {
+        // console.log("Unable to feetch");
+        throw new Error(`Failed to fetch messages: ${res}`);
+    }
   }
 
   const data = await res.json();
+//   console.log("data:", data);
 
   if (data.error) throw new Error(data.error);
 

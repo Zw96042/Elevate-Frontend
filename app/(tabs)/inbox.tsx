@@ -39,15 +39,60 @@ const Inbox = () => {
         return;
       }
 
-      // Call your API helper passing the session codes
-      const data = await fetchSkywardMessages({ dwd, wfaacl, encses, userType, sessionid, baseUrl });
+      let data;
+      try {
+        data = await fetchSkywardMessages({ dwd, wfaacl, encses, userType, sessionid, baseUrl });
+      } catch (error: any) {
+        console.error("Failed to fetch messages:", error.message);
+        if (error.message?.toLowerCase().includes("session expired")) {
+          console.log("Re-authenticating...");
+          const [link, username, password] = await Promise.all([
+            AsyncStorage.getItem('skywardLink'),
+            AsyncStorage.getItem('skywardUser'),
+            AsyncStorage.getItem('skywardPass'),
+          ]);
+
+          if (link && username && password) {
+            const response = await fetch('http://192.168.1.136:3000/auth', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ baseUrl: link, user: username, pass: password }),
+            });
+
+            if (!response.ok) throw new Error('Re-authentication failed');
+
+            const sessionCodes = await response.json();
+            await AsyncStorage.setItem('dwd', sessionCodes.dwd);
+            await AsyncStorage.setItem('wfaacl', sessionCodes.wfaacl);
+            await AsyncStorage.setItem('encses', sessionCodes.encses);
+            await AsyncStorage.setItem('User-Type', sessionCodes['User-Type']);
+            await AsyncStorage.setItem('sessionid', sessionCodes.sessionid);
+            await AsyncStorage.setItem('baseUrl', link);
+
+            data = await fetchSkywardMessages({
+              dwd: sessionCodes.dwd,
+              wfaacl: sessionCodes.wfaacl,
+              encses: sessionCodes.encses,
+              userType: sessionCodes['User-Type'],
+              sessionid: sessionCodes.sessionid,
+              baseUrl: link,
+            });
+          }
+        } else {
+          console.error("Unexpected error type:", error);
+          throw error;
+        }
+      }
 
       const sorted = data.sort((a: SkywardMessage, b: SkywardMessage) =>
         new Date(b.date).getTime() - new Date(a.date).getTime()
       );
       setMessages(sorted);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to fetch messages:", err);
+      // console.error("Error type:", typeof err);
+      // console.error("Error instance of Error:", err instanceof Error);
+      // console.error("Error message:", err.message);
       setMessages([]);
     }
   };
