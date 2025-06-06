@@ -30,7 +30,7 @@ const MessageDetails = () => {
                         <Text className='text-slate-400 font-bold text-sm mb-4'>Date</Text>
                         <View className="bg-slate-800 rounded-lg p-3 w-full">
                             <Text className="text-slate-200 leading-5">
-                                {date}
+                                {date.slice(date.indexOf(" ")+1)}
                             </Text>
                         </View>
                     </View>

@@ -1,58 +1,79 @@
-import { View, Text, FlatList } from 'react-native'
-import React from 'react'
+import { View, Text, FlatList, ActivityIndicator } from 'react-native'
+import React, { useEffect, useState } from 'react'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import MessageCard from '@/components/MessageCard';
+import { fetchSkywardMessages } from '@/lib/skywardClient';
 
-const MESSAGES = [
-  {
-    className: "AP Pre Cal",
-    subject: "Sports Registration",
-    from: "Mr ABC",
-    date: "01-02-2025",
-    content: "Enim tempor in tempor culpa commodo qui do. Dolore duis pariatur in labore. Exercitation deserunt nostrud laborum incididunt excepteur magna esse id. Officia excepteur magna dolor ex do laboris irure elit aliquip."
-  },
-  {
-    className: "AP BIO",
-    subject: "Dropped Lowest Grade",
-    from: "Mr ABC",
-    date: "01-04-2025",
-    content: "In laborum nostrud adipisicing aliqua commodo aliqua nostrud officia magna laborum consectetur exercitation ullamco. Magna esse exercitation commodo culpa adipisicing. Aute et deserunt veniam do enim. Ea velit nulla veniam exercitation aliqua cupidatat incididunt proident non sint quis dolore. Cillum in sit est labore duis ad sunt excepteur sunt non qui non Lorem deserunt. Aute ex ad ipsum est fugiat voluptate cillum ipsum velit duis ad veniam sint."
-  },
-  {
-    className: "AP Human Geo",
-    subject: "Semester 1, AP Calc BC",
-    from: "Mr ABC",
-    date: "01-10-2025",
-    content: "Qui incididunt irure nulla cillum fugiat deserunt consectetur mollit eiusmod elit. Ex ut sunt consectetur nisi commodo et anim reprehenderit. Proident id sunt aute officia. In proident quis velit do deserunt officia consequat. Sunt adipisicing sint Lorem aliquip. Reprehenderit in consectetur eiusmod irure irure ea deserunt deserunt. Ex officia sunt commodo occaecat sint enim ullamco."
+type SkywardMessage = {
+  subject: string;
+  className: string;
+  from: string;
+  date: string;
+  content: string;
+};
+
+const Inbox = () => {
+  const [messages, setMessages] = useState<SkywardMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadMessages = async () => {
+      try {
+        const user = await AsyncStorage.getItem('skywardUser');
+        const pass = await AsyncStorage.getItem('skywardPass');
+        const link = await AsyncStorage.getItem('skywardLink');
+
+        if (!user || !pass || !link) {
+          console.error("Missing Skyward credentials or link");
+          setLoading(false);
+          return;
+        }
+
+        const data = await fetchSkywardMessages(user, pass, link);
+        const sorted = data.sort((a: SkywardMessage, b: SkywardMessage) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setMessages(sorted);
+      } catch (err) {
+        console.error("Failed to fetch messages:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadMessages();
+  }, []);
+
+  if (loading) {
+    return (
+      <View className='flex-1 justify-center items-center bg-primary'>
+        <ActivityIndicator size="large" color="#ffffff" />
+      </View>
+    );
   }
-];
 
-const sortedMessages = MESSAGES.sort(
-  (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-);
-
-const inbox = () => {
   return (
     <View className='bg-primary flex-1'>
-        <View className="bg-blue-600 pt-14 pb-4 px-5">
-            <Text className="text-white text-3xl font-bold">Inbox</Text>
-        </View>
+      <View className="bg-blue-600 pt-14 pb-4 px-5">
+        <Text className="text-white text-3xl font-bold">Inbox</Text>
+      </View>
       <FlatList
-      className='mt-4 px-5'
-      data={sortedMessages}
-      renderItem={({ item }) => (
-        <MessageCard 
-        subject={item.subject}
-        className={item.className}
-        from={item.from}
-        date={item.date}
-        content={item.content}
-        />
-      )}
-      keyExtractor={(item) => item.subject.toString()}
-      ItemSeparatorComponent={() => <View className="h-4" />}
+        className='mt-4 px-5'
+        data={messages}
+        renderItem={({ item }) => (
+          <MessageCard 
+            subject={item.subject.length > 35
+  ? item.subject.slice(0, 35).replace(/\s+\S*$/, '') + '...' 
+  : item.subject}
+            className={item.className}
+            from={item.from}
+            date={item.date}
+            content={item.content}
+          />
+        )}
+        keyExtractor={(item, index) => `${item.subject}-${index}`}
+        ItemSeparatorComponent={() => <View className="h-4" />}
       />
     </View>
-  )
-}
+  );
+};
 
-export default inbox
+export default Inbox;
