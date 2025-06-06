@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, TextInput, Button, Text, ScrollView, TouchableOpacity, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingViewComponent, KeyboardAvoidingView, Platform } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'react-native'
 import { icons } from "@/constants/icons";
 
@@ -9,26 +9,21 @@ const STORAGE_KEY = 'person_info';
 export default function PersonInfoScreen() {
   const [name, setName] = useState('');
   const [link, setLink] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+
   const [saved, setSaved] = useState(false);
 
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+
   useEffect(() => {
-    (async () => {
-      const data = await SecureStore.getItemAsync(STORAGE_KEY);
-      if (data) {
-        const parsed = JSON.parse(data);
-        setName(parsed.name);
-        setLink(parsed.link);
-        setUsername(parsed.username);
-        setPassword(parsed.password);
-      }
-    })();
+    // No SecureStore logic
   }, []);
 
   const saveInfo = async () => {
     const data = { name, link, username, password };
-    await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(data));
+    await AsyncStorage.setItem('skywardUser', username);
+    await AsyncStorage.setItem('skywardPass', password);
+    await AsyncStorage.setItem('skywardLink', link);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
