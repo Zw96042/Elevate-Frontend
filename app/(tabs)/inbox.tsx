@@ -1,155 +1,110 @@
-import { View, Text, FlatList, ActivityIndicator } from 'react-native'
-import React, { useEffect, useState } from 'react'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import { View, Text, FlatList, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import MessageCard from '@/components/MessageCard';
-import { fetchSkywardMessages } from '@/lib/skywardClient';
+import { loadMessages } from '@/lib/loadMessageHandler';
+import { loadMoreMessages } from '@/lib/loadMoreMessagesHandler';
 import { Link as RouterLink } from 'expo-router';
 
-type SkywardMessage = {
-  subject: string;
-  className: string;
-  from: string;
-  date: string;
-  content: string;
-};
 
 const Inbox = () => {
-  const [messages, setMessages] = useState<SkywardMessage[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [credentialsSet, setCredentialsSet] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const loadMessages = async () => {
-    try {
-      // Load session codes individually from AsyncStorage
-      const dwd = await AsyncStorage.getItem('dwd');
-      const wfaacl = await AsyncStorage.getItem('wfaacl');
-      const encses = await AsyncStorage.getItem('encses');
-      const userType = await AsyncStorage.getItem('User-Type');
-      const sessionid = await AsyncStorage.getItem('sessionid');
-      const baseUrl = await AsyncStorage.getItem('baseUrl');
-
-      // Check if all session codes exist
-      const allSessionCodesExist = dwd && wfaacl && encses && userType && sessionid && baseUrl;
-      setCredentialsSet(!!allSessionCodesExist);
-
-      if (!allSessionCodesExist) {
-        console.error("Missing session credentials");
-        setMessages([]);
-        return;
-      }
-
-      let data;
-      try {
-        data = await fetchSkywardMessages({ dwd, wfaacl, encses, userType, sessionid, baseUrl });
-      } catch (error: any) {
-        console.error("Failed to fetch messages:", error.message);
-        if (error.message?.toLowerCase().includes("session expired")) {
-          console.log("Re-authenticating...");
-          const [link, username, password] = await Promise.all([
-            AsyncStorage.getItem('skywardLink'),
-            AsyncStorage.getItem('skywardUser'),
-            AsyncStorage.getItem('skywardPass'),
-          ]);
-
-          if (link && username && password) {
-            const response = await fetch('http://192.168.1.136:3000/auth', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ baseUrl: link, user: username, pass: password }),
-            });
-
-            if (!response.ok) throw new Error('Re-authentication failed');
-
-            const sessionCodes = await response.json();
-            await AsyncStorage.setItem('dwd', sessionCodes.dwd);
-            await AsyncStorage.setItem('wfaacl', sessionCodes.wfaacl);
-            await AsyncStorage.setItem('encses', sessionCodes.encses);
-            await AsyncStorage.setItem('User-Type', sessionCodes['User-Type']);
-            await AsyncStorage.setItem('sessionid', sessionCodes.sessionid);
-            await AsyncStorage.setItem('baseUrl', link);
-
-            data = await fetchSkywardMessages({
-              dwd: sessionCodes.dwd,
-              wfaacl: sessionCodes.wfaacl,
-              encses: sessionCodes.encses,
-              userType: sessionCodes['User-Type'],
-              sessionid: sessionCodes.sessionid,
-              baseUrl: link,
-            });
-          }
-        } else {
-          console.error("Unexpected error type:", error);
-          throw error;
-        }
-      }
-
-      const sorted = data.sort((a: SkywardMessage, b: SkywardMessage) =>
-        new Date(b.date).getTime() - new Date(a.date).getTime()
-      );
-      setMessages(sorted);
-    } catch (err: any) {
-      console.error("Failed to fetch messages:", err);
-      // console.error("Error type:", typeof err);
-      // console.error("Error instance of Error:", err instanceof Error);
-      // console.error("Error message:", err.message);
-      setMessages([]);
-    }
+  const handleLoadMessages = async () => {
+    const result = await loadMessages();
+    setCredentialsSet(result.credentialsSet);
+    setMessages(result.messages);
   };
 
+  const handleLoadMoreMessages = async () => {
+  if (loadingMore || messages.length === 0) {
+    console.log('Skipping load more: loadingMore or no messages.');
+    return;
+  }
+  setLoadingMore(true);
+  console.log('Loading more messages...');
+
+  const lastMessage = messages[messages.length - 1];
+  try {
+    const result = await loadMoreMessages(lastMessage.messageRowId, 6);
+    console.log('Loaded more messages:', result.messages.length);
+    setMessages(prev => [...prev, ...result.messages]);
+  } catch (error) {
+    console.error('Failed to fetch more messages:', error);
+  } finally {
+    setLoadingMore(false);
+  }
+};
+
   useEffect(() => {
-    loadMessages().finally(() => setLoading(false));
+    handleLoadMessages().finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <View className='flex-1 justify-center items-center bg-primary'>
-        <ActivityIndicator size="large" color="#ffffff" />
-      </View>
-    );
-  }
-
   return (
-    <View className='bg-primary flex-1'>
+    <View className="bg-primary flex-1">
       <View className="bg-blue-600 pt-14 pb-4 px-5">
         <Text className="text-white text-3xl font-bold">Inbox</Text>
       </View>
-      <FlatList
-        className='mt-4 px-5 mb-24'
-        data={messages}
-        renderItem={({ item }) => (
-          <MessageCard 
-            subject={item.subject.length > 35
-              ? item.subject.slice(0, 35).replace(/\s+\S*$/, '') + '...' 
-              : item.subject}
-            className={item.className}
-            from={item.from}
-            date={item.date}
-            content={item.content}
-          />
-        )}
-        keyExtractor={(item, index) => `${item.subject}-${index}`}
-        ItemSeparatorComponent={() => <View className="h-4" />}
-        refreshing={refreshing}
-        onRefresh={async () => {
-          setRefreshing(true);
-          await loadMessages();
-          setRefreshing(false);
-        }}
-        ListEmptyComponent={
-          <Text className="text-center text-gray-500 mt-10">
-            {credentialsSet ? 'No messages found.' : (
-              <>
-                No credentials found.{" "}
-                <RouterLink href="/profile" className="text-blue-400 underline">
-                  Go to Settings
-                </RouterLink>{" "}
-                to configure your account.
-              </>
-            )}
-          </Text>
-        }
-      />
+      {loading ? (
+        <View className="flex-1 justify-center items-center bg-primary">
+          <ActivityIndicator size="large" color="#ffffff" />
+        </View>
+      ) : (
+        <FlatList
+          className="mt-4 px-5 mb-24"
+          data={messages}
+          renderItem={({ item }) => (
+            <MessageCard
+              subject={
+                item.subject.length > 35
+                  ? item.subject.slice(0, 35).replace(/\s+\S*$/, '') + '...'
+                  : item.subject
+              }
+              messageRowId={item.messageRowId}
+              className={item.className}
+              from={item.from}
+              date={item.date}
+              content={item.content}
+            />
+          )}
+          keyExtractor={(item, index) => `${item.subject}-${index}`}
+          ItemSeparatorComponent={() => <View className="h-4" />}
+          refreshing={refreshing}
+          onRefresh={async () => {
+            setRefreshing(true);
+            await handleLoadMessages();
+            setRefreshing(false);
+          }}
+          onEndReached={handleLoadMoreMessages}
+          onEndReachedThreshold={0.3}
+          ListEmptyComponent={
+            <Text className="text-center text-gray-500 mt-10">
+              {credentialsSet ? (
+                'No messages found.'
+              ) : (
+                <>
+                  No credentials found.{' '}
+                  <RouterLink href="/profile" className="text-blue-400 underline">
+                    Go to Settings
+                  </RouterLink>{' '}
+                  to configure your account.
+                </>
+              )}
+            </Text>
+          }
+          ListFooterComponent={
+            loadingMore ? (
+              <View className="py-4">
+                <ActivityIndicator size="small" color="#ffffff" />
+              </View>
+            ) : null
+          }
+        />
+      )}
     </View>
   );
 };

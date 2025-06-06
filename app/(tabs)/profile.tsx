@@ -3,6 +3,7 @@ import { View, TextInput, Button, Text, ScrollView, TouchableOpacity, TouchableW
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'react-native'
 import { icons } from "@/constants/icons";
+import { authenticate } from '@/lib/authHandler';
 
 const STORAGE_KEY = 'person_info';
 
@@ -37,12 +38,25 @@ const saveInfo = async () => {
     await AsyncStorage.setItem('skywardUser', username);
     await AsyncStorage.setItem('skywardPass', password);
     await AsyncStorage.setItem('skywardLink', link);
+
     console.log("Saved credentials:");
     console.log("skywardLink:", link);
     console.log("skywardUser:", username);
     console.log("skywardPass:", password);
+
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+
+    // Now authenticate with saved credentials
+    const authResult = await authenticate();
+
+    if (authResult.success) {
+      console.log("Authentication succeeded");
+      // Optionally: store session codes here or show UI feedback
+    } else {
+      console.error("Authentication failed:", authResult.error);
+      // Optionally: show user error feedback
+    }
   } catch (error) {
     console.error("Failed to save credentials", error);
   }

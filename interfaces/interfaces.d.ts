@@ -18,6 +18,7 @@ interface Movie {
 
 interface Message {
   className: string;
+  messageRowId: string;
   subject: string;
   from: string;
   date: string;

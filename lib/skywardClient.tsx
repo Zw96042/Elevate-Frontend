@@ -44,3 +44,33 @@ export const fetchSkywardMessages = async ({
 
   return data;
 };
+
+export const fetchMoreSkywardMessages = async (
+  sessionCodes: {
+    dwd: string;
+    wfaacl: string;
+    encses: string;
+    userType?: string;
+    sessionid: string;
+    baseUrl: string;
+  },
+  lastMessageId: string,
+  limit: number
+): Promise<Message[]> => {
+  const response = await fetch('http://192.168.1.136:3000/next-messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...sessionCodes,
+      lastMessageId,
+      limit,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to fetch messages: ${text}`);
+  }
+
+  return await response.json();
+};

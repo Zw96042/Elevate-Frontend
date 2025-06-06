@@ -4,6 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import ClassCard from '@/components/ClassCard';
 import { Link as RouterLink } from 'expo-router';
+import { authenticate } from '@/lib/authHandler';
+
 
 const DATA = [
   // Your existing hardcoded course data...
@@ -80,57 +82,21 @@ export default function Index() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   useEffect(() => {
-    const authenticate = async () => {
-      try {
-        setAuthenticating(true);
+    const runAuth = async () => {
+      setAuthenticating(true);
+      const result = await authenticate();
 
-        const [link, username, password] = await Promise.all([
-          AsyncStorage.getItem('skywardLink'),
-          AsyncStorage.getItem('skywardUser'),
-          AsyncStorage.getItem('skywardPass'),
-        ]);
-
-        if (!link || !username || !password) {
-          setCredentialsSet(false);
-          setAuthenticating(false);
-          return;
-        }
-
+      if (result.success) {
         setCredentialsSet(true);
-
-        const response = await fetch('http://192.168.1.136:3000/auth', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ baseUrl: link, user: username, pass: password }),
-        });
-
-        if (!response.ok) throw new Error('Authentication failed');
-
-        const sessionCodes = await response.json(); // sessionCodes is the object returned by backend
-
-        console.log(sessionCodes.dwd);
-        console.log(sessionCodes.wfaacl);
-        console.log(sessionCodes.encses);
-        console.log(sessionCodes['User-Type']);
-        console.log(sessionCodes.sessionid);
-        console.log(link);
-        // Store each key separately in AsyncStorage as your app expects
-        await AsyncStorage.setItem('dwd', sessionCodes.dwd);
-        await AsyncStorage.setItem('wfaacl', sessionCodes.wfaacl);
-        await AsyncStorage.setItem('encses', sessionCodes.encses);
-        await AsyncStorage.setItem('User-Type', sessionCodes['User-Type']);
-        await AsyncStorage.setItem('sessionid', sessionCodes.sessionid);
-        await AsyncStorage.setItem('baseUrl', link); // store baseUrl too for later requests
-
-        setAuthenticating(false);
-      } catch (error) {
-        console.error('Authentication error:', error);
+      } else {
+        console.error('Authentication failed:', result.error);
         setCredentialsSet(false);
-        setAuthenticating(false);
       }
+
+      setAuthenticating(false);
     };
 
-    authenticate();
+    runAuth();
   }, []);
 
   const terms: typeof selectedCategory[] = [
