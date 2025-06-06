@@ -15,18 +15,38 @@ export default function PersonInfoScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
-  useEffect(() => {
-    // No SecureStore logic
-  }, []);
+useEffect(() => {
+  const loadInfo = async () => {
+    const storedName = await AsyncStorage.getItem('person_info_name');
+    const storedLink = await AsyncStorage.getItem('skywardLink');
+    const storedUser = await AsyncStorage.getItem('skywardUser');
+    const storedPass = await AsyncStorage.getItem('skywardPass');
 
-  const saveInfo = async () => {
-    const data = { name, link, username, password };
+    if (storedName) setName(storedName);
+    if (storedLink) setLink(storedLink);
+    if (storedUser) setUsername(storedUser);
+    if (storedPass) setPassword(storedPass);
+  };
+
+  loadInfo();
+}, []);
+
+const saveInfo = async () => {
+  try {
+    await AsyncStorage.setItem('person_info_name', name);
     await AsyncStorage.setItem('skywardUser', username);
     await AsyncStorage.setItem('skywardPass', password);
     await AsyncStorage.setItem('skywardLink', link);
+    console.log("Saved credentials:");
+    console.log("skywardLink:", link);
+    console.log("skywardUser:", username);
+    console.log("skywardPass:", password);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
-  };
+  } catch (error) {
+    console.error("Failed to save credentials", error);
+  }
+};
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className='flex-1 bg-primary'>

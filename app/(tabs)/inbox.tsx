@@ -21,24 +21,34 @@ const Inbox = () => {
 
   const loadMessages = async () => {
     try {
-      const user = await AsyncStorage.getItem('skywardUser');
-      const pass = await AsyncStorage.getItem('skywardPass');
-      const link = await AsyncStorage.getItem('skywardLink');
+      // Load session codes individually from AsyncStorage
+      const dwd = await AsyncStorage.getItem('dwd');
+      const wfaacl = await AsyncStorage.getItem('wfaacl');
+      const encses = await AsyncStorage.getItem('encses');
+      const userType = await AsyncStorage.getItem('User-Type');
+      const sessionid = await AsyncStorage.getItem('sessionid');
+      const baseUrl = await AsyncStorage.getItem('baseUrl');
 
-      const allCredentialsExist = !!user && !!pass && !!link;
-      setCredentialsSet(allCredentialsExist);
+      // Check if all session codes exist
+      const allSessionCodesExist = dwd && wfaacl && encses && userType && sessionid && baseUrl;
+      setCredentialsSet(!!allSessionCodesExist);
 
-      if (!allCredentialsExist) {
-        console.error("Missing Skyward credentials or link");
+      if (!allSessionCodesExist) {
+        console.error("Missing session credentials");
         setMessages([]);
         return;
       }
 
-      const data = await fetchSkywardMessages(user, pass, link);
-      const sorted = data.sort((a: SkywardMessage, b: SkywardMessage) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      // Call your API helper passing the session codes
+      const data = await fetchSkywardMessages({ dwd, wfaacl, encses, userType, sessionid, baseUrl });
+
+      const sorted = data.sort((a: SkywardMessage, b: SkywardMessage) =>
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
       setMessages(sorted);
     } catch (err) {
       console.error("Failed to fetch messages:", err);
+      setMessages([]);
     }
   };
 
