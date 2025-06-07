@@ -11,7 +11,7 @@ const MessageDetails = () => {
         <ScrollView className='flex-1'>
             <View>
                 <Text className='text-slate-400 font-bold ml-4 mt-3 text-sm'>Subject</Text>
-                <View className="bg-slate-800 rounded-lg p-3 mx-4 mt-3">
+                <View className="bg-cardColor rounded-lg p-3 mx-4 mt-3">
                     <Text className="text-slate-200 leading-5">
                         {message}
                     </Text>
@@ -20,7 +20,7 @@ const MessageDetails = () => {
                 <View className='flex-row items-center'>
                     <View className='mt-4 px-4 w-[50%]'>
                         <Text className='text-slate-400 font-bold text-sm mb-4'>From</Text>
-                        <View className="bg-slate-800 rounded-lg p-3 w-full">
+                        <View className="bg-cardColor rounded-lg p-3 w-full">
                             <Text className="text-slate-200 leading-5">
                                 {from}
                             </Text>
@@ -28,7 +28,7 @@ const MessageDetails = () => {
                     </View>
                     <View className='mt-4 px-4 w-[50%]'>
                         <Text className='text-slate-400 font-bold text-sm mb-4'>Date</Text>
-                        <View className="bg-slate-800 rounded-lg p-3 w-full">
+                        <View className="bg-cardColor rounded-lg p-3 w-full">
                             <Text className="text-slate-200 leading-5">
                                 {date.slice(date.indexOf(" ")+1)}
                             </Text>
@@ -37,7 +37,7 @@ const MessageDetails = () => {
                 
                 </View>
                 <Text className='text-slate-400 font-bold ml-4 mt-3 text-sm'>Message</Text>
-                <View className="bg-slate-800 rounded-lg p-3 mx-4 mt-3">
+                <View className="bg-cardColor rounded-lg p-3 mx-4 mt-3">
                     <Text className="text-slate-200 leading-5">
                         {content}
                     </Text>

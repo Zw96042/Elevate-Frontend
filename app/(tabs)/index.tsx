@@ -113,14 +113,14 @@ export default function Index() {
         contentContainerStyle={{ minHeight: '100%', paddingBottom: 10 }}
       >
 
-        <Text className="text-slate-400 font-bold mt-3 text-sm">Term</Text>
+        <Text className="text-accent font-bold mt-3 text-sm">Term</Text>
 
         <View className="my-2 px-0">
           <TouchableOpacity
             onPress={() => setDropdownOpen(!dropdownOpen)}
-            className="flex-row items-center justify-between bg-slate-800 px-4 py-3 rounded-full"
+            className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
           >
-            <Text className="text-base text-slate-300">{selectedCategory}</Text>
+            <Text className="text-base text-main">{selectedCategory}</Text>
             <Ionicons
               name={dropdownOpen ? 'chevron-up' : 'chevron-down'}
               size={20}
@@ -129,7 +129,7 @@ export default function Index() {
           </TouchableOpacity>
 
           {dropdownOpen && (
-            <View className="mt-2 bg-slate-800 rounded-xl">
+            <View className="mt-2 bg-cardColor rounded-xl">
               {terms.map((term) => (
                 <TouchableOpacity
                   key={term}
@@ -139,7 +139,7 @@ export default function Index() {
                   }}
                   className="px-4 py-3"
                 >
-                  <Text className="text-slate-300">{term}</Text>
+                  <Text className="text-main">{term}</Text>
                 </TouchableOpacity>
               ))}
             </View>

@@ -129,14 +129,14 @@ const ClassDetails = () => {
             <View className="mt-2 px-5">
               <TouchableOpacity
                 onPress={() => setDropdownOpen(!dropdownOpen)}
-                className="flex-row items-center justify-between bg-slate-800 px-4 py-3 rounded-full"
+                className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
               >
                 <Text className="text-base text-slate-300">{selectedCategory}</Text>
                 <Ionicons name={dropdownOpen ? 'chevron-up' : 'chevron-down'} size={20} color="#cbd5e1"/>
               </TouchableOpacity>
 
               {dropdownOpen && (
-                <View className="mt-2 bg-slate-800 rounded-xl">
+                <View className="mt-2 bg-cardColor rounded-xl">
                   {(["Q1 Grades", "Q2 Grades", "SM1 Grade", "Q3 Grades", "Q4 Grades", "SM2 Grades"] as TermLabel[]).map((label) => (
                   <TouchableOpacity
                     key={label}

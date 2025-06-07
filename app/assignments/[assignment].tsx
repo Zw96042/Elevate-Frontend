@@ -36,20 +36,20 @@ const AssignmentDetails = () => {
             </View>
             <Text className='text-slate-400 font-bold ml-4 mt-3 text-sm'>Category</Text>
             <View className='mt-4 px-4'>
-                <View className="flex-row items-center justify-between bg-slate-800 px-4 py-3 rounded-full">
+                <View className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full">
                     <Text className='text-base text-slate-300'>{category?.toString()}</Text>
                 </View>
             </View>
             <View className='flex-row items-center'>
                 <View className='mt-4 px-4 w-[50%]'>
                     <Text className='text-slate-400 font-bold text-sm mb-4'>Score</Text>
-                    <View className="flex-row items-center justify-between bg-slate-800 px-4 py-3 rounded-full">
+                    <View className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full">
                         <Text className='text-base text-slate-300'>{Number(grade).toFixed(2)}</Text>
                     </View>
                 </View>
                 <View className='mt-4 px-4 w-[50%]'>
                     <Text className='text-slate-400 font-bold text-sm mb-4'>Total Points</Text>
-                    <View className="flex-row items-center justify-between bg-slate-800 px-4 py-3 rounded-full">
+                    <View className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full">
                         <Text className='text-base text-slate-300'>{Number(outOf).toFixed(2)}</Text>
                     </View>
                 </View>

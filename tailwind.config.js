@@ -6,12 +6,12 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: "#030014",
-        secondary: "#151312",
-        accent: '#386cec',
-        daccent: '#484444',
-        dark: '#302c2c',
-        primarybg: '#201c34'
+        primary: "var(--bg-color)",
+        cardColor: 'var(--card-color)',
+        main: 'var(--text-main)',
+        secondary: 'var(--text-secondary)',
+        accent: 'var(--text-accent)',
+        nav: 'var(--nav-color)',
       }
     },
   },

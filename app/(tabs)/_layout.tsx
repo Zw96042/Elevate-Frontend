@@ -15,12 +15,14 @@ const _layout = () => {
           flex: 1,
         },
         tabBarStyle: {
-          backgroundColor: '#302c2c',
           borderTopWidth: 0,
           height: 70,
           paddingBottom: 8,
           position: 'absolute',
-        }
+        },
+        tabBarBackground: () => (
+          <View className="flex-1 bg-nav border-t border-gray-200 dark:border-transparent" />
+        ),
       }}
     >
     <Tabs.Screen 

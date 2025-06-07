@@ -80,7 +80,7 @@ const saveInfo = async () => {
                 <Text className="text-white text-3xl font-bold">Settings</Text>
             </View>
             <View className='flex-1 p-10'>
-                <View className=' bg-slate-800 w-full h-[27rem] rounded-3xl'>
+                <View className='bg-cardColor w-full h-[27rem] rounded-3xl'>
                     <View className='flex-1 px-4 pb-10'>
                             <View className='bg-[#3b5795] self-start rounded-xl mt-3 ml-auto'>
                                 <TouchableOpacity onPress={saveInfo} className="w-full">

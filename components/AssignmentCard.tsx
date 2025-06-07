@@ -6,8 +6,6 @@ import formatClassName from '@/utils/formatClassName';
 
 // Course Name, Teacher Name, Numerical Grade
 const AssignmentCard = ({ className, name, category, grade, outOf, dueDate }: Assignment) => {
-  let bgColor = "bg-[#bg-[#3b5795]]";
-
   return (
     <Link
       href={{
@@ -25,7 +23,7 @@ const AssignmentCard = ({ className, name, category, grade, outOf, dueDate }: As
       asChild
     >
         <TouchableOpacity  className='w-[100%]'>
-            <View className='w-full h-20 rounded-2xl bg-slate-800 flex-row items-center justify-between'>
+            <View className='w-full h-20 rounded-2xl bg-cardColor flex-row items-center justify-between'>
                 <View>
                     <View className="self-start rounded-md bg-[#3b5795] px-2 ml-5">
                         <Text className="text-sm text-[#7398e6] font-bold">{category}</Text>

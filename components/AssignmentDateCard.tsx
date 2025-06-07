@@ -9,7 +9,7 @@ const AssignmentDateCard = ({ className, name, category, grade, outOf, dueDate }
   let bgColor = "bg-[#bg-[#3b5795]]";
 
   return (
-    <View className='w-full h-20 rounded-2xl bg-slate-800 flex-row items-center justify-between'>
+    <View className='w-full h-20 rounded-2xl bg-cardColor flex-row items-center justify-between'>
         <View>
             
             <Text className='text-lg text-gray-300 font-medium ml-5'>{name}</Text>

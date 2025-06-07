@@ -1,3 +1,30 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --bg-color: #ffffff;
+  --card-color: #fafafa;
+  --text-main: #676767;
+  --text-secondary: #9ca3af;
+  --text-accent: #64748b;
+  --nav-color: #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-color: #030014;
+    --card-color: #1e293b;
+    --text-main: #e5e7eb;
+    --text-secondary: #d1d5db;
+    --text-accent: #94a3b8;
+    --nav-color: #302c2c;
+   
+   
+    /* primary: "#030014",
+        accent: '#386cec',
+        daccent: '#484444',
+        dark: '#302c2c',
+        primarybg: '#201c34' */
+  }
+}
