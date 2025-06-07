@@ -1,10 +1,12 @@
 import { View, Text, FlatList, ActivityIndicator } from 'react-native';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MessageCard from '@/components/MessageCard';
 import { loadMessages } from '@/lib/loadMessageHandler';
 import { loadMoreMessages } from '@/lib/loadMoreMessagesHandler';
 import { Link as RouterLink } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import { SkywardAuth } from '@/lib/skywardAuthInfo';
 
 
 const Inbox = () => {
@@ -14,17 +16,9 @@ const Inbox = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const [link, username, password] = [
-      AsyncStorage.getItem('skywardLink'),
-      AsyncStorage.getItem('skywardUser'),
-      AsyncStorage.getItem('skywardPass'),
-    ];
-
-  console.log(link);
-
   const handleLoadMessages = async () => {
     const result = await loadMessages();
-    setCredentialsSet(result.credentialsSet);
+    // setCredentialsSet(result.credentialsSet);
     setMessages(result.messages);
   };
 
@@ -48,9 +42,21 @@ const Inbox = () => {
   }
 };
 
-  useEffect(() => {
-    handleLoadMessages().finally(() => setLoading(false));
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      const fetchMessages = async () => {
+        const hasCreds = await SkywardAuth.hasCredentials();
+        setCredentialsSet(hasCreds);
+        if (hasCreds) {
+          const result = await loadMessages();
+          setMessages(result.messages);
+        }
+        setLoading(false);
+      };
+
+      fetchMessages();
+    }, [])
+  );
 
   return (
     <View className="bg-primary flex-1">

@@ -4,7 +4,6 @@ import { authenticate } from './authHandler';
 
 export const loadMessages = async (): Promise<{
   messages: Message[];
-  credentialsSet: boolean;
 }> => {
   const dwd = await AsyncStorage.getItem('dwd');
   const wfaacl = await AsyncStorage.getItem('wfaacl');
@@ -19,7 +18,7 @@ export const loadMessages = async (): Promise<{
     const authResult = await authenticate();
     if (!authResult.success) {
       console.error('Authentication failed:', authResult.error);
-      return { messages: [], credentialsSet: false };
+      return { messages: []};
     }
     return await loadMessages(); // retry with new credentials
   }
@@ -30,17 +29,17 @@ export const loadMessages = async (): Promise<{
       (a: Message, b: Message) =>
         new Date(b.date).getTime() - new Date(a.date).getTime()
     );
-    return { messages: sorted, credentialsSet: true };
+    return { messages: sorted};
   } catch (error: any) {
     console.error('Failed to fetch messages:', error.message);
     if (error.message?.toLowerCase().includes('session expired')) {
       const authResult = await authenticate();
       if (!authResult.success) {
         console.error('Re-authentication failed:', authResult.error);
-        return { messages: [], credentialsSet: false };
+        return { messages: []};
       }
       return await loadMessages(); // retry after re-auth
     }
-    return { messages: [], credentialsSet: true };
+    return { messages: []};
   }
 };

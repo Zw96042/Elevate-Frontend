@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, FlatList, ScrollView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import ClassCard from '@/components/ClassCard';
-import { Link as RouterLink } from 'expo-router';
-import { authenticate } from '@/lib/authHandler';
+import { Link as RouterLink, useFocusEffect } from 'expo-router';
+import { SkywardAuth } from '@/lib/skywardAuthInfo';
 
 
 const DATA = [
@@ -69,8 +69,19 @@ const DATA = [
 ];
 
 export default function Index() {
-  const [credentialsSet, setCredentialsSet] = useState<boolean | null>(null);
-  const [authenticating, setAuthenticating] = useState(false);
+  const [hasCredentials, setHasCredentials] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      const checkCredentials = async () => {
+        const result = await SkywardAuth.hasCredentials();
+        setHasCredentials(result);
+      };
+
+      checkCredentials();
+    }, [])
+  );
+
   const [selectedCategory, setSelectedCategory] = useState<
     | 'Q1 Grades'
     | 'Q2 Grades'
@@ -80,24 +91,6 @@ export default function Index() {
     | 'SM2 Grades'
   >('Q1 Grades');
   const [dropdownOpen, setDropdownOpen] = useState(false);
-
-  useEffect(() => {
-    const runAuth = async () => {
-      setAuthenticating(true);
-      const result = await authenticate();
-
-      if (result.success) {
-        setCredentialsSet(true);
-      } else {
-        console.error('Authentication failed:', result.error);
-        setCredentialsSet(false);
-      }
-
-      setAuthenticating(false);
-    };
-
-    runAuth();
-  }, []);
 
   const terms: typeof selectedCategory[] = [
     'Q1 Grades',
@@ -119,9 +112,6 @@ export default function Index() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ minHeight: '100%', paddingBottom: 10 }}
       >
-        {authenticating && (
-          <Text className="text-center text-gray-500 mt-3">Authenticating...</Text>
-        )}
 
         <Text className="text-slate-400 font-bold mt-3 text-sm">Term</Text>
 
@@ -178,9 +168,7 @@ export default function Index() {
             ItemSeparatorComponent={() => <View className="h-4" />}
             ListEmptyComponent={
               <View className="mt-10 px-5">
-                {credentialsSet === null ? (
-                  <Text className="text-center text-gray-500">Checking credentials...</Text>
-                ) : credentialsSet ? (
+                {hasCredentials ? (
                   <Text className="text-center text-gray-500">No classes found.</Text>
                 ) : (
                   <Text className="text-center text-gray-500">

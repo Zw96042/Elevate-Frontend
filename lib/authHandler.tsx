@@ -1,5 +1,6 @@
 // lib/authHandler.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SkywardAuth } from './skywardAuthInfo';
 const config = require('./development.config.js');
 
 interface AuthResult {
@@ -9,20 +10,16 @@ interface AuthResult {
 
 export async function authenticate(): Promise<AuthResult> {
   try {
-    const [link, username, password] = await Promise.all([
-      AsyncStorage.getItem('skywardLink'),
-      AsyncStorage.getItem('skywardUser'),
-      AsyncStorage.getItem('skywardPass'),
-    ]);
+    const authInfo = await SkywardAuth.get();
 
-    if (!link || !username || !password) {
+    if (!authInfo?.link || !authInfo?.username || !authInfo?.password) {
       return { success: false, error: 'Missing credentials' };
     }
 
     const response = await fetch(`${config.BACKEND_IP}/auth`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ baseUrl: link, user: username, pass: password }),
+      body: JSON.stringify({ baseUrl: authInfo.link, user: authInfo.username, pass: authInfo.password }),
     });
 
     if (!response.ok) {
@@ -36,7 +33,7 @@ export async function authenticate(): Promise<AuthResult> {
     await AsyncStorage.setItem('encses', sessionCodes.encses);
     await AsyncStorage.setItem('User-Type', sessionCodes['User-Type']);
     await AsyncStorage.setItem('sessionid', sessionCodes.sessionid);
-    await AsyncStorage.setItem('baseUrl', link);
+    await AsyncStorage.setItem('baseUrl', authInfo.link);
 
     return { success: true };
   } catch (err: any) {
