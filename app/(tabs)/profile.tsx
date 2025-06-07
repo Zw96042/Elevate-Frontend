@@ -80,27 +80,17 @@ const saveInfo = async () => {
                 <Text className="text-white text-3xl font-bold">Settings</Text>
             </View>
             <View className='flex-1 p-10'>
-                <View className='bg-cardColor w-full h-[27rem] rounded-3xl'>
+                <View className='bg-cardColor w-full h-[21rem] rounded-3xl'>
                     <View className='flex-1 px-4 pb-10'>
-                            <View className='bg-[#3b5795] self-start rounded-xl mt-3 ml-auto'>
+                            <View className='bg-highlight self-start rounded-xl mt-3 ml-auto'>
                                 <TouchableOpacity onPress={saveInfo} className="w-full">
-                                    <Text className='font-bold text-sm text-[#7398e6] p-1 text-center'>Save Info</Text>
+                                    <Text className='font-bold text-sm text-highlightText p-1 text-center'>Save Info</Text>
                                 </TouchableOpacity>
                             </View>
-                            <View className="mb-4 ">
-                                <Text className="text-lg font-semibold mb-2 text-white">Name</Text>
-                                <TextInput
-                                className="border border-[#cbd5e1] rounded-lg p-3 text-white"
-                                value={name}
-                                onChangeText={setName}
-                                placeholder="Name"
-                                />
-                            </View>
-
                             <View className="mb-4">
-                                <Text className="text-lg font-semibold mb-2 text-white">Skyward Link</Text>
+                                <Text className="text-lg font-semibold mb-2 text-main">Skyward Link</Text>
                                 <TextInput
-                                className="border border-[#cbd5e1] rounded-lg p-3 text-white"
+                                className="border border-secondary rounded-lg p-3 text-main"
                                 value={link}
                                 onChangeText={setLink}
                                 placeholder="https://example.com"
@@ -109,9 +99,9 @@ const saveInfo = async () => {
                             </View>
 
                             <View className="mb-4">
-                                <Text className="text-lg font-semibold mb-2 text-white">Username</Text>
+                                <Text className="text-lg font-semibold mb-2 text-main">Username</Text>
                                 <TextInput
-                                className="border border-[#cbd5e1] rounded-lg p-3 text-white"
+                                className="border border-secondary rounded-lg p-3 text-main"
                                 value={username}
                                 onChangeText={setUsername}
                                 placeholder="Username"
@@ -120,9 +110,9 @@ const saveInfo = async () => {
                             </View>
 
                             <View>
-                                <Text className="text-lg font-semibold mb-2 text-white">Password</Text>
+                                <Text className="text-lg font-semibold mb-2 text-main">Password</Text>
                                 <TextInput
-                                className="border border-[#cbd5e1] rounded-lg p-3 text-white"
+                                className="border border-secondary rounded-lg p-3 text-main"
                                 value={password}
                                 onChangeText={setPassword}
                                 placeholder="Password"
