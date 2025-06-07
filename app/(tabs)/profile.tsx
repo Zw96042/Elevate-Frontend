@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'react-native'
 import { icons } from "@/constants/icons";
 import { authenticate } from '@/lib/authHandler';
+import * as Burnt from "burnt";
 
 const STORAGE_KEY = 'person_info';
 
@@ -52,6 +53,11 @@ const saveInfo = async () => {
 
     if (authResult.success) {
       console.log("Authentication succeeded");
+      Burnt.toast({
+      title: "Burnt installed.",
+      preset: "done",
+      message: "See your downloads.",
+    });
       // Optionally: store session codes here or show UI feedback
     } else {
       console.error("Authentication failed:", authResult.error);
