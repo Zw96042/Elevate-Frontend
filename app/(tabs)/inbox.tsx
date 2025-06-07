@@ -114,11 +114,7 @@ const Inbox = () => {
           data={messages}
           renderItem={({ item }) => (
             <MessageCard
-              subject={
-                item.subject.length > 35
-                  ? item.subject.slice(0, 35).replace(/\s+\S*$/, '') + '...'
-                  : item.subject
-              }
+              subject={item.subject}
               messageRowId={item.messageRowId}
               className={item.className}
               from={item.from}

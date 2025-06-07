@@ -28,7 +28,9 @@ const MessageCard = ({ subject, className, from, date, content }: Message) => {
                     <View className="self-start rounded-md bg-highlight px-2 ml-5">
                         <Text className="text-sm text-highlightText font-bold">{className}</Text>
                     </View>
-                    <Text className='text-lg text-main font-medium ml-5'>{subject}</Text>
+                    <Text className='text-lg text-main font-medium ml-5'>{subject.length > 35
+                  ? subject.slice(0, 35).replace(/\s+\S*$/, '') + '...'
+                  : subject}</Text>
                     <Text className='text-xs text-secondary ml-5'>{from} • {date}</Text>
                 </View>
                 <View className='flex-row items-center'>
