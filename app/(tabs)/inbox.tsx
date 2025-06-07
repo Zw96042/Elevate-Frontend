@@ -7,6 +7,7 @@ import { loadMoreMessages } from '@/lib/loadMoreMessagesHandler';
 import { Link as RouterLink } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
+import { authenticate } from '@/lib/authHandler';
 
 
 const Inbox = () => {
@@ -47,11 +48,33 @@ const Inbox = () => {
       const fetchMessages = async () => {
         const hasCreds = await SkywardAuth.hasCredentials();
         setCredentialsSet(hasCreds);
-        if (hasCreds) {
-          const result = await loadMessages();
-          setMessages(result.messages);
+        if (!hasCreds) {
+          setLoading(false);
+          return;
         }
-        setLoading(false);
+
+        try {
+          const result = await loadMessages();
+          if (result.messages.length === 0) {
+            throw new Error('Session Expired');
+          }
+          setMessages(result.messages);
+        } catch (error: any) {
+          if (error.message === 'Session Expired') {
+            console.warn('Session expired, re-authenticating...');
+            await authenticate();
+            try {
+              const retryResult = await loadMessages();
+              setMessages(retryResult.messages);
+            } catch (retryError) {
+              console.error('Failed to fetch messages after re-authentication:', retryError);
+            }
+          } else {
+            console.error('Failed to fetch messages:', error);
+          }
+        } finally {
+          setLoading(false);
+        }
       };
 
       fetchMessages();
