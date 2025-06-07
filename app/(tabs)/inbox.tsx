@@ -120,6 +120,7 @@ const Inbox = () => {
               from={item.from}
               date={item.date}
               content={he.decode(item.content)}
+              administrator={item.subject === "Administrator Message"}
             />
           )}
           keyExtractor={(item, index) => `${item.subject}-${index}`}
