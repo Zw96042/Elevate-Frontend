@@ -9,6 +9,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { authenticate } from '@/lib/authHandler';
 import * as Burnt from "burnt";
+import he from 'he';
 
 
 const Inbox = () => {
@@ -40,7 +41,6 @@ const Inbox = () => {
   } catch (error) {
     console.error('Failed to fetch more messages:', error);
   } finally {
-    Burnt.dismissAllAlerts()
     setLoadingMore(false);
   }
 };
@@ -119,7 +119,7 @@ const Inbox = () => {
               className={item.className}
               from={item.from}
               date={item.date}
-              content={item.content}
+              content={he.decode(item.content)}
             />
           )}
           keyExtractor={(item, index) => `${item.subject}-${index}`}

@@ -72,7 +72,7 @@ export const fetchMoreSkywardMessages = async (
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`Failed to fetch messages: ${text}`);
-  }
+  } 
 
   return await response.json();
 };
