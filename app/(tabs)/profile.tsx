@@ -54,13 +54,17 @@ const saveInfo = async () => {
     if (authResult.success) {
       console.log("Authentication succeeded");
       Burnt.toast({
-      title: "Burnt installed.",
-      preset: "done",
-      message: "See your downloads.",
-    });
+        title: "Information Verified",
+        preset: "done"
+      });
       // Optionally: store session codes here or show UI feedback
     } else {
       console.error("Authentication failed:", authResult.error);
+      Burnt.toast({
+        title: "Error",
+        preset: "error",
+        message: "Couldn't verify details",
+      });
       // Optionally: show user error feedback
     }
   } catch (error) {
@@ -76,7 +80,7 @@ const saveInfo = async () => {
                 <Text className="text-white text-3xl font-bold">Settings</Text>
             </View>
             <View className='flex-1 p-10'>
-                <View className=' bg-slate-800 w-full h-[29rem] rounded-3xl'>
+                <View className=' bg-slate-800 w-full h-[27rem] rounded-3xl'>
                     <View className='flex-1 px-4 pb-10'>
                             <View className='bg-[#3b5795] self-start rounded-xl mt-3 ml-auto'>
                                 <TouchableOpacity onPress={saveInfo} className="w-full">
@@ -115,7 +119,7 @@ const saveInfo = async () => {
                                 />
                             </View>
 
-                            <View className="mb-4">
+                            <View>
                                 <Text className="text-lg font-semibold mb-2 text-white">Password</Text>
                                 <TextInput
                                 className="border border-[#cbd5e1] rounded-lg p-3 text-white"
@@ -125,12 +129,6 @@ const saveInfo = async () => {
                                 secureTextEntry
                                 />
                             </View>
-
-                            
-
-                            {saved && (
-                                <Text className="text-green-600 mt-1 text-center">Saved successfully!</Text>
-                            )}
                     </View>
                 </View>
             </View>

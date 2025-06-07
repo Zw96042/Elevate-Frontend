@@ -59,7 +59,7 @@ export const fetchMoreSkywardMessages = async (
   lastMessageId: string,
   limit: number
 ): Promise<Message[]> => {
-    const response = await fetch(`${config.BACKEND_IP}/next-messages`, {
+    const response = await fetch(`${config.BACKEND_IP}/next-measdfssages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

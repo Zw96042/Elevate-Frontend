@@ -8,6 +8,7 @@ import { Link as RouterLink } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { authenticate } from '@/lib/authHandler';
+import * as Burnt from "burnt";
 
 
 const Inbox = () => {
@@ -39,6 +40,7 @@ const Inbox = () => {
   } catch (error) {
     console.error('Failed to fetch more messages:', error);
   } finally {
+    Burnt.dismissAllAlerts()
     setLoadingMore(false);
   }
 };
@@ -60,13 +62,25 @@ const Inbox = () => {
           }
           setMessages(result.messages);
         } catch (error: any) {
+          Burnt.toast({
+            title: "Session expired",
+            preset: "none"
+          });
           if (error.message === 'Session Expired') {
             console.warn('Session expired, re-authenticating...');
             await authenticate();
             try {
               const retryResult = await loadMessages();
               setMessages(retryResult.messages);
+              Burnt.toast({
+                title: "Re-authenticated",
+                preset: "done"
+              });
             } catch (retryError) {
+              Burnt.toast({
+                title: "Error re-authenticating",
+                preset: "error"
+              });
               console.error('Failed to fetch messages after re-authentication:', retryError);
             }
           } else {
