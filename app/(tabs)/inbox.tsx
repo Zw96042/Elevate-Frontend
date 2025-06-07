@@ -10,6 +10,7 @@ import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { authenticate } from '@/lib/authHandler';
 import * as Burnt from "burnt";
 import he from 'he';
+import { useColorScheme } from 'react-native';
 
 
 const Inbox = () => {
@@ -18,6 +19,9 @@ const Inbox = () => {
   const [credentialsSet, setCredentialsSet] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+
+  const colorScheme = useColorScheme();
+  const indicatorColor = colorScheme === 'dark' ? '#ffffff' : '#000000';
 
   const handleLoadMessages = async () => {
     const result = await loadMessages();
@@ -102,11 +106,11 @@ const Inbox = () => {
       </View>
       {loading ? (
         <View className="flex-1 justify-center items-center bg-primary">
-          <ActivityIndicator size="large" color="#ffffff" />
+          <ActivityIndicator size="large" color={indicatorColor} />
         </View>
       ) : (
         <FlatList
-          className="mt-4 px-5 mb-24"
+          className="mt-4 px-5 mb-[5rem]"
           data={messages}
           renderItem={({ item }) => (
             <MessageCard
@@ -150,7 +154,7 @@ const Inbox = () => {
           ListFooterComponent={
             loadingMore ? (
               <View className="py-4">
-                <ActivityIndicator size="small" color="#ffffff" />
+                <ActivityIndicator size="small" color={indicatorColor} />
               </View>
             ) : null
           }
