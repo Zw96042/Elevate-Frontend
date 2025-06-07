@@ -1,5 +1,6 @@
 // lib/authHandler.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
+const config = require('./development.config.js');
 
 interface AuthResult {
   success: boolean;
@@ -18,7 +19,7 @@ export async function authenticate(): Promise<AuthResult> {
       return { success: false, error: 'Missing credentials' };
     }
 
-    const response = await fetch('http://192.168.1.136:3000/auth', {
+    const response = await fetch(`${config.BACKEND_IP}/auth`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ baseUrl: link, user: username, pass: password }),

@@ -1,3 +1,5 @@
+const config = require('./development.config.js');
+
 export const fetchSkywardMessages = async ({
   dwd, wfaacl, encses, userType, sessionid, baseUrl
 }: {
@@ -12,18 +14,18 @@ export const fetchSkywardMessages = async ({
     throw new Error('Missing session credentials');
   }
 
-  const res = await fetch('http://192.168.1.136:3000/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionid,
-      encses,
-      dwd,
-      wfaacl,
-      baseUrl,
-      'User-Type': userType,
-    }),
-  });
+    const res = await fetch(`${config.BACKEND_IP}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+        sessionid,
+        encses,
+        dwd,
+        wfaacl,
+        baseUrl,
+        'User-Type': userType,
+        }),
+    });
 
   if (!res.ok) {
     // console.log(JSON.stringify(res));
@@ -57,15 +59,15 @@ export const fetchMoreSkywardMessages = async (
   lastMessageId: string,
   limit: number
 ): Promise<Message[]> => {
-  const response = await fetch('http://192.168.1.136:3000/next-messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      ...sessionCodes,
-      lastMessageId,
-      limit,
-    }),
-  });
+    const response = await fetch(`${config.BACKEND_IP}/next-messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+        ...sessionCodes,
+        lastMessageId,
+        limit,
+        }),
+    });
 
   if (!response.ok) {
     const text = await response.text();

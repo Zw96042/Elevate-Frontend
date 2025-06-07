@@ -14,6 +14,14 @@ const Inbox = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  const [link, username, password] = [
+      AsyncStorage.getItem('skywardLink'),
+      AsyncStorage.getItem('skywardUser'),
+      AsyncStorage.getItem('skywardPass'),
+    ];
+
+  console.log(link);
+
   const handleLoadMessages = async () => {
     const result = await loadMessages();
     setCredentialsSet(result.credentialsSet);
@@ -80,7 +88,7 @@ const Inbox = () => {
             setRefreshing(false);
           }}
           onEndReached={handleLoadMoreMessages}
-          onEndReachedThreshold={0.3}
+          onEndReachedThreshold={0.2}
           ListEmptyComponent={
             <Text className="text-center text-gray-500 mt-10">
               {credentialsSet ? (
