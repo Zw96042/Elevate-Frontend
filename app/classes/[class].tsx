@@ -131,7 +131,7 @@ const ClassDetails = () => {
                 onPress={() => setDropdownOpen(!dropdownOpen)}
                 className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
               >
-                <Text className="text-base text-slate-300">{selectedCategory}</Text>
+                <Text className="text-base text-main">{selectedCategory}</Text>
                 <Ionicons name={dropdownOpen ? 'chevron-up' : 'chevron-down'} size={20} color="#cbd5e1"/>
               </TouchableOpacity>
 
@@ -146,7 +146,7 @@ const ClassDetails = () => {
                     }}
                     className="px-4 py-3"
                   >
-                    <Text className="text-slate-300">{label}</Text>
+                    <Text className="text-main">{label}</Text>
                   </TouchableOpacity>
                 ))}
                 </View>
@@ -154,28 +154,28 @@ const ClassDetails = () => {
             </View>
             <View className='flex-row mt-4'>
               <View className='flex-1 items-center'>
-                <Text className='text-[#7398e6] font-bold text-sm'>Grade</Text>
-                <View className='w-10 h-10 rounded-full bg-[#3b5795] items-center justify-center mt-2'>
-                    <Text className='text-[#7398e6] font-bold text-xs'>{termMap[selectedCategory].total ?? "--"}%</Text>
+                <Text className='text-highlightText font-bold text-sm'>Grade</Text>
+                <View className='w-10 h-10 rounded-full bg-highlight items-center justify-center mt-2'>
+                    <Text className='text-highlightText font-bold text-xs'>{termMap[selectedCategory].total ?? "--"}%</Text>
                 </View>
               </View>
               <View className='flex-1 items-center'>
-                <Text className='text-[#7398e6] font-bold text-sm mb-2'>Category</Text>
+                <Text className='text-highlightText font-bold text-sm mb-2'>Category</Text>
                   <View>
                   {currTerm.categories.names
                   .map((item, index) => (
                     <View
                       key={`${item}-${index}`}
-                      className="self-start rounded-md bg-[#3b5795] px-2"
+                      className="self-start rounded-md bg-highlight px-2"
                       style={{ marginBottom: index !== currTerm.categories.names.length - 1 ? 8 : 0 }}
                     >
-                      <Text className="text-sm text-[#7398e6] font-bold">{item}</Text>
+                      <Text className="text-sm text-highlightText font-bold">{item}</Text>
                     </View>
                 ))}
                 </View>
               </View>
               <View className='flex-1 items-center'>
-                <Text className='text-[#7398e6] font-bold text-sm mb-2'>Real</Text>
+                <Text className='text-highlightText font-bold text-sm mb-2'>Real</Text>
                 <View>
                   {currTerm.categories.grades
                     .map((item, index) => (
@@ -188,7 +188,7 @@ const ClassDetails = () => {
                 </View>
               </View>
               <View className='flex-1 items-center'>
-                <Text className='text-[#7398e6] font-bold text-sm mb-2'>Calculated</Text>
+                <Text className='text-highlightText font-bold text-sm mb-2'>Calculated</Text>
                 <View>
                   {currTerm.categories.grades
                     .map((item, index) => (

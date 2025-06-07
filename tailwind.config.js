@@ -12,6 +12,8 @@ module.exports = {
         secondary: 'var(--text-secondary)',
         accent: 'var(--text-accent)',
         nav: 'var(--nav-color)',
+        highlight: 'var(--highlight-color)',
+        highlightText: 'var(--highlight-text)',
       }
     },
   },

@@ -9,6 +9,8 @@
   --text-secondary: #9ca3af;
   --text-accent: #64748b;
   --nav-color: #fff;
+  --highlight-color: #a4bfed;
+  --highlight-text: #587bc5;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -19,6 +21,8 @@
     --text-secondary: #d1d5db;
     --text-accent: #94a3b8;
     --nav-color: #302c2c;
+    --highlight-color: #3b5795;
+    --highlight-text: #7398e6;
    
    
     /* primary: "#030014",
