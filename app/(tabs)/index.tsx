@@ -113,7 +113,7 @@ export default function Index() {
         contentContainerStyle={{ minHeight: '100%', paddingBottom: 10 }}
       >
 
-        <Text className="text-accent font-bold mt-3 text-sm">Term</Text>
+        <Text className="text-slate-500 font-bold mt-3 text-sm">Term</Text>
 
         <View className="my-2 px-0">
           <TouchableOpacity
