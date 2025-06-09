@@ -95,7 +95,7 @@ export default function Index() {
   >('Q1 Grades');
   
   const bottomSheetRef = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => ['25%', '50%'], []);
+  const snapPoints = useMemo(() => ['42%'], []);
   const terms: typeof selectedCategory[] = [
     'Q1 Grades',
     'Q2 Grades',

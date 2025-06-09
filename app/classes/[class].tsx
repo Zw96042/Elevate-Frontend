@@ -1,5 +1,7 @@
 import { View, Text, ScrollView, TouchableOpacity, FlatList, StyleSheet, Button } from 'react-native'
 import React, { ReactElement, useCallback, useMemo, useRef } from 'react';
+import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList } from '@gorhom/bottom-sheet';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router'
 import formatClassName from '@/utils/formatClassName';
 import { Ionicons } from '@expo/vector-icons';
@@ -99,16 +101,14 @@ const ClassDetails = () => {
   
 
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
+  const bottomSheetRef = useRef<BottomSheet>(null);
+  const snapPoints = useMemo(() => ['42%'], []);
 
 
   const [selectedCategory, setSelectedCategory] = React.useState<TermLabel>(term);
   const filteredAssignments = ASSIN.filter(item => item.className === classParam && item.term === selectedCategory.split(" ")[0]);
 
   const currTerm = termMap[selectedCategory];
-
-  // const categoriesArray = typeof currTerm.categories.names === "string"
-  // ? currTerm.categories.names
-  // : currTerm.categories.names;
   
   return (
     <View className='bg-primary flex-1'>
@@ -128,29 +128,11 @@ const ClassDetails = () => {
             <Text className='text-slate-400 font-bold ml-5 mt-3 text-sm'>Term</Text>
             <View className="mt-2 px-5">
               <TouchableOpacity
-                onPress={() => setDropdownOpen(!dropdownOpen)}
+                onPress={() => bottomSheetRef.current?.expand()}
                 className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
               >
                 <Text className="text-base text-main">{selectedCategory}</Text>
-                <Ionicons name={dropdownOpen ? 'chevron-up' : 'chevron-down'} size={20} color="#cbd5e1"/>
               </TouchableOpacity>
-
-              {dropdownOpen && (
-                <View className="mt-2 bg-cardColor rounded-xl">
-                  {(["Q1 Grades", "Q2 Grades", "SM1 Grade", "Q3 Grades", "Q4 Grades", "SM2 Grades"] as TermLabel[]).map((label) => (
-                  <TouchableOpacity
-                    key={label}
-                    onPress={() => {
-                      setSelectedCategory(label);
-                      setDropdownOpen(false);
-                    }}
-                    className="px-4 py-3"
-                  >
-                    <Text className="text-main">{label}</Text>
-                  </TouchableOpacity>
-                ))}
-                </View>
-              )}
             </View>
             <View className='flex-row mt-4'>
               <View className='flex-1 items-center'>
@@ -219,6 +201,41 @@ const ClassDetails = () => {
             }
             />
         </ScrollView>  
+        <BottomSheetModalProvider>
+          <BottomSheet
+            ref={bottomSheetRef}
+            index={-1}
+            snapPoints={snapPoints}
+            enablePanDownToClose={true}
+            backgroundStyle={{ backgroundColor: '#1e293b' }}
+            enableOverDrag={false}
+            style={{ zIndex: 1 }}
+            backdropComponent={(props) => (
+              <BottomSheetBackdrop
+                {...props}
+                disappearsOnIndex={-1}
+                appearsOnIndex={0}
+              />
+            )}
+          >
+            <BottomSheetFlatList
+              data={["Q1 Grades", "Q2 Grades", "SM1 Grade", "Q3 Grades", "Q4 Grades", "SM2 Grades"] as TermLabel[]}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSelectedCategory(item);
+                    bottomSheetRef.current?.close();
+                  }}
+                  className="px-5 py-4"
+                >
+                  <Text className="text-white text-lg">{item}</Text>
+                </TouchableOpacity>
+              )}
+              scrollEnabled={false}
+            />
+          </BottomSheet>
+        </BottomSheetModalProvider>
     </View>
   )
 }
