@@ -1,11 +1,12 @@
-import React, { useCallback, useState } from 'react';
-import { View, Text, TouchableOpacity, FlatList } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, FlatList, useColorScheme, LayoutAnimation } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ClassCard from '@/components/ClassCard';
 import { useFocusEffect } from 'expo-router';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { useBottomSheet, BottomSheetProvider } from '@/context/BottomSheetContext'
 import { useSettingSheet } from '@/context/SettingSheetContext';
+import * as Animatable from 'react-native-animatable';
 
 
 const DATA = [
@@ -350,8 +351,12 @@ export default function Index() {
     }, [])
   );
 
+  
+
+
 
   return (
+    
       <View className="flex-1 bg-primary">
         <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
           <Text className="text-white text-3xl font-bold">Courses</Text>
@@ -414,7 +419,5 @@ export default function Index() {
           contentContainerStyle={{ paddingBottom: 32 }}
         />
       </View>
-
-        
   );
 }
