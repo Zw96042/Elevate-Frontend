@@ -2,7 +2,6 @@ import { View, Text, TouchableOpacity } from 'react-native'
 import React from 'react'
 import { Link } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons';
-import formatClassName from '@/utils/formatClassName';
 
 // Course Name, Teacher Name, Numerical Grade
 const AssignmentCard = ({ className, name, category, grade, outOf, dueDate }: Assignment) => {

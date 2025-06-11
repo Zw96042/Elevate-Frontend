@@ -1,7 +1,6 @@
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native'
-import React, { useLayoutEffect } from 'react'
-import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, ScrollView } from 'react-native'
+import React from 'react'
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 const MessageDetails = () => {
   const router = useRouter();

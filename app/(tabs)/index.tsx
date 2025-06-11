@@ -1,12 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList } from '@gorhom/bottom-sheet';
-import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
-import { useRef, useMemo } from 'react';
-import { Modal, Pressable, View, Text, TouchableOpacity, FlatList } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useCallback, useState } from 'react';
+import { View, Text, TouchableOpacity, FlatList } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ClassCard from '@/components/ClassCard';
-import { Link as RouterLink, useFocusEffect } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { useBottomSheet, BottomSheetProvider } from '@/context/BottomSheetContext'
 import { useSettingSheet } from '@/context/SettingSheetContext';

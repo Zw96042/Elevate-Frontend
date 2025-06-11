@@ -1,10 +1,8 @@
 import { View, Text, FlatList, ActivityIndicator, TouchableOpacity } from 'react-native';
-import React, { useEffect, useState, useCallback } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useState, useCallback } from 'react';
 import MessageCard from '@/components/MessageCard';
 import { loadMessages } from '@/lib/loadMessageHandler';
 import { loadMoreMessages } from '@/lib/loadMoreMessagesHandler';
-import { Link as RouterLink } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { authenticate } from '@/lib/authHandler';

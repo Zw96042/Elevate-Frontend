@@ -1,6 +1,5 @@
-// components/MessageSkeleton.tsx
 import React, { useEffect, useRef } from 'react';
-import { Animated, View, useColorScheme } from 'react-native';
+import { Animated, View } from 'react-native';
 import MaskedView from '@react-native-masked-view/masked-view';
 import LinearGradient from 'react-native-linear-gradient';
 

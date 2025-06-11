@@ -1,7 +1,6 @@
-import { useColorScheme, TouchableOpacity, View, Text } from "react-native";
+import { useColorScheme, TouchableOpacity, Text } from "react-native";
 import { BottomSheetProvider, useBottomSheet, TermLabel } from "@/context/BottomSheetContext";
 import BottomSheet, { BottomSheetModalProvider, BottomSheetBackdrop, BottomSheetFlatList } from "@gorhom/bottom-sheet";
-import { Ionicons } from "@expo/vector-icons";
 import { colors } from "@/utils/colorTheme";
 import { Stack } from "expo-router";
 import './globals.css';
@@ -11,7 +10,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 const terms: TermLabel[] = ['Q1 Grades', 'Q2 Grades', 'SM1 Grade', 'Q3 Grades', 'Q4 Grades', 'SM2 Grades'];
 
 function InnerLayout() {
-  const { selectedCategory, setSelectedCategory, bottomSheetRef } = useBottomSheet();
+  const { setSelectedCategory, bottomSheetRef } = useBottomSheet();
   const colorScheme = useColorScheme();
   const cardColor = colorScheme === 'dark' ? colors.cardColor.dark : colors.cardColor.light
 
