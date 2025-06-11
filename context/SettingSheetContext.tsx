@@ -7,16 +7,24 @@ const terms: TermLabel[] = ['Q1 Grades', 'Q2 Grades', 'SM1 Grade', 'Q3 Grades', 
 
 type SettingSheetContextType = {
   settingSheetRef: React.RefObject<React.ElementRef<typeof SettingSheet> | null>;
+  link: string;
+  setLink: React.Dispatch<React.SetStateAction<string>>;
+  username: string;
+  setUsername: React.Dispatch<React.SetStateAction<string>>;
+  password: string;
+  setPassword: React.Dispatch<React.SetStateAction<string>>;
 };
 
 const SettingSheetContext = createContext<SettingSheetContextType | undefined>(undefined);
 
 export const SettingSheetProvider = ({ children }: { children: ReactNode }) => {
   const settingSheetRef = useRef<React.ElementRef<typeof SettingSheet> | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<TermLabel>('Q1 Grades');
+  const [link, setLink] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
 
   return (
-    <SettingSheetContext.Provider value={{ settingSheetRef: settingSheetRef }}>
+    <SettingSheetContext.Provider value={{ settingSheetRef, link, setLink, username, setUsername, password, setPassword }}>
       {children}
     </SettingSheetContext.Provider>
   );

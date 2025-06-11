@@ -337,6 +337,7 @@ const DATA = [
   },
 ];
 
+
 export default function Index() {
   const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
   const { settingSheetRef } = useSettingSheet();
@@ -356,18 +357,18 @@ export default function Index() {
 
   return (
       <View className="flex-1 bg-primary">
+        <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
+          <Text className="text-white text-3xl font-bold">Courses</Text>
+          <TouchableOpacity
+            onPress={() => settingSheetRef.current?.expand()}
+          >
+            <Ionicons name='cog-outline' color={'#fff'} size={26} />
+          </TouchableOpacity>
+        </View>
         <FlatList
           data={DATA}
           ListHeaderComponent={
             <>
-              <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
-                <Text className="text-white text-3xl font-bold">Courses</Text>
-                <TouchableOpacity
-                  onPress={() => settingSheetRef.current?.expand()}
-                >
-                  <Ionicons name='cog-outline' color={'#fff'} size={26} />
-                </TouchableOpacity>
-              </View>
               <Text className="text-slate-500 font-bold mt-3 text-sm px-5">Term</Text>
               <View className="my-2 px-5">
                 <TouchableOpacity
@@ -402,12 +403,15 @@ export default function Index() {
                 <Text className="text-center text-gray-500">No classes found.</Text>
               ) : (
                 <Text className="text-center text-gray-500">
-                  No credentials found.{' '}
-                  <RouterLink href="/profile" className="text-blue-400 underline">
-                    Go to Settings
-                  </RouterLink>{' '}
-                  to configure your account.
-                </Text>
+                No credentials found.{' '}
+                <Text
+                  className="text-blue-400 underline"
+                  onPress={() => settingSheetRef.current?.expand()}
+                >
+                  Update the settings
+                </Text>{' '}
+                to configure your account.
+              </Text>
               )}
             </View>
           }

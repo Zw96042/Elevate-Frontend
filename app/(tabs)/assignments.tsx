@@ -1,8 +1,12 @@
-import { View, Text, FlatList } from 'react-native';
-import React from 'react';
+import { View, Text, FlatList, TouchableOpacity } from 'react-native';
+import React, { useCallback, useState } from 'react';
 import { ASSIN } from '../classes/[class]';
 import AssignmentDateCard from '@/components/AssignmentDateCard';
 import formatClassName from '@/utils/formatClassName';
+import { Ionicons } from '@expo/vector-icons';
+import { useSettingSheet } from '@/context/SettingSheetContext';
+import { useFocusEffect } from 'expo-router';
+import { SkywardAuth } from '@/lib/skywardAuthInfo';
 
 type Assignment = {
   className: string;
@@ -39,10 +43,30 @@ const listData: ListItem[] = sortedDates.flatMap(date => [
 ]);
 
 const assignments = () => {
+  const { settingSheetRef } = useSettingSheet();
+
+  const [hasCredentials, setHasCredentials] = useState(false);
+  
+  useFocusEffect(
+    useCallback(() => {
+      const checkCredentials = async () => {
+        const result = await SkywardAuth.hasCredentials();
+        setHasCredentials(result);
+      };
+
+      checkCredentials();
+    }, [])
+  );
+
   return (
     <View className="flex-1 bg-primary">
-      <View className="bg-blue-600 pt-14 pb-4 px-5">
+      <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
         <Text className="text-white text-3xl font-bold">Assignments</Text>
+        <TouchableOpacity
+            onPress={() => settingSheetRef.current?.expand()}
+          >
+          <Ionicons name='cog-outline' color={'#fff'} size={26} />
+        </TouchableOpacity>
       </View>
 
       <FlatList
@@ -77,6 +101,24 @@ const assignments = () => {
           );
           
         }}
+        ListEmptyComponent={
+          <Text className="text-center text-gray-500 mt-10">
+            {hasCredentials ? (
+              'No messages found.'
+            ) : (
+              <Text className="text-center text-gray-500">
+                No credentials found.{' '}
+                <Text
+                  className="text-blue-400 underline"
+                  onPress={() => settingSheetRef.current?.expand()}
+                >
+                  Update the settings
+                </Text>{' '}
+                to configure your account.
+              </Text>
+            )}
+          </Text>
+        }
         
       />
     </View>

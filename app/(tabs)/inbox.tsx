@@ -1,4 +1,4 @@
-import { View, Text, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, ActivityIndicator, TouchableOpacity } from 'react-native';
 import React, { useEffect, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MessageCard from '@/components/MessageCard';
@@ -11,6 +11,8 @@ import { authenticate } from '@/lib/authHandler';
 import * as Burnt from "burnt";
 import he from 'he';
 import { useColorScheme } from 'react-native';
+import { useSettingSheet } from '@/context/SettingSheetContext';
+import { Ionicons } from '@expo/vector-icons';
 
 
 const Inbox = () => {
@@ -22,6 +24,8 @@ const Inbox = () => {
 
   const colorScheme = useColorScheme();
   const indicatorColor = colorScheme === 'dark' ? '#ffffff' : '#000000';
+
+  const { settingSheetRef } = useSettingSheet();
 
   const handleLoadMessages = async () => {
     const result = await loadMessages();
@@ -101,8 +105,13 @@ const Inbox = () => {
 
   return (
     <View className="bg-primary flex-1">
-      <View className="bg-blue-600 pt-14 pb-4 px-5">
+      <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
         <Text className="text-white text-3xl font-bold">Inbox</Text>
+        <TouchableOpacity
+            onPress={() => settingSheetRef.current?.expand()}
+          >
+          <Ionicons name='cog-outline' color={'#fff'} size={26} />
+        </TouchableOpacity>
       </View>
       {loading ? (
         <View className="flex-1 justify-center items-center bg-primary">
@@ -138,13 +147,16 @@ const Inbox = () => {
               {credentialsSet ? (
                 'No messages found.'
               ) : (
-                <>
+                <Text className="text-center text-gray-500">
                   No credentials found.{' '}
-                  <RouterLink href="/profile" className="text-blue-400 underline">
-                    Go to Settings
-                  </RouterLink>{' '}
+                  <Text
+                    className="text-blue-400 underline"
+                    onPress={() => settingSheetRef.current?.expand()}
+                  >
+                    Update the settings
+                  </Text>{' '}
                   to configure your account.
-                </>
+                </Text>
               )}
             </Text>
           }
