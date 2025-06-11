@@ -13,6 +13,7 @@ import he from 'he';
 import { useColorScheme } from 'react-native';
 import { useSettingSheet } from '@/context/SettingSheetContext';
 import { Ionicons } from '@expo/vector-icons';
+import SkeletonMessage from '@/components/SkeletonMessage';
 
 
 const Inbox = () => {
@@ -114,9 +115,13 @@ const Inbox = () => {
         </TouchableOpacity>
       </View>
       {loading ? (
-        <View className="flex-1 justify-center items-center bg-primary">
-          <ActivityIndicator size="large" color={indicatorColor} />
-        </View>
+        <FlatList
+          className="mt-4 px-5 mb-[5rem]"
+          data={Array.from({ length: 8 })}
+          keyExtractor={(_, index) => `skeleton-${index}`}
+          renderItem={() => <SkeletonMessage />}
+          ItemSeparatorComponent={() => <View className="h-4" />}
+        />
       ) : (
         <FlatList
           className="mt-4 px-5 mb-[5rem]"
