@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import ClassCard from '@/components/ClassCard';
 import { Link as RouterLink, useFocusEffect } from 'expo-router';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
+import { useBottomSheet, BottomSheetProvider } from '@/context/BottomSheetContext'
 
 
 const DATA = [
@@ -336,6 +337,7 @@ const DATA = [
 ];
 
 export default function Index() {
+  const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
   const [hasCredentials, setHasCredentials] = useState(false);
 
   useFocusEffect(
@@ -349,28 +351,8 @@ export default function Index() {
     }, [])
   );
 
-  const [selectedCategory, setSelectedCategory] = useState<
-    | 'Q1 Grades'
-    | 'Q2 Grades'
-    | 'SM1 Grade'
-    | 'Q3 Grades'
-    | 'Q4 Grades'
-    | 'SM2 Grades'
-  >('Q1 Grades');
-  
-  const bottomSheetRef = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => ['42%'], []);
-  const terms: typeof selectedCategory[] = [
-    'Q1 Grades',
-    'Q2 Grades',
-    'SM1 Grade',
-    'Q3 Grades',
-    'Q4 Grades',
-    'SM2 Grades',
-  ];
 
   return (
-    <BottomSheetModalProvider>
       <View className="flex-1 bg-primary">
         <FlatList
           data={DATA}
@@ -424,40 +406,8 @@ export default function Index() {
           }
           contentContainerStyle={{ paddingBottom: 32 }}
         />
-
-        <BottomSheet
-          ref={bottomSheetRef}
-          index={-1}
-          snapPoints={['50%']}
-          enablePanDownToClose={true}
-          backgroundStyle={{ backgroundColor: '#1e293b' }}
-          enableOverDrag={false}
-          style={{ zIndex: 1 }}
-          backdropComponent={(props) => (
-          <BottomSheetBackdrop
-            {...props}
-            disappearsOnIndex={-1}
-            appearsOnIndex={0}
-          />
-        )}
-        >
-          <BottomSheetFlatList
-            data={terms}
-            keyExtractor={(item) => item}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                onPress={() => {
-                  setSelectedCategory(item);
-                  bottomSheetRef.current?.close();
-                }}
-                className="px-5 py-4"
-              >
-                <Text className="text-white text-lg">{item}</Text>
-              </TouchableOpacity>
-            )}
-          />
-        </BottomSheet>
       </View>
-    </BottomSheetModalProvider>
+
+        
   );
 }
