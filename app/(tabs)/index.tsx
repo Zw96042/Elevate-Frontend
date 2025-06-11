@@ -9,6 +9,7 @@ import ClassCard from '@/components/ClassCard';
 import { Link as RouterLink, useFocusEffect } from 'expo-router';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { useBottomSheet, BottomSheetProvider } from '@/context/BottomSheetContext'
+import { useSettingSheet } from '@/context/SettingSheetContext';
 
 
 const DATA = [
@@ -338,6 +339,7 @@ const DATA = [
 
 export default function Index() {
   const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
+  const { settingSheetRef } = useSettingSheet();
   const [hasCredentials, setHasCredentials] = useState(false);
 
   useFocusEffect(
@@ -358,8 +360,13 @@ export default function Index() {
           data={DATA}
           ListHeaderComponent={
             <>
-              <View className="bg-blue-600 pt-14 pb-4 px-5">
+              <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
                 <Text className="text-white text-3xl font-bold">Courses</Text>
+                <TouchableOpacity
+                  onPress={() => settingSheetRef.current?.expand()}
+                >
+                  <Ionicons name='cog-outline' color={'#fff'} size={26} />
+                </TouchableOpacity>
               </View>
               <Text className="text-slate-500 font-bold mt-3 text-sm px-5">Term</Text>
               <View className="my-2 px-5">
