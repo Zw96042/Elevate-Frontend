@@ -16,19 +16,8 @@ function InnerLayout() {
   const colorScheme = useColorScheme();
   const cardColor = colorScheme === 'dark' ? colors.cardColor.dark : colors.cardColor.light;
 
-  const opacity = useSharedValue(1);
-
-  useEffect(() => {
-    opacity.value = 0;
-    opacity.value = withTiming(1, { duration: 1000 });
-  }, [colorScheme]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }));
 
   return (
-    <Animated.View style={[{ flex: 1 }, animatedStyle]} className="bg-primary">
       <>
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -83,7 +72,6 @@ function InnerLayout() {
           />
         </BottomSheet>
       </>
-    </Animated.View>
   );
 }
 
