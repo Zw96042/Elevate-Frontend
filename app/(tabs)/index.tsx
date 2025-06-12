@@ -367,6 +367,7 @@ export default function Index() {
           </TouchableOpacity>
         </View>
         <FlatList
+          className='mb-[4rem]'
           data={DATA}
           ListHeaderComponent={
             <>
