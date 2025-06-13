@@ -1,5 +1,5 @@
-import { View, Text, useColorScheme, TextInput, Keyboard, KeyboardAvoidingView, TouchableWithoutFeedback, Platform } from 'react-native'
-import React, { useEffect, useState, useRef } from 'react'
+import { View, Text, useColorScheme, TextInput, TouchableWithoutFeedback, Platform, Keyboard } from 'react-native'
+import React, { useEffect, useState, useRef, useMemo } from 'react'
 import { Tabs } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { SettingSheetProvider, useSettingSheet } from '@/context/SettingSheetContext'
@@ -9,8 +9,10 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authenticate } from '@/lib/authHandler'
 import * as Burnt from "burnt";
+import Animated from 'react-native-reanimated'
 
 const InnerLayout = () => {
+  const [sheetIndex, setSheetIndex] = useState(-1);
   const {
     settingSheetRef,
     link,
@@ -21,11 +23,34 @@ const InnerLayout = () => {
     setPassword,
   } = useSettingSheet()
   const colorScheme = useColorScheme()
-  const cardColor = colorScheme === 'dark' ? colors.cardColor.dark : colors.cardColor.light
+  const cardColor = colorScheme === 'dark' ? colors.cardColor.dark : colors.cardColor.light;
 
   // Ref to store the last saved values
   const lastSaved = useRef({ link: '', username: '', password: '' });
 
+  // Keyboard show/hide snap logic
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => {
+      if (sheetIndex !== -1) {
+        settingSheetRef.current?.snapToPosition('80%', { duration: 150 });
+      }
+    });
+
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      if (sheetIndex !== -1) {
+        settingSheetRef.current?.snapToPosition('42%', { duration: 150 });
+      }
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [sheetIndex]);
+
+  const handleSheetChanges = (index: number) => {
+    setSheetIndex(index);
+  };
   useEffect(() => {
     const loadInfo = async () => {
       const storedLink = await AsyncStorage.getItem('skywardLink');
@@ -48,16 +73,14 @@ const InnerLayout = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+
+
   const saveInfo = async () => {
-    // Only save if values have changed from lastSaved
     const changed =
       link !== lastSaved.current.link ||
       username !== lastSaved.current.username ||
       password !== lastSaved.current.password;
 
-    // console.log(username);
-    // console.log(lastSaved.current.username);
-    // console.log(changed);
     if (!changed) return;
 
     try {
@@ -86,12 +109,8 @@ const InnerLayout = () => {
   }
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1 }}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={{ flex: 1 }}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <View className='flex-1'>
           <Tabs
             screenOptions={{
               tabBarShowLabel: false,
@@ -149,15 +168,17 @@ const InnerLayout = () => {
               }}
             />
           </Tabs>
+
           <BottomSheet
             ref={settingSheetRef}
             index={-1}
-            snapPoints={['42%']}
-            enablePanDownToClose={true}
+            snapPoints={["42%"]}
             backgroundStyle={{ backgroundColor: cardColor }}
-            enableOverDrag={false}
-            style={{ zIndex: 1 }}
+            overDragResistanceFactor={1}
             onClose={saveInfo}
+            enablePanDownToClose={true}
+            keyboardBehavior={'extend'}
+            onChange={handleSheetChanges}
             backdropComponent={(props) => (
               <BottomSheetBackdrop
                 {...props}
@@ -203,7 +224,6 @@ const InnerLayout = () => {
           </BottomSheet>
         </View>
       </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
   )
 }
 

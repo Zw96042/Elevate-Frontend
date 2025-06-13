@@ -361,7 +361,7 @@ export default function Index() {
         <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
           <Text className="text-white text-3xl font-bold">Courses</Text>
           <TouchableOpacity
-            onPress={() => settingSheetRef.current?.expand()}
+            onPress={() => settingSheetRef.current?.snapToIndex(1)}
           >
             <Ionicons name='cog-outline' color={'#fff'} size={26} />
           </TouchableOpacity>
@@ -408,7 +408,7 @@ export default function Index() {
                 No credentials found.{' '}
                 <Text
                   className="text-blue-400 underline"
-                  onPress={() => settingSheetRef.current?.expand()}
+                  onPress={() => settingSheetRef.current?.snapToIndex(1)}
                 >
                   Update the settings
                 </Text>{' '}
