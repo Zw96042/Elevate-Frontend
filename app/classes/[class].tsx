@@ -2,7 +2,7 @@ import { View, Text, ScrollView, TouchableOpacity, FlatList, StyleSheet, Button 
 import React, { useMemo, useRef } from 'react';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
-import { useLocalSearchParams, useRouter } from 'expo-router'
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
 import formatClassName from '@/utils/formatClassName';
 import { Ionicons } from '@expo/vector-icons';
 import AssignmentCard from '@/components/AssignmentCard';
@@ -112,18 +112,18 @@ const ClassDetails = () => {
   
   return (
     <View className='bg-primary flex-1'>
-        <View className="bg-blue-600">
-            <View className='mt-14'>
-                <TouchableOpacity onPress={() => router.back()} className='flex-row'>
-                    <Ionicons name="chevron-back" size={24} color="white" />
-                    <Text className='text-white text-xl font-medium'>Courses</Text>
-                </TouchableOpacity>
-            </View>
-            <View className='pt-6 pb-4 px-5'>
-                <Text className="text-white text-3xl font-bold">{formattedName}</Text>
-                
-            </View>
-        </View>
+      <Stack.Screen
+        options={{
+          title: decodeURIComponent(formattedName || 'Class'),
+          headerStyle: { backgroundColor: '#2563eb' },
+          headerTintColor: '#fff',
+          headerTitleStyle: {
+            fontWeight: 'bold',
+            fontSize: 18,
+          },
+          headerBackTitle: 'Classes',
+        }}
+      />
         <ScrollView>
             <Text className='text-slate-400 font-bold ml-5 mt-3 text-sm'>Term</Text>
             <View className="mt-2 px-5">
