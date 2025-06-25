@@ -4,7 +4,7 @@ import { Link } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons';
 
 // Course Name, Teacher Name, Numerical Grade
-const AssignmentCard = ({ className, name, category, grade, outOf, dueDate }: Assignment) => {
+const AssignmentCard = ({ className, name, category, grade, outOf, dueDate, artificial }: Assignment) => {
   return (
     <Link
       href={{
@@ -16,7 +16,8 @@ const AssignmentCard = ({ className, name, category, grade, outOf, dueDate }: As
           category,
           grade: grade.toString(),
           outOf: outOf.toString(),
-          dueDate
+          dueDate,
+          artificial: artificial.toString(),
         }
       }}
       asChild

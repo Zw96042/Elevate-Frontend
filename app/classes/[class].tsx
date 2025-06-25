@@ -16,7 +16,8 @@ export const ASSIN = [
         category: "Major",
         grade: 96,
         outOf: 100,
-        dueDate: "05/09/25"
+        dueDate: "05/09/25",
+        artificial: false,
     },
     {
         className: "BIOLOGY_1_HONORS",
@@ -25,7 +26,8 @@ export const ASSIN = [
         category: "Lab",
         grade: 95,
         outOf: 100,
-        dueDate: "05/06/25"
+        dueDate: "05/06/25",
+        artificial: false,
     },
     {
         className: "BIOLOGY_1_HONORS",
@@ -34,7 +36,8 @@ export const ASSIN = [
         category: "Daily",
         grade: 100,
         outOf: 100,
-        dueDate: "04/10/25"
+        dueDate: "04/10/25",
+        artificial: false,
     },
     {
         className: "AP_PRECALCULUS",
@@ -43,7 +46,8 @@ export const ASSIN = [
         category: "Major",
         grade: 89,
         outOf: 100,
-        dueDate: "04/10/25"
+        dueDate: "04/10/25",
+        artificial: false,
     },
 ];
 
@@ -107,9 +111,24 @@ const ClassDetails = () => {
   const bottomSheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ['43%'], []);
 
-
   const [selectedCategory, setSelectedCategory] = React.useState<TermLabel>(term);
-  const filteredAssignments = ASSIN.filter(item => item.className === classParam && item.term === selectedCategory.split(" ")[0]);
+  const [filteredAssignments, setFilteredAssignments] = useState(
+    ASSIN.filter(item => item.className === classParam && item.term === selectedCategory.split(" ")[0])
+  );
+
+  const addAssignment = () => {
+    const newAssignment = {
+      className: classParam.toString(),
+      name: "New Assignment",
+      term: selectedCategory.split(" ")[0],
+      category: "Daily",
+      grade: 100,
+      outOf: 100,
+      dueDate: new Date().toISOString().slice(0, 10).replace(/-/g, "/").slice(5), // format as MM/DD/YY
+      artificial: true,
+    };
+    setFilteredAssignments(prev => [...prev, newAssignment]);
+  };
 
   const currTerm = termMap[selectedCategory];
   
@@ -126,7 +145,7 @@ const ClassDetails = () => {
           },
           headerBackTitle: 'Classes',
           headerRight: () => (
-            <TouchableOpacity>
+            <TouchableOpacity onPress={addAssignment}>
               <Ionicons
                 name="add-outline"
                 size={24}
@@ -163,67 +182,46 @@ const ClassDetails = () => {
               className=''
             />
           </View>
-            {/* <View className='flex-row mt-4'>
-              
-              <View className='flex-1 items-center'>
-                <Text className='text-highlightText font-bold text-sm mb-2'>Category</Text>
-                  <View>
-                  {currTerm.categories.names
-                  .map((item, index) => (
-                    <View
-                      key={`${item}-${index}`}
-                      className="self-start rounded-md bg-highlight px-2"
-                      style={{ marginBottom: index !== currTerm.categories.names.length - 1 ? 8 : 0 }}
-                    >
-                      <Text className="text-sm text-highlightText font-bold">{item}</Text>
-                    </View>
-                ))}
+          <View className="px-5 mt-4 space-y-2">
+            <View className="flex-row justify-between mb-2">
+              <Text className="text-highlightText font-bold text-base">Category</Text>
+              <Text className="text-highlightText font-bold text-base">Percentage</Text>
+            </View>
+            <View className="h-[1px] bg-accent opacity-30 my-1" />
+            {currTerm.categories.names.map((name, index) => (
+              <View key={`row-${index}`}>
+                <View className="flex-row justify-between items-center py-1">
+                  <View className="rounded-md bg-highlight px-2">
+                    <Text className="text-sm text-highlightText font-bold">{name}</Text>
+                  </View>
+                  <Text className="text-sm text-slate-400 font-bold">
+                    {currTerm.categories.grades[index]?.toFixed(1) ?? '--'}%
+                  </Text>
                 </View>
+                {index !== currTerm.categories.names.length - 1 && (
+                  <View className="h-[1px] bg-accent opacity-30 my-1" />
+                )}
               </View>
-              <View className='flex-1 items-center'>
-                <Text className='text-highlightText font-bold text-sm mb-2'>Real</Text>
-                <View>
-                  {currTerm.categories.grades
-                    .map((item, index) => (
-                      <Text 
-                      key={`grade-${index}`} 
-                      className="text-sm text-slate-400 font-bold"
-                      style={{ marginBottom: index !== currTerm.categories.names.length - 1 ? 8 : 0 }}
-                      >{item.toFixed(1)}%</Text>
-                    ))}
-                </View>
+            ))}
+            <View className="h-[1px] bg-accent opacity-30 my-1" />
+          </View>
+          <FlatList
+          data={filteredAssignments}
+          renderItem={({ item }) => (
+          <AssignmentCard 
+              {... item}
+              />
+          )}
+          keyExtractor={(item) => item.name.toString()}
+          className="mt-6 pb-32 px-3"
+          scrollEnabled={false}
+          ItemSeparatorComponent={() => <View className="h-4" />}
+          ListEmptyComponent={
+              <View className="mt-10 px-5">
+                  <Text className="text-center text-gray-500">No assignments found</Text>
               </View>
-              <View className='flex-1 items-center'>
-                <Text className='text-highlightText font-bold text-sm mb-2'>Calculated</Text>
-                <View>
-                  {currTerm.categories.grades
-                    .map((item, index) => (
-                      <Text 
-                      key={`grade-${index}`} 
-                      className="text-sm text-slate-400 font-bold"
-                      style={{ marginBottom: index !== currTerm.categories.names.length - 1 ? 8 : 0 }}
-                      >{item.toFixed(1)}%</Text>
-                    ))}
-                </View>
-              </View>
-            </View> */}
-            <FlatList
-            data={filteredAssignments}
-            renderItem={({ item }) => (
-            <AssignmentCard 
-                {... item}
-                />
-            )}
-            keyExtractor={(item) => item.name.toString()}
-            className="mt-6 pb-32 px-3"
-            scrollEnabled={false}
-            ItemSeparatorComponent={() => <View className="h-4" />}
-            ListEmptyComponent={
-                <View className="mt-10 px-5">
-                    <Text className="text-center text-gray-500">No assignments found</Text>
-                </View>
-            }
-            />
+          }
+          />
         </ScrollView>  
         <BottomSheetModalProvider>
           <BottomSheet

@@ -67,4 +67,5 @@ interface Assignment {
   grade: number;
   outOf: number;
   dueDate: string;
+  artificial: boolean;
 }

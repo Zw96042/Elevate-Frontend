@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 const AssignmentDetails = () => {
   const router = useRouter();
-  const { class: classParam, name, category, grade, outOf, dueDate } = useLocalSearchParams();
+  const { class: classParam, name, category, grade, outOf, dueDate, artificial } = useLocalSearchParams();
   const formattedClass = formatClassName(classParam?.toString() || '');
 
   return (
@@ -54,6 +54,14 @@ const AssignmentDetails = () => {
                     </View>
                 </View>
             </View>
+            {artificial === "true" && (
+            <TouchableOpacity onPress={() => {
+              // TODO: Add actual deletion logic from state if using context or global state
+              router.back();
+            }} className='mt-4 mx-4 bg-cardColor items-center rounded-lg'>
+              <Text className='text-red-500 font-medium py-3 text-lg'>Delete Assignment</Text>
+            </TouchableOpacity>
+            )}
         </View>
     </View>
   )
