@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, TouchableOpacity, FlatList, StyleSheet, Button } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, FlatList, StyleSheet, Button, useColorScheme } from 'react-native'
 import React, { useMemo, useRef } from 'react';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
@@ -55,8 +55,6 @@ type TermLabel =
   | "SM2 Grades";
 
 const ClassDetails = () => {
-  const router = useRouter();
-  
   const searchParams = useLocalSearchParams();
 
   const term = searchParams.term as TermLabel;
@@ -122,6 +120,16 @@ const ClassDetails = () => {
             fontSize: 18,
           },
           headerBackTitle: 'Classes',
+          headerRight: () => (
+            <TouchableOpacity>
+              <Ionicons
+                name="add-outline"
+                size={24}
+                color='white'
+                style={{ marginRight: 15 }}
+              />
+            </TouchableOpacity>
+          ),
         }}
       />
         <ScrollView>
