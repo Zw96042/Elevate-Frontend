@@ -133,22 +133,25 @@ const ClassDetails = () => {
         }}
       />
         <ScrollView>
-            <Text className='text-slate-400 font-bold ml-5 mt-3 text-sm'>Term</Text>
-            <View className="mt-2 px-5">
-              <TouchableOpacity
-                onPress={() => bottomSheetRef.current?.expand()}
-                className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
-              >
-                <Text className="text-base text-main">{selectedCategory}</Text>
-              </TouchableOpacity>
-            </View>
-            <View className='flex-row mt-4'>
-              <View className='flex-1 items-center'>
-                <Text className='text-highlightText font-bold text-sm'>Grade</Text>
-                <View className='w-10 h-10 rounded-full bg-highlight items-center justify-center mt-2'>
-                    <Text className='text-highlightText font-bold text-xs'>{termMap[selectedCategory].total ?? "--"}%</Text>
-                </View>
+          <View className='flex-row items-center'>
+            <View className='px-5'>
+              <View className='w-[3.5rem] h-[3.5rem] mt-6 rounded-full bg-highlight items-center justify-center'>
+                  <Text className='text-highlightText font-bold text-sm'>{termMap[selectedCategory].total ?? "--"}%</Text>
               </View>
+            </View>
+            <View className='w-[80%]'>
+              <View className="mt-6 pr-5 justify-center">
+                <TouchableOpacity
+                  onPress={() => bottomSheetRef.current?.expand()}
+                  className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
+                >
+                  <Text className="text-base text-main">{selectedCategory}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+            {/* <View className='flex-row mt-4'>
+              
               <View className='flex-1 items-center'>
                 <Text className='text-highlightText font-bold text-sm mb-2'>Category</Text>
                   <View>
@@ -190,7 +193,7 @@ const ClassDetails = () => {
                     ))}
                 </View>
               </View>
-            </View>
+            </View> */}
             <FlatList
             data={filteredAssignments}
             renderItem={({ item }) => (
