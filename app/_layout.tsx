@@ -39,7 +39,7 @@ function InnerLayout() {
         <BottomSheet
           ref={bottomSheetRef}
           index={-1}
-          snapPoints={['42%']}
+          snapPoints={['43%']}
           enablePanDownToClose={true}
           backgroundStyle={{ backgroundColor: cardColor }}
           enableOverDrag={false}

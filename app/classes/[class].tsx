@@ -100,7 +100,7 @@ const ClassDetails = () => {
 
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
   const bottomSheetRef = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => ['42%'], []);
+  const snapPoints = useMemo(() => ['43%'], []);
 
 
   const [selectedCategory, setSelectedCategory] = React.useState<TermLabel>(term);
@@ -213,7 +213,7 @@ const ClassDetails = () => {
           <BottomSheet
             ref={bottomSheetRef}
             index={-1}
-            snapPoints={snapPoints}
+            snapPoints={['47%']}
             enablePanDownToClose={true}
             backgroundStyle={{ backgroundColor: '#1e293b' }}
             enableOverDrag={false}
