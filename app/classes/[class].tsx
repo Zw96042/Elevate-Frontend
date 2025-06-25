@@ -1,11 +1,12 @@
 import { View, Text, ScrollView, TouchableOpacity, FlatList, StyleSheet, Button, useColorScheme } from 'react-native'
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
 import formatClassName from '@/utils/formatClassName';
 import { Ionicons } from '@expo/vector-icons';
 import AssignmentCard from '@/components/AssignmentCard';
+import { Switch } from 'react-native-gesture-handler';
 
 export const ASSIN = [
     {
@@ -55,6 +56,10 @@ type TermLabel =
   | "SM2 Grades";
 
 const ClassDetails = () => {
+  const [isEnabled, setIsEnabled] = useState(false);
+
+  const calculated = () => setIsEnabled(previous => !previous);
+
   const searchParams = useLocalSearchParams();
 
   const term = searchParams.term as TermLabel;
@@ -149,6 +154,14 @@ const ClassDetails = () => {
                 </TouchableOpacity>
               </View>
             </View>
+          </View>
+          <View className='flex-row mt-4 items-center px-5 justify-between'>
+            <Text className='text-accent text-base font-medium'>Show Calculated</Text>
+            <Switch
+              value={isEnabled}
+              onValueChange={setIsEnabled}
+              className=''
+            />
           </View>
             {/* <View className='flex-row mt-4'>
               
