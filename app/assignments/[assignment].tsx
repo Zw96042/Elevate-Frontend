@@ -3,6 +3,7 @@ import React from 'react'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import formatClassName from '@/utils/formatClassName';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AssignmentDetails = () => {
   const router = useRouter();
@@ -71,8 +72,14 @@ const AssignmentDetails = () => {
                 </View>
                 {artificial === "true" && (
                 <TouchableOpacity
-                    onPress={() => {
-                        // Deletion logic
+                    onPress={async () => {
+                      const className = Array.isArray(classParam) ? classParam[0] : classParam;
+                      const existing = JSON.parse(await AsyncStorage.getItem('artificialAssignments') ?? '{}');
+                      const updatedClassList = (existing[className] ?? []).filter((a: any) => a.name !== name);
+                      const updated = { ...existing, [className]: updatedClassList };
+                      console.log(updated);
+                      await AsyncStorage.setItem('artificialAssignments', JSON.stringify(updated));
+                      router.back();
                     }}
                     className='mt-4 mx-4 bg-cardColor items-center rounded-lg'
                     >

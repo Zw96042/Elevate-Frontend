@@ -1,5 +1,7 @@
 import { View, Text, ScrollView, TouchableOpacity, FlatList, StyleSheet, Button, useColorScheme } from 'react-native'
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { router, Stack, useLocalSearchParams, useRouter } from 'expo-router'
@@ -69,6 +71,7 @@ const ClassDetails = () => {
 
   const term = searchParams.term as TermLabel;
   const classParam = searchParams.class;
+  const className = Array.isArray(classParam) ? classParam[0] : classParam;
 
   const parseTermData = (param: string | string[] | undefined): TermData => {
     if (typeof param === "string") {
@@ -106,7 +109,7 @@ const ClassDetails = () => {
         total: number;
     };
 
-  const formattedName = formatClassName(classParam.toString());
+  const formattedName = formatClassName(className?.toString());
   
 
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
@@ -124,6 +127,27 @@ const ClassDetails = () => {
     );
   });
   const [artificialAssignments, setArtificialAssignments] = useState<any[]>([]);
+
+  // Load artificial assignments for the current class from AsyncStorage
+  const fetchArtificialAssignments = useCallback(() => {
+    if (!className) return;
+    AsyncStorage.getItem('artificialAssignments').then(data => {
+      if (!data) return;
+      const parsed = JSON.parse(data);
+      const classAssignments = parsed[className] ?? [];
+      setArtificialAssignments(classAssignments);
+    });
+  }, [className]);
+
+  useEffect(() => {
+    fetchArtificialAssignments();
+  }, [fetchArtificialAssignments]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchArtificialAssignments();
+    }, [fetchArtificialAssignments])
+  );
 
   useEffect(() => {
     if (!classParam || !selectedCategory) return;
@@ -146,9 +170,9 @@ const ClassDetails = () => {
     setFilteredAssignments([...artificial, ...real]);
   }, [isEnabled, selectedCategory, artificialAssignments]);
 
-  const addAssignment = () => {
+  const addAssignment = async () => {
     const newAssignment = {
-      className: classParam.toString(),
+      className: className,
       name: "New Assignment",
       term: selectedCategory.split(" ")[0],
       category: "Daily",
@@ -158,6 +182,13 @@ const ClassDetails = () => {
       artificial: true,
     };
     setArtificialAssignments(prev => [newAssignment, ...prev]);
+
+    const existing = JSON.parse(await AsyncStorage.getItem("artificialAssignments") ?? "{}");
+    const updated = {
+      ...existing,
+      [className]: [newAssignment, ...(existing[className] ?? [])],
+    };
+    await AsyncStorage.setItem("artificialAssignments", JSON.stringify(updated));
   };
 
   const currTerm = termMap[selectedCategory];
