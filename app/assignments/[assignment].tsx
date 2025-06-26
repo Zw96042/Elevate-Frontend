@@ -9,7 +9,7 @@ const AssignmentDetails = () => {
   const router = useRouter();
   const { class: classParam, name, category, grade, outOf, dueDate, artificial, editing, term } = useLocalSearchParams();
   const formattedClass = formatClassName(classParam?.toString() || '');
-  console.log("term", term);
+//   console.log("term", term);
 
   const [gradeValue, setGradeValue] = React.useState(() =>
     !isNaN(Number(grade)) ? Number(grade).toFixed(2) : ''
@@ -53,7 +53,7 @@ const AssignmentDetails = () => {
     ];
 
     const updated = { ...existing, [className]: updatedClassList };
-    console.log("Updated", updated);
+    // console.log("Updated", updated);
     await AsyncStorage.setItem('artificialAssignments', JSON.stringify(updated));
   };
 
@@ -177,7 +177,7 @@ const AssignmentDetails = () => {
                       const existing = JSON.parse(await AsyncStorage.getItem('artificialAssignments') ?? '{}');
                       const updatedClassList = (existing[className] ?? []).filter((a: any) => a.name !== name);
                       const updated = { ...existing, [className]: updatedClassList };
-                      console.log(updated);
+                    //   console.log(updated);
                       await AsyncStorage.setItem('artificialAssignments', JSON.stringify(updated));
                       router.back();
                     }}

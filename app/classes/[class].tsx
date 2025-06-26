@@ -1,10 +1,11 @@
 import { View, Text, ScrollView, TouchableOpacity, FlatList, StyleSheet, Button, useColorScheme } from 'react-native'
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
-import { router, Stack, useLocalSearchParams, useRouter } from 'expo-router'
+import { Stack, useLocalSearchParams } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import formatClassName from '@/utils/formatClassName';
 import { Ionicons } from '@expo/vector-icons';
 import AssignmentCard from '@/components/AssignmentCard';
@@ -79,6 +80,8 @@ const ClassDetails = () => {
   const calculated = () => setIsEnabled(previous => !previous);
 
   const searchParams = useLocalSearchParams();
+
+  const navigation = useNavigation();
 
   const term = searchParams.term as TermLabel;
   const classParam = searchParams.class;
@@ -194,18 +197,54 @@ const ClassDetails = () => {
       dueDate: new Date().toISOString().slice(0, 10).replace(/-/g, "/").slice(5),
       artificial: true,
     };
+
     setArtificialAssignments(prev => [newAssignment, ...prev]);
 
+    // Merge artificial and real assignments into filteredAssignments immediately
+    const real = ASSIN.filter(
+      item =>
+        item.className === className &&
+        item.term === selectedCategory.split(" ")[0]
+    );
+
+    const artificial = isEnabled
+      ? [newAssignment, ...artificialAssignments]
+      : [];
+
+    const artificialNames = new Set(artificial.map(a => a.name));
+    const filteredReal = real.filter(r => !artificialNames.has(r.name));
+
+    setFilteredAssignments([...artificial, ...filteredReal]);
+
+    // Save to AsyncStorage
     const existing = JSON.parse(await AsyncStorage.getItem("artificialAssignments") ?? "{}");
-    
+
     const updated = {
       ...existing,
       [className]: [newAssignment, ...(existing[className] ?? [])],
     };
+
     await AsyncStorage.setItem("artificialAssignments", JSON.stringify(updated));
   };
 
   const currTerm = termMap[selectedCategory];
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        isEnabled ? (
+          <TouchableOpacity onPress={addAssignment}>
+            <Ionicons
+              name="add-outline"
+              size={24}
+              color='white'
+              style={{ marginRight: 15 }}
+            />
+          </TouchableOpacity>
+        ) : null
+      ),
+    });
+  }, [isEnabled, navigation]);
   
   return (
     <View className='bg-primary flex-1'>
@@ -219,16 +258,6 @@ const ClassDetails = () => {
             fontSize: 18,
           },
           headerBackTitle: 'Classes',
-          headerRight: () => (
-            <TouchableOpacity onPress={addAssignment}>
-              <Ionicons
-                name="add-outline"
-                size={24}
-                color='white'
-                style={{ marginRight: 15 }}
-              />
-            </TouchableOpacity>
-          ),
         }}
       />
         
