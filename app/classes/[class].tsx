@@ -1,12 +1,13 @@
 import { View, Text, ScrollView, TouchableOpacity, FlatList, StyleSheet, Button, useColorScheme } from 'react-native'
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
+import { router, Stack, useLocalSearchParams, useRouter } from 'expo-router'
 import formatClassName from '@/utils/formatClassName';
 import { Ionicons } from '@expo/vector-icons';
 import AssignmentCard from '@/components/AssignmentCard';
 import { Switch } from 'react-native-gesture-handler';
+import { parse } from '@babel/core';
 
 export const ASSIN = [
     {
@@ -86,6 +87,7 @@ const ClassDetails = () => {
   const t3 = parseTermData(searchParams.t3);
   const t4 = parseTermData(searchParams.t4);
   const s2 = parseTermData(searchParams.s2);
+  const deleted = parseTermData(searchParams.deleted);
   
   const termMap: Record<TermLabel, TermData> = {
         "Q1 Grades": t1,
@@ -111,10 +113,38 @@ const ClassDetails = () => {
   const bottomSheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ['43%'], []);
 
-  const [selectedCategory, setSelectedCategory] = React.useState<TermLabel>(term);
-  const [filteredAssignments, setFilteredAssignments] = useState(
-    ASSIN.filter(item => item.className === classParam && item.term === selectedCategory.split(" ")[0])
-  );
+  const [selectedCategory, setSelectedCategory] = React.useState<TermLabel>(term ?? "Q1 Grades");
+  const [filteredAssignments, setFilteredAssignments] = useState(() => {
+    if (!classParam || !selectedCategory) return [];
+    return ASSIN.filter(
+      item =>
+        item.className === classParam &&
+        item.term === selectedCategory.split(" ")[0] &&
+        (!item.artificial || isEnabled)
+    );
+  });
+  const [artificialAssignments, setArtificialAssignments] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!classParam || !selectedCategory) return;
+
+    const real = ASSIN.filter(
+      item =>
+        item.className === classParam &&
+        item.term === selectedCategory.split(" ")[0] &&
+        (!item.artificial || isEnabled)
+    );
+
+    const artificial = isEnabled
+      ? artificialAssignments.filter(
+          item =>
+            item.className === classParam &&
+            item.term === selectedCategory.split(" ")[0]
+        )
+      : [];
+
+    setFilteredAssignments([...artificial, ...real]);
+  }, [isEnabled, selectedCategory, artificialAssignments]);
 
   const addAssignment = () => {
     const newAssignment = {
@@ -124,10 +154,10 @@ const ClassDetails = () => {
       category: "Daily",
       grade: 100,
       outOf: 100,
-      dueDate: new Date().toISOString().slice(0, 10).replace(/-/g, "/").slice(5), // format as MM/DD/YY
+      dueDate: new Date().toISOString().slice(0, 10).replace(/-/g, "/").slice(5),
       artificial: true,
     };
-    setFilteredAssignments(prev => [...prev, newAssignment]);
+    setArtificialAssignments(prev => [newAssignment, ...prev]);
   };
 
   const currTerm = termMap[selectedCategory];
@@ -156,7 +186,7 @@ const ClassDetails = () => {
           ),
         }}
       />
-        <ScrollView>
+        
           <View className='flex-row items-center'>
             <View className='px-5'>
               <View className='w-[3.5rem] h-[3.5rem] mt-6 rounded-full bg-highlight items-center justify-center'>
@@ -205,6 +235,7 @@ const ClassDetails = () => {
             ))}
             <View className="h-[1px] bg-accent opacity-30 my-1" />
           </View>
+        <ScrollView className='mt-2'>
           <FlatList
           data={filteredAssignments}
           renderItem={({ item }) => (
