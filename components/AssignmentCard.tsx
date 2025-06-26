@@ -3,8 +3,12 @@ import React from 'react'
 import { Link } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons';
 
+type AssignmentCardProps = Assignment & {
+  editing: boolean;
+};
+
 // Course Name, Teacher Name, Numerical Grade
-const AssignmentCard = ({ className, name, category, grade, outOf, dueDate, artificial }: Assignment) => {
+const AssignmentCard = ({ className, name, category, grade, outOf, dueDate, artificial, editing }: AssignmentCardProps) => {
   return (
     <Link
       href={{
@@ -18,6 +22,7 @@ const AssignmentCard = ({ className, name, category, grade, outOf, dueDate, arti
           outOf: outOf.toString(),
           dueDate,
           artificial: artificial.toString(),
+          editing: editing.toString()
         }
       }}
       asChild

@@ -272,6 +272,7 @@ const ClassDetails = () => {
           renderItem={({ item }) => (
           <AssignmentCard 
               {... item}
+              editing={isEnabled}
               />
           )}
           keyExtractor={(item) => item.name.toString()}
