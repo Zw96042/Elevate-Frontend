@@ -186,17 +186,6 @@ const AssignmentDetails = () => {
                     <Text className='text-red-500 font-medium py-3 text-lg'>Delete Assignment</Text>
                 </TouchableOpacity>
                 )}
-                {editing === "true" && artificial === "true" && (
-                  <TouchableOpacity
-                    onPress={async () => {
-                      await handleSave();
-                      router.back();
-                    }}
-                    className='mt-4 mx-4 bg-green-500 items-center rounded-lg'
-                  >
-                    <Text className='text-white font-medium py-3 text-lg'>Save Changes</Text>
-                  </TouchableOpacity>
-                )}
             </View>
         </View>
         </TouchableWithoutFeedback>
