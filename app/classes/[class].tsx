@@ -419,34 +419,52 @@ const ClassDetails = () => {
                 />
               )}
             >
-              <BottomSheetView className="bg-cardColor p-4 space-y-4">
-                <View>
-                  <Text className="text-lg font-semibold mb-2 text-main">Assignment Name</Text>
+              <BottomSheetView className="bg-cardColor p-4">
+                <Text className="text-xl text-main font-bold mb-4">Add New Assignment</Text>
+
+                <View className="mb-5">
+                  <Text className="text-sm font-semibold text-main mb-1">Assignment Name</Text>
                   <TextInput
-                    className="border border-secondary rounded-lg p-3 text-main"
+                    className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
                     placeholder="Enter name"
                     value={newAssignment.name}
                     onChangeText={(text) => setNewAssignment((prev) => ({ ...prev, name: text }))}
                   />
                 </View>
 
-                <View>
-                  <Text className="text-lg font-semibold mb-2 text-main">Category</Text>
-                  {currTerm.categories.names.map((category) => (
-                    <TouchableOpacity
-                      key={category}
-                      onPress={() => setNewAssignment((prev) => ({ ...prev, category }))}
-                      className={`p-2 rounded-md ${newAssignment.category === category ? 'bg-highlight' : ''}`}
-                    >
-                      <Text className="text-main">{category}</Text>
-                    </TouchableOpacity>
-                  ))}
+                <View className="mb-5">
+                  <Text className="text-sm font-semibold text-main mb-1">Category</Text>
+                  <View className="flex-row flex-wrap gap-2">
+                    {currTerm.categories.names.map((category) => (
+                      <TouchableOpacity
+                        key={category}
+                        onPress={() => setNewAssignment((prev) => ({ ...prev, category }))}
+                        className={`px-3 py-1 rounded-full border ${
+                          newAssignment.category === category
+                            ? 'bg-highlight border-highlight'
+                            : 'border-accent'
+                        }`}
+                      >
+                        <Text
+                          className={`text-sm ${
+                            newAssignment.category === category
+                              ? 'text-highlightText font-bold'
+                              : 'text-main'
+                          }`}
+                        >
+                          {category}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
 
-                <View>
-                  <Text className="text-lg font-semibold mb-2 text-main">Grade</Text>
+                <View className="h-[1px] bg-accent opacity-20 mb-5" />
+
+                <View className="mb-5">
+                  <Text className="text-sm font-semibold text-main mb-1">Grade</Text>
                   <TextInput
-                    className="border border-secondary rounded-lg p-3 text-main"
+                    className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
                     placeholder="Enter grade"
                     keyboardType="numeric"
                     value={newAssignment.grade}
@@ -454,10 +472,10 @@ const ClassDetails = () => {
                   />
                 </View>
 
-                <View>
-                  <Text className="text-lg font-semibold mb-2 text-main">Out Of</Text>
+                <View className="mb-6">
+                  <Text className="text-sm font-semibold text-main mb-1">Out Of</Text>
                   <TextInput
-                    className="border border-secondary rounded-lg p-3 text-main"
+                    className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
                     placeholder="Enter total"
                     keyboardType="numeric"
                     value={newAssignment.outOf}
@@ -466,7 +484,7 @@ const ClassDetails = () => {
                 </View>
 
                 <TouchableOpacity
-                  className="mt-2 bg-highlight rounded-md py-3 items-center"
+                  className="bg-highlight rounded-md py-3 items-center"
                   onPress={async () => {
                     const assignment = {
                       className,
@@ -479,7 +497,8 @@ const ClassDetails = () => {
                       artificial: true,
                     };
 
-                    setArtificialAssignments((prev) => [assignment, ...prev]);
+                    const updatedArtificial = [assignment, ...artificialAssignments];
+                    setArtificialAssignments(updatedArtificial);
 
                     const real = ASSIN.filter(
                       item =>
@@ -487,7 +506,13 @@ const ClassDetails = () => {
                         item.term === selectedCategory.split(" ")[0]
                     );
 
-                    const artificial = isEnabled ? [assignment, ...artificialAssignments] : [];
+                    const artificial = isEnabled
+                      ? updatedArtificial.filter(
+                          a =>
+                            a.className === className &&
+                            a.term === selectedCategory.split(" ")[0]
+                        )
+                      : [];
 
                     const artificialNames = new Set(artificial.map(a => a.name));
                     const filteredReal = real.filter(r => !artificialNames.has(r.name));
@@ -498,7 +523,7 @@ const ClassDetails = () => {
 
                     const updated = {
                       ...existing,
-                      [className]: [assignment, ...(existing[className] ?? [])],
+                      [className]: updatedArtificial,
                     };
 
                     await AsyncStorage.setItem("artificialAssignments", JSON.stringify(updated));
