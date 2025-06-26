@@ -62,6 +62,17 @@ type TermLabel =
   | "Q4 Grades"
   | "SM2 Grades";
 
+type Assignment = {
+  className: string;
+  name: string;
+  term: string;
+  category: string;
+  grade: number;
+  outOf: number;
+  dueDate: string;
+  artificial: boolean;
+};
+
 const ClassDetails = () => {
   const [isEnabled, setIsEnabled] = useState(false);
 
@@ -117,7 +128,7 @@ const ClassDetails = () => {
   const snapPoints = useMemo(() => ['43%'], []);
 
   const [selectedCategory, setSelectedCategory] = React.useState<TermLabel>(term ?? "Q1 Grades");
-  const [filteredAssignments, setFilteredAssignments] = useState(() => {
+  const [filteredAssignments, setFilteredAssignments] = useState<Assignment[]>(() => {
     if (!classParam || !selectedCategory) return [];
     return ASSIN.filter(
       item =>
@@ -126,18 +137,41 @@ const ClassDetails = () => {
         (!item.artificial || isEnabled)
     );
   });
-  const [artificialAssignments, setArtificialAssignments] = useState<any[]>([]);
+  const [artificialAssignments, setArtificialAssignments] = useState<Assignment[]>([]);
 
-  // Load artificial assignments for the current class from AsyncStorage
-  const fetchArtificialAssignments = useCallback(() => {
+  // Load artificial assignments for the current class from AsyncStorage and merge with real assignments
+  const fetchArtificialAssignments = useCallback(async () => {
     if (!className) return;
-    AsyncStorage.getItem('artificialAssignments').then(data => {
-      if (!data) return;
-      const parsed = JSON.parse(data);
-      const classAssignments = parsed[className] ?? [];
-      setArtificialAssignments(classAssignments);
-    });
-  }, [className]);
+
+    const data = await AsyncStorage.getItem('artificialAssignments');
+    if (!data) {
+      setArtificialAssignments([]);
+      return;
+    }
+
+    const parsed = JSON.parse(data);
+    const classAssignments = parsed[className] ?? [];
+    setArtificialAssignments(classAssignments);
+
+    const real = ASSIN.filter(
+      item =>
+        item.className === className &&
+        item.term === selectedCategory.split(" ")[0]
+    );
+
+    const artificial = isEnabled
+      ? classAssignments.filter(
+          (item: Assignment) =>
+            item.className === className &&
+            item.term === selectedCategory.split(" ")[0]
+        )
+      : [];
+
+    const artificialNames = new Set(artificial.map((a: any) => a.name));
+    const filteredReal = real.filter(r => !artificialNames.has(r.name));
+
+    setFilteredAssignments([...artificial, ...filteredReal]);
+  }, [className, selectedCategory, isEnabled]);
 
   useEffect(() => {
     fetchArtificialAssignments();
@@ -148,27 +182,6 @@ const ClassDetails = () => {
       fetchArtificialAssignments();
     }, [fetchArtificialAssignments])
   );
-
-  useEffect(() => {
-    if (!classParam || !selectedCategory) return;
-
-    const real = ASSIN.filter(
-      item =>
-        item.className === classParam &&
-        item.term === selectedCategory.split(" ")[0] &&
-        (!item.artificial || isEnabled)
-    );
-
-    const artificial = isEnabled
-      ? artificialAssignments.filter(
-          item =>
-            item.className === classParam &&
-            item.term === selectedCategory.split(" ")[0]
-        )
-      : [];
-
-    setFilteredAssignments([...artificial, ...real]);
-  }, [isEnabled, selectedCategory, artificialAssignments]);
 
   const addAssignment = async () => {
     const newAssignment = {
@@ -184,6 +197,7 @@ const ClassDetails = () => {
     setArtificialAssignments(prev => [newAssignment, ...prev]);
 
     const existing = JSON.parse(await AsyncStorage.getItem("artificialAssignments") ?? "{}");
+    
     const updated = {
       ...existing,
       [className]: [newAssignment, ...(existing[className] ?? [])],
@@ -268,22 +282,22 @@ const ClassDetails = () => {
           </View>
         <ScrollView className='mt-2'>
           <FlatList
-          data={filteredAssignments}
-          renderItem={({ item }) => (
-          <AssignmentCard 
-              {... item}
-              editing={isEnabled}
+            data={filteredAssignments}
+            renderItem={({ item }: { item: Assignment }) => (
+              <AssignmentCard 
+                {...item}
+                editing={isEnabled}
               />
-          )}
-          keyExtractor={(item) => item.name.toString()}
-          className="mt-6 pb-32 px-3"
-          scrollEnabled={false}
-          ItemSeparatorComponent={() => <View className="h-4" />}
-          ListEmptyComponent={
-              <View className="mt-10 px-5">
-                  <Text className="text-center text-gray-500">No assignments found</Text>
-              </View>
-          }
+            )}
+            keyExtractor={(item) => item.name.toString()}
+            className="mt-6 pb-32 px-3"
+            scrollEnabled={false}
+            ItemSeparatorComponent={() => <View className="h-4" />}
+            ListEmptyComponent={
+                <View className="mt-10 px-5">
+                    <Text className="text-center text-gray-500">No assignments found</Text>
+                </View>
+            }
           />
         </ScrollView>  
         <BottomSheetModalProvider>
@@ -306,7 +320,7 @@ const ClassDetails = () => {
             <BottomSheetFlatList
               data={["Q1 Grades", "Q2 Grades", "SM1 Grade", "Q3 Grades", "Q4 Grades", "SM2 Grades"] as TermLabel[]}
               keyExtractor={(item) => item}
-              renderItem={({ item }) => (
+              renderItem={({ item }: { item: TermLabel }) => (
                 <TouchableOpacity
                   onPress={() => {
                     setSelectedCategory(item);

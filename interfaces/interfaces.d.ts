@@ -63,6 +63,7 @@ interface Class {
 interface Assignment {
   className: string;
   name: string;
+  term: string;
   category: string;
   grade: number;
   outOf: number;

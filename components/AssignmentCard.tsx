@@ -8,7 +8,7 @@ type AssignmentCardProps = Assignment & {
 };
 
 // Course Name, Teacher Name, Numerical Grade
-const AssignmentCard = ({ className, name, category, grade, outOf, dueDate, artificial, editing }: AssignmentCardProps) => {
+const AssignmentCard = ({ className, name, term, category, grade, outOf, dueDate, artificial, editing }: AssignmentCardProps) => {
   return (
     <Link
       href={{
@@ -17,6 +17,7 @@ const AssignmentCard = ({ className, name, category, grade, outOf, dueDate, arti
           assignment: name,
           class: className,
           name,
+          term,
           category,
           grade: grade.toString(),
           outOf: outOf.toString(),
