@@ -345,12 +345,14 @@ const ClassDetails = () => {
                           : ' → 0%'}
                       </Text>
                     </View>
-                    <View className="h-2 w-full bg-accent rounded-full overflow-hidden mt-1">
-                      <View
-                        className="bg-highlight h-2"
-                        style={{ width: `${courseSummary?.categories[name]?.average ?? 0}%` }}
-                      />
-                    </View>
+                    {courseSummary.categories[name] && (
+                      <View className="h-2 w-full bg-accent rounded-full overflow-hidden mt-1">
+                        <View
+                          className="bg-highlight h-2"
+                          style={{ width: `${courseSummary.categories[name].average}%` }}
+                        />
+                      </View>
+                    )}
                   </View>
                   {index !== currTerm.categories.names.length - 1 && (
                     <View className="h-[1px] bg-accent opacity-30 my-1" />
