@@ -96,6 +96,8 @@ const assignments = () => {
                 grade={a.grade}
                 outOf={a.outOf}
                 dueDate={a.dueDate}
+                term={a.term}
+                artificial={false}
               />
             </View>
           );

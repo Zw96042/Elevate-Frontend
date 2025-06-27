@@ -1,10 +1,6 @@
 import React, { createContext, useContext, useRef, useState, ReactNode } from 'react';
 import SettingSheet from '@gorhom/bottom-sheet';
 
-export type TermLabel = 'Q1 Grades' | 'Q2 Grades' | 'SM1 Grade' | 'Q3 Grades' | 'Q4 Grades' | 'SM2 Grades';
-
-const terms: TermLabel[] = ['Q1 Grades', 'Q2 Grades', 'SM1 Grade', 'Q3 Grades', 'Q4 Grades', 'SM2 Grades']
-
 type SettingSheetContextType = {
   settingSheetRef: React.RefObject<React.ElementRef<typeof SettingSheet> | null>;
   link: string;

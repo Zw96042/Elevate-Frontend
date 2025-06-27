@@ -12,7 +12,9 @@ import * as Burnt from "burnt";
 import Animated from 'react-native-reanimated'
 
 const InnerLayout = () => {
-  const [sheetIndex, setSheetIndex] = useState(-1);
+  const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '33%' | '80%'>('hidden');
+  const [currentPose, setCurrPose] = useState(false);
+  const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
   const {
     settingSheetRef,
     link,
@@ -31,14 +33,27 @@ const InnerLayout = () => {
   // Keyboard show/hide snap logic
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', () => {
-      if (sheetIndex !== -1) {
+      console.log("Set to true");
+      if (
+        !modalClosedByOutsideTap &&
+        currentSnapPosition !== '80%' &&
+        currentSnapPosition !== 'hidden'
+      ) {
         settingSheetRef.current?.snapToPosition('80%', { duration: 150 });
+        setCurrentSnapPosition('80%');
+        setCurrPose(true);
       }
     });
 
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
-      if (sheetIndex !== -1) {
+      console.log(modalClosedByOutsideTap);
+      setModalClosedByOutsideTap(false);
+      console.log(currentSnapPosition);
+      console.log(currentPose);
+      
+      if (currentSnapPosition === '80%' && currentPose) {
         settingSheetRef.current?.snapToPosition('33%', { duration: 150 });
+        setCurrentSnapPosition('33%');
       }
     });
 
@@ -46,10 +61,14 @@ const InnerLayout = () => {
       showSub.remove();
       hideSub.remove();
     };
-  }, [sheetIndex]);
+  }, [currentSnapPosition, modalClosedByOutsideTap]);
 
   const handleSheetChanges = (index: number) => {
-    setSheetIndex(index);
+    if (index === -1) {
+      setCurrentSnapPosition('hidden');
+    } else {
+      setCurrentSnapPosition('33%');
+    }
   };
   useEffect(() => {
     const loadInfo = async () => {
@@ -109,7 +128,11 @@ const InnerLayout = () => {
   }
 
   return (
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <TouchableWithoutFeedback onPress={() => {
+        Keyboard.dismiss();
+        settingSheetRef.current?.close();
+        setCurrentSnapPosition('hidden');
+      }} accessible={false}>
         <View className='flex-1'>
           <Tabs
             screenOptions={{
@@ -180,61 +203,75 @@ const InnerLayout = () => {
             keyboardBehavior={'extend'}
             onChange={handleSheetChanges}
             backdropComponent={(props) => (
-              <BottomSheetBackdrop
-                {...props}
-                disappearsOnIndex={-1}
-                appearsOnIndex={0}
-              />
+              <TouchableWithoutFeedback onPress={() => {
+                Keyboard.dismiss();
+                settingSheetRef.current?.close();
+                setCurrentSnapPosition('hidden');
+                setCurrPose(false);
+                console.log("Curr", currentPose);
+                setModalClosedByOutsideTap(true);
+              }}>
+                <BottomSheetBackdrop
+                  {...props}
+                  disappearsOnIndex={-1}
+                  appearsOnIndex={0}
+                />
+              </TouchableWithoutFeedback>
             )}
           >
-            <BottomSheetView className="bg-cardColor p-4 space-y-4">
-              <Text className="text-3xl font-bold text-main mb-2">Credentials</Text>
+            <TouchableWithoutFeedback onPress={() => {
+              Keyboard.dismiss();
+              settingSheetRef.current?.snapToPosition('33%', { duration: 150 });
+            }}>
+              <BottomSheetView className="bg-cardColor p-4 space-y-4">
+                <Text className="text-3xl font-bold text-main mb-2">Credentials</Text>
 
-              <View className="space-y-1">
-                <Text className="text-sm font-medium text-main">Skyward Link</Text>
-                <View className="flex-row items-center border border-secondary rounded-md px-3 py-2 bg-primary">
-                  <Ionicons name="link-outline" size={18} color="#888" style={{ marginRight: 8 }} />
-                  <TextInput
-                    className="flex-1 text-main"
-                    value={link}
-                    onChangeText={setLink}
-                    placeholder="https://example.com"
-                    placeholderTextColor="#888"
-                    autoCapitalize="none"
-                  />
+                <View className="space-y-1">
+                  <Text className="text-sm font-medium text-main">Skyward Link</Text>
+                  <View className="flex-row items-center border border-secondary rounded-md px-3 py-2 bg-primary">
+                    <Ionicons name="link-outline" size={18} color="#888" style={{ marginRight: 8 }} />
+                    <TextInput
+                      className="flex-1 text-main"
+                      value={link}
+                      onChangeText={setLink}
+                      placeholder="https://example.com"
+                      placeholderTextColor="#888"
+                      autoCapitalize="none"
+                    />
+                  </View>
                 </View>
-              </View>
 
-              <View className="space-y-1">
-                <Text className="text-sm font-medium text-main">Username</Text>
-                <View className="flex-row items-center border border-secondary rounded-md px-3 py-2 bg-primary">
-                  <Ionicons name="person-outline" size={18} color="#888" style={{ marginRight: 8 }} />
-                  <TextInput
-                    className="flex-1 text-main"
-                    value={username}
-                    onChangeText={setUsername}
-                    placeholder="Username"
-                    placeholderTextColor="#888"
-                    autoCapitalize="none"
-                  />
+                <View className="space-y-1">
+                  <Text className="text-sm font-medium text-main">Username</Text>
+                  <View className="flex-row items-center border border-secondary rounded-md px-3 py-2 bg-primary">
+                    <Ionicons name="person-outline" size={18} color="#888" style={{ marginRight: 8 }} />
+                    <TextInput
+                      className="flex-1 text-main"
+                      value={username}
+                      onChangeText={setUsername}
+                      placeholder="Username"
+                      placeholderTextColor="#888"
+                      autoCapitalize="none"
+                    />
+                  </View>
                 </View>
-              </View>
 
-              <View className="space-y-1">
-                <Text className="text-sm font-medium text-main">Password</Text>
-                <View className="flex-row items-center border border-secondary rounded-md px-3 py-2 bg-primary">
-                  <Ionicons name="lock-closed-outline" size={18} color="#888" style={{ marginRight: 8 }} />
-                  <TextInput
-                    className="flex-1 text-main"
-                    value={password}
-                    onChangeText={setPassword}
-                    placeholder="Password"
-                    placeholderTextColor="#888"
-                    secureTextEntry
-                  />
+                <View className="space-y-1">
+                  <Text className="text-sm font-medium text-main">Password</Text>
+                  <View className="flex-row items-center border border-secondary rounded-md px-3 py-2 bg-primary">
+                    <Ionicons name="lock-closed-outline" size={18} color="#888" style={{ marginRight: 8 }} />
+                    <TextInput
+                      className="flex-1 text-main"
+                      value={password}
+                      onChangeText={setPassword}
+                      placeholder="Password"
+                      placeholderTextColor="#888"
+                      secureTextEntry
+                    />
+                  </View>
                 </View>
-              </View>
-            </BottomSheetView>
+              </BottomSheetView>
+            </TouchableWithoutFeedback>
           </BottomSheet>
         </View>
       </TouchableWithoutFeedback>
