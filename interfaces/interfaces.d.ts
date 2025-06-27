@@ -19,42 +19,42 @@ interface Class {
   t1: {
         categories: {
             names: string[];
-            grades: number[];
+            weights: number[];
         };
         total: number;
     };
   t2: {
         categories: {
             names: string[];
-            grades: number[];
+            weights: number[];
         };
         total: number;
     };
   s1: {
         categories: {
             names: string[];
-            grades: number[];
+            weights: number[];
         };
         total: number;
     };
   t3: {
         categories: {
             names: string[];
-            grades: number[];
+            weights: number[];
         };
         total: number;
     };
   t4: {
         categories: {
             names: string[];
-            grades: number[];
+            weights: number[];
         };
         total: number;
     };
   s2: {
         categories: {
             names: string[];
-            grades: number[];
+            weights: number[];
         };
         total: number;
     };
@@ -63,8 +63,10 @@ interface Class {
 interface Assignment {
   className: string;
   name: string;
+  term: string;
   category: string;
   grade: number;
   outOf: number;
   dueDate: string;
+  artificial: boolean;
 }
