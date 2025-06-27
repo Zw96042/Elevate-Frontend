@@ -93,10 +93,10 @@ const ClassDetails = () => {
       try {
         return JSON.parse(param);
       } catch {
-        return { categories: { names: [], grades: [] }, total: 0 };
+        return { categories: { names: [], weights: [] }, total: 0 };
       }
     }
-    return { categories: { names: [], grades: [] }, total: 0 };
+    return { categories: { names: [], weights: [] }, total: 0 };
   };
 
   const t1 = parseTermData(searchParams.t1);
@@ -119,7 +119,7 @@ const ClassDetails = () => {
     type TermData = {
         categories: {
             names: string[];
-            grades: number[];
+            weights: number[];
         };
         total: number;
     };
@@ -186,48 +186,8 @@ const ClassDetails = () => {
     }, [fetchArtificialAssignments])
   );
 
-  const addAssignment = async () => {
-    const newAssignment = {
-      className: className,
-      name: "New Assignment",
-      term: selectedCategory.split(" ")[0],
-      category: "Daily",
-      grade: 100,
-      outOf: 100,
-      dueDate: "06/25/2025",
-      artificial: true,
-    };
-
-    setArtificialAssignments(prev => [newAssignment, ...prev]);
-
-    // Merge artificial and real assignments into filteredAssignments immediately
-    const real = ASSIN.filter(
-      item =>
-        item.className === className &&
-        item.term === selectedCategory.split(" ")[0]
-    );
-
-    const artificial = isEnabled
-      ? [newAssignment, ...artificialAssignments]
-      : [];
-
-    const artificialNames = new Set(artificial.map(a => a.name));
-    const filteredReal = real.filter(r => !artificialNames.has(r.name));
-
-    setFilteredAssignments([...artificial, ...filteredReal]);
-
-    // Save to AsyncStorage
-    const existing = JSON.parse(await AsyncStorage.getItem("artificialAssignments") ?? "{}");
-
-    const updated = {
-      ...existing,
-      [className]: [newAssignment, ...(existing[className] ?? [])],
-    };
-
-    await AsyncStorage.setItem("artificialAssignments", JSON.stringify(updated));
-  };
-
   const currTerm = termMap[selectedCategory];
+  // console.log(currTerm.categories);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -327,7 +287,7 @@ const ClassDetails = () => {
             <View className="px-5 mt-4 space-y-2">
               <View className="flex-row justify-between mb-2">
                 <Text className="text-highlightText font-bold text-base">Category</Text>
-                <Text className="text-highlightText font-bold text-base">Percentage</Text>
+                <Text className="text-highlightText font-bold text-base">Weight</Text>
               </View>
               <View className="h-[1px] bg-accent opacity-30 my-1" />
               {currTerm.categories.names.map((name, index) => (
@@ -337,7 +297,7 @@ const ClassDetails = () => {
                       <Text className="text-sm text-highlightText font-bold">{name}</Text>
                     </View>
                     <Text className="text-sm text-slate-400 font-bold">
-                      {currTerm.categories.grades[index]?.toFixed(1) ?? '--'}%
+                      {currTerm.categories.weights[index]?.toFixed(1) ?? '--'}%
                     </Text>
                   </View>
                   {index !== currTerm.categories.names.length - 1 && (

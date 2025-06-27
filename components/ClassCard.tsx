@@ -27,7 +27,7 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
     type TermData = {
         categories: {
             names: string[];
-            grades: number[];
+            weights: number[];
         };
         total: number;
     };

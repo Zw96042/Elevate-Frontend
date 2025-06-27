@@ -16,42 +16,42 @@ const DATA = [
     t1: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     t2: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     s1: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [85, 95, 75]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     t3: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 98
     },
     t4: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     s2: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 95
     },
@@ -62,42 +62,42 @@ const DATA = [
     t1: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     t2: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     s1: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     t3: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 98
     },
     t4: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 96
     },
     s2: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 95
     },
@@ -108,42 +108,42 @@ const DATA = [
     t1: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     t2: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     s1: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     t3: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 98
     },
     t4: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 96
     },
     s2: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 95
     },
@@ -154,42 +154,42 @@ const DATA = [
     t1: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     t2: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     s1: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     t3: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 98
     },
     t4: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 96
     },
     s2: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 85
     },
@@ -200,42 +200,42 @@ const DATA = [
     t1: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     t2: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     s1: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     t3: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 98
     },
     t4: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 96
     },
     s2: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 95
     },
@@ -246,42 +246,42 @@ const DATA = [
     t1: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     t2: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     s1: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     t3: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 98
     },
     t4: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 96
     },
     s2: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 95
     },
@@ -292,42 +292,42 @@ const DATA = [
     t1: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     t2: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     s1: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 100
     },
     t3: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 98
     },
     t4: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 96
     },
     s2: {
       categories: {
         names: ["Daily", "Labs", "Major"],
-        grades: [90, 85, 99]
+        weights: [10, 30, 60],
       },
       total: 95
     },
