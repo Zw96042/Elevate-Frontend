@@ -13,6 +13,8 @@ import AssignmentCard from '@/components/AssignmentCard';
 import { Switch, TextInput } from 'react-native-gesture-handler';
 import { parse } from '@babel/core';
 import { colors } from '@/utils/colorTheme';
+import { useSettingSheet } from '@/context/SettingSheetContext';
+import { useBottomSheet, BottomSheetProvider } from '@/context/BottomSheetContext'
 
 export const ASSIN = [
     {
@@ -128,10 +130,9 @@ const ClassDetails = () => {
   const formattedName = formatClassName(className?.toString());
   
 
-  const termSheetRef = useRef<BottomSheet>(null);
   const addSheetRef = useRef<BottomSheet>(null);
 
-  const [selectedCategory, setSelectedCategory] = React.useState<TermLabel>(term ?? "Q1 Grades");
+  const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
   const [filteredAssignments, setFilteredAssignments] = useState<Assignment[]>(() => {
     if (!classParam || !selectedCategory) return [];
     return ASSIN.filter(
@@ -278,6 +279,7 @@ const ClassDetails = () => {
     setSheetIndex(index);
   };
   
+  
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View className='bg-primary flex-1'>
@@ -305,7 +307,7 @@ const ClassDetails = () => {
               <View className='w-[80%]'>
                 <View className="mt-6 pr-5 justify-center">
                   <TouchableOpacity
-                    onPress={() => termSheetRef.current?.expand()}
+                    onPress={() => bottomSheetRef.current?.snapToIndex(1)}
                     className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
                   >
                     <Text className="text-base text-main">{selectedCategory}</Text>
@@ -381,41 +383,6 @@ const ClassDetails = () => {
               }
             />
           </ScrollView>  
-          <BottomSheetModalProvider>
-            <BottomSheet
-              ref={termSheetRef}
-              index={-1}
-              snapPoints={['47%']}
-              enablePanDownToClose={true}
-              backgroundStyle={{ backgroundColor: '#1e293b' }}
-              enableOverDrag={false}
-              style={{ zIndex: 1 }}
-              backdropComponent={(props) => (
-                <BottomSheetBackdrop
-                  {...props}
-                  disappearsOnIndex={-1}
-                  appearsOnIndex={0}
-                />
-              )}
-            >
-              <BottomSheetFlatList
-                data={["Q1 Grades", "Q2 Grades", "SM1 Grade", "Q3 Grades", "Q4 Grades", "SM2 Grades"] as TermLabel[]}
-                keyExtractor={(item) => item}
-                renderItem={({ item }: { item: TermLabel }) => (
-                  <TouchableOpacity
-                    onPress={() => {
-                      setSelectedCategory(item);
-                      termSheetRef.current?.close();
-                    }}
-                    className="px-5 py-4"
-                  >
-                    <Text className="text-white text-lg">{item}</Text>
-                  </TouchableOpacity>
-                )}
-                scrollEnabled={false}
-              />
-            </BottomSheet>
-          </BottomSheetModalProvider>
           <BottomSheet
               ref={addSheetRef}
               index={-1}
