@@ -313,13 +313,21 @@ const ClassDetails = () => {
               <View className="h-[1px] bg-accent opacity-30 my-1" />
               {currTerm.categories.names.map((name, index) => (
                 <View key={`row-${index}`}>
-                  <View className="flex-row justify-between items-center py-1">
-                    <View className="rounded-md bg-highlight px-2">
-                      <Text className="text-sm text-highlightText font-bold">{name}</Text>
+                  <View className="py-1">
+                    <View className="flex-row justify-between items-center">
+                      <View className="rounded-md bg-highlight px-2">
+                        <Text className="text-sm text-highlightText font-bold">{name}</Text>
+                      </View>
+                      <Text className="text-sm text-slate-400 font-bold">
+                        Avg: {(courseSummary?.categories[name]?.average?.toFixed(1) ?? '--')}% • Weight: {(courseSummary?.categories[name]?.weight?.toFixed(1) ?? '--')}%
+                      </Text>
                     </View>
-                    <Text className="text-sm text-slate-400 font-bold">
-                      {(courseSummary?.categories[name]?.weight?.toFixed(1) ?? '--')}% • {(courseSummary?.categories[name]?.average?.toFixed(1) ?? '--')}%
-                    </Text>
+                    <View className="h-2 w-full bg-accent rounded-full overflow-hidden mt-1">
+                      <View
+                        className="bg-highlight h-2"
+                        style={{ width: `${courseSummary?.categories[name]?.average ?? 0}%` }}
+                      />
+                    </View>
                   </View>
                   {index !== currTerm.categories.names.length - 1 && (
                     <View className="h-[1px] bg-accent opacity-30 my-1" />
