@@ -212,7 +212,7 @@ const InnerLayout = () => {
           >
             <TouchableWithoutFeedback onPress={() => {
               Keyboard.dismiss();
-              settingSheetRef.current?.snapToPosition('33%', { duration: 150 });
+              settingSheetRef.current?.snapToPosition('33%', { duration: 350 });
             }}>
               <BottomSheetView className="bg-cardColor p-4 space-y-4">
                 <Text className="text-3xl font-bold text-main mb-2">Credentials</Text>
