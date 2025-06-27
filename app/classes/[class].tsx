@@ -193,7 +193,23 @@ const ClassDetails = () => {
     const weightsMap = Object.fromEntries(
       currTerm.categories.names.map((name, i) => [name, currTerm.categories.weights[i]])
     );
-    setCourseSummary(calculateGradeSummary(all, weightsMap));
+    // Adjustment logic: skip categories with no assignments, normalize weights to sum to 100%
+    const originalWeights = weightsMap;
+    const nonEmptyCategories = all.reduce((set, a) => {
+      if (!set.has(a.category)) set.add(a.category);
+      return set;
+    }, new Set<string>());
+
+    const adjustedWeights = Object.entries(originalWeights)
+      .filter(([name]) => nonEmptyCategories.has(name));
+
+    const totalAdjustedWeight = adjustedWeights.reduce((sum, [, w]) => sum + w, 0);
+
+    const normalizedWeights = Object.fromEntries(
+      adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
+    );
+
+    setCourseSummary(calculateGradeSummary(all, normalizedWeights));
   }, [className, selectedCategory, isEnabled, currTerm.categories.names, currTerm.categories.weights]);
 
   useEffect(() => {
@@ -319,7 +335,14 @@ const ClassDetails = () => {
                         <Text className="text-sm text-highlightText font-bold">{name}</Text>
                       </View>
                       <Text className="text-sm text-slate-400 font-bold">
-                        Avg: {(courseSummary?.categories[name]?.average?.toFixed(1) ?? '--')}% • Weight: {(courseSummary?.categories[name]?.weight?.toFixed(1) ?? '--')}%
+                        Avg: {(courseSummary?.categories[name]?.average?.toFixed(1) ?? '--')}%
+                        {' • '}
+                        Weight: {(currTerm.categories.weights[index] ?? 0).toFixed(1)}%
+                        {courseSummary.categories[name]
+                          ? courseSummary.categories[name].weight.toFixed(1) !== (currTerm.categories.weights[index] ?? 0).toFixed(1)
+                            ? ` → ${courseSummary.categories[name].weight.toFixed(1)}%`
+                            : ''
+                          : ' → 0%'}
                       </Text>
                     </View>
                     <View className="h-2 w-full bg-accent rounded-full overflow-hidden mt-1">
