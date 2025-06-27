@@ -7,6 +7,7 @@ import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import formatClassName from '@/utils/formatClassName';
+import { calculateGradeSummary } from '@/utils/calculateGrades';
 import { Ionicons } from '@expo/vector-icons';
 import AssignmentCard from '@/components/AssignmentCard';
 import { Switch, TextInput } from 'react-native-gesture-handler';
@@ -28,7 +29,7 @@ export const ASSIN = [
         className: "BIOLOGY_1_HONORS",
         name: "Pig Disection #1",
         term: "Q1",
-        category: "Lab",
+        category: "Labs",
         grade: 95,
         outOf: 100,
         dueDate: "05/06/25",
@@ -140,8 +141,19 @@ const ClassDetails = () => {
         (!item.artificial || isEnabled)
     );
   });
+  const [courseSummary, setCourseSummary] = useState<{
+    courseTotal: number;
+    categories: Record<string, {
+      average: number;
+      weight: number;
+      rawPoints: number;
+      rawTotal: number;
+    }>;
+  }>({ courseTotal: 0, categories: {} });
   const [artificialAssignments, setArtificialAssignments] = useState<Assignment[]>([]);
 
+  // Make sure currTerm is declared before use in fetchArtificialAssignments dependencies
+  const currTerm = termMap[selectedCategory];
   // Load artificial assignments for the current class from AsyncStorage and merge with real assignments
   const fetchArtificialAssignments = useCallback(async () => {
     if (!className) return;
@@ -149,6 +161,8 @@ const ClassDetails = () => {
     const data = await AsyncStorage.getItem('artificialAssignments');
     if (!data) {
       setArtificialAssignments([]);
+      setFilteredAssignments([]);
+      setCourseSummary({ courseTotal: 0, categories: {} });
       return;
     }
 
@@ -174,7 +188,13 @@ const ClassDetails = () => {
     const filteredReal = real.filter(r => !artificialNames.has(r.name));
 
     setFilteredAssignments([...artificial, ...filteredReal]);
-  }, [className, selectedCategory, isEnabled]);
+    // Compute grade summary and update courseSummary state
+    const all = [...artificial, ...filteredReal];
+    const weightsMap = Object.fromEntries(
+      currTerm.categories.names.map((name, i) => [name, currTerm.categories.weights[i]])
+    );
+    setCourseSummary(calculateGradeSummary(all, weightsMap));
+  }, [className, selectedCategory, isEnabled, currTerm.categories.names, currTerm.categories.weights]);
 
   useEffect(() => {
     fetchArtificialAssignments();
@@ -186,7 +206,6 @@ const ClassDetails = () => {
     }, [fetchArtificialAssignments])
   );
 
-  const currTerm = termMap[selectedCategory];
   // console.log(currTerm.categories);
 
   useLayoutEffect(() => {
@@ -262,7 +281,9 @@ const ClassDetails = () => {
             <View className='flex-row items-center'>
               <View className='px-5'>
                 <View className='w-[3.5rem] h-[3.5rem] mt-6 rounded-full bg-highlight items-center justify-center'>
-                    <Text className='text-highlightText font-bold text-sm'>{termMap[selectedCategory].total ?? "--"}%</Text>
+                  <Text className='text-highlightText font-bold text-sm'>
+                    {courseSummary.courseTotal?.toFixed(1) ?? "--"}%
+                  </Text>
                 </View>
               </View>
               <View className='w-[80%]'>
@@ -297,7 +318,7 @@ const ClassDetails = () => {
                       <Text className="text-sm text-highlightText font-bold">{name}</Text>
                     </View>
                     <Text className="text-sm text-slate-400 font-bold">
-                      {currTerm.categories.weights[index]?.toFixed(1) ?? '--'}%
+                      {(courseSummary?.categories[name]?.weight?.toFixed(1) ?? '--')}% • {(courseSummary?.categories[name]?.average?.toFixed(1) ?? '--')}%
                     </Text>
                   </View>
                   {index !== currTerm.categories.names.length - 1 && (
