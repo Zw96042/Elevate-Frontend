@@ -13,7 +13,6 @@ import Animated from 'react-native-reanimated'
 
 const InnerLayout = () => {
   const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '33%' | '80%'>('hidden');
-  const [currentPose, setCurrPose] = useState(false);
   const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
   const {
     settingSheetRef,
@@ -33,7 +32,6 @@ const InnerLayout = () => {
   // Keyboard show/hide snap logic
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', () => {
-      console.log("Set to true");
       if (
         !modalClosedByOutsideTap &&
         currentSnapPosition !== '80%' &&
@@ -41,17 +39,12 @@ const InnerLayout = () => {
       ) {
         settingSheetRef.current?.snapToPosition('80%', { duration: 150 });
         setCurrentSnapPosition('80%');
-        setCurrPose(true);
       }
     });
 
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
-      console.log(modalClosedByOutsideTap);
       setModalClosedByOutsideTap(false);
-      console.log(currentSnapPosition);
-      console.log(currentPose);
-      
-      if (currentSnapPosition === '80%' && currentPose) {
+      if (currentSnapPosition === '80%') {
         settingSheetRef.current?.snapToPosition('33%', { duration: 150 });
         setCurrentSnapPosition('33%');
       }
@@ -207,8 +200,6 @@ const InnerLayout = () => {
                 Keyboard.dismiss();
                 settingSheetRef.current?.close();
                 setCurrentSnapPosition('hidden');
-                setCurrPose(false);
-                console.log("Curr", currentPose);
                 setModalClosedByOutsideTap(true);
               }}>
                 <BottomSheetBackdrop
