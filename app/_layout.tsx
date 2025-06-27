@@ -1,4 +1,5 @@
-import { useColorScheme, TouchableOpacity, Text, LayoutAnimation } from "react-native";
+import { useColorScheme, TouchableOpacity, Text, LayoutAnimation, View } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 import { BottomSheetProvider, useBottomSheet, TermLabel } from "@/context/BottomSheetContext";
 import BottomSheet, { BottomSheetModalProvider, BottomSheetBackdrop, BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import { colors } from "@/utils/colorTheme";
@@ -12,7 +13,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-na
 const terms: TermLabel[] = ['Q1 Grades', 'Q2 Grades', 'SM1 Grade', 'Q3 Grades', 'Q4 Grades', 'SM2 Grades'];
 
 function InnerLayout() {
-  const { setSelectedCategory, bottomSheetRef } = useBottomSheet();
+  const { selectedCategory, setSelectedCategory, bottomSheetRef } = useBottomSheet();
   const colorScheme = useColorScheme();
   const cardColor = colorScheme === 'dark' ? colors.cardColor.dark : colors.cardColor.light;
 
@@ -38,7 +39,7 @@ function InnerLayout() {
         <BottomSheet
           ref={bottomSheetRef}
           index={-1}
-          snapPoints={['43%']}
+          snapPoints={['53%']}
           enablePanDownToClose={true}
           backgroundStyle={{ backgroundColor: cardColor }}
           enableOverDrag={false}
@@ -51,23 +52,35 @@ function InnerLayout() {
             />
           )}
         >
-          <BottomSheetFlatList
-            data={terms}
-            keyExtractor={(item) => item}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                onPress={() => {
-                  setSelectedCategory(item);
-                  bottomSheetRef.current?.close();
-                }}
-                className="px-5 py-4"
-              >
-                <Text className="text-main text-lg">{item}</Text>
-              </TouchableOpacity>
-            )}
-            scrollEnabled={false}
-            className={'bg-cardColor'}
-          />
+          <View className="px-5 py-4 bg-cardColor">
+            <Text className="text-xl font-bold text-main mb-4">Select Term</Text>
+            <BottomSheetFlatList
+              data={terms}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => {
+                const isSelected = item === selectedCategory;
+
+                return (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSelectedCategory(item);
+                      bottomSheetRef.current?.close();
+                    }}
+                    className={`w-full px-4 py-4 mb-3 rounded-md flex-row items-center ${
+                      isSelected ? 'bg-highlight' : 'bg-primary'
+                    }`}
+                  >
+                    <Ionicons name="calendar-outline" size={20} color={isSelected ? '#fff' : '#64748b'} className="mr-3" />
+                    <Text className={`text-base ${isSelected ? 'text-highlightText font-bold' : 'text-main'}`}>
+                      {item}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }}
+              scrollEnabled={false}
+              showsVerticalScrollIndicator={false}
+            />
+          </View>
         </BottomSheet>
       </>
   );
