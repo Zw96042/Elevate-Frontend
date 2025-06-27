@@ -38,7 +38,7 @@ const InnerLayout = () => {
 
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
       if (sheetIndex !== -1) {
-        settingSheetRef.current?.snapToPosition('42%', { duration: 150 });
+        settingSheetRef.current?.snapToPosition('33%', { duration: 150 });
       }
     });
 
@@ -172,7 +172,7 @@ const InnerLayout = () => {
           <BottomSheet
             ref={settingSheetRef}
             index={-1}
-            snapPoints={["42%"]}
+            snapPoints={["33%"]}
             backgroundStyle={{ backgroundColor: cardColor }}
             overDragResistanceFactor={1}
             onClose={saveInfo}
@@ -187,38 +187,52 @@ const InnerLayout = () => {
               />
             )}
           >
-            <BottomSheetView className="bg-cardColor p-4">
-              <View className="mb-4">
-                <Text className="text-lg font-semibold mb-2 text-main">Skyward Link</Text>
-                <TextInput
-                  className="border border-secondary rounded-lg p-3 text-main"
-                  value={link}
-                  onChangeText={setLink}
-                  placeholder="https://example.com"
-                  autoCapitalize="none"
-                />
+            <BottomSheetView className="bg-cardColor p-4 space-y-4">
+              <Text className="text-3xl font-bold text-main mb-2">Credentials</Text>
+
+              <View className="space-y-1">
+                <Text className="text-sm font-medium text-main">Skyward Link</Text>
+                <View className="flex-row items-center border border-secondary rounded-md px-3 py-2 bg-primary">
+                  <Ionicons name="link-outline" size={18} color="#888" style={{ marginRight: 8 }} />
+                  <TextInput
+                    className="flex-1 text-main"
+                    value={link}
+                    onChangeText={setLink}
+                    placeholder="https://example.com"
+                    placeholderTextColor="#888"
+                    autoCapitalize="none"
+                  />
+                </View>
               </View>
 
-              <View className="mb-4">
-                <Text className="text-lg font-semibold mb-2 text-main">Username</Text>
-                <TextInput
-                  className="border border-secondary rounded-lg p-3 text-main"
-                  value={username}
-                  onChangeText={setUsername}
-                  placeholder="Username"
-                  autoCapitalize="none"
-                />
+              <View className="space-y-1">
+                <Text className="text-sm font-medium text-main">Username</Text>
+                <View className="flex-row items-center border border-secondary rounded-md px-3 py-2 bg-primary">
+                  <Ionicons name="person-outline" size={18} color="#888" style={{ marginRight: 8 }} />
+                  <TextInput
+                    className="flex-1 text-main"
+                    value={username}
+                    onChangeText={setUsername}
+                    placeholder="Username"
+                    placeholderTextColor="#888"
+                    autoCapitalize="none"
+                  />
+                </View>
               </View>
 
-              <View>
-                <Text className="text-lg font-semibold mb-2 text-main">Password</Text>
-                <TextInput
-                  className="border border-secondary rounded-lg p-3 text-main"
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="Password"
-                  secureTextEntry
-                />
+              <View className="space-y-1">
+                <Text className="text-sm font-medium text-main">Password</Text>
+                <View className="flex-row items-center border border-secondary rounded-md px-3 py-2 bg-primary">
+                  <Ionicons name="lock-closed-outline" size={18} color="#888" style={{ marginRight: 8 }} />
+                  <TextInput
+                    className="flex-1 text-main"
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Password"
+                    placeholderTextColor="#888"
+                    secureTextEntry
+                  />
+                </View>
               </View>
             </BottomSheetView>
           </BottomSheet>
