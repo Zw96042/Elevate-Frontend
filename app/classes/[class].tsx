@@ -347,15 +347,18 @@ const ClassDetails = () => {
                           : ' → 0%'}
                       </Text>
                     </View>
-                    {courseSummary.categories[name] && (
-                      <View className="h-2 w-full bg-accent rounded-full overflow-hidden mt-1">
-                        <View
-                          className="bg-highlight h-2"
-                          style={{ width: `${courseSummary.categories[name].average}%` }}
-                        />
-                      </View>
-                    )}
+                    <View className='items-end'>
+                      {courseSummary.categories[name] && (
+                        <View className="h-2 w-[50%] bg-accent rounded-full overflow-hidden mt-1 ">
+                          <View
+                            className="bg-highlight h-2"
+                            style={{ width: `${courseSummary.categories[name].average}%` }}
+                          />
+                        </View>
+                      )}
+                    </View>
                   </View>
+
                   {index !== currTerm.categories.names.length - 1 && (
                     <View className="h-[1px] bg-accent opacity-30 my-1" />
                   )}
