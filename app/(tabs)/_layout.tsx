@@ -125,6 +125,7 @@ const InnerLayout = () => {
         Keyboard.dismiss();
         settingSheetRef.current?.close();
         setCurrentSnapPosition('hidden');
+        console.log("a");
       }} accessible={false}>
         <View className='flex-1'>
           <Tabs
