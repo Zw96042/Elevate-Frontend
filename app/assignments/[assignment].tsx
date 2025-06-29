@@ -12,7 +12,7 @@ const AssignmentDetails = () => {
 //   console.log("term", term);
 
   const [gradeValue, setGradeValue] = React.useState(() =>
-    !isNaN(Number(grade)) ? Number(grade).toFixed(2) : ''
+    grade === '*' ? '*' : !isNaN(Number(grade)) ? Number(grade).toFixed(2) : ''
   );
   const [outOfValue, setOutOfValue] = React.useState(() =>
     !isNaN(Number(outOf)) ? Number(outOf).toFixed(2) : ''
@@ -25,23 +25,25 @@ const AssignmentDetails = () => {
     if (!isNaN(Number(grade)) && !isNaN(Number(outOf)) && Number(outOf) !== 0) {
       return ((Number(grade) / Number(outOf)) * 100).toFixed(2);
     }
+    if (grade === '*') return '*';
     return '0.00';
   });
 
   const handleSave = async () => {
     const className = Array.isArray(classParam) ? classParam[0] : classParam;
     const existing = JSON.parse(await AsyncStorage.getItem('artificialAssignments') ?? '{}');
-    const formattedGrade = Number(gradeValue);
+    const formattedGrade = gradeValue === '*' ? '*' : parseFloat(Number(gradeValue).toFixed(2));
     const formattedOutOf = Number(outOfValue);
 
-    if (isNaN(formattedGrade) || isNaN(formattedOutOf)) return;
-
+    console.log("Updating");
+    if (isNaN(formattedOutOf)) return;
+    console.log(formattedGrade);
     const updatedAssignment = {
       className,
       name,
       category,
       dueDate,
-      grade: parseFloat(formattedGrade.toFixed(2)),
+      grade: formattedGrade,
       outOf: parseFloat(formattedOutOf.toFixed(2)),
       artificial: artificial,
       term: term
@@ -64,6 +66,7 @@ const AssignmentDetails = () => {
     } else if (!isNaN(Number(gradeValue)) && !isNaN(Number(outOfValue)) && Number(outOfValue) !== 0) {
       setPercentage(((Number(gradeValue) / Number(outOfValue)) * 100).toFixed(2));
     }
+    console.log(percentage);
   };
 
   return (
@@ -91,17 +94,6 @@ const AssignmentDetails = () => {
           }}
         >
         <View className='bg-primary flex-1'>
-            {/* <View className="bg-blue-600">
-                <View className='mt-14'>
-                    <TouchableOpacity onPress={() => router.back()} className='flex-row'>
-                        <Ionicons name="chevron-back" size={24} color="white" />
-                        <Text className='text-white text-xl font-medium'>{formattedClass}</Text>
-                    </TouchableOpacity>
-                </View>
-                <View className='pt-6 pb-4 px-5'>
-                    <Text className="text-white text-3xl font-bold">Assignment</Text>
-                </View>
-            </View> */}
             <View>
                 <View className='flex-row mt-4'>
                     <View className='flex-1 items-center'>
@@ -121,7 +113,7 @@ const AssignmentDetails = () => {
                 </View>
                 <View className='flex-row items-center'>
                     <View className='mt-4 px-4 w-[50%]'>
-                        <Text className='text-accent font-bold text-sm mb-4'>Score</Text>
+                        <Text className='text-accent font-bold text-sm mb-4'>Grade</Text>
                         <Pressable
                           onPress={() => gradeInputRef.current?.focus()}
                           className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
