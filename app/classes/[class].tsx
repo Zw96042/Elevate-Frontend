@@ -276,6 +276,21 @@ const ClassDetails = () => {
   const colorScheme = useColorScheme();
   const cardColor = colorScheme === "dark" ? colors.cardColor.dark : colors.cardColor.light;
 
+  useEffect(() => {
+  const loadShowCalculated = async () => {
+    const value = await AsyncStorage.getItem('showCalculated');
+    if (value !== null) {
+      setIsEnabled(value === 'true');
+    }
+  };
+  loadShowCalculated();
+}, []);
+
+const handleToggle = async () => {
+  const newValue = !isEnabled;
+  setIsEnabled(newValue);
+  await AsyncStorage.setItem('showCalculated', newValue.toString());
+};
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View className="bg-primary flex-1">
@@ -312,7 +327,7 @@ const ClassDetails = () => {
         </View>
         <View className="flex-row mt-4 items-center px-5 justify-between">
           <Text className="text-accent text-base font-medium">Show Calculated</Text>
-          <Switch value={isEnabled} onValueChange={setIsEnabled} className="" />
+          <Switch value={isEnabled} onValueChange={handleToggle} />
         </View>
         <View className="px-5 mt-4 space-y-2">
           <View className="flex-row justify-between mb-2">
