@@ -35,14 +35,14 @@ function InnerLayout() {
     modalData
   } = useAddAssignmentSheet();
 
-  const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '60%' | '90%'>('hidden');
+  const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '54%' | '90%'>('hidden');
   const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
 
   const handleSheetChanges = (index: number) => {
     if (index === -1) {
       setCurrentSnapPosition('hidden');
     } else {
-      setCurrentSnapPosition('60%');
+      setCurrentSnapPosition('54%');
     }
   };
 
@@ -62,8 +62,8 @@ function InnerLayout() {
       const hideSub = Keyboard.addListener('keyboardDidHide', () => {
         setModalClosedByOutsideTap(false);
         if (currentSnapPosition === '90%') {
-          addSheetRef.current?.snapToPosition('60%', { duration: 150 });
-          setCurrentSnapPosition('60%');
+          addSheetRef.current?.snapToPosition('54%', { duration: 150 });
+          setCurrentSnapPosition('54%');
         }
       });
   
@@ -99,7 +99,7 @@ function InnerLayout() {
         <BottomSheet
           ref={bottomSheetRef}
           index={-1}
-          snapPoints={['53%']}
+          snapPoints={['54%']}
           enablePanDownToClose={true}
           backgroundStyle={{ backgroundColor: cardColor }}
           enableOverDrag={false}
@@ -146,7 +146,7 @@ function InnerLayout() {
         <BottomSheet
           ref={addSheetRef}
           index={-1}
-          snapPoints={['60%']}
+          snapPoints={['54%']}
           enablePanDownToClose={true}
           backgroundStyle={{ backgroundColor: cardColor }}
           enableOverDrag={false}
@@ -172,8 +172,8 @@ function InnerLayout() {
         >
           <TouchableWithoutFeedback onPress={() => {
             Keyboard.dismiss();
-            addSheetRef.current?.snapToPosition('60%', { duration: 350 });
-            setCurrentSnapPosition('60%');
+            addSheetRef.current?.snapToPosition('54%', { duration: 350 });
+            setCurrentSnapPosition('54%');
           }}>
             <BottomSheetView className="bg-cardColor p-4">
                <Text className="text-xl text-main font-bold mb-4">Add New Assignment</Text>
