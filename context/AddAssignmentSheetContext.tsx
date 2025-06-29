@@ -65,8 +65,8 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
   const [modalData, setModalData] = useState<ModalData | null>(null);
 
   const [name, setName] = useState('');
-  const [grade, setGrade] = useState<number>(Number());
-  const [outOf, setOutOf] = useState<number>(Number());
+  const [grade, setGrade] = useState<number>(100);
+  const [outOf, setOutOf] = useState<number>(100);
   const [categories, setCategories] = useState<string[]>([]);
   const [category, setCategory] = useState('');
   const [term, setTerm] = useState('');
