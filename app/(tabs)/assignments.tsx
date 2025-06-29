@@ -13,7 +13,7 @@ type Assignment = {
   name: string;
   term: string;
   category: string;
-  grade: number;
+  grade: string;
   outOf: number;
   dueDate: string;
 };

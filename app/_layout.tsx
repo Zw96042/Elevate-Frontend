@@ -228,7 +228,7 @@ function InnerLayout() {
                     keyboardType="numeric"
                     value={grade.toString()}
                     onChangeText={(i) => {
-                      setGrade(Number(i));
+                      setGrade(i);
                     }}
                   />
                 </View>

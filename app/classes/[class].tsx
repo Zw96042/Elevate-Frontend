@@ -34,7 +34,7 @@ export const ASSIN = [
     name: "Pig Practical",
     term: "Q1",
     category: "Major",
-    grade: 96,
+    grade: "96",
     outOf: 100,
     dueDate: "05/09/25",
     artificial: false,
@@ -44,7 +44,7 @@ export const ASSIN = [
     name: "Pig Disection #1",
     term: "Q1",
     category: "Labs",
-    grade: 95,
+    grade: "95",
     outOf: 100,
     dueDate: "05/06/25",
     artificial: false,
@@ -54,7 +54,7 @@ export const ASSIN = [
     name: "Biodiv. Threats",
     term: "Q2",
     category: "Daily",
-    grade: 100,
+    grade: "100",
     outOf: 100,
     dueDate: "04/10/25",
     artificial: false,
@@ -64,7 +64,7 @@ export const ASSIN = [
     name: "Test Intro to Trig",
     term: "SM1",
     category: "Major",
-    grade: 89,
+    grade: "89",
     outOf: 100,
     dueDate: "04/10/25",
     artificial: false,
@@ -84,7 +84,7 @@ type Assignment = {
   name: string;
   term: string;
   category: string;
-  grade: number;
+  grade: string;
   outOf: number;
   dueDate: string;
   artificial: boolean;
@@ -215,6 +215,7 @@ const ClassDetails = () => {
     const normalizedWeights = Object.fromEntries(
       adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
     );
+    // console.log(calculateGradeSummary(all, normalizedWeights));
 
     setCourseSummary(calculateGradeSummary(all, normalizedWeights));
   }, [className, selectedCategory, isEnabled, currTerm.categories.names, currTerm.categories.weights]);

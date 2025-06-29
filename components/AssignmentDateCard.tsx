@@ -13,7 +13,7 @@ const AssignmentDateCard = ({ className, name, category, grade, outOf, dueDate }
               <View className="self-start rounded-md bg-highlight px-2">
                   <Text className="text-sm text-highlightText font-bold">{category}</Text>
               </View>
-              <Text className='text-sm text-secondary'> • {((grade/outOf)*100).toFixed(1)}%</Text>
+              <Text className='text-sm text-secondary'> • {((Number(grade)/outOf)*100).toFixed(1)}%</Text>
             </View>
         </View>
         <View className='flex-row items-center'>

@@ -16,7 +16,7 @@ type Assignment = {
   name: string;
   term: string;
   category: string;
-  grade: number;
+  grade: string;
   outOf: number;
   dueDate: string;
   artificial: boolean;
@@ -41,8 +41,8 @@ type AddAssignmentSheetContextType = {
   setModalData: React.Dispatch<React.SetStateAction<ModalData | null>>;
   name: string;
   setName: React.Dispatch<React.SetStateAction<string>>;
-  grade: number;
-  setGrade: React.Dispatch<React.SetStateAction<number>>;
+  grade: string;
+  setGrade: React.Dispatch<React.SetStateAction<string>>;
   outOf: number;
   setOutOf: React.Dispatch<React.SetStateAction<number>>;
   categories: string[];
@@ -65,7 +65,7 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
   const [modalData, setModalData] = useState<ModalData | null>(null);
 
   const [name, setName] = useState('');
-  const [grade, setGrade] = useState<number>(100);
+  const [grade, setGrade] = useState('100');
   const [outOf, setOutOf] = useState<number>(100);
   const [categories, setCategories] = useState<string[]>([]);
   const [category, setCategory] = useState('');

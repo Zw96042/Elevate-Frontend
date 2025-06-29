@@ -53,13 +53,15 @@ const AssignmentDetails = () => {
     ];
 
     const updated = { ...existing, [className]: updatedClassList };
-    // console.log("Updated", updated);
+    console.log("Updated", updated);
     await AsyncStorage.setItem('artificialAssignments', JSON.stringify(updated));
   };
 
   const saveAndUpdate = async () => {
     await handleSave();
-    if (!isNaN(Number(gradeValue)) && !isNaN(Number(outOfValue)) && Number(outOfValue) !== 0) {
+    if (gradeValue === '*') {
+      setPercentage('*');
+    } else if (!isNaN(Number(gradeValue)) && !isNaN(Number(outOfValue)) && Number(outOfValue) !== 0) {
       setPercentage(((Number(gradeValue) / Number(outOfValue)) * 100).toFixed(2));
     }
   };
@@ -101,7 +103,6 @@ const AssignmentDetails = () => {
                 </View>
             </View> */}
             <View>
-                <Text className='text-main font-medium text-xl mt-4 ml-4'>{name?.toString() || ''}</Text>
                 <View className='flex-row mt-4'>
                     <View className='flex-1 items-center'>
                         <Text className='text-[#7398e6] font-bold text-sm'>Due Date</Text>
@@ -177,7 +178,7 @@ const AssignmentDetails = () => {
                       const existing = JSON.parse(await AsyncStorage.getItem('artificialAssignments') ?? '{}');
                       const updatedClassList = (existing[className] ?? []).filter((a: any) => a.name !== name);
                       const updated = { ...existing, [className]: updatedClassList };
-                    //   console.log(updated);
+
                       await AsyncStorage.setItem('artificialAssignments', JSON.stringify(updated));
                       router.back();
                     }}

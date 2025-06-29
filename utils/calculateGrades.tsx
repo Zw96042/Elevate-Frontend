@@ -3,7 +3,7 @@ type Assignment = {
   name: string;
   term: string;
   category: string;
-  grade: number;
+  grade: string;
   outOf: number;
   dueDate: string;
   artificial: boolean;
@@ -40,7 +40,7 @@ export function calculateGradeSummary(
         weight: categoryWeights[a.category] ?? 0,
       };
     }
-    categories[a.category].rawPoints += a.grade;
+    categories[a.category].rawPoints += Number(a.grade);
     categories[a.category].rawTotal += a.outOf;
   }
 
