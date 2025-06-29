@@ -1,8 +1,8 @@
-import { useColorScheme, TouchableOpacity, Text, LayoutAnimation, View, TextInput, ScrollView } from "react-native";
+import { useColorScheme, TouchableOpacity, Text, LayoutAnimation, View, TextInput, ScrollView, Keyboard } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
 import { BottomSheetProvider, useBottomSheet, TermLabel } from "@/context/BottomSheetContext";
 import { AddSheetProvider, useAddAssignmentSheet } from "@/context/AddAssignmentSheetContext";
-import BottomSheet, { BottomSheetModalProvider, BottomSheetBackdrop, BottomSheetFlatList, BottomSheetView } from "@gorhom/bottom-sheet";
+import BottomSheet, { BottomSheetModalProvider, BottomSheetBackdrop, BottomSheetFlatList, BottomSheetView, TouchableWithoutFeedback } from "@gorhom/bottom-sheet";
 import { colors } from "@/utils/colorTheme";
 import { Stack } from "expo-router";
 import './globals.css';
@@ -35,11 +35,51 @@ function InnerLayout() {
     modalData
   } = useAddAssignmentSheet();
 
+  const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '60%' | '90%'>('hidden');
+  const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
+
+  const handleSheetChanges = (index: number) => {
+    if (index === -1) {
+      setCurrentSnapPosition('hidden');
+    } else {
+      setCurrentSnapPosition('60%');
+    }
+  };
 
 
+  useEffect(() => {
+      const showSub = Keyboard.addListener('keyboardDidShow', () => {
+        if (
+          !modalClosedByOutsideTap &&
+          currentSnapPosition !== '90%' &&
+          currentSnapPosition !== 'hidden'
+        ) {
+          addSheetRef.current?.snapToPosition('90%', { duration: 150 });
+          setCurrentSnapPosition('90%');
+        }
+      });
+  
+      const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+        setModalClosedByOutsideTap(false);
+        if (currentSnapPosition === '90%') {
+          addSheetRef.current?.snapToPosition('60%', { duration: 150 });
+          setCurrentSnapPosition('60%');
+        }
+      });
+  
+      return () => {
+        showSub.remove();
+        hideSub.remove();
+      };
+    }, [currentSnapPosition, modalClosedByOutsideTap]);
 
   return (
-      <>
+    <TouchableWithoutFeedback onPress={() => {
+              Keyboard.dismiss();
+              addSheetRef.current?.close();
+              setCurrentSnapPosition('hidden');
+            }} accessible={false}>
+      <View className="flex-1">
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="inbox/[message]" options={{
@@ -112,14 +152,29 @@ function InnerLayout() {
           enableOverDrag={false}
           enableHandlePanningGesture={true}
           style={{ zIndex: 2 }}
+          keyboardBehavior={'extend'}
+          onChange={handleSheetChanges}
+          detached={true}
           backdropComponent={(props) => (
-            <BottomSheetBackdrop
-              {...props}
-              disappearsOnIndex={-1}
-              appearsOnIndex={0}
-            />
+            <TouchableWithoutFeedback onPress={() => {
+              Keyboard.dismiss();
+              addSheetRef.current?.close();
+              setCurrentSnapPosition('hidden');
+              setModalClosedByOutsideTap(true);
+            }}>
+              <BottomSheetBackdrop
+                {...props}
+                disappearsOnIndex={-1}
+                appearsOnIndex={0}
+              />
+            </TouchableWithoutFeedback>
           )}
         >
+          <TouchableWithoutFeedback onPress={() => {
+            Keyboard.dismiss();
+            addSheetRef.current?.snapToPosition('60%', { duration: 350 });
+            setCurrentSnapPosition('60%');
+          }}>
             <BottomSheetView className="bg-cardColor p-4">
                <Text className="text-xl text-main font-bold mb-4">Add New Assignment</Text>
                 <View className="mb-5">
@@ -195,8 +250,10 @@ function InnerLayout() {
                   <Text className="text-center text-highlightText font-bold text-lg">Add Assignment</Text>
                 </TouchableOpacity>
               </BottomSheetView>
+            </TouchableWithoutFeedback>
         </BottomSheet>
-      </>
+        </View>
+      </TouchableWithoutFeedback>
   );
 }
 
