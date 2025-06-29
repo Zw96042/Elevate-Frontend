@@ -196,7 +196,7 @@ const ClassDetails = () => {
 
     setFilteredAssignments([...artificial, ...filteredReal]);
 
-    const all = [...artificial, ...filteredReal];
+    const all = [...artificial, ...filteredReal].filter(a => a.grade !== '*');
     const weightsMap = Object.fromEntries(
       currTerm.categories.names.map((name, i) => [name, currTerm.categories.weights[i]])
     );
