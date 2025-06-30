@@ -10,7 +10,7 @@ type Assignment = {
 };
 
 type GradeSummary = {
-  courseTotal: number;
+  courseTotal: string;
   categories: {
     [category: string]: {
       average: number;
@@ -63,10 +63,9 @@ export function calculateGradeSummary(
     };
   }
 
-  const courseTotal = totalWeight > 0 ? weightedSum / totalWeight : 0;
-
+  const courseTotal = (totalWeight > 0 ? weightedSum / totalWeight : 0) === Number(0) ? '*': parseFloat((totalWeight > 0 ? weightedSum / totalWeight : 0).toFixed(2));
   return {
-    courseTotal: parseFloat(courseTotal.toFixed(2)),
+    courseTotal: courseTotal,
     categories: categoryResult,
   };
 }

@@ -58,7 +58,7 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
         );
       });
     const [courseSummary, setCourseSummary] = useState<{
-        courseTotal: number;
+        courseTotal: string;
         categories: Record<
           string,
           {
@@ -68,7 +68,7 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
             rawTotal: number;
           }
         >;
-      }>({ courseTotal: 0, categories: {} });
+      }>({ courseTotal: "*", categories: {} });
 
         const fetchArtificialAssignments = useCallback(async () => {
     if (!name) return;
@@ -78,7 +78,7 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
     if (!data) {
       setArtificialAssignments([]);
       setFilteredAssignments([]);
-      setCourseSummary({ courseTotal: 0, categories: {} });
+      setCourseSummary({ courseTotal: "0", categories: {} });
       return;
     }
 
@@ -181,7 +181,11 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
                     <View className="items-center">
                         <View className={`w-[3.5rem] h-[3.5rem] rounded-full ${bgColor} items-center justify-center`}>
                             <Text className="text-highlightText font-bold text-sm">
-                            {courseSummary.courseTotal === Number(100) ? 100: courseSummary.courseTotal?.toFixed(1) ?? "--"}%
+                            {courseSummary.courseTotal === '*'
+                              ? '--'
+                              : Number(courseSummary.courseTotal) === 100
+                              ? '100%'
+                              : `${Number(courseSummary.courseTotal).toFixed(1)}%`}
                             </Text>
                         </View>
                     </View>
