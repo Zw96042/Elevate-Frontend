@@ -1,8 +1,11 @@
 import { View, Text, TouchableOpacity } from 'react-native'
-import React from 'react'
-import { Link } from 'expo-router'
+import React, { useCallback, useEffect, useState } from 'react'
+import { Link, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons';
 import formatClassName from '@/utils/formatClassName';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ASSIN } from '@/app/classes/[class]';
+import { calculateGradeSummary } from '@/utils/calculateGrades';
 
 type TermLabel =
   | "Q1 Grades"
@@ -37,9 +40,113 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
     
     const percentage = currTerm.total;
     const letter = percentage >= 90 ? "A" : percentage >= 80 ? "B" : percentage >= 70 ? "C" : "D";
-    let bgColor = "bg-blue-400";
-    if (letter === "B") bgColor = "bg-yellow-400";
-    else if (letter === "C" || letter === "D") bgColor = "bg-red-300";
+    let bgColor = "bg-highlight";
+    // if (letter === "B") bgColor = "bg-yellow-400";
+    // else if (letter === "C" || letter === "D") bgColor = "bg-red-300";
+
+    const [isEnabled, setIsEnabled] = useState(false);
+
+    const [artificialAssignments, setArtificialAssignments] = useState<Assignment[]>([]);
+
+    const [filteredAssignments, setFilteredAssignments] = useState<Assignment[]>(() => {
+        if (!name || !term) return [];
+        return ASSIN.filter(
+          (item) =>
+            item.className === name &&
+            item.term === term.split(" ")[0] &&
+            (!item.artificial || isEnabled)
+        );
+      });
+    const [courseSummary, setCourseSummary] = useState<{
+        courseTotal: number;
+        categories: Record<
+          string,
+          {
+            average: number;
+            weight: number;
+            rawPoints: number;
+            rawTotal: number;
+          }
+        >;
+      }>({ courseTotal: 0, categories: {} });
+
+        const fetchArtificialAssignments = useCallback(async () => {
+    if (!name) return;
+
+    // await AsyncStorage.clear();
+    const data = await AsyncStorage.getItem("artificialAssignments");
+    if (!data) {
+      setArtificialAssignments([]);
+      setFilteredAssignments([]);
+      setCourseSummary({ courseTotal: 0, categories: {} });
+      return;
+    }
+
+    const parsed = JSON.parse(data);
+    const classAssignments = parsed[name] ?? [];
+    setArtificialAssignments(classAssignments);
+
+    const real = ASSIN.filter(
+      (item) => item.className === name && item.term === term.split(" ")[0]
+    );
+
+    const artificial = isEnabled
+      ? classAssignments.filter(
+          (item: Assignment) =>
+            item.className === name && item.term === term.split(" ")[0]
+        )
+      : [];
+
+    const artificialNames = new Set(artificial.map((a: any) => a.name));
+    const filteredReal = real.filter((r) => !artificialNames.has(r.name));
+
+    setFilteredAssignments([...artificial, ...filteredReal]);
+
+    const all = [...artificial, ...filteredReal].filter(a => a.grade !== '*');
+    const weightsMap = Object.fromEntries(
+      currTerm.categories.names.map((name, i) => [name, currTerm.categories.weights[i]])
+    );
+
+    const nonEmptyCategories = all.reduce((set, a) => {
+      if (!set.has(a.category)) set.add(a.category);
+      return set;
+    }, new Set<string>());
+
+    const adjustedWeights = Object.entries(weightsMap).filter(([name]) =>
+      nonEmptyCategories.has(name)
+    );
+
+    const totalAdjustedWeight = adjustedWeights.reduce((sum, [, w]) => sum + w, 0);
+
+    const normalizedWeights = Object.fromEntries(
+      adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
+    );
+    // console.log(calculateGradeSummary(all, normalizedWeights));
+
+    setCourseSummary(calculateGradeSummary(all, normalizedWeights));
+  }, [name, term, isEnabled, currTerm.categories.names, currTerm.categories.weights]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const loadShowCalculated = async () => {
+        const value = await AsyncStorage.getItem('showCalculated');
+        if (value !== null) {
+          setIsEnabled(value === 'true');
+        }
+      };
+      loadShowCalculated();
+    }, [])
+  );
+
+  useEffect(() => {
+    fetchArtificialAssignments();
+  }, [fetchArtificialAssignments]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchArtificialAssignments();
+    }, [fetchArtificialAssignments])
+  );
   return (
     
     <Link 
@@ -57,23 +164,7 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
             }
         }}
         asChild
-        // href={`/classes/${name}`} asChild
     >
-        {/* <Link
-              href={{
-                pathname: '/assignments/[assignment]',
-                params: {
-                  assignment: name,
-                  class: className,
-                  name,
-                  category,
-                  grade: grade.toString(),
-                  outOf: outOf.toString(),
-                  dueDate
-                }
-              }}
-              asChild
-            > */}
         <TouchableOpacity  className='w-[100%]'>
             <View className='w-full h-28 rounded-3xl bg-cardColor flex-row items-center justify-between'>
                 <View>
@@ -81,11 +172,18 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
                     <Text className='text-sm text-secondary ml-5'>{formatClassName(teacher)}</Text>
                 </View>
                 <View className="flex-row items-center gap-4">
-                    <View className="items-center">
+                    {/* <View className="items-center">
                         <View className={`w-10 h-10 rounded-full ${bgColor} items-center justify-center`}>
                             <Text className="text-white font-semibold">{letter}</Text>
                         </View>
                         <Text className="text-xs text-main mt-1">{percentage.toFixed(1)}%</Text>
+                    </View> */}
+                    <View className="items-center">
+                        <View className={`w-[3.5rem] h-[3.5rem] rounded-full ${bgColor} items-center justify-center`}>
+                            <Text className="text-highlightText font-bold text-sm">
+                            {courseSummary.courseTotal === Number(100) ? 100: courseSummary.courseTotal?.toFixed(1) ?? "--"}%
+                            </Text>
+                        </View>
                     </View>
 
                     <Ionicons name="chevron-forward" size={24} color="#cbd5e1" className='mr-3'/>

@@ -269,14 +269,14 @@ const ClassDetails = () => {
   ]);
 
   useEffect(() => {
-  const loadShowCalculated = async () => {
-    const value = await AsyncStorage.getItem('showCalculated');
-    if (value !== null) {
-      setIsEnabled(value === 'true');
-    }
-  };
-  loadShowCalculated();
-}, []);
+    const loadShowCalculated = async () => {
+      const value = await AsyncStorage.getItem('showCalculated');
+      if (value !== null) {
+        setIsEnabled(value === 'true');
+      }
+    };
+    loadShowCalculated();
+  }, []);
 
 const handleToggle = async () => {
   const newValue = !isEnabled;
@@ -302,7 +302,7 @@ const handleToggle = async () => {
           <View className="px-5">
             <View className="w-[3.5rem] h-[3.5rem] mt-6 rounded-full bg-highlight items-center justify-center">
               <Text className="text-highlightText font-bold text-sm">
-                {courseSummary.courseTotal?.toFixed(1) ?? "--"}%
+                {courseSummary.courseTotal === Number(100) ? 100: courseSummary.courseTotal?.toFixed(1) ?? "--"}%
               </Text>
             </View>
           </View>
