@@ -2,7 +2,6 @@ import { View, Text, TouchableOpacity, TextInput, Keyboard, TouchableWithoutFeed
 import React, { useRef, useState } from 'react'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import formatClassName from '@/utils/formatClassName';
-import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AssignmentDetails = () => {

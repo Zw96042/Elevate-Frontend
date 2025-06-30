@@ -9,7 +9,6 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authenticate } from '@/lib/authHandler'
 import * as Burnt from "burnt";
-import Animated from 'react-native-reanimated'
 
 const InnerLayout = () => {
   const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '33%' | '80%'>('hidden');

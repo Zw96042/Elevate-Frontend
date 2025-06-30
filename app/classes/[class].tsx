@@ -4,7 +4,6 @@ import {
   ScrollView,
   TouchableOpacity,
   FlatList,
-  useColorScheme,
   Keyboard,
   TouchableWithoutFeedback,
   Switch,
@@ -14,17 +13,14 @@ import React, {
   useState,
   useCallback,
   useLayoutEffect,
-  useRef,
 } from "react";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import BottomSheet from "@gorhom/bottom-sheet";
 import { Stack, useLocalSearchParams } from "expo-router";
 import formatClassName from "@/utils/formatClassName";
 import { calculateGradeSummary } from "@/utils/calculateGrades";
 import { Ionicons } from "@expo/vector-icons";
 import AssignmentCard from "@/components/AssignmentCard";
-import { colors } from "@/utils/colorTheme";
 import { useAddAssignmentSheet } from "@/context/AddAssignmentSheetContext";
 import { useBottomSheet } from "@/context/BottomSheetContext";
 
@@ -104,7 +100,6 @@ const ClassDetails = () => {
   const searchParams = useLocalSearchParams();
   const navigation = useNavigation();
 
-  const term = searchParams.term as TermLabel;
   const classParam = searchParams.class;
   const className = Array.isArray(classParam) ? classParam[0] : classParam;
 
@@ -125,7 +120,6 @@ const ClassDetails = () => {
   const t3 = parseTermData(searchParams.t3);
   const t4 = parseTermData(searchParams.t4);
   const s2 = parseTermData(searchParams.s2);
-  const deleted = parseTermData(searchParams.deleted);
 
   const termMap: Record<TermLabel, TermData> = {
     "Q1 Grades": t1,
@@ -273,9 +267,6 @@ const ClassDetails = () => {
     setFilteredAssignments,
     calculateGradeSummary,
   ]);
-
-  const colorScheme = useColorScheme();
-  const cardColor = colorScheme === "dark" ? colors.cardColor.dark : colors.cardColor.light;
 
   useEffect(() => {
   const loadShowCalculated = async () => {
