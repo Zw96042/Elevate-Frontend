@@ -1,7 +1,8 @@
-import { View, Text, TouchableOpacity } from 'react-native'
-import React from 'react'
+import { View, Text, TouchableOpacity, useColorScheme } from 'react-native'
+import React, { useState } from 'react'
 import { Link } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons';
+import CircularProgress from 'react-native-circular-progress-indicator';
 
 type AssignmentCardProps = Assignment & {
   editing: boolean;
@@ -9,6 +10,10 @@ type AssignmentCardProps = Assignment & {
 
 // Course Name, Teacher Name, Numerical Grade
 const AssignmentCard = ({ className, name, term, category, grade, outOf, dueDate, artificial, editing }: AssignmentCardProps) => {
+   const [value, setValue] = useState(0);
+   const theme = useColorScheme();
+   const highlight = theme === 'dark' ? "#3b5795" : "#a4bfed";
+   const highlightText = theme === 'dark' ? "#7398e6" : "#587bc5";
   // console.log(grade);
   return (
     <Link
@@ -40,9 +45,30 @@ const AssignmentCard = ({ className, name, term, category, grade, outOf, dueDate
                 </View>
                 <View className='flex-row items-center'>
                     <View className="flex-row items-center gap-2 mr-1">
-                        <View className={`w-10 h-10 rounded-full border-highlight border-2 items-center justify-center`} >
-                            <Text className='text-highlightText font-bold text-sm'>{grade === '*' ? '--' : grade}</Text>
+                        <View style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'center' }}>
+                          <CircularProgress
+                            value={Number(grade === '*' ? 0 : grade)}
+                            radius={20}
+                            activeStrokeWidth={3}
+                            activeStrokeColor={highlight}
+                            inActiveStrokeOpacity={0}
+                            duration={1000}
+                            showProgressValue={false}
+                          />
+                          <Text
+                            style={{
+                              position: 'absolute',
+                              color: highlightText,
+                              fontWeight: 'bold',
+                              fontSize: 12,
+                              textAlign: 'center',
+                              width: 30,
+                            }}
+                          >
+                            {grade === '*' ? '--' : grade}
+                          </Text>
                         </View>
+
                         <View className="w-[1px] h-10 rounded-full bg-highlight" />
                         <View className={`w-10 h-10 rounded-full bg-highlight items-center justify-center`}>
                             <Text className='text-highlightText font-bold text-sm'>{outOf}</Text>
