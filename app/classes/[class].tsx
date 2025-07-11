@@ -298,13 +298,25 @@ const handleResetArtificialAssignments = async () => {
 };
   // Animation for Reset Assignments button
   const resetAnim = useRef(new Animated.Value(0)).current;
+  const [showReset, setShowReset] = useState(false);
 
   useEffect(() => {
-    Animated.timing(resetAnim, {
-      toValue: isEnabled ? 1 : 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
+    if (isEnabled) {
+      setShowReset(true);
+      Animated.timing(resetAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(resetAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
+        setShowReset(false);
+      });
+    }
   }, [isEnabled]);
 
   return (
@@ -394,7 +406,7 @@ const handleResetArtificialAssignments = async () => {
           <View className="h-[1px] bg-accent opacity-30 my-1" />
         </View>
         <ScrollView className="mt-2">
-          {isEnabled && (
+          {showReset && (
             <Animated.View
               style={{
                 opacity: resetAnim,
@@ -405,12 +417,20 @@ const handleResetArtificialAssignments = async () => {
                       outputRange: [-20, 0],
                     }),
                   },
+                  {
+                    scaleY: resetAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.85, 1],
+                    }),
+                  },
                 ],
+                marginTop: 16,
               }}
+              pointerEvents={isEnabled ? "auto" : "none"}
             >
               <TouchableOpacity
                 onPress={handleResetArtificialAssignments}
-                className="mt-4 mx-4 bg-cardColor items-center rounded-lg"
+                className="mx-4 bg-cardColor items-center rounded-lg"
               >
                 <Text className="text-highlightText font-medium py-3 text-lg">Reset Assignments</Text>
               </TouchableOpacity>
