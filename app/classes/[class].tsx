@@ -98,6 +98,7 @@ type TermData = {
 
 const ClassDetails = () => {
   const [isEnabled, setIsEnabled] = useState(false);
+  const [isReady, setIsReady] = useState(false);
 
   const searchParams = useLocalSearchParams();
   const navigation = useNavigation();
@@ -276,6 +277,7 @@ const ClassDetails = () => {
       if (value !== null) {
         setIsEnabled(value === 'true');
       }
+      setIsReady(true);
     };
     loadShowCalculated();
   }, []);
@@ -301,6 +303,7 @@ const handleResetArtificialAssignments = async () => {
   const [showReset, setShowReset] = useState(false);
 
   useEffect(() => {
+    if (!isReady) return; // Wait for AsyncStorage load
     if (isEnabled) {
       setShowReset(true);
       Animated.timing(resetAnim, {
@@ -317,7 +320,19 @@ const handleResetArtificialAssignments = async () => {
         setShowReset(false);
       });
     }
-  }, [isEnabled]);
+  }, [isEnabled, isReady]);
+
+  useEffect(() => {
+    // On mount, if isEnabled is true, animate reset button in
+    if (isEnabled) {
+      setShowReset(true);
+      Animated.timing(resetAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, []);
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
