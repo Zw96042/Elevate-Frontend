@@ -28,6 +28,16 @@ const AssignmentDetails = () => {
     return '0.00';
   });
 
+  React.useEffect(() => {
+    if (gradeValue === '*') {
+      setPercentage('*');
+    } else if (!isNaN(Number(gradeValue)) && !isNaN(Number(outOfValue)) && Number(outOfValue) !== 0) {
+      setPercentage(((Number(gradeValue) / Number(outOfValue)) * 100).toFixed(2));
+    } else {
+      setPercentage('0.00');
+    }
+  }, [gradeValue, outOfValue]);
+
   const handleSave = async () => {
     const className = Array.isArray(classParam) ? classParam[0] : classParam;
     const existing = JSON.parse(await AsyncStorage.getItem('artificialAssignments') ?? '{}');
