@@ -4,11 +4,12 @@ export class SkywardAuth {
   static async get(): Promise<SkywardAuthInfo | null> {
     try {
       const [link, username, password] = await Promise.all([
-        AsyncStorage.getItem('skywardLink'),
+        // AsyncStorage.getItem('skywardLink'),
+        "https://skyward-eisdprod.iscorp.com/scripts/wsisa.dll/WService=wsedueanesisdtx/",
         AsyncStorage.getItem('skywardUser'),
         AsyncStorage.getItem('skywardPass'),
       ]);
-
+// https://skyward-eisdprod.iscorp.com/scripts/wsisa.dll/WService=wsedueanesisdtx/
       if (!link || !username || !password) {
         console.warn('[SkywardAuth] Missing credentials');
         return null;

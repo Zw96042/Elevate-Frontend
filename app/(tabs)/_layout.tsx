@@ -217,16 +217,15 @@ const InnerLayout = () => {
                 <Text className="text-2xl text-main">Credentials</Text>
                 <View className='my-4 border-slate-600 border-[0.5px]'></View>
                 <View className="pb-3">
-                  <Text className="text-base font-medium text-main">Skyward Link</Text>
+                  <Text className="text-base font-medium text-main">School District</Text>
                   <View className="flex-row items-center rounded-md px-3 py-2 bg-primary">
-                    <Ionicons name="link-outline" size={18} color="#888" style={{ marginRight: 8 }} />
+                    <Ionicons name="school-outline" size={18} color="#888" style={{ marginRight: 8 }} />
                     <TextInput
-                      className="flex-1 text-main"
-                      value={link}
-                      onChangeText={setLink}
-                      placeholder="https://example.com"
+                      className="flex-1 text-gray-400"
+                      value="Eanes ISD"
+                      editable={false}
                       placeholderTextColor="#888"
-                      autoCapitalize="none"
+                      selectTextOnFocus={false}
                     />
                   </View>
                 </View>
