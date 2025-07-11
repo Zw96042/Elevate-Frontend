@@ -7,12 +7,14 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   Switch,
+  Animated,
 } from "react-native";
 import React, {
   useEffect,
   useState,
   useCallback,
   useLayoutEffect,
+  useRef,
 } from "react";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -294,6 +296,17 @@ const handleResetArtificialAssignments = async () => {
 
   fetchArtificialAssignments();
 };
+  // Animation for Reset Assignments button
+  const resetAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(resetAnim, {
+      toValue: isEnabled ? 1 : 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [isEnabled]);
+
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View className="bg-primary flex-1">
@@ -381,13 +394,27 @@ const handleResetArtificialAssignments = async () => {
           <View className="h-[1px] bg-accent opacity-30 my-1" />
         </View>
         <ScrollView className="mt-2">
-          {isEnabled === true && (
-            <TouchableOpacity
+          {isEnabled && (
+            <Animated.View
+              style={{
+                opacity: resetAnim,
+                transform: [
+                  {
+                    translateY: resetAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-20, 0],
+                    }),
+                  },
+                ],
+              }}
+            >
+              <TouchableOpacity
                 onPress={handleResetArtificialAssignments}
                 className="mt-4 mx-4 bg-cardColor items-center rounded-lg"
-            >
+              >
                 <Text className="text-highlightText font-medium py-3 text-lg">Reset Assignments</Text>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </Animated.View>
           )}
           <FlatList
             data={filteredAssignments}
