@@ -283,6 +283,17 @@ const handleToggle = async () => {
   setIsEnabled(newValue);
   await AsyncStorage.setItem('showCalculated', newValue.toString());
 };
+
+const handleResetArtificialAssignments = async () => {
+  const data = await AsyncStorage.getItem("artificialAssignments");
+  if (!data || !className) return;
+
+  const parsed = JSON.parse(data);
+  delete parsed[className];
+  await AsyncStorage.setItem("artificialAssignments", JSON.stringify(parsed));
+
+  fetchArtificialAssignments();
+};
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View className="bg-primary flex-1">
@@ -370,6 +381,14 @@ const handleToggle = async () => {
           <View className="h-[1px] bg-accent opacity-30 my-1" />
         </View>
         <ScrollView className="mt-2">
+          {isEnabled === true && (
+            <TouchableOpacity
+                onPress={handleResetArtificialAssignments}
+                className="mt-4 mx-4 bg-cardColor items-center rounded-lg"
+            >
+                <Text className="text-highlightText font-medium py-3 text-lg">Reset Assignments</Text>
+            </TouchableOpacity>
+          )}
           <FlatList
             data={filteredAssignments}
             renderItem={({ item }: { item: Assignment }) => (
