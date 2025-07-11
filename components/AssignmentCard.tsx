@@ -47,7 +47,7 @@ const AssignmentCard = ({ className, name, term, category, grade, outOf, dueDate
                     <View className="flex-row items-center gap-2 mr-1">
                         <View style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'center' }}>
                           <CircularProgress
-                            value={Number(grade === '*' ? 0 : grade)}
+                            value={Number(grade === '*' ? 0 : (Number(grade) / Number(outOf)) * 100)}
                             radius={20}
                             activeStrokeWidth={3}
                             activeStrokeColor={highlight}
@@ -65,7 +65,7 @@ const AssignmentCard = ({ className, name, term, category, grade, outOf, dueDate
                               width: 30,
                             }}
                           >
-                            {grade === '*' ? '--' : grade}
+                            {grade === '*' ? '--' : ((Number(grade) / Number(outOf)) * 100).toFixed(0)}
                           </Text>
                         </View>
 
