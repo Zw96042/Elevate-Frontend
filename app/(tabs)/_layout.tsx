@@ -213,12 +213,12 @@ const InnerLayout = () => {
               Keyboard.dismiss();
               settingSheetRef.current?.snapToPosition('33%', { duration: 350 });
             }}>
-              <BottomSheetView className="bg-cardColor p-4 space-y-4">
-                <Text className="text-3xl font-bold text-main mb-2">Credentials</Text>
-
-                <View className="space-y-1">
-                  <Text className="text-sm font-medium text-main">Skyward Link</Text>
-                  <View className="flex-row items-center border border-secondary rounded-md px-3 py-2 bg-primary">
+              <BottomSheetView className="bg-cardColor px-8  ">
+                <Text className="text-2xl text-main">Credentials</Text>
+                <View className='my-4 border-slate-600 border-[0.5px]'></View>
+                <View className="pb-3">
+                  <Text className="text-base font-medium text-main">Skyward Link</Text>
+                  <View className="flex-row items-center rounded-md px-3 py-2 bg-primary">
                     <Ionicons name="link-outline" size={18} color="#888" style={{ marginRight: 8 }} />
                     <TextInput
                       className="flex-1 text-main"
@@ -231,9 +231,9 @@ const InnerLayout = () => {
                   </View>
                 </View>
 
-                <View className="space-y-1">
-                  <Text className="text-sm font-medium text-main">Username</Text>
-                  <View className="flex-row items-center border border-secondary rounded-md px-3 py-2 bg-primary">
+                <View className="pb-3">
+                  <Text className="font-medium text-main">Username</Text>
+                  <View className="flex-row items-center rounded-md px-3 py-2 bg-primary">
                     <Ionicons name="person-outline" size={18} color="#888" style={{ marginRight: 8 }} />
                     <TextInput
                       className="flex-1 text-main"
@@ -246,9 +246,9 @@ const InnerLayout = () => {
                   </View>
                 </View>
 
-                <View className="space-y-1">
-                  <Text className="text-sm font-medium text-main">Password</Text>
-                  <View className="flex-row items-center border border-secondary rounded-md px-3 py-2 bg-primary">
+                <View className="pb-10">
+                  <Text className="font-medium text-main">Password</Text>
+                  <View className="flex-row items-center rounded-md px-3 py-2 bg-primary">
                     <Ionicons name="lock-closed-outline" size={18} color="#888" style={{ marginRight: 8 }} />
                     <TextInput
                       className="flex-1 text-main"
