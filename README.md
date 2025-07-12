@@ -75,6 +75,8 @@ If you encounter any issues, have feedback, or want to suggest improvements:
 
 Please open an issue on [this repository](https://github.com/Zw96042/Elevate-Frontend/issues)
 
+Currently this app only supports a very limited amount of school districts. To make a request to add a school district, please filll out [this](https://docs.google.com/forms/d/e/1FAIpQLSdqtqDEwLQY03KHS_LZDpjOjTcP_j8MCIizaMRMHTS6T5tOzQ/viewform?usp=dialog) form.
+
 ---
 
 ## 📬 Contact
