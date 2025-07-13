@@ -1,71 +1,99 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Text, TouchableOpacity, View, Easing, StyleSheet } from 'react-native';
 import MaskedView from '@react-native-masked-view/masked-view';
 import LinearGradient from 'react-native-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Skeleton from "react-native-reanimated-skeleton";
 
 const SkeletonPlaceholder = ({ children }: { children: React.ReactNode }) => {
-  const animatedValue = useRef(new Animated.Value(0)).current;
+  const animatedValue1 = useRef(new Animated.Value(0)).current;
+  const animatedValue2 = useRef(new Animated.Value(0)).current;
+  const DURATION = 1000;
 
   useEffect(() => {
-    Animated.loop(
-      Animated.timing(animatedValue, {
+    const shimmer1 = Animated.loop(
+      Animated.timing(animatedValue1, {
         toValue: 1,
-        duration: 1200,
+        duration: DURATION,
+        easing: Easing.linear,
         useNativeDriver: true,
-      })
-    ).start();
-  }, [animatedValue]);
+      }),
+      { iterations: -1 }
+    );
+    const shimmer2 = Animated.loop(
+      Animated.timing(animatedValue2, {
+        toValue: 1,
+        duration: DURATION,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+      { iterations: -1 }
+    );
 
-  const translateX = animatedValue.interpolate({
+    shimmer1.start();
+
+    const timeout = setTimeout(() => {
+      shimmer2.start();
+    }, DURATION / 2);
+
+    return () => clearTimeout(timeout);
+  }, [animatedValue1, animatedValue2]);
+
+  const translateX1 = animatedValue1.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-300, 300],
+  });
+  const translateX2 = animatedValue2.interpolate({
     inputRange: [0, 1],
     outputRange: [-300, 300],
   });
 
   return (
-    <MaskedView
-      maskElement={
-        <View className="bg-cardColor">{children}</View>
-      }
-    >
-      <Animated.View style={{ transform: [{ translateX }] }}>
-        <LinearGradient
-          colors={['transparent', 'rgba(255,255,255,0.2)', 'transparent']}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={{ width: 300, height: '100%' }}
-        />
-      </Animated.View>
+    <MaskedView maskElement={<View className="absolute inset-0">{children}</View>}>
+      <View style={{ flex: 1 }}>
+        <Animated.View
+          style={{
+            ...StyleSheet.absoluteFillObject,
+            transform: [{ translateX: translateX1 }],
+          }}
+        >
+          <LinearGradient
+            colors={['transparent', 'rgba(255,255,255,0.2)', 'transparent']}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={{ width: 250, height: '100%' }}
+          />
+        </Animated.View>
+        <Animated.View
+          style={{
+            ...StyleSheet.absoluteFillObject,
+            transform: [{ translateX: translateX2 }],
+          }}
+        >
+          <LinearGradient
+            colors={['transparent', 'rgba(255,255,255,0.2)', 'transparent']}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={{ width: 250, height: '100%' }}
+          />
+        </Animated.View>
+      </View>
     </MaskedView>
   );
 };
 
 const SkeletonMessage = () => {
   return (
-    <TouchableOpacity  className='w-[100%]'>
-      <Skeleton isLoading={true}>
-            <View className='w-full h-20 rounded-2xl bg-cardColor flex-row items-center justify-between'>
-                <View>
-                    <View className="self-start rounded-md bg-highlight px-2 ml-5">
-                      <Text className="text-sm text-highlightText font-bold">
-                        AP Pre Calc
-                      </Text>
-                    </View>
-                    <Text className='text-lg text-main font-medium ml-5'>
-                      AP Pre Calc Exam Tomorrow Morning @
-                    </Text>
-                    <Text className='text-xs text-secondary ml-5'>
-                      KENZIE SANCHEZ   MON MAY 12 2025 637pm
-                    </Text>
-                </View>
-                <View className='flex-row items-center'>
-                    <Ionicons name="chevron-forward" size={24} color="#cbd5e1" className='mr-3'/>
-                </View>
-                
-            </View>
-          </Skeleton>
-        </TouchableOpacity>
+    <View className="w-full h-20 rounded-2xl bg-cardColor flex-row items-center justify-between px-5">
+      <SkeletonPlaceholder>
+        <View className="flex-1 justify-center">
+          <View className="w-20 h-5 bg-highlight rounded-md mb-2" />
+          <View className="w-[16rem] h-5 bg-gray-300 rounded-md mb-1" />
+          <View className="w-[9rem] h-3 bg-gray-200 rounded-md" />
+        </View>
+      </SkeletonPlaceholder>
+      
+    </View>
   );
 };
 
