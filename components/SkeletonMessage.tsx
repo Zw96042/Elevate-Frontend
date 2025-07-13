@@ -8,7 +8,7 @@ import Skeleton from "react-native-reanimated-skeleton";
 const SkeletonPlaceholder = ({ children }: { children: React.ReactNode }) => {
   const animatedValue1 = useRef(new Animated.Value(0)).current;
   const animatedValue2 = useRef(new Animated.Value(0)).current;
-  const DURATION = 1300;
+  const DURATION = 2000;
 
   useEffect(() => {
     const shimmer1 = Animated.loop(
@@ -34,7 +34,7 @@ const SkeletonPlaceholder = ({ children }: { children: React.ReactNode }) => {
 
     const timeout = setTimeout(() => {
       shimmer2.start();
-    }, DURATION / 2);
+    }, DURATION / 3);
 
     return () => clearTimeout(timeout);
   }, [animatedValue1, animatedValue2]);
@@ -84,7 +84,7 @@ const SkeletonPlaceholder = ({ children }: { children: React.ReactNode }) => {
 
 const SkeletonMessage = () => {
   return (
-    <View className="w-full h-20 rounded-2xl bg-cardColor flex-row items-center justify-between px-5">
+    <View className="w-full h-20 rounded-2xl bg-cardColor flex-row items-center justify-between px-5 animate-pulse">
       <SkeletonPlaceholder>
         <View className="flex-1 justify-center">
           <View className="w-20 h-5 bg-highlight rounded-md mb-2" />
