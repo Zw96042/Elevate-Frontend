@@ -15,7 +15,7 @@ import SkeletonMessage from '@/components/SkeletonMessage';
 
 
 const Inbox = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
+  let [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [credentialsSet, setCredentialsSet] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -27,6 +27,9 @@ const Inbox = () => {
   const { settingSheetRef } = useSettingSheet();
 
   const handleLoadMessages = async () => {
+    if (!credentialsSet) {
+      return;
+    }
     const result = await loadMessages();
     // setCredentialsSet(result.credentialsSet);
     setMessages(result.messages);
@@ -101,6 +104,7 @@ const Inbox = () => {
       fetchMessages();
     }, [])
   );
+  // let test = new Array<Message>();
 
   return (
     <View className="bg-primary flex-1">
@@ -109,10 +113,10 @@ const Inbox = () => {
         <TouchableOpacity
             onPress={() => settingSheetRef.current?.snapToIndex(1)}
           >
-          <Ionicons name='cog-outline' color={'#fff'} size={26} />
+          <Ionicons name='cog-outline' color={'#fff'} size={26}/>
         </TouchableOpacity>
       </View>
-      {true ? (
+      {loading ? (
         <FlatList
           className="mt-4 px-5 mb-[5rem]"
           data={Array.from({ length: 8 })}
@@ -143,8 +147,8 @@ const Inbox = () => {
             await handleLoadMessages();
             setRefreshing(false);
           }}
-          onEndReached={handleLoadMoreMessages}
-          onEndReachedThreshold={0.2}
+          onEndReached={messages.length > 8 ? handleLoadMoreMessages : undefined}
+          onEndReachedThreshold={0.1}
           ListEmptyComponent={
             <Text className="text-center text-gray-500 mt-10">
               {credentialsSet ? (
@@ -156,7 +160,7 @@ const Inbox = () => {
                     className="text-blue-400 underline"
                     onPress={() => settingSheetRef.current?.snapToIndex(1)}
                   >
-                    Update the settings
+                    Update your settings
                   </Text>{' '}
                   to configure your account.
                 </Text>
