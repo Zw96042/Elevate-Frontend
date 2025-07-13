@@ -8,14 +8,14 @@ import Skeleton from "react-native-reanimated-skeleton";
 const SkeletonPlaceholder = ({ children }: { children: React.ReactNode }) => {
   const animatedValue1 = useRef(new Animated.Value(0)).current;
   const animatedValue2 = useRef(new Animated.Value(0)).current;
-  const DURATION = 1000;
+  const DURATION = 1300;
 
   useEffect(() => {
     const shimmer1 = Animated.loop(
       Animated.timing(animatedValue1, {
         toValue: 1,
         duration: DURATION,
-        easing: Easing.linear,
+        // easing: Easing.cubic,
         useNativeDriver: true,
       }),
       { iterations: -1 }
@@ -24,7 +24,7 @@ const SkeletonPlaceholder = ({ children }: { children: React.ReactNode }) => {
       Animated.timing(animatedValue2, {
         toValue: 1,
         duration: DURATION,
-        easing: Easing.linear,
+        // easing: Easing.cubic,
         useNativeDriver: true,
       }),
       { iterations: -1 }
@@ -88,8 +88,8 @@ const SkeletonMessage = () => {
       <SkeletonPlaceholder>
         <View className="flex-1 justify-center">
           <View className="w-20 h-5 bg-highlight rounded-md mb-2" />
-          <View className="w-[16rem] h-5 bg-gray-300 rounded-md mb-1" />
-          <View className="w-[9rem] h-3 bg-gray-200 rounded-md" />
+          <View className="w-[18rem] h-5 bg-gray-300 rounded-md mb-1" />
+          <View className="w-[10rem] h-3 bg-gray-200 rounded-md" />
         </View>
       </SkeletonPlaceholder>
       
