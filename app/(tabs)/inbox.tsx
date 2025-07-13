@@ -112,7 +112,7 @@ const Inbox = () => {
           <Ionicons name='cog-outline' color={'#fff'} size={26} />
         </TouchableOpacity>
       </View>
-      {loading ? (
+      {true ? (
         <FlatList
           className="mt-4 px-5 mb-[5rem]"
           data={Array.from({ length: 8 })}

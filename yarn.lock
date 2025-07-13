@@ -6048,10 +6048,15 @@ react-native-is-edge-to-edge@^1.1.6, react-native-is-edge-to-edge@1.1.7:
   resolved "https://registry.npmjs.org/react-native-is-edge-to-edge/-/react-native-is-edge-to-edge-1.1.7.tgz"
   integrity sha512-EH6i7E8epJGIcu7KpfXYXiV2JFIYITtq+rVS8uEb+92naMRBdxhTuS8Wn2Q7j9sqyO0B+Xbaaf9VdipIAmGW4w==
 
-react-native-linear-gradient@^2.8.3:
+react-native-linear-gradient@*, react-native-linear-gradient@^2.8.3:
   version "2.8.3"
   resolved "https://registry.npmjs.org/react-native-linear-gradient/-/react-native-linear-gradient-2.8.3.tgz"
   integrity sha512-KflAXZcEg54PXkLyflaSZQ3PJp4uC4whM7nT/Uot9m0e/qxFV3p6uor1983D1YOBJbJN7rrWdqIjq0T42jOJyA==
+
+react-native-reanimated-skeleton@^1.6.0:
+  version "1.6.0"
+  resolved "https://registry.npmjs.org/react-native-reanimated-skeleton/-/react-native-reanimated-skeleton-1.6.0.tgz"
+  integrity sha512-JSiI5GJaMeVomVZCVwAe4pGJbQNNNAuwCpFY7wcZKI1EkjMMyue8BIr4iKxBVWgnehXQxNy+F+HqmTz4oOsKqQ==
 
 react-native-reanimated@*, react-native-reanimated@>=2.0.0, react-native-reanimated@>=2.2.0, react-native-reanimated@>=3.16.0, react-native-reanimated@>=3.6.2, react-native-reanimated@~3.17.4:
   version "3.17.5"

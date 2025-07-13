@@ -1,4 +1,4 @@
-import { View, Text, useColorScheme, TextInput, TouchableWithoutFeedback, Platform, Keyboard } from 'react-native'
+import { View, Text, useColorScheme, TextInput, TouchableWithoutFeedback, Platform, Keyboard, TouchableOpacity, Linking } from 'react-native'
 import React, { useEffect, useState, useRef, useMemo } from 'react'
 import { Tabs } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -216,7 +216,7 @@ const InnerLayout = () => {
               <BottomSheetView className="bg-cardColor px-8  ">
                 <Text className="text-2xl text-main">Credentials</Text>
                 <View className='my-4 border-slate-600 border-[0.5px]'></View>
-                <View className="pb-3">
+                <View className="pb-3 ">
                   <Text className="text-base font-medium text-main">School District</Text>
                   <View className="flex-row items-center rounded-md px-3 py-2 bg-primary">
                     <Ionicons name="school-outline" size={18} color="#888" style={{ marginRight: 8 }} />
@@ -228,6 +228,9 @@ const InnerLayout = () => {
                       selectTextOnFocus={false}
                     />
                   </View>
+                  <TouchableOpacity onPress={() => Linking.openURL("https://docs.google.com/forms/d/e/1FAIpQLSdqtqDEwLQY03KHS_LZDpjOjTcP_j8MCIizaMRMHTS6T5tOzQ/viewform?usp=dialog")} className='self-start'>
+                    <Text className='text-blue-400 decoration-solid text-sm font-semibold mt-1'>Don't see your district?</Text>
+                  </TouchableOpacity>
                 </View>
 
                 <View className="pb-3">

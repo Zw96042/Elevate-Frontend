@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity } from 'react-native'
 import React from 'react'
 import { Link } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons';
+import Skeleton from "react-native-reanimated-skeleton";
 
 // Course Name, Teacher Name, Numerical Grade
 const MessageCard = ({ subject, className, from, date, content, administrator }: Message & { administrator: boolean }) => {
@@ -20,7 +21,6 @@ const MessageCard = ({ subject, className, from, date, content, administrator }:
       asChild
     >
         <TouchableOpacity  className='w-[100%]'>
-
             <View className='w-full h-20 rounded-2xl bg-cardColor flex-row items-center justify-between'>
                 <View>
                     {!administrator && (
