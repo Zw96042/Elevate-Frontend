@@ -90,9 +90,33 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
       // await AsyncStorage.clear();
       const data = await AsyncStorage.getItem("artificialAssignments");
       if (!data) {
+        const real = ASSIN.filter(
+          (item) => item.className === name && item.term === term.split(" ")[0]
+        );
+
+        const all = real.filter(a => a.grade !== '*');
+        const weightsMap = Object.fromEntries(
+          currTerm.categories.names.map((name, i) => [name, currTerm.categories.weights[i]])
+        );
+
+        const nonEmptyCategories = all.reduce((set, a) => {
+          if (!set.has(a.category)) set.add(a.category);
+          return set;
+        }, new Set<string>());
+
+        const adjustedWeights = Object.entries(weightsMap).filter(([name]) =>
+          nonEmptyCategories.has(name)
+        );
+
+        const totalAdjustedWeight = adjustedWeights.reduce((sum, [, w]) => sum + w, 0);
+
+        const normalizedWeights = Object.fromEntries(
+          adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
+        );
+
         setArtificialAssignments([]);
-        setFilteredAssignments([]);
-        setCourseSummary({ courseTotal: "0", categories: {} });
+        setFilteredAssignments(real);
+        setCourseSummary(calculateGradeSummary(all, normalizedWeights));
         return;
       }
 

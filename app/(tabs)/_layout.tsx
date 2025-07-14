@@ -89,7 +89,7 @@ const InnerLayout = () => {
 
   const saveInfo = async () => {
     const changed =
-      link !== lastSaved.current.link ||
+      // link !== lastSaved.current.link ||
       username !== lastSaved.current.username ||
       password !== lastSaved.current.password;
 
@@ -98,7 +98,7 @@ const InnerLayout = () => {
     try {
       await AsyncStorage.setItem('skywardUser', username);
       await AsyncStorage.setItem('skywardPass', password);
-      await AsyncStorage.setItem('skywardLink', link);
+      await AsyncStorage.setItem('skywardLink', "https://skyward-eisdprod.iscorp.com/scripts/wsisa.dll/WService=wsedueanesisdtx/"); // TODO: Change back to add more districts
 
       const authResult = await authenticate();
 
@@ -108,15 +108,15 @@ const InnerLayout = () => {
           title: 'Information Verified',
           preset: 'done'
         });
-        
+        DeviceEventEmitter.emit('credentialsAdded');
       } else {
         Burnt.toast({
           title: 'Error',
           preset: 'error',
           message: "Couldn't verify details",
         });
+        DeviceEventEmitter.emit('credentialsInvalid');
       }
-      DeviceEventEmitter.emit('credentialsAdded');
     } catch (error) {
       console.error('Failed to save credentials', error);
     }

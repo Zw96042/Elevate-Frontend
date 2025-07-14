@@ -29,6 +29,7 @@ const Inbox = () => {
 
   const handleLoadMessages = async () => {
     if (!credentialsSet) {
+      // console.log("Not set");
       setMessages([]);
       setLoading(false);
       return;
@@ -40,17 +41,34 @@ const Inbox = () => {
   };
 
   useEffect(() => {
-    const subscription = DeviceEventEmitter.addListener('credentialsAdded', async () => {
+    const handleValidCreds = async () => {
       const hasCreds = await SkywardAuth.hasCredentials();
-      setCredentialsSet(hasCreds);
-    });
+      if (hasCreds) {
+        setCredentialsSet(true);
+        const result = await loadMessages();
+        setMessages(result.messages);
+      }
+    };
 
-    return () => subscription.remove();
+    const handleInvalidCreds = () => {
+      setCredentialsSet(false);
+      setMessages([]);
+    };
+
+    const subValid = DeviceEventEmitter.addListener('credentialsAdded', handleValidCreds);
+    const subInvalid = DeviceEventEmitter.addListener('credentialsInvalid', handleInvalidCreds);
+
+    return () => {
+      subValid.remove();
+      subInvalid.remove();
+    };
   }, []);
 
   useEffect(() => {
+    // console.log(credentialsSet);
     setLoading(true);
     handleLoadMessages();
+    // console.log("done");
   }, [credentialsSet]);
 
   const handleLoadMoreMessages = async () => {
@@ -173,14 +191,14 @@ const Inbox = () => {
                 'No messages found.'
               ) : (
                 <Text className="text-center text-gray-500">
-                  No credentials found.{' '}
+                  Your credentials are either invalid or not found.{' '}
                   <Text
                     className="text-blue-400 underline"
                     onPress={() => settingSheetRef.current?.snapToIndex(1)}
                   >
                     Update your settings
                   </Text>{' '}
-                  to configure your account.
+                  to proceed.
                 </Text>
               )}
             </Text>
