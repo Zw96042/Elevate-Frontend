@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity } from 'react-native'
+import { View, Text, TouchableOpacity, useColorScheme } from 'react-native'
 import React, { useCallback, useEffect, useState } from 'react'
 import { Link, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons';
@@ -6,6 +6,7 @@ import formatClassName from '@/utils/formatClassName';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ASSIN } from '@/app/classes/[class]';
 import { calculateGradeSummary } from '@/utils/calculateGrades';
+import PieChart from 'react-native-pie-chart'
 
 type TermLabel =
   | "Q1 Grades"
@@ -49,14 +50,14 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
     const [artificialAssignments, setArtificialAssignments] = useState<Assignment[]>([]);
 
     const [filteredAssignments, setFilteredAssignments] = useState<Assignment[]>(() => {
-        if (!name || !term) return [];
-        return ASSIN.filter(
-          (item) =>
-            item.className === name &&
-            item.term === term.split(" ")[0] &&
-            (!item.artificial || isEnabled)
-        );
-      });
+      if (!name || !term) return [];
+      return ASSIN.filter(
+        (item) =>
+          item.className === name &&
+          item.term === term.split(" ")[0] &&
+          (!item.artificial || isEnabled)
+      );
+    });
     const [courseSummary, setCourseSummary] = useState<{
         courseTotal: string;
         categories: Record<
@@ -68,63 +69,63 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
             rawTotal: number;
           }
         >;
-      }>({ courseTotal: "*", categories: {} });
+    }>({ courseTotal: "*", categories: {} });
 
-        const fetchArtificialAssignments = useCallback(async () => {
-    if (!name) return;
+    const fetchArtificialAssignments = useCallback(async () => {
+      if (!name) return;
 
-    // await AsyncStorage.clear();
-    const data = await AsyncStorage.getItem("artificialAssignments");
-    if (!data) {
-      setArtificialAssignments([]);
-      setFilteredAssignments([]);
-      setCourseSummary({ courseTotal: "0", categories: {} });
-      return;
-    }
+      // await AsyncStorage.clear();
+      const data = await AsyncStorage.getItem("artificialAssignments");
+      if (!data) {
+        setArtificialAssignments([]);
+        setFilteredAssignments([]);
+        setCourseSummary({ courseTotal: "0", categories: {} });
+        return;
+      }
 
-    const parsed = JSON.parse(data);
-    const classAssignments = parsed[name] ?? [];
-    setArtificialAssignments(classAssignments);
+      const parsed = JSON.parse(data);
+      const classAssignments = parsed[name] ?? [];
+      setArtificialAssignments(classAssignments);
 
-    const real = ASSIN.filter(
-      (item) => item.className === name && item.term === term.split(" ")[0]
-    );
+      const real = ASSIN.filter(
+        (item) => item.className === name && item.term === term.split(" ")[0]
+      );
 
-    const artificial = isEnabled
-      ? classAssignments.filter(
-          (item: Assignment) =>
-            item.className === name && item.term === term.split(" ")[0]
-        )
-      : [];
+      const artificial = isEnabled
+        ? classAssignments.filter(
+            (item: Assignment) =>
+              item.className === name && item.term === term.split(" ")[0]
+          )
+        : [];
 
-    const artificialNames = new Set(artificial.map((a: any) => a.name));
-    const filteredReal = real.filter((r) => !artificialNames.has(r.name));
+      const artificialNames = new Set(artificial.map((a: any) => a.name));
+      const filteredReal = real.filter((r) => !artificialNames.has(r.name));
 
-    setFilteredAssignments([...artificial, ...filteredReal]);
+      setFilteredAssignments([...artificial, ...filteredReal]);
 
-    const all = [...artificial, ...filteredReal].filter(a => a.grade !== '*');
-    const weightsMap = Object.fromEntries(
-      currTerm.categories.names.map((name, i) => [name, currTerm.categories.weights[i]])
-    );
+      const all = [...artificial, ...filteredReal].filter(a => a.grade !== '*');
+      const weightsMap = Object.fromEntries(
+        currTerm.categories.names.map((name, i) => [name, currTerm.categories.weights[i]])
+      );
 
-    const nonEmptyCategories = all.reduce((set, a) => {
-      if (!set.has(a.category)) set.add(a.category);
-      return set;
-    }, new Set<string>());
+      const nonEmptyCategories = all.reduce((set, a) => {
+        if (!set.has(a.category)) set.add(a.category);
+        return set;
+      }, new Set<string>());
 
-    const adjustedWeights = Object.entries(weightsMap).filter(([name]) =>
-      nonEmptyCategories.has(name)
-    );
+      const adjustedWeights = Object.entries(weightsMap).filter(([name]) =>
+        nonEmptyCategories.has(name)
+      );
 
-    const totalAdjustedWeight = adjustedWeights.reduce((sum, [, w]) => sum + w, 0);
+      const totalAdjustedWeight = adjustedWeights.reduce((sum, [, w]) => sum + w, 0);
 
-    const normalizedWeights = Object.fromEntries(
-      adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
-    );
-    // console.log(calculateGradeSummary(all, normalizedWeights));
+      const normalizedWeights = Object.fromEntries(
+        adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
+      );
+      // console.log(calculateGradeSummary(all, normalizedWeights));
 
-    setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-  }, [name, term, isEnabled, currTerm.categories.names, currTerm.categories.weights]);
+      setCourseSummary(calculateGradeSummary(all, normalizedWeights));
+    }, [name, term, isEnabled, currTerm.categories.names, currTerm.categories.weights]);
 
   useFocusEffect(
     useCallback(() => {
@@ -147,6 +148,10 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
       fetchArtificialAssignments();
     }, [fetchArtificialAssignments])
   );
+
+  const theme = useColorScheme();
+  const highlightColor = theme === 'dark' ? '#3b5795' : "#a4bfed";
+  const cardColor = theme === 'dark' ? '#1e293b' : "#fafafa";
   return (
     
     <Link 
@@ -178,16 +183,37 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
                         </View>
                         <Text className="text-xs text-main mt-1">{percentage.toFixed(1)}%</Text>
                     </View> */}
-                    <View className="items-center">
-                        <View className={`w-[3.5rem] h-[3.5rem] rounded-full ${bgColor} items-center justify-center`}>
-                            <Text className="text-highlightText font-bold text-sm">
+                    <View className="items-center w-3 mr-4">
+                        <View className="relative w-[50] h-[50]">
+                          <PieChart
+                            widthAndHeight={50}
+                            series={
+                              courseSummary.courseTotal === '*'
+                                ? [
+                                    { value: 100, color: highlightColor },
+                                    { value: 0, color: cardColor }
+                                  ]
+                                : [
+                                    {
+                                      value: Number(courseSummary.courseTotal),
+                                      color: highlightColor
+                                    },
+                                    {
+                                      value: 100 - Number(courseSummary.courseTotal),
+                                      color: cardColor
+                                    }
+                                  ]
+                            }
+                          />
+                          <Text className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-highlightText font-bold text-sm">
                             {courseSummary.courseTotal === '*'
                               ? '--'
                               : Number(courseSummary.courseTotal) === 100
                               ? '100%'
                               : `${Number(courseSummary.courseTotal).toFixed(1)}%`}
-                            </Text>
+                          </Text>
                         </View>
+                        
                     </View>
 
                     <Ionicons name="chevron-forward" size={24} color="#cbd5e1" className='mr-3'/>

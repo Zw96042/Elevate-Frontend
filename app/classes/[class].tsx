@@ -8,6 +8,7 @@ import {
   TouchableWithoutFeedback,
   Switch,
   Animated,
+  useColorScheme,
 } from "react-native";
 import React, {
   useEffect,
@@ -25,6 +26,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AssignmentCard from "@/components/AssignmentCard";
 import { useAddAssignmentSheet } from "@/context/AddAssignmentSheetContext";
 import { useBottomSheet } from "@/context/BottomSheetContext";
+import PieChart from "react-native-pie-chart";
 
 export const ASSIN = [
   {
@@ -334,6 +336,10 @@ const handleResetArtificialAssignments = async () => {
     }
   }, []);
 
+  const theme = useColorScheme();
+  const highlightColor = theme === 'dark' ? '#3b5795' : "#a4bfed";
+  const backgroundColor = theme === 'dark' ? '#030014' : "#ffffff";
+
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View className="bg-primary flex-1">
@@ -351,8 +357,28 @@ const handleResetArtificialAssignments = async () => {
         />
         <View className="flex-row items-center">
           <View className="px-5">
-            <View className="w-[3.5rem] h-[3.5rem] mt-6 rounded-full bg-highlight items-center justify-center">
-              <Text className="text-highlightText font-bold text-sm">
+            <View className="relative w-[50] h-[50] mt-6">
+              <PieChart
+                widthAndHeight={50}
+                series={
+                  courseSummary.courseTotal === '*'
+                    ? [
+                        { value: 100, color: highlightColor },
+                        { value: 0, color: backgroundColor }
+                      ]
+                    : [
+                        {
+                          value: Number(courseSummary.courseTotal),
+                          color: highlightColor
+                        },
+                        {
+                          value: 100 - Number(courseSummary.courseTotal),
+                          color: backgroundColor
+                        }
+                      ]
+                }
+              />
+              <Text className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-highlightText font-bold text-sm">
                 {courseSummary.courseTotal === '*'
                   ? '--'
                   : Number(courseSummary.courseTotal) === 100
