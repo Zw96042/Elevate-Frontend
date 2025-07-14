@@ -13,7 +13,8 @@ import Animated, {
   withTiming,
   useDerivedValue,
   useAnimatedReaction,
-  runOnJS
+  runOnJS,
+  Easing
 } from 'react-native-reanimated';
 
 type TermLabel =
@@ -79,13 +80,9 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
         >;
     }>({ courseTotal: "*", categories: {} });
 
-    const [displayGrade, setDisplayGrade] = useState(
-      courseSummary.courseTotal === '*' ? 0 : Number(courseSummary.courseTotal)
-    );
+    const [displayGrade, setDisplayGrade] = useState(0);
 
-    const animatedGrade = useSharedValue(
-      courseSummary.courseTotal === '*' ? 0 : Number(courseSummary.courseTotal)
-    );
+    const animatedGrade = useSharedValue(0);
 
     const fetchArtificialAssignments = useCallback(async () => {
       if (!name) return;
@@ -162,9 +159,12 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
   useEffect(() => {
     const value =
       courseSummary.courseTotal === '*'
-        ? 0
+        ? 100
         : Number(courseSummary.courseTotal);
-    animatedGrade.value = withTiming(value, { duration: 1000 });
+    animatedGrade.value = withTiming(value, {
+      duration: 1000,
+      easing: Easing.inOut(Easing.ease)
+    });
   }, [courseSummary.courseTotal]);
 
   useFocusEffect(
@@ -224,13 +224,15 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
                               { value: 100 - displayGrade, color: cardColor },
                             ]}
                           />
-                          <Text className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-highlightText font-bold text-sm">
-                            {courseSummary.courseTotal === '*'
-                              ? '--'
-                              : Number(courseSummary.courseTotal) === 100
-                              ? '100%'
-                              : `${Number(courseSummary.courseTotal).toFixed(1)}%`}
-                          </Text>
+                          <View className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 justify-center items-center">
+                            <Text className="text-highlightText font-bold text-sm">
+                              {courseSummary.courseTotal === '*'
+                                ? '--'
+                                : Number(courseSummary.courseTotal) === 100
+                                ? '100%'
+                                : `${Number(courseSummary.courseTotal).toFixed(1)}%`}
+                            </Text>
+                          </View>
                         </View>
                         
                     </View>
