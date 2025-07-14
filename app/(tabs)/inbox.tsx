@@ -1,5 +1,5 @@
 import { View, Text, FlatList, ActivityIndicator, TouchableOpacity } from 'react-native';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import MessageCard from '@/components/MessageCard';
 import { loadMessages } from '@/lib/loadMessageHandler';
 import { loadMoreMessages } from '@/lib/loadMoreMessagesHandler';
@@ -12,6 +12,7 @@ import { useColorScheme } from 'react-native';
 import { useSettingSheet } from '@/context/SettingSheetContext';
 import { Ionicons } from '@expo/vector-icons';
 import SkeletonMessage from '@/components/SkeletonMessage';
+import { DeviceEventEmitter } from 'react-native';
 
 
 const Inbox = () => {
@@ -28,12 +29,29 @@ const Inbox = () => {
 
   const handleLoadMessages = async () => {
     if (!credentialsSet) {
+      setMessages([]);
+      setLoading(false);
       return;
     }
+
     const result = await loadMessages();
-    // setCredentialsSet(result.credentialsSet);
     setMessages(result.messages);
+    setLoading(false);
   };
+
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('credentialsAdded', async () => {
+      const hasCreds = await SkywardAuth.hasCredentials();
+      setCredentialsSet(hasCreds);
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    handleLoadMessages();
+  }, [credentialsSet]);
 
   const handleLoadMoreMessages = async () => {
   if (loadingMore || messages.length === 0) {

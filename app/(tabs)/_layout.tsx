@@ -1,4 +1,4 @@
-import { View, Text, useColorScheme, TextInput, TouchableWithoutFeedback, Platform, Keyboard, TouchableOpacity, Linking } from 'react-native'
+import { View, Text, useColorScheme, TextInput, TouchableWithoutFeedback, Platform, Keyboard, TouchableOpacity, Linking, DeviceEventEmitter } from 'react-native'
 import React, { useEffect, useState, useRef, useMemo } from 'react'
 import { Tabs } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -58,6 +58,7 @@ const InnerLayout = () => {
   const handleSheetChanges = (index: number) => {
     if (index === -1) {
       setCurrentSnapPosition('hidden');
+      DeviceEventEmitter.emit('settingsSheetClosed');
     } else {
       setCurrentSnapPosition('33%');
     }
@@ -107,6 +108,7 @@ const InnerLayout = () => {
           title: 'Information Verified',
           preset: 'done'
         });
+        
       } else {
         Burnt.toast({
           title: 'Error',
@@ -114,6 +116,7 @@ const InnerLayout = () => {
           message: "Couldn't verify details",
         });
       }
+      DeviceEventEmitter.emit('credentialsAdded');
     } catch (error) {
       console.error('Failed to save credentials', error);
     }

@@ -29,8 +29,13 @@ export class SkywardAuth {
         AsyncStorage.getItem('skywardUser'),
         AsyncStorage.getItem('skywardPass'),
       ]);
-    //   console.log(link, username, password)
-      return !!(link && username && password);
+
+      const valid =
+        typeof link === 'string' && link.trim().length > 0 &&
+        typeof username === 'string' && username.trim().length > 0 &&
+        typeof password === 'string' && password.trim().length > 0;
+
+      return valid;
     } catch (err) {
       console.error('[SkywardAuth] Error checking credentials:', err);
       return false;
