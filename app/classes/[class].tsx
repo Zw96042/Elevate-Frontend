@@ -7,9 +7,16 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   Switch,
-  Animated,
   useColorScheme,
 } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedReaction,
+  withTiming,
+  runOnJS,
+  Easing,
+  useAnimatedStyle,
+} from 'react-native-reanimated';
 import React, {
   useEffect,
   useState,
@@ -101,6 +108,8 @@ type TermData = {
 const ClassDetails = () => {
   const [isEnabled, setIsEnabled] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [displayGrade, setDisplayGrade] = useState(0);
+  const animatedGrade = useSharedValue(0);
 
   const searchParams = useLocalSearchParams();
   const navigation = useNavigation();
@@ -223,6 +232,24 @@ const ClassDetails = () => {
     fetchArtificialAssignments();
   }, [fetchArtificialAssignments]);
 
+  useEffect(() => {
+    const value =
+      courseSummary.courseTotal === '*'
+        ? 100
+        : Number(courseSummary.courseTotal);
+    animatedGrade.value = withTiming(value, {
+      duration: 700,
+      easing: Easing.inOut(Easing.ease),
+    });
+  }, [courseSummary.courseTotal]);
+
+  useAnimatedReaction(
+    () => animatedGrade.value,
+    (currentValue) => {
+      runOnJS(setDisplayGrade)(currentValue);
+    }
+  );
+
   useFocusEffect(
     useCallback(() => {
       fetchArtificialAssignments();
@@ -300,41 +327,30 @@ const handleResetArtificialAssignments = async () => {
 
   fetchArtificialAssignments();
 };
-  // Animation for Reset Assignments button
-  const resetAnim = useRef(new Animated.Value(0)).current;
+  // Animation for Reset Assignments button (Reanimated)
+  const resetAnim = useSharedValue(0);
   const [showReset, setShowReset] = useState(false);
 
   useEffect(() => {
-    if (!isReady) return; // Wait for AsyncStorage load
+    if (!isReady) return;
     if (isEnabled) {
       setShowReset(true);
-      Animated.timing(resetAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
+      resetAnim.value = withTiming(1, { duration: 300 });
     } else {
-      Animated.timing(resetAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => {
-        setShowReset(false);
+      resetAnim.value = withTiming(0, { duration: 300 }, () => {
+        runOnJS(setShowReset)(false);
       });
     }
   }, [isEnabled, isReady]);
 
-  useEffect(() => {
-    // On mount, if isEnabled is true, animate reset button in
-    if (isEnabled) {
-      setShowReset(true);
-      Animated.timing(resetAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, []);
+  const animatedResetStyle = useAnimatedStyle(() => ({
+    opacity: resetAnim.value,
+    transform: [
+      { translateY: resetAnim.value * 20 - 20 },
+      { scaleY: 0.85 + resetAnim.value * 0.15 },
+    ],
+    marginTop: 16,
+  }));
 
   const theme = useColorScheme();
   const highlightColor = theme === 'dark' ? '#3b5795' : "#a4bfed";
@@ -360,23 +376,10 @@ const handleResetArtificialAssignments = async () => {
             <View className="relative w-[50] h-[50] mt-6">
               <PieChart
                 widthAndHeight={50}
-                series={
-                  courseSummary.courseTotal === '*'
-                    ? [
-                        { value: 100, color: highlightColor },
-                        { value: 0, color: backgroundColor }
-                      ]
-                    : [
-                        {
-                          value: Number(courseSummary.courseTotal),
-                          color: highlightColor
-                        },
-                        {
-                          value: 100 - Number(courseSummary.courseTotal),
-                          color: backgroundColor
-                        }
-                      ]
-                }
+                series={[
+                  { value: displayGrade, color: highlightColor },
+                  { value: 100 - displayGrade, color: backgroundColor },
+                ]}
               />
               <Text className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-highlightText font-bold text-sm">
                 {courseSummary.courseTotal === '*'
@@ -449,24 +452,7 @@ const handleResetArtificialAssignments = async () => {
         <ScrollView className="mt-2">
           {showReset && (
             <Animated.View
-              style={{
-                opacity: resetAnim,
-                transform: [
-                  {
-                    translateY: resetAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [-20, 0],
-                    }),
-                  },
-                  {
-                    scaleY: resetAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.85, 1],
-                    }),
-                  },
-                ],
-                marginTop: 16,
-              }}
+              style={animatedResetStyle}
               pointerEvents={isEnabled ? "auto" : "none"}
             >
               <TouchableOpacity

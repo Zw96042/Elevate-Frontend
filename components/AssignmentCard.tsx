@@ -52,7 +52,7 @@ const AssignmentCard = ({ className, name, term, category, grade, outOf, dueDate
                             activeStrokeWidth={3}
                             activeStrokeColor={highlight}
                             inActiveStrokeOpacity={0}
-                            duration={1000}
+                            duration={700}
                             showProgressValue={false}
                           />
                           <Text

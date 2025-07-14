@@ -162,7 +162,7 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
         ? 100
         : Number(courseSummary.courseTotal);
     animatedGrade.value = withTiming(value, {
-      duration: 1000,
+      duration: 700,
       easing: Easing.inOut(Easing.ease)
     });
   }, [courseSummary.courseTotal]);
