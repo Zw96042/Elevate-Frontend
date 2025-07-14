@@ -7,6 +7,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ASSIN } from '@/app/classes/[class]';
 import { calculateGradeSummary } from '@/utils/calculateGrades';
 import PieChart from 'react-native-pie-chart'
+import Animated, {
+  useSharedValue,
+  useAnimatedProps,
+  withTiming,
+  useDerivedValue,
+  useAnimatedReaction,
+  runOnJS
+} from 'react-native-reanimated';
 
 type TermLabel =
   | "Q1 Grades"
@@ -70,6 +78,14 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
           }
         >;
     }>({ courseTotal: "*", categories: {} });
+
+    const [displayGrade, setDisplayGrade] = useState(
+      courseSummary.courseTotal === '*' ? 0 : Number(courseSummary.courseTotal)
+    );
+
+    const animatedGrade = useSharedValue(
+      courseSummary.courseTotal === '*' ? 0 : Number(courseSummary.courseTotal)
+    );
 
     const fetchArtificialAssignments = useCallback(async () => {
       if (!name) return;
@@ -143,6 +159,14 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
     fetchArtificialAssignments();
   }, [fetchArtificialAssignments]);
 
+  useEffect(() => {
+    const value =
+      courseSummary.courseTotal === '*'
+        ? 0
+        : Number(courseSummary.courseTotal);
+    animatedGrade.value = withTiming(value, { duration: 1000 });
+  }, [courseSummary.courseTotal]);
+
   useFocusEffect(
     useCallback(() => {
       fetchArtificialAssignments();
@@ -152,6 +176,14 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
   const theme = useColorScheme();
   const highlightColor = theme === 'dark' ? '#3b5795' : "#a4bfed";
   const cardColor = theme === 'dark' ? '#1e293b' : "#fafafa";
+
+  useAnimatedReaction(
+    () => animatedGrade.value,
+    (currentValue) => {
+      runOnJS(setDisplayGrade)(currentValue);
+    }
+  );
+
   return (
     
     <Link 
@@ -187,23 +219,10 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
                         <View className="relative w-[50] h-[50]">
                           <PieChart
                             widthAndHeight={50}
-                            series={
-                              courseSummary.courseTotal === '*'
-                                ? [
-                                    { value: 100, color: highlightColor },
-                                    { value: 0, color: cardColor }
-                                  ]
-                                : [
-                                    {
-                                      value: Number(courseSummary.courseTotal),
-                                      color: highlightColor
-                                    },
-                                    {
-                                      value: 100 - Number(courseSummary.courseTotal),
-                                      color: cardColor
-                                    }
-                                  ]
-                            }
+                            series={[
+                              { value: displayGrade, color: highlightColor },
+                              { value: 100 - displayGrade, color: cardColor },
+                            ]}
                           />
                           <Text className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-highlightText font-bold text-sm">
                             {courseSummary.courseTotal === '*'
