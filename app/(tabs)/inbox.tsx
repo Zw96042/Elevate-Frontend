@@ -158,6 +158,8 @@ const Inbox = () => {
       {loading ? (
         <FlatList
           className="mt-4 px-5 mb-[5rem]"
+          contentContainerStyle={{ flexGrow: 1 }}
+          scrollEnabled={true}
           data={Array.from({ length: 8 })}
           keyExtractor={(_, index) => `skeleton-${index}`}
           renderItem={() => <SkeletonMessage />}
@@ -166,6 +168,8 @@ const Inbox = () => {
       ) : (
         <FlatList
           className="mt-4 px-5 mb-[5rem]"
+          contentContainerStyle={{ flexGrow: 1 }}
+          scrollEnabled={true}
           data={messages}
           renderItem={({ item }) => (
             <MessageCard

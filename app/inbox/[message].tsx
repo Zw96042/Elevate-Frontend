@@ -1,4 +1,5 @@
-import { View, Text, ScrollView } from 'react-native'
+import { View, Text } from 'react-native'
+import { ScrollView } from 'react-native-gesture-handler'
 import React from 'react'
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
@@ -7,7 +8,12 @@ const MessageDetails = () => {
   const { message, className, from, date, content } = useLocalSearchParams();
   return (
     <View className='bg-primary flex-1'>
-        <ScrollView className='flex-1'>
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          onStartShouldSetResponder={() => true}
+        >
             <View>
                 <Text className='text-accent font-bold ml-4 mt-3 text-sm'>Subject</Text>
                 <View className="bg-cardColor rounded-lg p-3 mx-4 mt-3">
