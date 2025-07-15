@@ -118,6 +118,9 @@ const Inbox = () => {
             try {
               const retryResult = await loadMessages();
               setMessages(retryResult.messages);
+              if (retryResult.success === false ) {
+                throw new Error(retryResult.error);
+              }
               Burnt.toast({
                 title: "Re-authenticated",
                 preset: "done"

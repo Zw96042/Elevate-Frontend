@@ -1,6 +1,7 @@
 // lib/authHandler.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SkywardAuth } from './skywardAuthInfo';
+import { DeviceEventEmitter } from 'react-native';
 const config = require('./development.config.js');
 
 interface AuthResult {
@@ -23,7 +24,15 @@ export async function authenticate(): Promise<AuthResult> {
     });
     
     if (!response.ok) {
+      await AsyncStorage.setItem('dwd', "");
+      await AsyncStorage.setItem('wfaacl', "");
+      await AsyncStorage.setItem('encses',"");
+      await AsyncStorage.setItem('User-Type', "");
+      await AsyncStorage.setItem('sessionid', "");
+      await AsyncStorage.setItem('baseUrl', authInfo.link);
       
+      DeviceEventEmitter.emit('credentialsInvalid');
+
       return { success: false, error: 'Authentication failed' };
     }
 

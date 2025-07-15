@@ -101,9 +101,12 @@ const InnerLayout = () => {
       await AsyncStorage.setItem('skywardPass', password);
       await AsyncStorage.setItem('skywardLink', "https://skyward-eisdprod.iscorp.com/scripts/wsisa.dll/WService=wsedueanesisdtx/"); // TODO: Change back to add more districts
 
+      lastSaved.current = { link, username, password };
+
       const authResult = await authenticate();
 
-      lastSaved.current = { link, username, password };
+    
+      
       if (authResult.success) {
         Burnt.toast({
           title: 'Information Verified',

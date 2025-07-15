@@ -2,9 +2,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchSkywardMessages } from './skywardClient';
 import { authenticate } from './authHandler';
 
-export const loadMessages = async (): Promise<{
+interface messageResult {
   messages: Message[];
-}> => {
+  success: boolean;
+  error?: string;
+}
+
+export const loadMessages = async (): Promise<messageResult> => {
   const dwd = await AsyncStorage.getItem('dwd');
   const wfaacl = await AsyncStorage.getItem('wfaacl');
   const encses = await AsyncStorage.getItem('encses');
@@ -18,7 +22,7 @@ export const loadMessages = async (): Promise<{
     const authResult = await authenticate();
     if (!authResult.success) {
       console.error('Authentication failed:', authResult.error);
-      return { messages: []};
+      return { messages: [], success: false, error: authResult.error };
     }
     return await loadMessages(); // retry with new credentials
   }
@@ -29,17 +33,17 @@ export const loadMessages = async (): Promise<{
       (a: Message, b: Message) =>
         new Date(b.date).getTime() - new Date(a.date).getTime()
     );
-    return { messages: sorted};
+    return { messages: sorted, success: true};
   } catch (error: any) {
     console.error('Failed to fetch messages:', error.message);
     if (error.message?.toLowerCase().includes('session expired')) {
       const authResult = await authenticate();
       if (!authResult.success) {
         console.error('Re-authentication failed:', authResult.error);
-        return { messages: []};
+        return { messages: [], success: false};
       }
       return await loadMessages(); // retry after re-auth
     }
-    return { messages: []};
+    return { messages: [], success: false};
   }
 };
