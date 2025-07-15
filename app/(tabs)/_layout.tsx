@@ -23,6 +23,7 @@ const InnerLayout = () => {
     setPassword,
   } = useSettingSheet()
   const colorScheme = useColorScheme()
+  const [showPassword, setShowPassword] = useState(false);
   const cardColor = colorScheme === 'dark' ? colors.cardColor.dark : colors.cardColor.light;
 
   // Ref to store the last saved values
@@ -261,8 +262,16 @@ const InnerLayout = () => {
                       onChangeText={setPassword}
                       placeholder="Password"
                       placeholderTextColor="#888"
-                      secureTextEntry
+                      secureTextEntry={!showPassword}
                     />
+                    <TouchableOpacity onPress={() => setShowPassword(prev => !prev)}>
+                      <Ionicons
+                        name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                        size={18}
+                        color="#888"
+                        style={{ marginLeft: 8 }}
+                      />
+                    </TouchableOpacity>
                   </View>
                 </View>
               </BottomSheetView>
