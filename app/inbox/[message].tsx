@@ -1,4 +1,4 @@
-import { View, Text } from 'react-native'
+import { View, Text, Linking } from 'react-native'
 import { ScrollView } from 'react-native-gesture-handler'
 import React from 'react'
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -14,26 +14,57 @@ const MessageDetails = () => {
     content: string | { parts: { type: string; text: string }[] }[];
   };
   
-  const renderFormattedContent = (content: string) => {
-    // console.log(content);
+    const renderFormattedContent = (content: string) => {
     const replacedNewlines = content.replace(/\\n/g, '\n');
-    const parts = replacedNewlines.split(/(\*\*.*?\*\*)/g);
+    
+    // Break content into markdown-style tokens
+    const parts = replacedNewlines.split(
+        /(\*\*.*?\*\*|\[.*?\]\(.*?\)|\n)/g
+    );
 
     return (
-      <Text className="text-main leading-5" style={{ lineHeight: 22 }}>
+        <Text className="text-main leading-5" style={{ lineHeight: 22 }}>
         {parts.map((part, i) => {
-          if (part.startsWith('**') && part.endsWith('**')) {
+            // Bold
+            if (part.startsWith('**') && part.endsWith('**')) {
             return (
-              <Text key={i} style={{ fontWeight: 'bold' }}>
+                <Text key={i} style={{ fontWeight: 'bold' }}>
                 {part.slice(2, -2)}
-              </Text>
+                </Text>
             );
-          }
-          return <Text key={i}>{part}</Text>;
+            }
+
+            // Markdown link [text](url)
+            const linkMatch = part.match(/^\[(.*?)\]\((.*?)\)$/);
+            if (linkMatch) {
+            const [, text, url] = linkMatch;
+            return (
+                <Text
+                key={i}
+                className='text-blue-400'
+                onPress={() => {
+                    // Open in browser
+                    Linking.openURL(url).catch(err =>
+                    console.error('Failed to open URL:', err)
+                    );
+                }}
+                >
+                {text}
+                </Text>
+            );
+            }
+
+            // Newline
+            if (part === '\n') {
+            return <Text key={i}>{'\n'}</Text>;
+            }
+
+            // Regular text
+            return <Text key={i}>{part}</Text>;
         })}
-      </Text>
+        </Text>
     );
-  };
+    };
 
   return (
     <View className='bg-primary flex-1'>
