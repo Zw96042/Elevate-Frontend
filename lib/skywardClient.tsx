@@ -43,7 +43,10 @@ export const fetchSkywardMessages = async ({
 //   console.log("data:", data);
 
   if (data.error) throw new Error(data.error);
-
+  // console.log(data);
+  // if (data.messages.content.has('\n')) {
+  //   console.log("has it ");
+  // }
   return data;
 };
 
