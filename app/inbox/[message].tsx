@@ -15,55 +15,55 @@ const MessageDetails = () => {
   };
   
     const renderFormattedContent = (content: string) => {
-    const replacedNewlines = content.replace(/\\n/g, '\n');
-    
-    // Break content into markdown-style tokens
-    const parts = replacedNewlines.split(
-        /(\*\*.*?\*\*|\[.*?\]\(.*?\)|\n)/g
-    );
+        const replacedNewlines = content.replace(/\\n/g, '\n');
+        
+        // Break content into markdown-style tokens
+        const parts = replacedNewlines.split(
+            /(\*\*.*?\*\*|\[.*?\]\(.*?\)|\n)/g
+        );
 
-    return (
-        <Text className="text-main leading-5" style={{ lineHeight: 22 }}>
-        {parts.map((part, i) => {
-            // Bold
-            if (part.startsWith('**') && part.endsWith('**')) {
-            return (
-                <Text key={i} style={{ fontWeight: 'bold' }}>
-                {part.slice(2, -2)}
-                </Text>
-            );
-            }
+        return (
+            <Text className="text-main leading-5" style={{ lineHeight: 22 }}>
+            {parts.map((part, i) => {
+                // Bold
+                if (part.startsWith('**') && part.endsWith('**')) {
+                return (
+                    <Text key={i} style={{ fontWeight: 'bold' }}>
+                    {part.slice(2, -2)}
+                    </Text>
+                );
+                }
 
-            // Markdown link [text](url)
-            const linkMatch = part.match(/^\[(.*?)\]\((.*?)\)$/);
-            if (linkMatch) {
-            const [, text, url] = linkMatch;
-            return (
-                <Text
-                key={i}
-                className='text-blue-400'
-                onPress={() => {
-                    // Open in browser
-                    Linking.openURL(url).catch(err =>
-                    console.error('Failed to open URL:', err)
-                    );
-                }}
-                >
-                {text}
-                </Text>
-            );
-            }
+                // Markdown link [text](url)
+                const linkMatch = part.match(/^\[(.*?)\]\((.*?)\)$/);
+                if (linkMatch) {
+                const [, text, url] = linkMatch;
+                return (
+                    <Text
+                    key={i}
+                    className='text-blue-400'
+                    onPress={() => {
+                        // Open in browser
+                        Linking.openURL(url).catch(err =>
+                        console.error('Failed to open URL:', err)
+                        );
+                    }}
+                    >
+                    {text}
+                    </Text>
+                );
+                }
 
-            // Newline
-            if (part === '\n') {
-            return <Text key={i}>{'\n'}</Text>;
-            }
+                // Newline
+                if (part === '\n') {
+                return <Text key={i}>{'\n'}</Text>;
+                }
 
-            // Regular text
-            return <Text key={i}>{part}</Text>;
-        })}
-        </Text>
-    );
+                // Regular text
+                return <Text key={i}>{part}</Text>;
+            })}
+            </Text>
+        );
     };
 
   return (
