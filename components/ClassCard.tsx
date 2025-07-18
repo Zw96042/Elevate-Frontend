@@ -244,8 +244,8 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
                           <PieChart
                             widthAndHeight={50}
                             series={[
-                              { value: displayGrade, color: highlightColor },
-                              { value: 100 - displayGrade, color: cardColor },
+                              { value: Math.min(displayGrade, 100), color: highlightColor },
+                              { value: 100 - Math.min(displayGrade, 100), color: cardColor },
                             ]}
                           />
                           <View className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 justify-center items-center">

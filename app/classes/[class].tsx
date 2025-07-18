@@ -34,6 +34,9 @@ import AssignmentCard from "@/components/AssignmentCard";
 import { useAddAssignmentSheet } from "@/context/AddAssignmentSheetContext";
 import { useBottomSheet } from "@/context/BottomSheetContext";
 import PieChart from "react-native-pie-chart";
+import { MotiView, AnimatePresence } from 'moti'
+
+
 
 export const ASSIN = [
   {
@@ -401,8 +404,8 @@ const handleResetArtificialAssignments = async () => {
               <PieChart
                 widthAndHeight={50}
                 series={[
-                  { value: displayGrade, color: highlightColor },
-                  { value: 100 - displayGrade, color: backgroundColor },
+                  { value: Math.min(displayGrade, 100), color: highlightColor },
+                  { value: 100 - Math.min(displayGrade, 100), color: backgroundColor },
                 ]}
               />
               <Text className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-highlightText font-bold text-sm">
@@ -474,19 +477,26 @@ const handleResetArtificialAssignments = async () => {
           <View className="h-[1px] bg-accent opacity-30 my-1" />
         </View>
         <ScrollView className="mt-2">
-          {showReset && (
-            <Animated.View
-              style={animatedResetStyle}
-              pointerEvents={isEnabled ? "auto" : "none"}
-            >
-              <TouchableOpacity
-                onPress={handleResetArtificialAssignments}
-                className="mx-4 bg-cardColor items-center rounded-lg"
+          <AnimatePresence>
+            {showReset && (
+              <MotiView
+                from={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 56 }}
+                exit={{ opacity: 0, height: 0 }}
+                exitTransition={{ type: 'timing', duration: 100 }}
+                transition={{ type: "timing", duration: 300 }}
+                style={{ overflow: 'hidden', marginHorizontal: 16, marginTop: 16 }}
+                pointerEvents={isEnabled ? "auto" : "none"}
               >
-                <Text className="text-highlightText font-medium py-3 text-lg">Reset Assignments</Text>
-              </TouchableOpacity>
-            </Animated.View>
-          )}
+                <TouchableOpacity
+                  onPress={handleResetArtificialAssignments}
+                  className="bg-cardColor items-center rounded-lg"
+                >
+                  <Text className="text-highlightText font-medium py-3 text-lg">Reset Assignments</Text>
+                </TouchableOpacity>
+              </MotiView>
+            )}
+          </AnimatePresence>
           <FlatList
             data={filteredAssignments}
             renderItem={({ item }: { item: Assignment }) => (
