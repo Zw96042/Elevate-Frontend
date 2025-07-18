@@ -357,7 +357,7 @@ export default function Index() {
         <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
           <Text className="text-white text-3xl font-bold">Courses</Text>
           <TouchableOpacity
-            onPress={() => settingSheetRef.current?.snapToPosition('35%', { duration: 350 })}
+            onPress={() => settingSheetRef.current?.snapToIndex(1)}
           >
             <Ionicons name='cog-outline' color={'#fff'} size={26} />
           </TouchableOpacity>

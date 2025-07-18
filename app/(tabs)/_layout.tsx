@@ -11,7 +11,7 @@ import { authenticate } from '@/lib/authHandler'
 import * as Burnt from "burnt";
 
 const InnerLayout = () => {
-  const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '35%' | '80%'>('hidden');
+  const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '33%' | '80%'>('hidden');
   const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
   const {
     settingSheetRef,
@@ -45,8 +45,8 @@ const InnerLayout = () => {
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
       setModalClosedByOutsideTap(false);
       if (currentSnapPosition === '80%') {
-        settingSheetRef.current?.snapToPosition('35%', { duration: 150 });
-        setCurrentSnapPosition('35%');
+        settingSheetRef.current?.snapToPosition('33%', { duration: 150 });
+        setCurrentSnapPosition('33%');
       }
     });
 
@@ -61,7 +61,7 @@ const InnerLayout = () => {
       setCurrentSnapPosition('hidden');
       DeviceEventEmitter.emit('settingsSheetClosed');
     } else {
-      setCurrentSnapPosition('35%');
+      setCurrentSnapPosition('33%');
     }
   };
   useEffect(() => {
@@ -194,7 +194,7 @@ const InnerLayout = () => {
           <BottomSheet
             ref={settingSheetRef}
             index={-1}
-            // snapPoints={["33%"]}
+            snapPoints={["33%"]}
             backgroundStyle={{ backgroundColor: cardColor }}
             overDragResistanceFactor={1}
             onClose={saveInfo}
@@ -218,7 +218,7 @@ const InnerLayout = () => {
           >
             <TouchableWithoutFeedback onPress={() => {
               Keyboard.dismiss();
-              settingSheetRef.current?.snapToPosition('35%', { duration: 350 });
+              settingSheetRef.current?.snapToPosition('33%', { duration: 350 });
             }}>
               <BottomSheetView className="bg-cardColor px-8  ">
                 <Text className="text-2xl text-main">Credentials</Text>
