@@ -131,7 +131,7 @@ const AssignmentDetails = () => {
                               <TextInput
                                 ref={gradeInputRef}
                                 className='text-base text-main leading-[1.15rem] py-[0.175rem]'
-                                keyboardType='numeric'
+                                keyboardType='phone-pad'
                                 value={gradeValue}
                                 onChangeText={setGradeValue}
                                 onBlur={() => {
