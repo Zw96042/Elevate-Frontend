@@ -74,7 +74,7 @@ const Inbox = () => {
     <View className="bg-primary flex-1">
       <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
         <Text className="text-white text-3xl font-bold">Inbox</Text>
-        <TouchableOpacity onPress={() => settingSheetRef.current?.snapToIndex(1)}>
+        <TouchableOpacity onPress={() => settingSheetRef.current?.snapToIndex(0)}>
           <Ionicons name='cog-outline' color={'#fff'} size={26} />
         </TouchableOpacity>
       </View>
@@ -122,7 +122,7 @@ const Inbox = () => {
                   Your credentials are either invalid or not found.{' '}
                   <Text
                     className="text-blue-400 underline"
-                    onPress={() => settingSheetRef.current?.snapToIndex(1)}
+                    onPress={() => settingSheetRef.current?.snapToIndex(0)}
                   >
                     Update your settings
                   </Text>{' '}
