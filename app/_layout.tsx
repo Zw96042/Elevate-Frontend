@@ -53,7 +53,7 @@ function InnerLayout() {
   useEffect(() => {
       const showSub = Keyboard.addListener('keyboardDidShow', () => {
         if (
-          !modalClosedByOutsideTap &&
+          !modalClosedByOutsideTap && // only run if NOT closed by tap/submit
           currentSnapPosition !== '90%' &&
           currentSnapPosition !== 'hidden'
         ) {
@@ -61,9 +61,13 @@ function InnerLayout() {
           setCurrentSnapPosition('90%');
         }
       });
-  
+
       const hideSub = Keyboard.addListener('keyboardDidHide', () => {
-        setModalClosedByOutsideTap(false);
+        if (modalClosedByOutsideTap) {
+          // Reset the flag after handling dismiss caused by tap or submit
+          setModalClosedByOutsideTap(false);
+          return; // Skip snapping back the modal
+        }
         if (currentSnapPosition === '90%') {
           addSheetRef.current?.snapToPosition('54%', { duration: 150 });
           setCurrentSnapPosition('54%');
@@ -228,7 +232,7 @@ function InnerLayout() {
                   <TextInput
                     className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
                     placeholder="Enter grade"
-                    keyboardType="numeric"
+                    keyboardType="phone-pad"
                     value={grade.toString()}
                     onChangeText={(i) => {
                       setGrade(i);
@@ -258,6 +262,8 @@ function InnerLayout() {
                         });
                       return;
                     }
+                    setModalClosedByOutsideTap(true); // block keyboard listeners
+                    Keyboard.dismiss();
                     onSubmit();
                   }}
                   className="bg-highlight rounded-md py-3">
