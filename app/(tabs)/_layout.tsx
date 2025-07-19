@@ -256,7 +256,7 @@ const InnerLayout = () => {
                   </View>
                 </View>
 
-                <View className="pb-10">
+                <View className="pb-[62px]">
                   <Text className="font-medium text-main">Password</Text>
                   <View className="flex-row items-center rounded-md px-3 py-2 bg-primary">
                     <Ionicons name="lock-closed-outline" size={18} color="#888" style={{ marginRight: 8 }} />

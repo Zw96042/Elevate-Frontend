@@ -65,6 +65,7 @@ const Inbox = () => {
         } finally {
           setLoading(false);
         }
+       
       };
       fetchMessages();
     }, [])

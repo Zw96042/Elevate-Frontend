@@ -1,9 +1,12 @@
 const formatClassName = (raw: string) => {
   if (raw.endsWith("FF")) return "Invention & Innovation FF";
+
+  const acronyms = new Set(["AP", "IB", "GT", "ELA"]);
+
   return raw
-    .toLowerCase()
+    .toUpperCase()
     .split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .map(word => acronyms.has(word) ? word : word.charAt(0) + word.slice(1).toLowerCase())
     .join(' ');
 };
 

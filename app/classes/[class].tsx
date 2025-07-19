@@ -396,7 +396,7 @@ const handleResetArtificialAssignments = async () => {
           <View className="w-[80%]">
             <View className="mt-6 pr-5 justify-center">
               <TouchableOpacity
-                onPress={() => bottomSheetRef.current?.snapToIndex(1)}
+                onPress={() => bottomSheetRef.current?.snapToIndex(0)}
                 className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
               >
                 <Text className="text-base text-main">{selectedCategory}</Text>

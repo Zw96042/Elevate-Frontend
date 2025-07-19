@@ -14,18 +14,18 @@ export const fetchSkywardMessages = async ({
     throw new Error('Missing session credentials');
   }
 
-    const res = await fetch(`${config.BACKEND_IP}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-        sessionid,
-        encses,
-        dwd,
-        wfaacl,
-        baseUrl,
-        'User-Type': userType,
-        }),
-    });
+  const res = await fetch(`${config.BACKEND_IP}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+      sessionid,
+      encses,
+      dwd,
+      wfaacl,
+      baseUrl,
+      'User-Type': userType,
+      }),
+  });
 
   if (!res.ok) {
     // console.log(JSON.stringify(res));
@@ -42,11 +42,6 @@ export const fetchSkywardMessages = async ({
   const data = await res.json();
 //   console.log("data:", data);
 
-  if (data.error) throw new Error(data.error);
-  // console.log(data);
-  // if (data.messages.content.has('\n')) {
-  //   console.log("has it ");
-  // }
   return data;
 };
 

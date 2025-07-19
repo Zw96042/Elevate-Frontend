@@ -8,7 +8,6 @@ const AssignmentDetails = () => {
   const router = useRouter();
   const { class: classParam, name, category, grade, outOf, dueDate, artificial, editing, term } = useLocalSearchParams();
   const formattedClass = formatClassName(classParam?.toString() || '');
-//   console.log("term", term);
 
   const [gradeValue, setGradeValue] = React.useState(() =>
     grade === '*' ? '*' : !isNaN(Number(grade)) ? Number(grade).toFixed(2) : ''
@@ -44,9 +43,9 @@ const AssignmentDetails = () => {
     const formattedGrade = gradeValue === '*' ? '*' : parseFloat(Number(gradeValue).toFixed(2));
     const formattedOutOf = Number(outOfValue);
 
-    console.log("Updating");
+    // console.log("Updating");
     if (isNaN(formattedOutOf)) return;
-    console.log(formattedGrade);
+    // console.log(formattedGrade);
     const updatedAssignment = {
       className,
       name,
@@ -64,7 +63,7 @@ const AssignmentDetails = () => {
     ];
 
     const updated = { ...existing, [className]: updatedClassList };
-    console.log("Updated", updated);
+    // console.log("Updated", updated);
     await AsyncStorage.setItem('artificialAssignments', JSON.stringify(updated));
   };
 
@@ -75,7 +74,7 @@ const AssignmentDetails = () => {
     } else if (!isNaN(Number(gradeValue)) && !isNaN(Number(outOfValue)) && Number(outOfValue) !== 0) {
       setPercentage(((Number(gradeValue) / Number(outOfValue)) * 100).toFixed(2));
     }
-    console.log(percentage);
+    // console.log(percentage);
   };
 
   return (
