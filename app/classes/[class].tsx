@@ -489,7 +489,14 @@ const handleResetArtificialAssignments = async () => {
           <FlatList
             data={filteredAssignments}
             renderItem={({ item }: { item: Assignment }) => (
-              <AssignmentCard {...item} editing={isEnabled} />
+              <AnimatePresence >
+                <MotiView
+                  from={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                >
+                  <AssignmentCard {...item} editing={isEnabled} />
+                </MotiView>
+              </AnimatePresence>
             )}
             keyExtractor={(item) => item.name.toString()}
             className="mt-6 pb-32 px-3"
