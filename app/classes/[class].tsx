@@ -354,30 +354,6 @@ const handleResetArtificialAssignments = async () => {
 
   fetchArtificialAssignments();
 };
-  // Animation for Reset Assignments button (Reanimated)
-  const resetAnim = useSharedValue(0);
-  const [showReset, setShowReset] = useState(false);
-
-  useEffect(() => {
-    if (!isReady) return;
-    if (isEnabled) {
-      setShowReset(true);
-      resetAnim.value = withTiming(1, { duration: 300 });
-    } else {
-      resetAnim.value = withTiming(0, { duration: 300 }, () => {
-        runOnJS(setShowReset)(false);
-      });
-    }
-  }, [isEnabled, isReady]);
-
-  const animatedResetStyle = useAnimatedStyle(() => ({
-    opacity: resetAnim.value,
-    transform: [
-      { translateY: resetAnim.value * 20 - 20 },
-      { scaleY: 0.85 + resetAnim.value * 0.15 },
-    ],
-    marginTop: 16,
-  }));
 
   const theme = useColorScheme();
   const highlightColor = theme === 'dark' ? '#3b5795' : "#a4bfed";
@@ -478,14 +454,22 @@ const handleResetArtificialAssignments = async () => {
         </View>
         <ScrollView className="mt-2">
           <AnimatePresence>
-            {showReset && (
+            {isEnabled && (
               <MotiView
-                from={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 56 }}
-                exit={{ opacity: 0, height: 0 }}
-                exitTransition={{ type: 'timing', duration: 100 }}
-                transition={{ type: "timing", duration: 300 }}
-                style={{ overflow: 'hidden', marginHorizontal: 16, marginTop: 16 }}
+                key={`reset-${isEnabled}`}
+                from={{ opacity: 0, height: 0, marginTop: 0 }}
+                animate={{ opacity: 1, height: 56, marginTop: 16 }}
+                exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                transition={{
+                  type: "spring",
+                  damping: 20,
+                  stiffness: 300,
+                  mass: 0.4,
+                  overshootClamping: true,
+                  restDisplacementThreshold: 0.01,
+                  restSpeedThreshold: 0.01
+                }}
+                style={{  marginHorizontal: 16 }}
                 pointerEvents={isEnabled ? "auto" : "none"}
               >
                 <TouchableOpacity
