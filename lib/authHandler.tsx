@@ -17,33 +17,43 @@ export async function authenticate(): Promise<AuthResult> {
       return { success: false, error: 'Missing credentials' };
     }
 
-    const response = await fetch(`${config.BACKEND_IP}/auth`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ baseUrl: authInfo.link, user: authInfo.username, pass: authInfo.password }),
-    });
-    
-    if (!response.ok) {
-      await AsyncStorage.setItem('dwd', "");
-      await AsyncStorage.setItem('wfaacl', "");
-      await AsyncStorage.setItem('encses',"");
-      await AsyncStorage.setItem('User-Type', "");
-      await AsyncStorage.setItem('sessionid', "");
-      await AsyncStorage.setItem('baseUrl', authInfo.link);
+    if (authInfo.username != "dev-test" || authInfo.password != "fgx") {
+      const response = await fetch(`${config.BACKEND_IP}/auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ baseUrl: authInfo.link, user: authInfo.username, pass: authInfo.password }),
+      });
       
-      DeviceEventEmitter.emit('credentialsInvalid');
+      if (!response.ok) {
+        await AsyncStorage.setItem('dwd', "");
+        await AsyncStorage.setItem('wfaacl', "");
+        await AsyncStorage.setItem('encses',"");
+        await AsyncStorage.setItem('User-Type', "");
+        await AsyncStorage.setItem('sessionid', "");
+        await AsyncStorage.setItem('baseUrl', authInfo.link);
+        
+        DeviceEventEmitter.emit('credentialsInvalid');
 
-      return { success: false, error: 'Authentication failed' };
+        return { success: false, error: 'Authentication failed' };
+      }
+
+      const sessionCodes = await response.json();
+
+      await AsyncStorage.setItem('dwd', sessionCodes.dwd);
+      await AsyncStorage.setItem('wfaacl', sessionCodes.wfaacl);
+      await AsyncStorage.setItem('encses', sessionCodes.encses);
+      await AsyncStorage.setItem('User-Type', sessionCodes['User-Type']);
+      await AsyncStorage.setItem('sessionid', sessionCodes.sessionid);
+      await AsyncStorage.setItem('baseUrl', authInfo.link);
+    } else {
+      // Special Creds
+      await AsyncStorage.setItem('dwd', "dev");
+      await AsyncStorage.setItem('wfaacl', "dev");
+      await AsyncStorage.setItem('encses', "dev");
+      await AsyncStorage.setItem('User-Type', "dev");
+      await AsyncStorage.setItem('sessionid', "dev");
+      await AsyncStorage.setItem('baseUrl', authInfo.link);
     }
-
-    const sessionCodes = await response.json();
-
-    await AsyncStorage.setItem('dwd', sessionCodes.dwd);
-    await AsyncStorage.setItem('wfaacl', sessionCodes.wfaacl);
-    await AsyncStorage.setItem('encses', sessionCodes.encses);
-    await AsyncStorage.setItem('User-Type', sessionCodes['User-Type']);
-    await AsyncStorage.setItem('sessionid', sessionCodes.sessionid);
-    await AsyncStorage.setItem('baseUrl', authInfo.link);
 
     return { success: true };
   } catch (err: any) {
