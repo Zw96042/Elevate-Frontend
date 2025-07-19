@@ -436,9 +436,14 @@ const handleResetArtificialAssignments = async () => {
                 <View className="items-end">
                   {courseSummary.categories[name] && (
                     <View className="h-2 w-[50%] bg-accent rounded-full overflow-hidden mt-1 ">
-                      <View
+                      <MotiView
+                        animate={{width: `${courseSummary.categories[name].average}%`}}
                         className="bg-highlight h-2"
-                        style={{ width: `${courseSummary.categories[name].average}%` }}
+                        transition={{
+                          type: 'spring',
+                          damping: 20
+                        }}
+                        // style={{ width: `${courseSummary.categories[name].average}%` }}
                       />
                     </View>
                   )}
