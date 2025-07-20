@@ -28,7 +28,7 @@ const GPA = () => {
   const [selectedGrade, setSelectedGrade] = useState<GradeLevel>('Freshman');
   
   // Mock current grade level - replace with actual logic later
-  const currentGradeLevel: GradeLevel = 'Senior';
+  const currentGradeLevel: GradeLevel = 'Junior';
   
   // Mock GPA data - replace with actual calculations later
   const mockGPAData: QuarterData = {
@@ -47,7 +47,7 @@ const GPA = () => {
   const availableGradeLevels = gradeLevels.filter((grade, index) => {
     const gradeIndex = gradeLevels.indexOf(currentGradeLevel);
     // Don't show "All Time" for freshmen
-    if (grade === 'All Time' && currentGradeLevel === 'Freshman') {
+    if (grade === 'All Time' && gradeIndex === 0) {
       return false;
     }
     return index <= gradeIndex || grade === 'All Time';
@@ -96,31 +96,111 @@ const GPA = () => {
 
   const renderGPADisplay = () => (
     <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-      <View className="px-6 py-6 space-y-4">
-        {[
-          { label: 'RC1', data: mockGPAData.q1 },
-          { label: 'RC2', data: mockGPAData.q2 },
-          { label: 'SM1', data: mockGPAData.s1 },
-          { label: 'RC3', data: mockGPAData.q3 },
-          { label: 'RC4', data: mockGPAData.q4 },
-          { label: 'SM2', data: mockGPAData.s2 },
-          { label: 'FIN', data: mockGPAData.fullYear },
-        ].map(({ label, data }) => (
-          <View
-            key={label}
-            className="bg-cardColor rounded-xl px-4 py-3 flex-row items-center justify-between mb-4"
-          >
-            <Text className="text-main font-semibold text-lg w-12">{label}</Text>
-            <View className="flex-1 pl-2">
-              <Text className="text-secondary text-xs">Unweighted</Text>
-              <Text className="text-main text-lg font-bold">{data.unweighted}</Text>
-            </View>
-            <View className="flex-1 items-end">
-              <Text className="text-secondary text-xs">Weighted</Text>
-              <Text className="text-main text-lg font-bold">{data.weighted}</Text>
+      <View className="px-6 py-4">
+        {/* RC1 and RC2 on same row */}
+        <View className="flex-row justify-between mb-3">
+          <View className="bg-cardColor rounded-lg px-3 py-2 w-[48%]">
+            <Text className="text-main font-semibold text-sm mb-1">RC1</Text>
+            <View className="flex-row justify-between">
+              <View className="items-start">
+                <Text className="text-secondary text-xs">Unweighted</Text>
+                <Text className="text-main text-sm font-bold">{mockGPAData.q1.unweighted}</Text>
+              </View>
+              <View className="items-end">
+                <Text className="text-secondary text-xs">Weighted</Text>
+                <Text className="text-main text-sm font-bold">{mockGPAData.q1.weighted}</Text>
+              </View>
             </View>
           </View>
-        ))}
+          <View className="bg-cardColor rounded-lg px-3 py-2 w-[48%]">
+            <Text className="text-main font-semibold text-sm mb-1">RC2</Text>
+            <View className="flex-row justify-between">
+              <View className="items-start">
+                <Text className="text-secondary text-xs">Unweighted</Text>
+                <Text className="text-main text-sm font-bold">{mockGPAData.q2.unweighted}</Text>
+              </View>
+              <View className="items-end">
+                <Text className="text-secondary text-xs">Weighted</Text>
+                <Text className="text-main text-sm font-bold">{mockGPAData.q2.weighted}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* RC3 and RC4 on same row */}
+        <View className="flex-row justify-between mb-3">
+          <View className="bg-cardColor rounded-lg px-3 py-2 w-[48%]">
+            <Text className="text-main font-semibold text-sm mb-1">RC3</Text>
+            <View className="flex-row justify-between">
+              <View className="items-start">
+                <Text className="text-secondary text-xs">Unweighted</Text>
+                <Text className="text-main text-sm font-bold">{mockGPAData.q3.unweighted}</Text>
+              </View>
+              <View className="items-end">
+                <Text className="text-secondary text-xs">Weighted</Text>
+                <Text className="text-main text-sm font-bold">{mockGPAData.q3.weighted}</Text>
+              </View>
+            </View>
+          </View>
+          <View className="bg-cardColor rounded-lg px-3 py-2 w-[48%]">
+            <Text className="text-main font-semibold text-sm mb-1">RC4</Text>
+            <View className="flex-row justify-between">
+              <View className="items-start">
+                <Text className="text-secondary text-xs">Unweighted</Text>
+                <Text className="text-main text-sm font-bold">{mockGPAData.q4.unweighted}</Text>
+              </View>
+              <View className="items-end">
+                <Text className="text-secondary text-xs">Weighted</Text>
+                <Text className="text-main text-sm font-bold">{mockGPAData.q4.weighted}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* SM1 and SM2 on same row */}
+        <View className="flex-row justify-between mb-3">
+          <View className="bg-cardColor rounded-lg px-3 py-2 w-[48%]">
+            <Text className="text-main font-semibold text-sm mb-1">SM1</Text>
+            <View className="flex-row justify-between">
+              <View className="items-start">
+                <Text className="text-secondary text-xs">Unweighted</Text>
+                <Text className="text-main text-sm font-bold">{mockGPAData.s1.unweighted}</Text>
+              </View>
+              <View className="items-end">
+                <Text className="text-secondary text-xs">Weighted</Text>
+                <Text className="text-main text-sm font-bold">{mockGPAData.s1.weighted}</Text>
+              </View>
+            </View>
+          </View>
+          <View className="bg-cardColor rounded-lg px-3 py-2 w-[48%]">
+            <Text className="text-main font-semibold text-sm mb-1">SM2</Text>
+            <View className="flex-row justify-between">
+              <View className="items-start">
+                <Text className="text-secondary text-xs">Unweighted</Text>
+                <Text className="text-main text-sm font-bold">{mockGPAData.s2.unweighted}</Text>
+              </View>
+              <View className="items-end">
+                <Text className="text-secondary text-xs">Weighted</Text>
+                <Text className="text-main text-sm font-bold">{mockGPAData.s2.weighted}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* FIN on its own row with different style */}
+        <View className="bg-cardColor rounded-xl px-4 py-3 flex-row items-center justify-between">
+          <Text className="text-main font-bold text-lg">FIN</Text>
+          <View className="flex-row items-center space-x-6">
+            <View className="items-end mr-4">
+              <Text className="text-secondary text-xs">Unweighted</Text>
+              <Text className="text-main text-lg font-bold">{mockGPAData.fullYear.unweighted}</Text>
+            </View>
+            <View className="items-end">
+              <Text className="text-secondary text-xs">Weighted</Text>
+              <Text className="text-main text-lg font-bold">{mockGPAData.fullYear.weighted}</Text>
+            </View>
+          </View>
+        </View>
       </View>
     </ScrollView>
   );
