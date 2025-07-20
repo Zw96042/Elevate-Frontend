@@ -129,28 +129,32 @@ const GPA = () => {
               </LinearGradient>
             </Defs>
             {/* Y-axis scale */}
-            {[3.0, 3.5, 4.0, 4.5].map((val) => {
-              const y = 10 + graphHeight - ((val - 3.0) / 2.0) * (graphHeight - 20);
-              return (
-                <SvgText
-                  key={val}
-                  x={4}
-                  y={y}
-                  fontSize={8}
-                  fill="rgba(255,255,255,0.6)"
-                >
-                  {val.toFixed(1)}
-                </SvgText>
-              );
-            })}
+            {
+            //[3.0, 3.5, 4.0, 4.5].map((val) => {
+              // const y = 10 + graphHeight - ((val - 3.0) / 2.0) * (graphHeight - 20);
+              // return (
+              //   <SvgText
+              //     key={val}
+              //     x={4}
+              //     y={y}
+              //     fontSize={8}
+              //     fill="rgba(255,255,255,0.6)"
+              //   >
+              //     {/* <Text className='text-main'> */}
+              //       {val.toFixed(1)}
+              //     {/* </Text> */}
+              //   </SvgText>
+              // );
+            //})
+            }
             {/* Area under the line */}
             <Path d={fillPathData} fill="url(#gradient)" />
             {/* Line */}
             <Path d={pathData} stroke="#0090FF" strokeWidth="2" fill="none" />
           </Svg>
           <MotiView
-            from={{ width: containerWidth }}
-            animate={{ width: 0 }}
+            from={{ width: containerWidth-35 }}
+            animate={{ width: 25 }}
             transition={{
               type: 'spring', 
               damping: 1000, 
@@ -164,8 +168,9 @@ const GPA = () => {
               top: 0,
               bottom: 0,
               right: 0,
-              backgroundColor: '#1E293B',
+              // backgroundColor: '#1E293B',
             }}
+            className='bg-cardColor'
           />
         </View>
         
@@ -207,9 +212,23 @@ const GPA = () => {
 
   const renderGPADisplay = () => (
     <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-      <View className="px-6 py-4">
+      <View className="px-6 pb-4">
         {/* GPA Graph */}
         {renderGPAGraph()}
+
+        <View className="bg-cardColor rounded-xl px-4 py-3 flex-row items-center justify-between mb-8">
+          <Text className="text-main font-bold text-lg">FIN</Text>
+          <View className="flex-row items-center space-x-6">
+            <View className="items-end mr-4">
+              <Text className="text-secondary text-xs">Unweighted</Text>
+              <Text className="text-main text-lg font-bold">{mockGPAData.fullYear.unweighted}</Text>
+            </View>
+            <View className="items-end">
+              <Text className="text-secondary text-xs">Weighted</Text>
+              <Text className="text-main text-lg font-bold">{mockGPAData.fullYear.weighted}</Text>
+            </View>
+          </View>
+        </View>
         
         {/* RC1 and RC2 on same row */}
         <View className="flex-row justify-between mb-3">
@@ -241,8 +260,7 @@ const GPA = () => {
           </View>
         </View>
 
-        {/* FIN on its own row with different style */}
-        <View className="bg-cardColor rounded-xl px-4 py-3 flex-row items-center justify-between mb-3">
+        <View className="bg-cardColor rounded-xl px-4 py-3 flex-row items-center justify-between mb-8">
           <Text className="text-main font-bold text-lg">SM1</Text>
           <View className="flex-row items-center space-x-6">
             <View className="items-end mr-4">
@@ -286,7 +304,6 @@ const GPA = () => {
           </View>
         </View>
 
-        {/* SM1 and SM2 on same row */}
         <View className="bg-cardColor rounded-xl px-4 py-3 flex-row items-center justify-between mb-3">
           <Text className="text-main font-bold text-lg">SM2</Text>
           <View className="flex-row items-center space-x-6">
@@ -301,20 +318,7 @@ const GPA = () => {
           </View>
         </View>
 
-        {/* FIN on its own row with different style */}
-        <View className="bg-cardColor rounded-xl px-4 py-3 flex-row items-center justify-between">
-          <Text className="text-main font-bold text-lg">FIN</Text>
-          <View className="flex-row items-center space-x-6">
-            <View className="items-end mr-4">
-              <Text className="text-secondary text-xs">Unweighted</Text>
-              <Text className="text-main text-lg font-bold">{mockGPAData.fullYear.unweighted}</Text>
-            </View>
-            <View className="items-end">
-              <Text className="text-secondary text-xs">Weighted</Text>
-              <Text className="text-main text-lg font-bold">{mockGPAData.fullYear.weighted}</Text>
-            </View>
-          </View>
-        </View>
+        
       </View>
     </ScrollView>
   );
