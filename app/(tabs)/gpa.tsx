@@ -28,7 +28,7 @@ const GPA = () => {
   const [selectedGrade, setSelectedGrade] = useState<GradeLevel>('Freshman');
   
   // Mock current grade level - replace with actual logic later
-  const currentGradeLevel: GradeLevel = 'Junior';
+  const currentGradeLevel: GradeLevel = 'Senior';
   
   // Mock GPA data - replace with actual calculations later
   const mockGPAData: QuarterData = {
@@ -46,6 +46,10 @@ const GPA = () => {
   // Filter grade levels based on current grade
   const availableGradeLevels = gradeLevels.filter((grade, index) => {
     const gradeIndex = gradeLevels.indexOf(currentGradeLevel);
+    // Don't show "All Time" for freshmen
+    if (grade === 'All Time' && currentGradeLevel === 'Freshman') {
+      return false;
+    }
     return index <= gradeIndex || grade === 'All Time';
   });
 
@@ -135,26 +139,26 @@ const GPA = () => {
       </View>
 
       {/* Grade Level Selectors - Moved out of header */}
-      <View className="mt-4 pb-4">
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
-          {availableGradeLevels.map((grade) => (
+      <View className="mt-4 pb-4 px-4">
+        <View className="flex-row">
+          {availableGradeLevels.map((grade, index) => (
             <TouchableOpacity
               key={grade}
               onPress={() => setSelectedGrade(grade)}
-              className={`px-4 py-2 rounded-full ml-3 ${
+              className={`flex-1 mx-1 py-2 rounded-full ${
                 selectedGrade === grade
                   ? 'bg-highlight border-highlight'
                   : 'border border-accent'
               }`}
             >
-              <Text className={`font-medium ${
+              <Text className={`font-medium text-center ${
                 selectedGrade === grade ? 'text-highlightText font-bold' : 'text-main'
-              }`}>
+              } ${availableGradeLevels.length === 5 ? 'text-xs' : availableGradeLevels.length >= 4 ? 'text-xs' : 'text-sm'}`}>
                 {grade}
               </Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
       </View>
 
       {/* Content Area */}
