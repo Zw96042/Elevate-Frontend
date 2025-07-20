@@ -2,8 +2,11 @@ import { useSettingSheet } from '@/context/SettingSheetContext';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
+import { MotiView } from 'moti';
 import React, { useCallback, useState } from 'react';
-import { Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Dimensions, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Easing } from 'react-native-reanimated';
+import Svg, { Defs, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
 
 type GradeLevel = 'Freshman' | 'Sophomore' | 'Junior' | 'Senior' | 'All Time';
 
@@ -72,6 +75,114 @@ const GPA = () => {
     );
   };
 
+  const renderGPAGraph = () => {
+    const screenWidth = Dimensions.get('window').width;
+    const graphWidth = screenWidth - 48; // Account for padding
+    const graphHeight = 120;
+    const containerWidth = screenWidth - 24; // Account for mx-6 (12px on each side) and px-4 (16px on each side)
+    
+    // GPA progression data points (weighted GPA values)
+    const gpaPoints = [
+      mockGPAData.q1.weighted,
+      mockGPAData.q2.weighted,
+      mockGPAData.s1.weighted,
+      mockGPAData.q3.weighted,
+      mockGPAData.q4.weighted,
+      mockGPAData.s2.weighted,
+      mockGPAData.fullYear.weighted
+    ];
+    
+    // Normalize GPA values to graph coordinates with proper padding
+    const normalizedPoints = gpaPoints.slice(0, gpaPoints.length - 1).map((gpa, index) => {
+      const x = 20 + (index / (gpaPoints.length - 2)) * (graphWidth - 40);
+      const y = 10 + graphHeight - ((gpa - 3.0) / 2.0) * (graphHeight - 20);
+      return { x, y };
+    });
+    
+    // Create smooth SVG path with curves
+    const pathData = normalizedPoints.map((point, index) => {
+      if (index === 0) return `M ${point.x} ${point.y}`;
+      const prevPoint = normalizedPoints[index - 1];
+      const controlX1 = prevPoint.x + (point.x - prevPoint.x) * 0.3;
+      const controlY1 = prevPoint.y;
+      const controlX2 = point.x - (point.x - prevPoint.x) * 0.3;
+      const controlY2 = point.y;
+      return `C ${controlX1} ${controlY1} ${controlX2} ${controlY2} ${point.x} ${point.y}`;
+    }).join(' ');
+    
+    // Create fill path (area under the line)
+    const fillPathData = pathData + ` L ${graphWidth - 20} ${graphHeight - 10} L 20 ${graphHeight - 10} Z`;
+    
+    return (
+      <View className="mb-6 bg-cardColor rounded-xl pt-4 pb-2">
+        <Text className="text-main font-semibold text-lg text-center">GPA Progression</Text>
+        <View style={{ width: '100%', height: graphHeight, overflow: 'hidden' }}>
+          <Svg
+            width="100%"
+            height={graphHeight}
+            viewBox={`0 0 ${graphWidth} ${graphHeight}`}
+          >
+            <Defs>
+              <LinearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <Stop offset="0%" stopColor="#138EED" stopOpacity="0.4" />
+                <Stop offset="100%" stopColor="#058FFB" stopOpacity="0" />
+              </LinearGradient>
+            </Defs>
+            {/* Y-axis scale */}
+            {[3.0, 3.5, 4.0, 4.5].map((val) => {
+              const y = 10 + graphHeight - ((val - 3.0) / 2.0) * (graphHeight - 20);
+              return (
+                <SvgText
+                  key={val}
+                  x={4}
+                  y={y}
+                  fontSize={8}
+                  fill="rgba(255,255,255,0.6)"
+                >
+                  {val.toFixed(1)}
+                </SvgText>
+              );
+            })}
+            {/* Area under the line */}
+            <Path d={fillPathData} fill="url(#gradient)" />
+            {/* Line */}
+            <Path d={pathData} stroke="#0090FF" strokeWidth="2" fill="none" />
+          </Svg>
+          <MotiView
+            from={{ width: containerWidth }}
+            animate={{ width: 0 }}
+            transition={{
+              type: 'spring', 
+              damping: 1000, 
+              mass: 10,
+              stiffness: 80, 
+              restDisplacementThreshold: 0.01,
+              restSpeedThreshold: 0.001,
+            }}
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              right: 0,
+              backgroundColor: '#1E293B',
+            }}
+          />
+        </View>
+        
+        {/* Labels */}
+        <View className="flex-row justify-between mt-2 px-4">
+          <Text className="text-secondary text-xs">Q1</Text>
+          <Text className="text-secondary text-xs">Q2</Text>
+          <Text className="text-secondary text-xs">S1</Text>
+          <Text className="text-secondary text-xs">Q3</Text>
+          <Text className="text-secondary text-xs">Q4</Text>
+          <Text className="text-secondary text-xs">S2</Text>
+          {/* <Text className="text-secondary text-xs">FIN</Text> */}
+        </View>
+      </View>
+    );
+  };
+
   const renderPDFUploadSection = () => (
     <View className="flex-1 mt-8 px-6">
       <View className="bg-blue-900/30 rounded-2xl p-8 items-center justify-center w-full border border-blue-700/50">
@@ -97,6 +208,9 @@ const GPA = () => {
   const renderGPADisplay = () => (
     <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
       <View className="px-6 py-4">
+        {/* GPA Graph */}
+        {renderGPAGraph()}
+        
         {/* RC1 and RC2 on same row */}
         <View className="flex-row justify-between mb-3">
           <View className="bg-cardColor rounded-lg px-3 py-2 w-[48%]">
