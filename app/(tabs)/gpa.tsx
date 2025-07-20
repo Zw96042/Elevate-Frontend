@@ -77,8 +77,8 @@ const GPA = () => {
 
   const renderGPAGraph = () => {
     const screenWidth = Dimensions.get('window').width;
-    const graphWidth = screenWidth - 48; // Account for padding
-    const graphHeight = 120;
+    const graphWidth = screenWidth - 42; // Account for padding
+    const graphHeight = 100;
     const containerWidth = screenWidth - 24; // Account for mx-6 (12px on each side) and px-4 (16px on each side)
     
     // GPA progression data points (weighted GPA values)
@@ -93,11 +93,26 @@ const GPA = () => {
     ];
     
     // Normalize GPA values to graph coordinates with proper padding
+    const numSegments = gpaPoints.length - 1;
+    const normalizedPoints = gpaPoints.slice(0, numSegments).map((gpa, index) => {
+      const x = (index / (numSegments - 1) ) * graphWidth;
+      const y = 10 + graphHeight - ((gpa - 3.0) / 2.0) * (graphHeight);
+      return { x, y };
+    });
+
+    /*
     const normalizedPoints = gpaPoints.slice(0, gpaPoints.length - 1).map((gpa, index) => {
       const x = 20 + (index / (gpaPoints.length - 2)) * (graphWidth - 40);
       const y = 10 + graphHeight - ((gpa - 3.0) / 2.0) * (graphHeight - 20);
       return { x, y };
     });
+
+    const normalizedPoints = gpaPoints.slice(0, numSegments).map((gpa, index) => {
+      const x = (index / numSegments ) * graphWidth;
+      const y = 10 + graphHeight - ((gpa - 3.0) / 2.0) * (graphHeight - 20);
+      return { x, y };
+    });
+    */
     
     // Create smooth SVG path with curves
     const pathData = normalizedPoints.map((point, index) => {
@@ -111,16 +126,16 @@ const GPA = () => {
     }).join(' ');
     
     // Create fill path (area under the line)
-    const fillPathData = pathData + ` L ${graphWidth - 20} ${graphHeight - 10} L 20 ${graphHeight - 10} Z`;
+    const fillPathData = pathData + ` L ${graphWidth} ${graphHeight - 10} L 0 ${graphHeight - 10} Z`;
     
     return (
       <View className="mb-6 bg-cardColor rounded-xl pt-4 pb-2">
-        <Text className="text-main font-semibold text-lg text-center">GPA Progression</Text>
+        <Text className="text-main font-semibold text-lg text-center">GPA Graph</Text>
         <View style={{ width: '100%', height: graphHeight, overflow: 'hidden' }}>
           <Svg
             width="100%"
             height={graphHeight}
-            viewBox={`0 0 ${graphWidth} ${graphHeight}`}
+            viewBox={`0 0 ${graphWidth } ${graphHeight}`}
           >
             <Defs>
               <LinearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -153,8 +168,8 @@ const GPA = () => {
             <Path d={pathData} stroke="#0090FF" strokeWidth="2" fill="none" />
           </Svg>
           <MotiView
-            from={{ width: containerWidth-35 }}
-            animate={{ width: 25 }}
+            from={{ width: containerWidth }}
+            animate={{ width: 0 }}
             transition={{
               type: 'spring', 
               damping: 1000, 
@@ -175,14 +190,13 @@ const GPA = () => {
         </View>
         
         {/* Labels */}
-        <View className="flex-row justify-between mt-2 px-4">
+        <View className="flex-row justify-between mt-2 px-3">
           <Text className="text-secondary text-xs">Q1</Text>
           <Text className="text-secondary text-xs">Q2</Text>
           <Text className="text-secondary text-xs">S1</Text>
           <Text className="text-secondary text-xs">Q3</Text>
           <Text className="text-secondary text-xs">Q4</Text>
           <Text className="text-secondary text-xs">S2</Text>
-          {/* <Text className="text-secondary text-xs">FIN</Text> */}
         </View>
       </View>
     );
