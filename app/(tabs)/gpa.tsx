@@ -43,20 +43,17 @@ const GPA = () => {
     PR3: { unweighted: 85, weighted: 110 },
     PR4: { unweighted: 89, weighted: 50 },
     RC2: { unweighted: 92, weighted: 96 },
-    PR5: { unweighted: 92, weighted: 91 },
-    PR6: { unweighted: 86, weighted: 85 },
     SM1: { unweighted: 91, weighted: 97 },
-    FIN: { unweighted: 94, weighted: 98 },
+    // PR5: { unweighted: 92, weighted: 91 },
+    // PR6: { unweighted: 86, weighted: 85 },
   };
 
   const validLabels = allLabels.filter(label => mockGPAData[label] && mockGPAData[label].weighted > 0);
 
   const gradeLevels: GradeLevel[] = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'All Time'];
   
-  // Filter grade levels based on current grade
   const availableGradeLevels = gradeLevels.filter((grade, index) => {
     const gradeIndex = gradeLevels.indexOf(currentGradeLevel);
-    // Don't show "All Time" for freshmen
     if (grade === 'All Time' && gradeIndex === 0) {
       return false;
     }
@@ -84,37 +81,18 @@ const GPA = () => {
 
   const renderGPAGraph = () => {
     const screenWidth = Dimensions.get('window').width;
-    const graphWidth = screenWidth - 42; // Account for padding
+    const graphWidth = screenWidth - 42; 
     const graphHeight = 100;
-    const containerWidth = screenWidth - 24; // Account for mx-6 (12px on each side) and px-4 (16px on each side)
+    const containerWidth = screenWidth - 24; 
 
-    // GPA progression data points (weighted GPA values), dynamic for all 12 terms
-    // const allLabels = ['PR1','PR2','RC1','PR3','PR4','RC2','PR5','PR6','RC3','PR7','PR8','RC4'];
-    // const validLabels = allLabels.filter(label => mockGPAData[label].weighted > 0);
     const gpaPoints = validLabels.map(label => mockGPAData[label].weighted);
 
-    // Normalize GPA values to graph coordinates with proper padding
     const numSegments = gpaPoints.length - 1;
     const normalizedPoints = gpaPoints.map((gpa, index) => {
       const x = (index / numSegments) * graphWidth;
-      // y = top + (max - value) / (max - min) * height
       const y = 30 + ((gpaScale - gpa) / gpaScale) * (graphHeight - 20);
       return { x, y };
     });
-
-    /*
-    const normalizedPoints = gpaPoints.slice(0, gpaPoints.length - 1).map((gpa, index) => {
-      const x = 20 + (index / (gpaPoints.length - 2)) * (graphWidth - 40);
-      const y = 10 + graphHeight - ((gpa - 3.0) / 2.0) * (graphHeight - 20);
-      return { x, y };
-    });
-
-    const normalizedPoints = gpaPoints.slice(0, numSegments).map((gpa, index) => {
-      const x = (index / numSegments ) * graphWidth;
-      const y = 10 + graphHeight - ((gpa - 3.0) / 2.0) * (graphHeight - 20);
-      return { x, y };
-    });
-    */
     
     // Create smooth SVG path with curves
     const pathData = normalizedPoints.map((point, index) => {
@@ -128,12 +106,12 @@ const GPA = () => {
     }).join(' ');
     
     // Create fill path (area under the line)
-    const fillPathData = pathData + ` L ${graphWidth} ${graphHeight - 10} L 0 ${graphHeight - 10} Z`;
+    const fillPathData = pathData + ` L ${graphWidth} ${graphHeight + 5} L 0 ${graphHeight} Z`;
     
     return (
-      <View className="mb-6 bg-cardColor rounded-xl pt-4">
+      <View className="mb-4 bg-cardColor rounded-xl pt-4 overflow-hidden">
         <Text className="text-main text-lg text-center">Weighted GPA Graph</Text>
-        <View className={`w-full h-[${graphHeight + 20}] relative overflow-hidden`}>
+        <View className={`w-full relative overflow-hidden`}>
           <Svg
             width="100%"
             height={graphHeight}
@@ -166,19 +144,8 @@ const GPA = () => {
               bottom: 0,
               right: 0,
             }}
-            className='bg-cardColor mb-2'
+            className='bg-cardColor'
           />
-
-          {/* <View className="flex-row justify-between px-2">
-            {validLabels.map(label => (
-                <Text
-                  key={label}
-                  className="text-secondary text-xs"
-                >
-                  {label}
-                </Text>
-            ))}
-          </View> */}
         </View>
       </View>
     );
@@ -211,188 +178,148 @@ const GPA = () => {
       <View className="px-6 pb-4">
         {/* GPA Graph */}
         {renderGPAGraph()}
-
         {/* Dynamic GPA cards */}
         <View className="flex-1">
           {(() => {
             const fallback: GPAData = { unweighted: 100, weighted: 100 };
-            const getData = (label: string) => mockGPAData[label] || fallback;
+            const exists = (label: string) => !!mockGPAData[label];
+            const getLabelData = (label: string) => mockGPAData[label] || fallback;
 
-            const hasRC3or4 = !!mockGPAData["RC3"] || !!mockGPAData["RC4"];
-            const hasSM2 = !!mockGPAData["SM2"] || true; // Always assume SM2 exists
+            const renderCard = (label1: string, label2?: string) => (
+              <View className="flex-row justify-between mb-3" key={`${label1}-${label2 || "solo"}`}>
+                {[label1, label2].filter(Boolean).map(label => (
+                  <View key={label} className="bg-cardColor rounded-xl px-3 py-2 w-[48%]">
+                    <Text className="text-main font-semibold text-sm mb-1">{label}</Text>
+                    <View className="flex-row justify-between">
+                      <View className="items-start">
+                        <Text className="text-secondary text-xs">Unweighted</Text>
+                        <Text className="text-main text-sm font-bold">
+                          {exists(label!) ? getLabelData(label!).unweighted.toFixed(2) : "--"}
+                        </Text>
+                      </View>
+                      <View className="items-end">
+                        <Text className="text-secondary text-xs">Weighted</Text>
+                        <Text className="text-main text-sm font-bold">
+                          {exists(label!) ? getLabelData(label!).weighted.toFixed(2) : "--"}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            );
 
-            const rcPairs = [
-              ["RC1", "RC2"],
-              ["RC3", "RC4"],
-            ];
-            const prPairs = [
-              ["PR1", "PR2"],
-              ["PR3", "PR4"],
-              ["PR5", "PR6"],
-              ["PR7", "PR8"],
-            ];
+            const renderSoloCard = (label: string) => (
+              <View className="bg-cardColor rounded-xl px-4 py-3 flex-row items-center justify-between mb-5" key={label}>
+                <Text className="text-main font-bold text-lg">{label}</Text>
+                <View className="flex-row items-center space-x-6">
+                  <View className="items-center">
+                    <Text className="text-secondary text-xs mr-3">Unweighted</Text>
+                    <Text className="text-main text-lg font-bold">
+                      {exists(label) ? getLabelData(label).unweighted.toFixed(2) : "--"}
+                    </Text>
+                  </View>
+                  <View className="items-center">
+                    <Text className="text-secondary text-xs">Weighted</Text>
+                    <Text className="text-main text-lg font-bold">
+                      {exists(label) ? getLabelData(label).weighted.toFixed(2) : "--"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            );
 
-            // Find latest PR pair with both non-100
-            let latestPRPair: string[] | null = null;
-            for (let i = prPairs.length - 1; i >= 0; i--) {
-              const [a, b] = prPairs[i];
-              const aValid = mockGPAData[a] && mockGPAData[a].weighted !== 100;
-              const bValid = mockGPAData[b] && mockGPAData[b].weighted !== 100;
-              if (aValid && bValid) {
-                latestPRPair = [a, b];
-                break;
-              }
-            }
+            // Map PRs to their RC group
+            const prToRCMap: Record<string, string> = {
+              PR1: 'RC1', PR2: 'RC1',
+              PR3: 'RC2', PR4: 'RC2',
+              PR5: 'RC3', PR6: 'RC3',
+              PR7: 'RC4', PR8: 'RC4',
+            };
 
             const rows: JSX.Element[] = [];
 
-            // RC1 + RC2
-            rows.push(
-              <View className="flex-row justify-between mb-3" key="rc1-rc2">
-                {rcPairs[0].map(label => (
-                  <View key={label} className="bg-cardColor rounded-xl px-3 py-2 w-[48%]">
-                    <Text className="text-main font-semibold text-sm mb-1">{label}</Text>
-                    <View className="flex-row justify-between">
-                      <View className="items-start">
-                        <Text className="text-secondary text-xs">Unweighted</Text>
-                        <Text className="text-main text-sm font-bold">
-                          {mockGPAData[label] ? mockGPAData[label].unweighted : "--"}
-                        </Text>
-                      </View>
-                      <View className="items-end">
-                        <Text className="text-secondary text-xs">Weighted</Text>
-                        <Text className="text-main text-sm font-bold">
-                          {mockGPAData[label] ? mockGPAData[label].weighted : "--"}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            );
+            const rcGroups = [
+              { rcLabels: ['RC1', 'RC2'], prLabels: ['PR1', 'PR2', 'PR3', 'PR4'] },
+              { rcLabels: ['RC3', 'RC4'], prLabels: ['PR5', 'PR6', 'PR7', 'PR8'] }
+            ];
 
-            // SM1 - standardized card
+            rcGroups.forEach(({ rcLabels, prLabels }, idx) => {
+              const validPRs = prLabels.filter(pr => exists(pr));
+              const latestGroupPRs = validPRs.slice(-2);
+
+              const prByRC: Record<string, string[]> = {};
+              latestGroupPRs.forEach(pr => {
+                const rc = prToRCMap[pr];
+                if (!prByRC[rc]) prByRC[rc] = [];
+                prByRC[rc].push(pr);
+              });
+
+              const handledRCs = new Set<string>();
+
+              if (idx === 0 && prByRC['RC2']?.length > 0 && exists('RC1')) {
+                rows.push(renderSoloCard('RC1'));
+                handledRCs.add('RC1');
+              }
+
+              rcLabels.forEach(rc => {
+                const prList = prByRC[rc];
+                if (prList?.length === 2) {
+                  rows.push(renderCard(prList[0], prList[1]));
+                } else if (prList?.length === 1) {
+                  rows.push(renderSoloCard(prList[0]));
+                }
+
+                if (prList) {
+                  rows.push(renderSoloCard(rc));
+                  handledRCs.add(rc);
+                }
+              });
+
+              const unpairedRCs = rcLabels.filter(rc => !handledRCs.has(rc));
+
+              // Special logic for RC3/RC4 to split if PR7 or PR8 present
+              if (
+                idx === 1 &&
+                (latestGroupPRs.includes('PR7') || latestGroupPRs.includes('PR8'))
+              ) {
+                unpairedRCs.forEach(rc => {
+                  rows.push(renderSoloCard(rc));
+                });
+              } else if (unpairedRCs.length === 2) {
+                rows.push(renderCard(unpairedRCs[0], unpairedRCs[1]));
+              } else if (unpairedRCs.length === 1) {
+                rows.push(renderSoloCard(unpairedRCs[0]));
+              }
+
+              if (idx === 0 && exists('SM1')) {
+                rows.push(renderSoloCard('SM1'));
+              }
+              if (idx === 1) {
+                rows.push(renderSoloCard('SM2'));
+              }
+            });
+
+            const sm1 = getLabelData('SM1');
+            const sm2 = exists('SM2') ? getLabelData('SM2') : fallback;
+            const finUnweighted = (sm1.unweighted + sm2.unweighted) / 2;
+            const finWeighted = (sm1.weighted + sm2.weighted) / 2;
+
             rows.push(
-              <View className="bg-cardColor rounded-xl px-4 py-3 flex-row items-center justify-between mb-5" key="SM1">
-                <Text className="text-main font-bold text-lg">SM1</Text>
+              <View className="bg-cardColor rounded-xl px-4 py-3 flex-row items-center justify-between mb-5" key="FIN">
+                <Text className="text-main font-bold text-lg">FIN</Text>
                 <View className="flex-row items-center space-x-6">
                   <View className="items-center">
                     <Text className="text-secondary text-xs mr-3">Unweighted</Text>
-                    <Text className="text-main text-lg font-bold">
-                      {mockGPAData["SM1"] ? mockGPAData["SM1"].unweighted : "--"}
-                    </Text>
+                    <Text className="text-main text-lg font-bold">{finUnweighted.toFixed(2)}</Text>
                   </View>
                   <View className="items-center">
                     <Text className="text-secondary text-xs">Weighted</Text>
-                    <Text className="text-main text-lg font-bold">
-                      {mockGPAData["SM1"] ? mockGPAData["SM1"].weighted : "--"}
-                    </Text>
+                    <Text className="text-main text-lg font-bold">{finWeighted.toFixed(2)}</Text>
                   </View>
                 </View>
               </View>
             );
-
-            // PR if no RC3/RC4
-            if (!hasRC3or4 && latestPRPair) {
-              rows.push(
-                <View className="flex-row justify-between mb-3" key="latest-pr">
-                  {latestPRPair.map(label => (
-                    <View key={label} className="bg-cardColor rounded-xl px-3 py-2 w-[48%]">
-                      <Text className="text-main font-semibold text-sm mb-1">{label}</Text>
-                      <View className="flex-row justify-between">
-                        <View className="items-start">
-                          <Text className="text-secondary text-xs">Unweighted</Text>
-                          <Text className="text-main text-sm font-bold">
-                            {mockGPAData[label] ? mockGPAData[label].unweighted : "--"}
-                          </Text>
-                        </View>
-                        <View className="items-end">
-                          <Text className="text-secondary text-xs">Weighted</Text>
-                          <Text className="text-main text-sm font-bold">
-                            {mockGPAData[label] ? mockGPAData[label].weighted : "--"}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              );
-            }
-
-            // RC3 + RC4
-            rows.push(
-              <View className="flex-row justify-between mb-3" key="rc3-rc4">
-                {rcPairs[1].map(label => (
-                  <View key={label} className="bg-cardColor rounded-xl px-3 py-2 w-[48%]">
-                    <Text className="text-main font-semibold text-sm mb-1">{label}</Text>
-                    <View className="flex-row justify-between">
-                      <View className="items-start">
-                        <Text className="text-secondary text-xs">Unweighted</Text>
-                        <Text className="text-main text-sm font-bold">
-                          {mockGPAData[label] ? mockGPAData[label].unweighted : "--"}
-                        </Text>
-                      </View>
-                      <View className="items-end">
-                        <Text className="text-secondary text-xs">Weighted</Text>
-                        <Text className="text-main text-sm font-bold">
-                          {mockGPAData[label] ? mockGPAData[label].weighted : "--"}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            );
-
-            // SM2 - standardized card
-            rows.push(
-              <View className="bg-cardColor rounded-xl px-4 py-3 flex-row items-center justify-between mb-5" key="SM2">
-                <Text className="text-main font-bold text-lg">SM2</Text>
-                <View className="flex-row items-center space-x-6">
-                  <View className="items-center">
-                    <Text className="text-secondary text-xs mr-3">Unweighted</Text>
-                    <Text className="text-main text-lg font-bold">
-                      {mockGPAData["SM2"] ? mockGPAData["SM2"].unweighted : "--"}
-                    </Text>
-                  </View>
-                  <View className="items-center">
-                    <Text className="text-secondary text-xs">Weighted</Text>
-                    <Text className="text-main text-lg font-bold">
-                      {mockGPAData["SM2"] ? mockGPAData["SM2"].weighted : "--"}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            );
-
-            // FIN - standardized card
-            if (hasSM2) {
-              const sm1 = mockGPAData["SM1"] || fallback;
-              const sm2 = mockGPAData["SM2"] || fallback;
-
-              const finUnweighted = (sm1.unweighted + sm2.unweighted) / 2;
-              const finWeighted = (sm1.weighted + sm2.weighted) / 2;
-
-              rows.push(
-                <View className="bg-cardColor rounded-xl px-4 py-3 flex-row items-center justify-between mb-5" key="FIN">
-                  <Text className="text-main font-bold text-lg">FIN</Text>
-                  <View className="flex-row items-center space-x-6">
-                    <View className="items-center">
-                      <Text className="text-secondary text-xs mr-3">Unweighted</Text>
-                      <Text className="text-main text-lg font-bold">
-                        {finUnweighted.toFixed(2)}
-                      </Text>
-                    </View>
-                    <View className="items-center">
-                      <Text className="text-secondary text-xs">Weighted</Text>
-                      <Text className="text-main text-lg font-bold">
-                        {finWeighted.toFixed(2)}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              );
-            }
 
             return rows;
           })()}
