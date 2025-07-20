@@ -166,12 +166,12 @@ const InnerLayout = () => {
             <Tabs.Screen 
               name="assignments"
               options={{
-                title: "Assignments",
+                title: "GPA",
                 headerShown: false,
                 tabBarIcon: ({ focused }) => (
                   <View className="items-center justify-center w-[240%] mt-5 h-[80%]">
                     <Ionicons name="document-text-outline" size={22} color={focused ? '#2A52BE' : '#A8B5DB'} />
-                    <Text style={{ color: focused ? '#2A52BE' : '#A8B5DB', fontSize: 12, marginTop: 5 }}>Assignments</Text>
+                    <Text style={{ color: focused ? '#2A52BE' : '#A8B5DB', fontSize: 12, marginTop: 5 }}>GPA</Text>
                   </View>
                 )
               }}
@@ -183,7 +183,7 @@ const InnerLayout = () => {
                 headerShown: false,
                 tabBarIcon: ({ focused }) => (
                   <View className="items-center justify-center w-[180%] mt-5 h-[80%]">
-                    <Ionicons name="file-tray-outline" size={22} color={focused ? '#2A52BE' : '#A8B5DB'} />
+                    <Ionicons name="mail-outline" size={22} color={focused ? '#2A52BE' : '#A8B5DB'} />
                     <Text style={{ color: focused ? '#2A52BE' : '#A8B5DB', fontSize: 12, marginTop: 5 }}>Inbox</Text>
                   </View>
                 )

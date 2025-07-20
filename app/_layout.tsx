@@ -157,6 +157,7 @@ function InnerLayout() {
           snapPoints={['54%']}
           enablePanDownToClose={true}
           backgroundStyle={{ backgroundColor: cardColor }}
+          enableDynamicSizing={false}
           enableOverDrag={false}
           enableHandlePanningGesture={true}
           style={{ zIndex: 2 }}
