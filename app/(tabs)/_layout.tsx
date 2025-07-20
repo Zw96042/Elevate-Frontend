@@ -164,7 +164,7 @@ const InnerLayout = () => {
               }}
             />
             <Tabs.Screen 
-              name="assignments"
+              name="gpa"
               options={{
                 title: "GPA",
                 headerShown: false,

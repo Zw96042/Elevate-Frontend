@@ -365,6 +365,7 @@ export default function Index() {
         <FlatList
           className='mb-[4rem]'
           data={DATA}
+          showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <>
               <Text className="text-slate-500 font-bold mt-3 text-sm px-5">Term</Text>
