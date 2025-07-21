@@ -518,15 +518,17 @@ const EnterGrades = () => {
             <View className="mt-4 space-y-4 w-full">
               {savedClasses.map((cls) => (
                 <ClassCard2Sem
-                    gradeLevel={gradeLevel.toString()}
-                    key={cls.className}
-                    name={cls.className}
-                    teacher={cls.teacher || ''}
-                    s1={{ categories: { names: [], weights: [] }, total: cls.sm1 }}
-                    s2={{ categories: { names: [], weights: [] }, total: cls.sm2 }}
-                    term={"SM1 Grade"}
+                  gradeLevel={gradeLevel.toString()}
+                  key={cls.className}
+                  name={cls.className}
+                  teacher={cls.teacher || ''}
+                  s1={{ categories: { names: [], weights: [] }, total: cls.sm1 }}
+                  s2={{ categories: { names: [], weights: [] }, total: cls.sm2 }}
+                  term={"SM1 Grade"}
+                  // If ClassCard2Sem renders a pie chart and takes animation props, ensure they're removed/disabled
+                  // e.g. if it uses <PieChart animate={true} /> inside, set animate={false} or remove prop
                 />
-                ))}
+              ))}
             </View>
           )}
         </View>
@@ -574,6 +576,8 @@ const EnterGrades = () => {
                 className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
                 placeholder="Search for a class name or code"
                 value={classQuery}
+                autoCapitalize='none'
+                autoComplete={undefined}
                 onChangeText={(text) => {
                   setClassQuery(text);
                   setName(text);

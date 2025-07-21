@@ -3,15 +3,9 @@ import React, { useEffect, useState } from 'react'
 import { Link } from 'expo-router'
 import formatClassName from '@/utils/formatClassName'
 import PieChart from 'react-native-pie-chart'
-import Animated, {
-  useSharedValue,
-  useAnimatedReaction,
-  runOnJS,
-  withTiming,
-  Easing
-} from 'react-native-reanimated'
 import { Swipeable } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { MotiView } from 'moti'
 
 type TermLabel =
   | "Q1 Grades"
@@ -48,38 +42,15 @@ const ClassCard2Sem = ({
   const [displaySM1, setDisplaySM1] = useState(0)
   const [displaySM2, setDisplaySM2] = useState(0)
 
-  const animatedSM1 = useSharedValue(0)
-  const animatedSM2 = useSharedValue(0)
-
   useEffect(() => {
     const sm1Total = s1?.total ?? 0
-    animatedSM1.value = withTiming(sm1Total, {
-      duration: 700,
-      easing: Easing.inOut(Easing.ease)
-    })
+    setDisplaySM1(sm1Total)
   }, [s1])
 
   useEffect(() => {
     const sm2Total = s2?.total ?? 0
-    animatedSM2.value = withTiming(sm2Total, {
-      duration: 700,
-      easing: Easing.inOut(Easing.ease)
-    })
+    setDisplaySM2(sm2Total)
   }, [s2])
-
-  useAnimatedReaction(
-    () => animatedSM1.value,
-    (value) => {
-      runOnJS(setDisplaySM1)(value)
-    }
-  )
-
-  useAnimatedReaction(
-    () => animatedSM2.value,
-    (value) => {
-      runOnJS(setDisplaySM2)(value)
-    }
-  )
 
   const theme = useColorScheme()
   const highlightColor = theme === 'dark' ? '#3b5795' : '#a4bfed'
@@ -114,7 +85,7 @@ const ClassCard2Sem = ({
           </View>
 
           <View className="flex-row items-center">
-            <View className="items-center mr-3">
+            <View className="items-center mr-2">
               <View className="relative w-[50] h-[50]">
                 <PieChart
                   widthAndHeight={50}
@@ -130,6 +101,7 @@ const ClassCard2Sem = ({
                 </View>
               </View>
             </View>
+            <View className="w-[1.5px] h-12 rounded-full bg-highlight mr-2" />
 
             <View className="items-center">
               <View className="relative w-[50] h-[50]">
