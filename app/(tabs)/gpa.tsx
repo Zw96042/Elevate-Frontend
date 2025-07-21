@@ -244,54 +244,95 @@ const GPA = () => {
               { rcLabels: ['RC3', 'RC4'], prLabels: ['PR5', 'PR6', 'PR7', 'PR8'] }
             ];
 
+            // Find all valid PRs across both groups, get the 2 most recent overall
+            const allPRLabels = rcGroups.flatMap(({ prLabels }) => prLabels);
+            const validAllPRs = allPRLabels.filter(pr => exists(pr));
+            // Only keep the 2 most recent PRs globally
+            const latestTwoPRs = validAllPRs.slice(-2);
+            console.log("Latest PRS", latestTwoPRs);
+
+            // Determine which RC group(s) these PRs belong to
+            const rcGroupMap: Record<string, number> = {
+              PR1: 0, PR2: 0, PR3: 0, PR4: 0,
+              PR5: 1, PR6: 1, PR7: 1, PR8: 1
+            };
+
+            // Which RC group index the latest PRs belong to
+            const latestGroups = [...new Set(latestTwoPRs.map(pr => rcGroupMap[pr]))];
+            console.log("latest group", latestGroups);
+
+            // Helper to render RCs in a group, skipping any RC already handled
+            const handledRCs = new Set<string>();
+            
+            console.log("RC GRoups", rcGroups);
             rcGroups.forEach(({ rcLabels, prLabels }, idx) => {
-              const validPRs = prLabels.filter(pr => exists(pr));
-              const latestGroupPRs = validPRs.slice(-2);
-
-              const prByRC: Record<string, string[]> = {};
-              latestGroupPRs.forEach(pr => {
-                const rc = prToRCMap[pr];
-                if (!prByRC[rc]) prByRC[rc] = [];
-                prByRC[rc].push(pr);
-              });
-
-              const handledRCs = new Set<string>();
-
-              if (idx === 0 && prByRC['RC2']?.length > 0 && exists('RC1')) {
-                rows.push(renderSoloCard('RC1'));
-                handledRCs.add('RC1');
-              }
-
-              rcLabels.forEach(rc => {
-                const prList = prByRC[rc];
-                if (prList?.length === 2) {
-                  rows.push(renderCard(prList[0], prList[1]));
-                } else if (prList?.length === 1) {
-                  rows.push(renderSoloCard(prList[0]));
-                }
-
-                if (prList) {
-                  rows.push(renderSoloCard(rc));
-                  handledRCs.add(rc);
-                }
-              });
-
-              const unpairedRCs = rcLabels.filter(rc => !handledRCs.has(rc));
-
-              // Special logic for RC3/RC4 to split if PR7 or PR8 present
-              if (
-                idx === 1 &&
-                (latestGroupPRs.includes('PR7') || latestGroupPRs.includes('PR8'))
-              ) {
-                unpairedRCs.forEach(rc => {
-                  rows.push(renderSoloCard(rc));
+              // If this group is the group of the latest PRs, render only the latest PRs and their RC
+              if (latestGroups.includes(idx)) {
+                // Among the latestTwoPRs, select those belonging to this group
+                const latestGroupPRs = latestTwoPRs.filter(pr => rcGroupMap[pr] === idx);
+                console.log("Latest group PRS", latestGroupPRs);
+                // Map PRs to their RC
+                const prByRC: Record<string, string[]> = {};
+                latestGroupPRs.forEach(pr => {
+                  const rc = prToRCMap[pr];
+                  if (!prByRC[rc]) prByRC[rc] = [];
+                  prByRC[rc].push(pr);
                 });
-              } else if (unpairedRCs.length === 2) {
-                rows.push(renderCard(unpairedRCs[0], unpairedRCs[1]));
-              } else if (unpairedRCs.length === 1) {
-                rows.push(renderSoloCard(unpairedRCs[0]));
+                console.log("PY BY RC", prByRC);
+                // For each RC in this group, if it has PRs, render the PR cards
+                console.log("RC Label", rcLabels);
+                // rcLabels.forEach(rc => {
+                  // console.log("RC Solo", rc);
+                  const prList = [
+                    ...(prByRC[rcLabels[0]] || []),
+                    ...(prByRC[rcLabels[1]] || [])
+                  ];
+                  console.log("PR List", prList);
+                  if (prList && prList.length > 0) {
+                    if (prList.length === 2 && 
+                      !prList.includes("PR3") &&
+                      !prList.includes("PR4") && 
+                      !prList.includes("PR7") && 
+                      !prList.includes("PR8")) {
+                      rows.push(renderCard(prList[0], prList[1]));
+                    } else if (prList.length === 1) {
+                      rows.push(renderSoloCard(prList[0]));
+                    }
+                    
+                    if (prList.length === 2 && 
+                      (prList.includes("PR3") ||
+                      prList.includes("PR4") ||
+                      prList.includes("PR7") ||
+                      prList.includes("PR8"))) {
+                      rows.push(renderCard(rcLabels[0], prList[0]));
+                      handledRCs.add(rcLabels[idx]);
+                      // rows.push(renderCard(prList[0], prList[1]));
+                      rows.push(renderCard(rcLabels[1], prList[1]));
+                      handledRCs.add(rcLabels[idx+1]);
+                    } else {
+                      // Render the RC after its PRs
+                      rows.push(renderCard(rcLabels[0], rcLabels[1]));
+                      handledRCs.add(rcLabels[idx]);
+                      handledRCs.add(rcLabels[idx+1]);
+                    }
+                  } 
+                // });
+              } else {
+                // For groups NOT containing the latest PRs: render RCs in pairs, unless one is already handled
+                const unhandledRCs = rcLabels.filter(rc => !handledRCs.has(rc));
+                console.log(rcLabels);
+                console.log(!handledRCs.has(rcLabels[0]));
+                console.log(!handledRCs.has(rcLabels[1]));
+                console.log(exists(rcLabels[0]));
+                console.log(exists(rcLabels[1]));
+                console.log(unhandledRCs);
+                if (unhandledRCs.length === 2) {
+                  rows.push(renderCard(unhandledRCs[0], unhandledRCs[1]));
+                } else if (unhandledRCs.length === 1) {
+                  rows.push(renderSoloCard(unhandledRCs[0]));
+                }
               }
-
+              // Render SM1/SM2 as before
               if (idx === 0 && exists('SM1')) {
                 rows.push(renderSoloCard('SM1'));
               }
@@ -335,13 +376,12 @@ const GPA = () => {
     <View className="flex-1 bg-primary">
       {/* Header */}
       <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
-        <Text className="text-white text-3xl font-bold">GPA</Text>
+        <Text className="text-white text-3xl font-bold">Grade Point Average</Text>
         <TouchableOpacity onPress={() => settingSheetRef.current?.snapToIndex(0)}>
           <Ionicons name='cog-outline' color={'#fff'} size={26} />
         </TouchableOpacity>
       </View>
 
-      {/* Grade Level Selectors - Moved out of header */}
       <View className="mt-4 pb-4 px-4">
         <View className="flex-row">
           {availableGradeLevels.map((grade, index) => (
@@ -364,7 +404,7 @@ const GPA = () => {
         </View>
       </View>
 
-      {/* Content Area */}
+
       <View className="flex-1 bg-primary">
         {isPastGrade ? renderPDFUploadSection() : renderGPADisplay()}
       </View>
