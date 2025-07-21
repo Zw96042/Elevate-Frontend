@@ -11,7 +11,8 @@ import { authenticate } from '@/lib/authHandler'
 import * as Burnt from "burnt";
 
 const InnerLayout = () => {
-  const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '35%' | '80%'>('hidden');
+  const [gradeLevel, setGradeLevel] = useState('');
+  const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '45%' | '83%'>('hidden');
   const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
   const {
     settingSheetRef,
@@ -34,19 +35,19 @@ const InnerLayout = () => {
     const showSub = Keyboard.addListener('keyboardDidShow', () => {
       if (
         !modalClosedByOutsideTap &&
-        currentSnapPosition !== '80%' &&
+        currentSnapPosition !== '83%' &&
         currentSnapPosition !== 'hidden'
       ) {
-        settingSheetRef.current?.snapToPosition('80%', { duration: 150 });
-        setCurrentSnapPosition('80%');
+        settingSheetRef.current?.snapToPosition('83%', { duration: 150 });
+        setCurrentSnapPosition('83%');
       }
     });
 
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
       setModalClosedByOutsideTap(false);
-      if (currentSnapPosition === '80%') {
-        settingSheetRef.current?.snapToPosition('35%', { duration: 150 });
-        setCurrentSnapPosition('35%');
+      if (currentSnapPosition === '83%') {
+        settingSheetRef.current?.snapToIndex(0, { duration: 150 });
+        setCurrentSnapPosition('45%');
       }
     });
 
@@ -61,7 +62,7 @@ const InnerLayout = () => {
       setCurrentSnapPosition('hidden');
       DeviceEventEmitter.emit('settingsSheetClosed');
     } else {
-      setCurrentSnapPosition('35%');
+      setCurrentSnapPosition('45%');
     }
   };
   useEffect(() => {
@@ -196,7 +197,7 @@ const InnerLayout = () => {
           <BottomSheet
             ref={settingSheetRef}
             index={-1}
-            snapPoints={["35%"]}
+            snapPoints={["45%"]}
             backgroundStyle={{ backgroundColor: cardColor }}
             overDragResistanceFactor={1}
             enableDynamicSizing={false}
@@ -221,7 +222,7 @@ const InnerLayout = () => {
           >
             <TouchableWithoutFeedback onPress={() => {
               Keyboard.dismiss();
-              settingSheetRef.current?.snapToPosition('35%', { duration: 350 });
+              settingSheetRef.current?.snapToIndex(0, { duration: 350 });
             }}>
               <BottomSheetView className="bg-cardColor px-8  ">
                 <Text className="text-2xl text-main">Credentials</Text>
@@ -242,6 +243,34 @@ const InnerLayout = () => {
                     <Text className='text-blue-400 decoration-solid text-sm font-semibold mt-1'>Don't see your district?</Text>
                   </TouchableOpacity>
                 </View>
+                {/* Grade Level block */}
+                <View className="mb-5">
+                  <Text className="text-base font-medium text-main pb-2">Grade Level</Text>
+                  <View className="flex-row flex-wrap gap-2">
+                    {["Freshman", "Sophomore", "Junior", "Senior"].map((level) => (
+                      <TouchableOpacity
+                        key={level}
+                        onPress={() => setGradeLevel(level)}
+                        className={`px-3 py-1 rounded-full border ${
+                          gradeLevel === level
+                            ? 'bg-highlight border-highlight'
+                            : 'border-accent'
+                        }`}
+                      >
+                        <Text
+                          className={`text-sm ${
+                            gradeLevel === level
+                              ? 'text-highlightText font-bold'
+                              : 'text-main'
+                          }`}
+                        >
+                          {level}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+                <View className="h-[1px] bg-accent opacity-20 mb-5" />
 
                 <View className="pb-3">
                   <Text className="font-medium text-main">Username</Text>
@@ -269,6 +298,7 @@ const InnerLayout = () => {
                       placeholder="Password"
                       placeholderTextColor="#888"
                       secureTextEntry={!showPassword}
+                      autoCapitalize="none"
                     />
                     <TouchableOpacity onPress={() => setShowPassword(prev => !prev)}>
                       <Ionicons
