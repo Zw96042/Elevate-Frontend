@@ -28,7 +28,7 @@ const InnerLayout = () => {
   const cardColor = colorScheme === 'dark' ? colors.cardColor.dark : colors.cardColor.light;
 
   // Ref to store the last saved values
-  const lastSaved = useRef({ link: '', username: '', password: '' });
+  const lastSaved = useRef({ link: '', username: '', password: '', gradeLevel: '' });
 
   // Keyboard show/hide snap logic
   useEffect(() => {
@@ -70,16 +70,19 @@ const InnerLayout = () => {
       const storedLink = await AsyncStorage.getItem('skywardLink');
       const storedUser = await AsyncStorage.getItem('skywardUser');
       const storedPass = await AsyncStorage.getItem('skywardPass');
+      const storedGrade = await AsyncStorage.getItem('gradeLevel');
 
       if (storedLink) setLink(storedLink);
       if (storedUser) setUsername(storedUser);
       if (storedPass) setPassword(storedPass);
+      if (storedGrade) setGradeLevel(storedGrade);
 
       // Store loaded credentials in lastSaved
       lastSaved.current = {
         link: storedLink || '',
         username: storedUser || '',
         password: storedPass || '',
+        gradeLevel: storedGrade || '',
       };
     };
 
@@ -93,7 +96,8 @@ const InnerLayout = () => {
     const changed =
       // link !== lastSaved.current.link ||
       username !== lastSaved.current.username ||
-      password !== lastSaved.current.password;
+      password !== lastSaved.current.password ||
+      gradeLevel !== lastSaved.current.gradeLevel;
 
     if (!changed) return;
 
@@ -101,18 +105,17 @@ const InnerLayout = () => {
       await AsyncStorage.setItem('skywardUser', username);
       await AsyncStorage.setItem('skywardPass', password);
       await AsyncStorage.setItem('skywardLink', "https://skyward-eisdprod.iscorp.com/scripts/wsisa.dll/WService=wsedueanesisdtx/"); // TODO: Change back to add more districts
+      await AsyncStorage.setItem('gradeLevel', gradeLevel);
 
-      lastSaved.current = { link, username, password };
+      lastSaved.current = { link, username, password, gradeLevel };
 
       const authResult = await authenticate();
 
-    
-      
       if (authResult.success) {
         Burnt.toast({
           title: 'Information Verified',
           preset: 'done',
-          duration: 2
+          duration: 0.75
         });
         DeviceEventEmitter.emit('credentialsAdded');
       } else {
@@ -120,7 +123,7 @@ const InnerLayout = () => {
           title: 'Error',
           preset: 'error',
           message: "Couldn't verify details",
-          duration: 2
+          duration: 1
         });
         DeviceEventEmitter.emit('credentialsInvalid');
       }
@@ -225,7 +228,7 @@ const InnerLayout = () => {
               settingSheetRef.current?.snapToIndex(0, { duration: 350 });
             }}>
               <BottomSheetView className="bg-cardColor px-8  ">
-                <Text className="text-2xl text-main">Credentials</Text>
+                <Text className="text-2xl text-main">Settings</Text>
                 <View className='my-4 border-slate-600 border-[0.5px]'></View>
                 <View className="pb-3 ">
                   <Text className="text-base font-medium text-main">School District</Text>

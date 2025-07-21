@@ -2,6 +2,8 @@ import { useSettingSheet } from '@/context/SettingSheetContext';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
+import { DeviceEventEmitter } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MotiView } from 'moti';
 import React, { JSX, useCallback, useState } from 'react';
 import { Alert, Dimensions, PanResponder, ScrollView, Text, TouchableOpacity, View } from 'react-native';
@@ -33,8 +35,8 @@ const GPA = () => {
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
   const [hoverX, setHoverX] = useState<number | null>(null); // NEW: track finger X
   
-  // Mock current grade level - replace with actual logic later
-  const currentGradeLevel: GradeLevel = 'Sophomore';
+  // Current grade level state - will be loaded from AsyncStorage
+  const [currentGradeLevel, setCurrentGradeLevel] = useState<GradeLevel>('Freshman');
   
   const allLabels = ['PR1','PR2','RC1','PR3','PR4','RC2','PR5','PR6','RC3','PR7','PR8','RC4'];
 
@@ -74,7 +76,26 @@ const GPA = () => {
         setHasCredentials(result);
       };
 
+      const loadGradeLevel = async () => {
+        const storedGrade = await AsyncStorage.getItem('gradeLevel');
+        if (
+          storedGrade &&
+          ['Freshman', 'Sophomore', 'Junior', 'Senior', 'All Time'].includes(storedGrade)
+        ) {
+          setCurrentGradeLevel(storedGrade as GradeLevel);
+          setSelectedGrade(storedGrade as GradeLevel);
+        }
+      };
+
       checkCredentials();
+      loadGradeLevel();
+
+      const subscription = DeviceEventEmitter.addListener('credentialsAdded', () => {
+        loadGradeLevel();
+      });
+      return () => {
+        subscription.remove();
+      };
     }, [])
   );
 
@@ -218,10 +239,11 @@ const GPA = () => {
             animate={{ width: 0}}
             transition={{
               type: 'spring', 
-              damping: 18, 
-              mass: 2
-              // mass: 10,
-              // stiffness: 90, 
+              damping: 1000, 
+              mass: 8,
+              stiffness: 80, 
+              restDisplacementThreshold: 0.01,
+              restSpeedThreshold: 0.001,
             }}
             style={{
               position: 'absolute',
@@ -232,9 +254,7 @@ const GPA = () => {
             className='bg-cardColor'
           />
         </View>
-        {/* Tooltip overlay at the highest level */}
         {showDotAndTooltip && (() => {
-          // Use dotX/dotY for position, snappedIndex for value
           const tooltipWidth = 140;
           const tooltipHeight = 40;
           const padding = 24;
@@ -328,61 +348,54 @@ const GPA = () => {
     return (
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false} scrollEnabled={false}>
         <View className="px-6 pb-4">
-          {/* GPA Graph */}
           {renderGPAGraph()}
           
-          {/* Tooltip overlay at the highest level */}
           {activePointIndex !== null && gpaPoints.length >= 2 && (() => {
-            const tooltipWidth = 140; // maxWidth
-            const tooltipHeight = 40; // approximate height
-            const padding = 24; // container padding
+            const tooltipWidth = 140; 
+            const tooltipHeight = 40; 
+            const padding = 24; 
             
-            // Use the actual device screen width
             const actualScreenWidth = Dimensions.get('window').width;
-            const graphWidth = actualScreenWidth - 42; // Same as in renderGPAGraph
-            const containerWidth = actualScreenWidth - 24; // Same as in renderGPAGraph
+            const graphWidth = actualScreenWidth - 42;
+            const containerWidth = actualScreenWidth - 24; 
             
-            // Calculate initial position relative to graph
-            const graphLeft = padding; // Left edge of graph container
-            const graphRight = graphLeft + graphWidth - 10; // Right edge minus small buffer for tooltip
+            const graphLeft = padding;
+            const graphRight = graphLeft + graphWidth - 10;
             
-            console.log("ACTUAL screen width:", actualScreenWidth);
-            console.log("Graph width:", graphWidth);
-            console.log("Graph right edge:", graphRight);
+            // console.log("ACTUAL screen width:", actualScreenWidth);
+            // console.log("Graph width:", graphWidth);
+            // console.log("Graph right edge:", graphRight);
             
-            // The normalizedPoints are already scaled to fit within graphWidth
-            // So we just need to add the graph's left position
-            const screenX = graphLeft + normalizedPoints[activePointIndex].x;
-            let left = screenX - (tooltipWidth / 2); // Center tooltip on cursor
-            let top = normalizedPoints[activePointIndex].y; // Reduced from 120 to be closer to cursor
-            
-            console.log("normalized x:", normalizedPoints[activePointIndex].x);
-            console.log("screen x:", screenX);
-            console.log("tooltip left:", left);
-            console.log("tooltip right edge:", left + tooltipWidth);
-            console.log("graph right edge:", graphRight);
-            console.log("graph left edge:", graphLeft);
 
-            // Check if tooltip would be cut off on the right (allow a larger buffer before restricting)
-            console.log("Checking right edge:", left + tooltipWidth, ">", graphRight + 60, "=", left + tooltipWidth > graphRight + 55);
+            const screenX = graphLeft + normalizedPoints[activePointIndex].x;
+            let left = screenX - (tooltipWidth / 2); 
+            let top = normalizedPoints[activePointIndex].y; 
+            
+            // console.log("normalized x:", normalizedPoints[activePointIndex].x);
+            // console.log("screen x:", screenX);
+            // console.log("tooltip left:", left);
+            // console.log("tooltip right edge:", left + tooltipWidth);
+            // console.log("graph right edge:", graphRight);
+            // console.log("graph left edge:", graphLeft);
+
+            // console.log("Checking right edge:", left + tooltipWidth, ">", graphRight + 60, "=", left + tooltipWidth > graphRight + 55);
             if (left + tooltipWidth > graphRight + 55) {
               const overshoot = (left + tooltipWidth) - (graphRight + 55);
-              left = left - overshoot - 10; // Adjust just enough to keep it within bounds
-              console.log("ADJUSTED RIGHT - new left:", left);
+              left = left - overshoot - 10;
+              // console.log("ADJUSTED RIGHT - new left:", left);
             }
             
             // Check if tooltip would be cut off on the left
             if (left < graphLeft) {
               left = graphLeft;
-              console.log("ADJUSTED LEFT - new left:", left);
+              // console.log("ADJUSTED LEFT - new left:", left);
             }
             
-            console.log("FINAL left position:", left);
+            // console.log("FINAL left position:", left);
             
-            // Check if tooltip would be cut off at the bottom (optional)
             const screenHeight = Dimensions.get('window').height;
             if (top + tooltipHeight > screenHeight - 100) {
-              top = normalizedPoints[activePointIndex].y - tooltipHeight - 20; // Show above cursor
+              top = normalizedPoints[activePointIndex].y - tooltipHeight - 20;
             }
             
             return (
@@ -420,7 +433,6 @@ const GPA = () => {
               </View>
             );
           })()}
-        {/* Dynamic GPA cards */}
         <View className="flex-1">
           {(() => {
             const fallback: GPAData = { unweighted: 100, weighted: 100 };
@@ -486,38 +498,29 @@ const GPA = () => {
               { rcLabels: ['RC3', 'RC4'], prLabels: ['PR5', 'PR6', 'PR7', 'PR8'] }
             ];
 
-            // Find all valid PRs across both groups, get the 2 most recent overall
             const allPRLabels = rcGroups.flatMap(({ prLabels }) => prLabels);
             const validAllPRs = allPRLabels.filter(pr => exists(pr));
-            // Only keep the 2 most recent PRs globally
             const latestTwoPRs = validAllPRs.slice(-2);
 
-            // Determine which RC group(s) these PRs belong to
             const rcGroupMap: Record<string, number> = {
               PR1: 0, PR2: 0, PR3: 0, PR4: 0,
               PR5: 1, PR6: 1, PR7: 1, PR8: 1
             };
-
-            // Which RC group index the latest PRs belong to
             const latestGroups = [...new Set(latestTwoPRs.map(pr => rcGroupMap[pr]))];
 
-            // Helper to render RCs in a group, skipping any RC already handled
             const handledRCs = new Set<string>();
 
             rcGroups.forEach(({ rcLabels, prLabels }, idx) => {
-              // If this group is the group of the latest PRs, render only the latest PRs and their RC
               if (latestGroups.includes(idx)) {
-                // Among the latestTwoPRs, select those belonging to this group
                 const latestGroupPRs = latestTwoPRs.filter(pr => rcGroupMap[pr] === idx);
 
-                // Map PRs to their RC
                 const prByRC: Record<string, string[]> = {};
                 latestGroupPRs.forEach(pr => {
                   const rc = prToRCMap[pr];
                   if (!prByRC[rc]) prByRC[rc] = [];
                   prByRC[rc].push(pr);
                 });
-                // For each RC in this group, if it has PRs, render the PR cards
+
                 const prList = [
                   ...(prByRC[rcLabels[0]] || []),
                   ...(prByRC[rcLabels[1]] || [])
@@ -549,18 +552,15 @@ const GPA = () => {
                     )) {
                     rows.push(renderCard(rcLabels[0], rcLabels[1]));
                     handledRCs.add(rcLabels[idx]);
-                    // rows.push(renderCard(prList[0], prList[1]));
                     rows.push(renderCard(prList[0], prList[1]));
                     handledRCs.add(rcLabels[idx+1]);
                   } else {
-                    // Render the RC after its PRs
                     rows.push(renderCard(rcLabels[0], rcLabels[1]));
                     handledRCs.add(rcLabels[idx]);
                     handledRCs.add(rcLabels[idx+1]);
                   }
                 } 
               } else {
-                // For groups NOT containing the latest PRs: render RCs in pairs, unless one is already handled
                 const unhandledRCs = rcLabels.filter(rc => !handledRCs.has(rc));
                 if (unhandledRCs.length === 2) {
                   rows.push(renderCard(unhandledRCs[0], unhandledRCs[1]));
@@ -569,7 +569,6 @@ const GPA = () => {
                   rows.push(renderSoloCard(unhandledRCs[0]));
                 }
               }
-              // Render SM1/SM2 as before
               if (idx === 0) {
                 rows.push(renderSoloCard('SM1'));
               }
@@ -612,7 +611,6 @@ const GPA = () => {
 
   return (
     <View className="flex-1 bg-primary">
-      {/* Header */}
       <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
         <Text className="text-white text-3xl font-bold">Grade Point Average</Text>
         <TouchableOpacity onPress={() => settingSheetRef.current?.snapToIndex(0)}>

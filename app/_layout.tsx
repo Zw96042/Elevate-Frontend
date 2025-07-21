@@ -110,7 +110,7 @@ function InnerLayout() {
           enablePanDownToClose={true}
           enableDynamicSizing={false}
           backgroundStyle={{ backgroundColor: cardColor }}
-          enableOverDrag={false}
+          overDragResistanceFactor={1}
           style={{ zIndex: 1 }}
           backdropComponent={(props) => (
             <BottomSheetBackdrop
@@ -158,7 +158,7 @@ function InnerLayout() {
           enablePanDownToClose={true}
           backgroundStyle={{ backgroundColor: cardColor }}
           enableDynamicSizing={false}
-          enableOverDrag={false}
+          overDragResistanceFactor={1}
           enableHandlePanningGesture={true}
           style={{ zIndex: 2 }}
           keyboardBehavior={'extend'}
