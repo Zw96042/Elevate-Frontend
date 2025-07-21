@@ -44,8 +44,13 @@ const GPA = () => {
     PR4: { unweighted: 89, weighted: 50 },
     RC2: { unweighted: 92, weighted: 96 },
     SM1: { unweighted: 91, weighted: 97 },
-    // PR5: { unweighted: 92, weighted: 91 },
-    // PR6: { unweighted: 86, weighted: 85 },
+    PR5: { unweighted: 92, weighted: 91 },
+    PR6: { unweighted: 86, weighted: 85 },
+    RC3: { unweighted: 90, weighted: 95 },
+    PR7: { unweighted: 85, weighted: 110 },
+    PR8: { unweighted: 89, weighted: 50 },
+    RC4: { unweighted: 92, weighted: 96 },
+    SM2: { unweighted: 91, weighted: 97 },
   };
 
   const validLabels = allLabels.filter(label => mockGPAData[label] && mockGPAData[label].weighted > 0);
@@ -249,7 +254,6 @@ const GPA = () => {
             const validAllPRs = allPRLabels.filter(pr => exists(pr));
             // Only keep the 2 most recent PRs globally
             const latestTwoPRs = validAllPRs.slice(-2);
-            console.log("Latest PRS", latestTwoPRs);
 
             // Determine which RC group(s) these PRs belong to
             const rcGroupMap: Record<string, number> = {
@@ -259,18 +263,16 @@ const GPA = () => {
 
             // Which RC group index the latest PRs belong to
             const latestGroups = [...new Set(latestTwoPRs.map(pr => rcGroupMap[pr]))];
-            console.log("latest group", latestGroups);
 
             // Helper to render RCs in a group, skipping any RC already handled
             const handledRCs = new Set<string>();
-            
-            console.log("RC GRoups", rcGroups);
+
             rcGroups.forEach(({ rcLabels, prLabels }, idx) => {
               // If this group is the group of the latest PRs, render only the latest PRs and their RC
               if (latestGroups.includes(idx)) {
                 // Among the latestTwoPRs, select those belonging to this group
                 const latestGroupPRs = latestTwoPRs.filter(pr => rcGroupMap[pr] === idx);
-                console.log("Latest group PRS", latestGroupPRs);
+
                 // Map PRs to their RC
                 const prByRC: Record<string, string[]> = {};
                 latestGroupPRs.forEach(pr => {
@@ -278,57 +280,55 @@ const GPA = () => {
                   if (!prByRC[rc]) prByRC[rc] = [];
                   prByRC[rc].push(pr);
                 });
-                console.log("PY BY RC", prByRC);
                 // For each RC in this group, if it has PRs, render the PR cards
-                console.log("RC Label", rcLabels);
-                // rcLabels.forEach(rc => {
-                  // console.log("RC Solo", rc);
-                  const prList = [
-                    ...(prByRC[rcLabels[0]] || []),
-                    ...(prByRC[rcLabels[1]] || [])
-                  ];
-                  console.log("PR List", prList);
-                  if (prList && prList.length > 0) {
-                    if (prList.length === 2 && 
-                      !prList.includes("PR3") &&
-                      !prList.includes("PR4") && 
-                      !prList.includes("PR7") && 
-                      !prList.includes("PR8")) {
-                      rows.push(renderCard(prList[0], prList[1]));
-                    } else if (prList.length === 1) {
-                      rows.push(renderSoloCard(prList[0]));
-                    }
-                    
-                    if (prList.length === 2 && 
-                      (prList.includes("PR3") ||
-                      prList.includes("PR4") ||
-                      prList.includes("PR7") ||
-                      prList.includes("PR8"))) {
-                      rows.push(renderCard(rcLabels[0], prList[0]));
-                      handledRCs.add(rcLabels[idx]);
-                      // rows.push(renderCard(prList[0], prList[1]));
-                      rows.push(renderCard(rcLabels[1], prList[1]));
-                      handledRCs.add(rcLabels[idx+1]);
-                    } else {
-                      // Render the RC after its PRs
-                      rows.push(renderCard(rcLabels[0], rcLabels[1]));
-                      handledRCs.add(rcLabels[idx]);
-                      handledRCs.add(rcLabels[idx+1]);
-                    }
-                  } 
-                // });
+                const prList = [
+                  ...(prByRC[rcLabels[0]] || []),
+                  ...(prByRC[rcLabels[1]] || [])
+                ];
+                if (prList && prList.length > 0) {
+                  if (prList.length === 2 && 
+                    !prList.includes("PR3") &&
+                    !prList.includes("PR4") && 
+                    !prList.includes("PR7") && 
+                    !prList.includes("PR8")) {
+                    rows.push(renderCard(prList[0], prList[1]));
+                  } else if (prList.length === 1 && (
+                    !prList.includes("PR4") && 
+                    !prList.includes("PR8")
+                  )) {
+                    rows.push(renderSoloCard(prList[0]));
+                  }
+                  
+                  if (prList.length === 2 && 
+                    (
+                      (
+                        prList.includes("PR3") &&
+                        prList.includes("PR4")
+                      ) ||
+                      (
+                        prList.includes("PR7") &&
+                        prList.includes("PR8")
+                      )
+                    )) {
+                    rows.push(renderCard(rcLabels[0], rcLabels[1]));
+                    handledRCs.add(rcLabels[idx]);
+                    // rows.push(renderCard(prList[0], prList[1]));
+                    rows.push(renderCard(prList[0], prList[1]));
+                    handledRCs.add(rcLabels[idx+1]);
+                  } else {
+                    // Render the RC after its PRs
+                    rows.push(renderCard(rcLabels[0], rcLabels[1]));
+                    handledRCs.add(rcLabels[idx]);
+                    handledRCs.add(rcLabels[idx+1]);
+                  }
+                } 
               } else {
                 // For groups NOT containing the latest PRs: render RCs in pairs, unless one is already handled
                 const unhandledRCs = rcLabels.filter(rc => !handledRCs.has(rc));
-                console.log(rcLabels);
-                console.log(!handledRCs.has(rcLabels[0]));
-                console.log(!handledRCs.has(rcLabels[1]));
-                console.log(exists(rcLabels[0]));
-                console.log(exists(rcLabels[1]));
-                console.log(unhandledRCs);
                 if (unhandledRCs.length === 2) {
                   rows.push(renderCard(unhandledRCs[0], unhandledRCs[1]));
                 } else if (unhandledRCs.length === 1) {
+  
                   rows.push(renderSoloCard(unhandledRCs[0]));
                 }
               }
