@@ -80,44 +80,25 @@ const ClassCard2Sem = ({
         <View className="w-full h-20 rounded-3xl bg-cardColor flex-row items-center justify-between px-5 mb-3">
           <View>
             <Text className="text-lg text-main font-normal">
-              {name.length > 19 ? `${name.slice(0, 19).trim()}...` : name}
+              {(() => {
+                const stripped = name.split(' - ')[0];
+                return stripped.length > 23 ? `${stripped.slice(0, 23).trim()}...` : stripped;
+              })()}
             </Text>
           </View>
 
-          <View className="flex-row items-center">
-            <View className="items-center mr-2">
-              <View className="relative w-[50] h-[50]">
-                <PieChart
-                  widthAndHeight={50}
-                  series={[
-                    { value: Math.min(displaySM1, 100), color: highlightColor },
-                    { value: 100 - Math.min(displaySM1, 100), color: cardColor }
-                  ]}
-                />
-                <View className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 justify-center items-center">
-                  <Text className="text-highlightText font-bold text-sm">
-                    {displaySM1 === 0 ? '--' : `${displaySM1.toFixed(1)}%`}
-                  </Text>
-                </View>
-              </View>
+          <View className="flex-col items-center justify-center space-y-1">
+            <View className="items-center flex-row mb-2">
+              <Text className="text-xs text-main">SM1:</Text>
+              <Text className="text-highlightText font-bold text-sm">
+                {displaySM1 === 0 ? '--' : `${displaySM1.toFixed(1)}%`}
+              </Text>
             </View>
-            <View className="w-[1.5px] h-12 rounded-full bg-highlight mr-2" />
-
-            <View className="items-center">
-              <View className="relative w-[50] h-[50]">
-                <PieChart
-                  widthAndHeight={50}
-                  series={[
-                    { value: Math.min(displaySM2, 100), color: highlightColor },
-                    { value: 100 - Math.min(displaySM2, 100), color: cardColor }
-                  ]}
-                />
-                <View className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 justify-center items-center">
-                  <Text className="text-highlightText font-bold text-sm">
-                    {displaySM2 === 0 ? '--' : `${displaySM2.toFixed(1)}%`}
-                  </Text>
-                </View>
-              </View>
+            <View className="items-center flex-row">
+              <Text className="text-xs text-main">SM2:</Text>
+              <Text className="text-highlightText font-bold text-sm">
+                {displaySM2 === 0 ? '--' : `${displaySM2.toFixed(1)}%`}
+              </Text>
             </View>
           </View>
         </View>

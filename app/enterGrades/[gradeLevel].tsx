@@ -12,7 +12,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 
 const availableClasses = [
   "INTEGRATED PHYSICS AND CHEMISTRY MODIFIED - SE300 ( IPC)",
-  "3D CAD ENGINEERING DESIGN AND PRESENTATION - TC350 (ENGDSPR)",
+  "3D CAD ENGINEERING DESIGN AND PRESENTATION - TC350 (ENGDSPR)",
   "3D MODELING & ANIMATION - 700B (TA3DMA)",
   "ACCOUNTING - TC660 (ACCOUNT1)",
   "ADAPTIVE PHYSICAL EDUCATION",
@@ -352,7 +352,7 @@ type SavedClass = {
 const EnterGrades = () => {
   const { gradeLevel } = useLocalSearchParams();
 
-  const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '54%' | '90%'>('hidden');
+  const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '54%' | '92%'>('hidden');
   const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
   const { colorScheme } = useColorScheme();
 
@@ -414,9 +414,9 @@ const EnterGrades = () => {
 
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', () => {
-      if (!modalClosedByOutsideTap && currentSnapPosition !== '90%' && currentSnapPosition !== 'hidden') {
-        addClassRef.current?.snapToPosition('90%', { duration: 150 });
-        setCurrentSnapPosition('90%');
+      if (!modalClosedByOutsideTap && currentSnapPosition !== '92%' && currentSnapPosition !== 'hidden') {
+        addClassRef.current?.snapToPosition('92%', { duration: 150 });
+        setCurrentSnapPosition('92%');
       }
     });
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
@@ -424,7 +424,7 @@ const EnterGrades = () => {
         setModalClosedByOutsideTap(false);
         return;
       }
-      if (currentSnapPosition === '90%') {
+      if (currentSnapPosition === '92%') {
         addClassRef.current?.snapToPosition('54%', { duration: 150 });
         setCurrentSnapPosition('54%');
       }
