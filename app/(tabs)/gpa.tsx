@@ -214,15 +214,14 @@ const GPA = () => {
             </Svg>
           </View>
           <MotiView
-            from={{ width: containerWidth - 17 }}
+            from={{ width: containerWidth  }}
             animate={{ width: 0}}
             transition={{
               type: 'spring', 
-              damping: 1000, 
-              mass: 10,
-              stiffness: 80, 
-              restDisplacementThreshold: 0.01,
-              restSpeedThreshold: 0.001,
+              damping: 18, 
+              mass: 2
+              // mass: 10,
+              // stiffness: 90, 
             }}
             style={{
               position: 'absolute',
