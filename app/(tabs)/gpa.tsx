@@ -85,7 +85,7 @@ const GPA = () => {
     );
   };
 
-  const renderGPAGraph = () => {
+    const renderGPAGraph = () => {
     const screenWidth = Dimensions.get('window').width;
     const graphWidth = screenWidth - 42; 
     const graphHeight = 100;
@@ -144,94 +144,58 @@ const GPA = () => {
     const fillPathData = pathData + ` L ${graphWidth} ${graphHeight + 5} L 0 ${graphHeight} Z`;
 
     return (
-              <View className="mb-4 bg-cardColor rounded-xl pt-4 overflow-hidden">
-          <Text className="text-main text-lg text-center mb-4">Weighted GPA Graph</Text>
-          <View className={`w-full relative`} {...panResponder.panHandlers}>
-            <View style={{ height: graphHeight, overflow: 'hidden' }}>
-              <Svg
-                width="100%"
-                height={graphHeight}
-                viewBox={`0 0 ${graphWidth } ${graphHeight}`}
-              >
-                <Defs>
-                  <LinearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <Stop offset="0%" stopColor="#138EED" stopOpacity="0.4" />
-                    <Stop offset="100%" stopColor="#058FFB" stopOpacity="0" />
-                  </LinearGradient>
-                </Defs>
-                <Path d={fillPathData} fill="url(#gradient)" />
-                {/* Line */}
-                <Path d={pathData} stroke="#0090FF" strokeWidth="2" fill="none" />
-                {/* Active point: blue dot */}
-                {activePointIndex !== null && (
-                  <Circle
-                    cx={normalizedPoints[activePointIndex].x}
-                    cy={normalizedPoints[activePointIndex].y}
-                    r={5}
-                    fill="#0A84FF"
-                    stroke="white"
-                    strokeWidth={2}
-                  />
-                )}
-              </Svg>
-            </View>
-            {/* Tooltip overlay outside SVG container */}
-            {activePointIndex !== null && (
-              <View
-                pointerEvents="none"
-                style={{
-                  position: 'absolute',
-                  top: normalizedPoints[activePointIndex].y - 50,
-                  left: normalizedPoints[activePointIndex].x,
-                  transform: [{ translateX: -40 }],
-                  backgroundColor: 'rgba(30, 41, 59, 0.95)',
-                  paddingVertical: 6,
-                  paddingHorizontal: 12,
-                  borderRadius: 10,
-                  maxWidth: 140,
-                  alignItems: 'center',
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.3,
-                  shadowRadius: 8,
-                  elevation: 1000,
-                  zIndex: 9999,
-                }}
-              >
-                <Text
-                  style={{
-                    color: '#F8FAFC',
-                    fontWeight: '600',
-                    fontFamily: 'monospace',
-                    fontSize: 14,
-                    textAlign: 'center',
-                  }}
-                >
-                  {`${validLabels[activePointIndex]}: ${gpaPoints[activePointIndex].toFixed(2)}`}
-                </Text>
-              </View>
-            )}
-            <MotiView
-              from={{ width: containerWidth - 17 }}
-              animate={{ width: 0}}
-              transition={{
-                type: 'spring', 
-                damping: 1000, 
-                mass: 10,
-                stiffness: 80, 
-                restDisplacementThreshold: 0.01,
-                restSpeedThreshold: 0.001,
-              }}
-              style={{
-                position: 'absolute',
-                top: 0,
-                bottom: 0,
-                right: 0,
-              }}
-              className='bg-cardColor'
-            />
+      <View className="mb-4 bg-cardColor rounded-xl pt-4 overflow-hidden">
+        <Text className="text-main text-lg text-center mb-4">Weighted GPA Graph</Text>
+        <View className={`w-full relative`} {...panResponder.panHandlers}>
+          <View style={{ height: graphHeight, overflow: 'hidden' }}>
+            <Svg
+              width="100%"
+              height={graphHeight}
+              viewBox={`0 0 ${graphWidth } ${graphHeight}`}
+            >
+              <Defs>
+                <LinearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <Stop offset="0%" stopColor="#138EED" stopOpacity="0.4" />
+                  <Stop offset="100%" stopColor="#058FFB" stopOpacity="0" />
+                </LinearGradient>
+              </Defs>
+              <Path d={fillPathData} fill="url(#gradient)" />
+              {/* Line */}
+              <Path d={pathData} stroke="#0090FF" strokeWidth="2" fill="none" />
+              {/* Active point: blue dot */}
+              {activePointIndex !== null && (
+                <Circle
+                  cx={normalizedPoints[activePointIndex].x}
+                  cy={normalizedPoints[activePointIndex].y}
+                  r={5}
+                  fill="#0A84FF"
+                  stroke="white"
+                  strokeWidth={2}
+                />
+              )}
+            </Svg>
           </View>
+          <MotiView
+            from={{ width: containerWidth - 17 }}
+            animate={{ width: 0}}
+            transition={{
+              type: 'spring', 
+              damping: 1000, 
+              mass: 10,
+              stiffness: 80, 
+              restDisplacementThreshold: 0.01,
+              restSpeedThreshold: 0.001,
+            }}
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              right: 0,
+            }}
+            className='bg-cardColor'
+          />
         </View>
+      </View>
     );
   };
 
@@ -257,11 +221,114 @@ const GPA = () => {
     </View>
   );
 
-  const renderGPADisplay = () => (
-    <ScrollView className="flex-1" showsVerticalScrollIndicator={false} scrollEnabled={false}>
-      <View className="px-6 pb-4">
-        {/* GPA Graph */}
-        {renderGPAGraph()}
+  const renderGPADisplay = () => {
+    const screenWidth = Dimensions.get('window').width;
+    const graphWidth = screenWidth - 42; 
+    const graphHeight = 100;
+    const gpaPoints = validLabels.map(label => mockGPAData[label].weighted);
+    
+    const numSegments = gpaPoints.length - 1;
+    const normalizedPoints = gpaPoints.map((gpa, index) => {
+      const x = (index / numSegments) * graphWidth;
+      const y = 30 + ((gpaScale - gpa) / gpaScale) * (graphHeight - 20);
+      return { x, y };
+    });
+
+    return (
+      <ScrollView className="flex-1" showsVerticalScrollIndicator={false} scrollEnabled={false}>
+        <View className="px-6 pb-4">
+          {/* GPA Graph */}
+          {renderGPAGraph()}
+          
+          {/* Tooltip overlay at the highest level */}
+          {activePointIndex !== null && gpaPoints.length >= 2 && (() => {
+            const tooltipWidth = 140; // maxWidth
+            const tooltipHeight = 40; // approximate height
+            const padding = 24; // container padding
+            
+            // Use the actual device screen width
+            const actualScreenWidth = Dimensions.get('window').width;
+            const graphWidth = actualScreenWidth - 42; // Same as in renderGPAGraph
+            const containerWidth = actualScreenWidth - 24; // Same as in renderGPAGraph
+            
+            // Calculate initial position relative to graph
+            const graphLeft = padding; // Left edge of graph container
+            const graphRight = graphLeft + graphWidth - 10; // Right edge minus small buffer for tooltip
+            
+            console.log("ACTUAL screen width:", actualScreenWidth);
+            console.log("Graph width:", graphWidth);
+            console.log("Graph right edge:", graphRight);
+            
+            // The normalizedPoints are already scaled to fit within graphWidth
+            // So we just need to add the graph's left position
+            const screenX = graphLeft + normalizedPoints[activePointIndex].x;
+            let left = screenX - (tooltipWidth / 2); // Center tooltip on cursor
+            let top = normalizedPoints[activePointIndex].y; // Reduced from 120 to be closer to cursor
+            
+            console.log("normalized x:", normalizedPoints[activePointIndex].x);
+            console.log("screen x:", screenX);
+            console.log("tooltip left:", left);
+            console.log("tooltip right edge:", left + tooltipWidth);
+            console.log("graph right edge:", graphRight);
+            console.log("graph left edge:", graphLeft);
+
+            // Check if tooltip would be cut off on the right (allow a larger buffer before restricting)
+            console.log("Checking right edge:", left + tooltipWidth, ">", graphRight + 60, "=", left + tooltipWidth > graphRight + 55);
+            if (left + tooltipWidth > graphRight + 55) {
+              const overshoot = (left + tooltipWidth) - (graphRight + 55);
+              left = left - overshoot - 10; // Adjust just enough to keep it within bounds
+              console.log("ADJUSTED RIGHT - new left:", left);
+            }
+            
+            // Check if tooltip would be cut off on the left
+            if (left < graphLeft) {
+              left = graphLeft;
+              console.log("ADJUSTED LEFT - new left:", left);
+            }
+            
+            console.log("FINAL left position:", left);
+            
+            // Check if tooltip would be cut off at the bottom (optional)
+            const screenHeight = Dimensions.get('window').height;
+            if (top + tooltipHeight > screenHeight - 100) {
+              top = normalizedPoints[activePointIndex].y - tooltipHeight - 20; // Show above cursor
+            }
+            
+            return (
+              <View
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  top,
+                  left,
+                  backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  borderRadius: 10,
+                  maxWidth: tooltipWidth,
+                  alignItems: 'center',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 1000,
+                  zIndex: 9999,
+                }}
+              >
+                <Text
+                  style={{
+                    color: '#F8FAFC',
+                    fontWeight: '600',
+                    fontFamily: 'monospace',
+                    fontSize: 14,
+                    textAlign: 'center',
+                  }}
+                >
+                  {`${validLabels[activePointIndex]}: ${gpaPoints[activePointIndex].toFixed(2)}`}
+                </Text>
+              </View>
+            );
+          })()}
         {/* Dynamic GPA cards */}
         <View className="flex-1">
           {(() => {
@@ -444,9 +511,10 @@ const GPA = () => {
             return rows;
           })()}
         </View>
-      </View>
-    </ScrollView>
-  );
+              </View>
+      </ScrollView>
+    );
+    };
 
   const isCurrentGrade = selectedGrade === currentGradeLevel;
   const isPastGrade = gradeLevels.indexOf(selectedGrade) < gradeLevels.indexOf(currentGradeLevel);
