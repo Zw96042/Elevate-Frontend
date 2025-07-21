@@ -12,7 +12,7 @@ const ManualGradeEntryCard = ({ selectedGrade }: { selectedGrade: string }) => {
           Enter your {selectedGrade} year grades.
         </Text>
         <TouchableOpacity
-          onPress={() => router.push('/enterGrades')}
+          onPress={() => router.push(`/enterGrades/${selectedGrade}`)}
           activeOpacity={0.8}
           className="bg-highlight px-6 py-2 rounded-full shadow-lg"
         >

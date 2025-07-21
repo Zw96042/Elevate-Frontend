@@ -12,6 +12,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-na
 import * as Burnt from "burnt";
 import 'react-native-reanimated'
 import 'react-native-gesture-handler'
+import { AddClassSheetProvider } from "@/context/AddClassSheetContext";
 
 
 const terms: TermLabel[] = ['Q1 Grades', 'Q2 Grades', 'SM1 Grade', 'Q3 Grades', 'Q4 Grades', 'SM2 Grades'];
@@ -280,17 +281,19 @@ function InnerLayout() {
 
 export default function RootLayout() {
   return (
-    <AddSheetProvider>
-      <BottomSheetProvider>
-        <BottomSheetModalProvider>
-          
-            <GestureHandlerRootView style={{ flex: 1 }}>
+      <AddClassSheetProvider>
+        <AddSheetProvider>
+          <BottomSheetProvider>
+            <BottomSheetModalProvider>
               
-                <InnerLayout />
-            </GestureHandlerRootView>
-          
-        </BottomSheetModalProvider>
-      </BottomSheetProvider>
-      </AddSheetProvider>
+                <GestureHandlerRootView style={{ flex: 1 }}>
+                  
+                    <InnerLayout />
+                </GestureHandlerRootView>
+              
+            </BottomSheetModalProvider>
+          </BottomSheetProvider>
+          </AddSheetProvider>
+      </AddClassSheetProvider>
     )
 }
