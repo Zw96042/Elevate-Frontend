@@ -4,8 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { MotiView } from 'moti';
 import React, { JSX, useCallback, useState } from 'react';
-import { Alert, Dimensions, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import Svg, { Defs, LinearGradient, Path, Stop } from 'react-native-svg';
+import { Alert, Dimensions, PanResponder, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 
 type GradeLevel = 'Freshman' | 'Sophomore' | 'Junior' | 'Senior' | 'All Time';
 
@@ -30,6 +30,7 @@ const GPA = () => {
   const { settingSheetRef } = useSettingSheet();
   const [hasCredentials, setHasCredentials] = useState(false);
   const [selectedGrade, setSelectedGrade] = useState<GradeLevel>('Freshman');
+  const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
   
   // Mock current grade level - replace with actual logic later
   const currentGradeLevel: GradeLevel = 'Sophomore';
@@ -92,13 +93,42 @@ const GPA = () => {
 
     const gpaPoints = validLabels.map(label => mockGPAData[label].weighted);
 
+    // Prevent rendering with insufficient data
+    if (gpaPoints.length < 2) {
+      return (
+        <View className="mb-4 bg-cardColor rounded-xl pt-8 overflow-hidden">
+          <Text className="text-main text-lg text-center">Weighted GPA Graph</Text>
+          <Text className="text-secondary text-center py-6">Not enough data to render graph.</Text>
+        </View>
+      );
+    }
+
     const numSegments = gpaPoints.length - 1;
     const normalizedPoints = gpaPoints.map((gpa, index) => {
       const x = (index / numSegments) * graphWidth;
       const y = 30 + ((gpaScale - gpa) / gpaScale) * (graphHeight - 20);
       return { x, y };
     });
-    
+    const segmentWidth = graphWidth / (gpaPoints.length - 1);
+
+    // PanResponder for touch gestures
+    const panResponder = PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => {
+        const x = evt.nativeEvent.locationX;
+        const idx = Math.floor((x + segmentWidth / 2) / segmentWidth);
+        setActivePointIndex(Math.max(0, Math.min(idx, gpaPoints.length - 1)));
+      },
+      onPanResponderMove: (evt) => {
+        const x = evt.nativeEvent.locationX;
+        const idx = Math.floor((x + segmentWidth / 2) / segmentWidth);
+        setActivePointIndex(Math.max(0, Math.min(idx, gpaPoints.length - 1)));
+      },
+      onPanResponderRelease: () => {
+        setActivePointIndex(null);
+      }
+    });
+
     // Create smooth SVG path with curves
     const pathData = normalizedPoints.map((point, index) => {
       if (index === 0) return `M ${point.x} ${point.y}`;
@@ -109,50 +139,99 @@ const GPA = () => {
       const controlY2 = point.y;
       return `C ${controlX1} ${controlY1} ${controlX2} ${controlY2} ${point.x} ${point.y}`;
     }).join(' ');
-    
+
     // Create fill path (area under the line)
     const fillPathData = pathData + ` L ${graphWidth} ${graphHeight + 5} L 0 ${graphHeight} Z`;
-    
+
     return (
-      <View className="mb-4 bg-cardColor rounded-xl pt-4 overflow-hidden">
-        <Text className="text-main text-lg text-center">Weighted GPA Graph</Text>
-        <View className={`w-full relative overflow-hidden`}>
-          <Svg
-            width="100%"
-            height={graphHeight}
-            viewBox={`0 0 ${graphWidth } ${graphHeight}`}
-          >
-            <Defs>
-              <LinearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                <Stop offset="0%" stopColor="#138EED" stopOpacity="0.4" />
-                <Stop offset="100%" stopColor="#058FFB" stopOpacity="0" />
-              </LinearGradient>
-            </Defs>
-            <Path d={fillPathData} fill="url(#gradient)" />
-            {/* Line */}
-            <Path d={pathData} stroke="#0090FF" strokeWidth="2" fill="none" />
-          </Svg>
-          <MotiView
-            from={{ width: containerWidth - 17 }}
-            animate={{ width: 0}}
-            transition={{
-              type: 'spring', 
-              damping: 1000, 
-              mass: 10,
-              stiffness: 80, 
-              restDisplacementThreshold: 0.01,
-              restSpeedThreshold: 0.001,
-            }}
-            style={{
-              position: 'absolute',
-              top: 0,
-              bottom: 0,
-              right: 0,
-            }}
-            className='bg-cardColor'
-          />
+              <View className="mb-4 bg-cardColor rounded-xl pt-4 overflow-hidden">
+          <Text className="text-main text-lg text-center mb-4">Weighted GPA Graph</Text>
+          <View className={`w-full relative`} {...panResponder.panHandlers}>
+            <View style={{ height: graphHeight, overflow: 'hidden' }}>
+              <Svg
+                width="100%"
+                height={graphHeight}
+                viewBox={`0 0 ${graphWidth } ${graphHeight}`}
+              >
+                <Defs>
+                  <LinearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <Stop offset="0%" stopColor="#138EED" stopOpacity="0.4" />
+                    <Stop offset="100%" stopColor="#058FFB" stopOpacity="0" />
+                  </LinearGradient>
+                </Defs>
+                <Path d={fillPathData} fill="url(#gradient)" />
+                {/* Line */}
+                <Path d={pathData} stroke="#0090FF" strokeWidth="2" fill="none" />
+                {/* Active point: blue dot */}
+                {activePointIndex !== null && (
+                  <Circle
+                    cx={normalizedPoints[activePointIndex].x}
+                    cy={normalizedPoints[activePointIndex].y}
+                    r={5}
+                    fill="#0A84FF"
+                    stroke="white"
+                    strokeWidth={2}
+                  />
+                )}
+              </Svg>
+            </View>
+            {/* Tooltip overlay outside SVG container */}
+            {activePointIndex !== null && (
+              <View
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  top: normalizedPoints[activePointIndex].y - 50,
+                  left: normalizedPoints[activePointIndex].x,
+                  transform: [{ translateX: -40 }],
+                  backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  borderRadius: 10,
+                  maxWidth: 140,
+                  alignItems: 'center',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 1000,
+                  zIndex: 9999,
+                }}
+              >
+                <Text
+                  style={{
+                    color: '#F8FAFC',
+                    fontWeight: '600',
+                    fontFamily: 'monospace',
+                    fontSize: 14,
+                    textAlign: 'center',
+                  }}
+                >
+                  {`${validLabels[activePointIndex]}: ${gpaPoints[activePointIndex].toFixed(2)}`}
+                </Text>
+              </View>
+            )}
+            <MotiView
+              from={{ width: containerWidth - 17 }}
+              animate={{ width: 0}}
+              transition={{
+                type: 'spring', 
+                damping: 1000, 
+                mass: 10,
+                stiffness: 80, 
+                restDisplacementThreshold: 0.01,
+                restSpeedThreshold: 0.001,
+              }}
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                right: 0,
+              }}
+              className='bg-cardColor'
+            />
+          </View>
         </View>
-      </View>
     );
   };
 
@@ -179,7 +258,7 @@ const GPA = () => {
   );
 
   const renderGPADisplay = () => (
-    <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+    <ScrollView className="flex-1" showsVerticalScrollIndicator={false} scrollEnabled={false}>
       <View className="px-6 pb-4">
         {/* GPA Graph */}
         {renderGPAGraph()}
@@ -333,7 +412,7 @@ const GPA = () => {
                 }
               }
               // Render SM1/SM2 as before
-              if (idx === 0 && exists('SM1')) {
+              if (idx === 0) {
                 rows.push(renderSoloCard('SM1'));
               }
               if (idx === 1) {
@@ -341,7 +420,7 @@ const GPA = () => {
               }
             });
 
-            const sm1 = getLabelData('SM1');
+            const sm1 = exists('SM1') ? getLabelData('SM1') : fallback;
             const sm2 = exists('SM2') ? getLabelData('SM2') : fallback;
             const finUnweighted = (sm1.unweighted + sm2.unweighted) / 2;
             const finWeighted = (sm1.weighted + sm2.weighted) / 2;

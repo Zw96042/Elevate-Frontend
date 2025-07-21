@@ -110,7 +110,8 @@ const InnerLayout = () => {
       if (authResult.success) {
         Burnt.toast({
           title: 'Information Verified',
-          preset: 'done'
+          preset: 'done',
+          duration: 2
         });
         DeviceEventEmitter.emit('credentialsAdded');
       } else {
@@ -118,6 +119,7 @@ const InnerLayout = () => {
           title: 'Error',
           preset: 'error',
           message: "Couldn't verify details",
+          duration: 2
         });
         DeviceEventEmitter.emit('credentialsInvalid');
       }
