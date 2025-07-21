@@ -31,6 +31,7 @@ const GPA = () => {
   const [hasCredentials, setHasCredentials] = useState(false);
   const [selectedGrade, setSelectedGrade] = useState<GradeLevel>('Freshman');
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
+  const [hoverX, setHoverX] = useState<number | null>(null); // NEW: track finger X
   
   // Mock current grade level - replace with actual logic later
   const currentGradeLevel: GradeLevel = 'Sophomore';
@@ -111,20 +112,54 @@ const GPA = () => {
     });
     const segmentWidth = graphWidth / (gpaPoints.length - 1);
 
+    // --- Smooth pan logic ---
+    // Compute snapped index and interpolated position
+    let dotX = null;
+    let dotY = null;
+    let snappedIndex = null;
+    if (hoverX !== null) {
+      // Clamp hoverX to graph bounds
+      let x = Math.max(0, Math.min(hoverX, graphWidth));
+      // Find nearest segment
+      const idx = Math.round(x / segmentWidth);
+      snappedIndex = Math.max(0, Math.min(idx, gpaPoints.length - 1));
+      // Interpolate between points for smooth dot/tooltip
+      if (x <= 0) {
+        dotX = normalizedPoints[0].x;
+        dotY = normalizedPoints[0].y;
+      } else if (x >= graphWidth) {
+        dotX = normalizedPoints[normalizedPoints.length - 1].x;
+        dotY = normalizedPoints[normalizedPoints.length - 1].y;
+      } else {
+        const leftIdx = Math.floor(x / segmentWidth);
+        const rightIdx = Math.ceil(x / segmentWidth);
+        const t = (x - leftIdx * segmentWidth) / segmentWidth;
+        dotX = normalizedPoints[leftIdx].x * (1 - t) + normalizedPoints[rightIdx].x * t;
+        dotY = normalizedPoints[leftIdx].y * (1 - t) + normalizedPoints[rightIdx].y * t;
+      }
+    } else if (activePointIndex !== null) {
+      dotX = normalizedPoints[activePointIndex].x;
+      dotY = normalizedPoints[activePointIndex].y;
+      snappedIndex = activePointIndex;
+    }
+
     // PanResponder for touch gestures
     const panResponder = PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onPanResponderGrant: (evt) => {
         const x = evt.nativeEvent.locationX;
-        const idx = Math.floor((x + segmentWidth / 2) / segmentWidth);
-        setActivePointIndex(Math.max(0, Math.min(idx, gpaPoints.length - 1)));
+        setHoverX(x);
       },
       onPanResponderMove: (evt) => {
         const x = evt.nativeEvent.locationX;
-        const idx = Math.floor((x + segmentWidth / 2) / segmentWidth);
-        setActivePointIndex(Math.max(0, Math.min(idx, gpaPoints.length - 1)));
+        setHoverX(x);
       },
       onPanResponderRelease: () => {
+        setHoverX(null);
+        setActivePointIndex(null);
+      },
+      onPanResponderTerminate: () => {
+        setHoverX(null);
         setActivePointIndex(null);
       }
     });
@@ -143,8 +178,11 @@ const GPA = () => {
     // Create fill path (area under the line)
     const fillPathData = pathData + ` L ${graphWidth} ${graphHeight + 5} L 0 ${graphHeight} Z`;
 
+    // Only show dot/tooltip if finger is on the graph or a point is selected
+    const showDotAndTooltip = (hoverX !== null || activePointIndex !== null) && dotX !== null && dotY !== null && snappedIndex !== null;
+
     return (
-      <View className="mb-4 bg-cardColor rounded-xl pt-4 overflow-hidden">
+      <View className="mb-4 bg-cardColor rounded-xl pt-4 overflow-hidden relative">
         <Text className="text-main text-lg text-center mb-4">Weighted GPA Graph</Text>
         <View className={`w-full relative`} {...panResponder.panHandlers}>
           <View style={{ height: graphHeight, overflow: 'hidden' }}>
@@ -162,11 +200,11 @@ const GPA = () => {
               <Path d={fillPathData} fill="url(#gradient)" />
               {/* Line */}
               <Path d={pathData} stroke="#0090FF" strokeWidth="2" fill="none" />
-              {/* Active point: blue dot */}
-              {activePointIndex !== null && (
+              {/* Animated dot */}
+              {showDotAndTooltip && (
                 <Circle
-                  cx={normalizedPoints[activePointIndex].x}
-                  cy={normalizedPoints[activePointIndex].y}
+                  cx={dotX ?? 0}
+                  cy={dotY ?? 0}
                   r={5}
                   fill="#0A84FF"
                   stroke="white"
@@ -195,6 +233,60 @@ const GPA = () => {
             className='bg-cardColor'
           />
         </View>
+        {/* Tooltip overlay at the highest level */}
+        {showDotAndTooltip && (() => {
+          // Use dotX/dotY for position, snappedIndex for value
+          const tooltipWidth = 140;
+          const tooltipHeight = 40;
+          const padding = 24;
+          const graphLeft = padding;
+          const edgeBuffer = 25;
+          const graphRight = graphLeft + graphWidth;
+          const screenX = graphLeft + (dotX ?? 0);
+          let left = screenX - (tooltipWidth / 2);
+          let top = dotY ?? 0;
+          if (left + tooltipWidth > graphRight + 15) left = graphRight + 15 - tooltipWidth;
+          if (left < graphLeft - edgeBuffer) left = graphLeft - edgeBuffer;
+          const screenHeight = Dimensions.get('window').height;
+          if (top + tooltipHeight > screenHeight - 100) {
+            top = (dotY ?? 0) - tooltipHeight - 20;
+          }
+          const safeIndex = snappedIndex ?? 0;
+          return (
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top,
+                left,
+                backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                paddingVertical: 6,
+                paddingHorizontal: 12,
+                borderRadius: 10,
+                maxWidth: tooltipWidth,
+                alignItems: 'center',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+                elevation: 1000,
+                zIndex: 9999,
+              }}
+            >
+              <Text
+                style={{
+                  color: '#F8FAFC',
+                  fontWeight: '600',
+                  fontFamily: 'monospace',
+                  fontSize: 14,
+                  textAlign: 'center',
+                }}
+              >
+                {`${validLabels[safeIndex]}: ${gpaPoints[safeIndex].toFixed(2)}`}
+              </Text>
+            </View>
+          );
+        })()}
       </View>
     );
   };
