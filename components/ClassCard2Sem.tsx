@@ -43,14 +43,14 @@ const ClassCard2Sem = ({
   const [displaySM2, setDisplaySM2] = useState(0)
 
   useEffect(() => {
-    const sm1Total = s1?.total ?? 0
-    setDisplaySM1(sm1Total)
-  }, [s1])
+    const sm1Total = typeof s1?.total === 'number' ? s1.total : 0;
+    setDisplaySM1(sm1Total);
+  }, [s1]);
 
   useEffect(() => {
-    const sm2Total = s2?.total ?? 0
-    setDisplaySM2(sm2Total)
-  }, [s2])
+    const sm2Total = typeof s2?.total === 'number' ? s2.total : 0;
+    setDisplaySM2(sm2Total);
+  }, [s2]);
 
   const theme = useColorScheme()
   const highlightColor = theme === 'dark' ? '#3b5795' : '#a4bfed'
@@ -91,13 +91,13 @@ const ClassCard2Sem = ({
             <View className="items-center flex-row mb-2">
               <Text className="text-xs text-main">SM1:</Text>
               <Text className="text-highlightText font-bold text-sm">
-                {displaySM1 === 0 ? '--' : `${displaySM1.toFixed(1)}%`}
+                {displaySM1 === -1 ? '--' : `${displaySM1.toFixed(1)}%`}
               </Text>
             </View>
             <View className="items-center flex-row">
               <Text className="text-xs text-main">SM2:</Text>
               <Text className="text-highlightText font-bold text-sm">
-                {displaySM2 === 0 ? '--' : `${displaySM2.toFixed(1)}%`}
+                {displaySM2 === -1 ? '--' : `${displaySM2.toFixed(1)}%`}
               </Text>
             </View>
           </View>

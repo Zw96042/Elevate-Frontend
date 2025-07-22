@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Keyboard, TextInput, TouchableWithoutFeedback, DeviceEventEmitter } from 'react-native';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetView } from '@gorhom/bottom-sheet';
 import { useColorScheme } from 'nativewind';
@@ -352,7 +352,7 @@ type SavedClass = {
 const EnterGrades = () => {
   const { gradeLevel } = useLocalSearchParams();
 
-  const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '54%' | '92%'>('hidden');
+  const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '52%' | '100%' | '62%' | null>(null);
   const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
   const { colorScheme } = useColorScheme();
 
@@ -390,6 +390,15 @@ const EnterGrades = () => {
 
   const [savedClasses, setSavedClasses] = useState<SavedClass[]>([]);
 
+  // State for selected semesters
+  const [semesters, setSemesters] = useState<string[]>(['Fall Semester', 'Spring Semester']);
+
+  // Memoized snapPoints for BottomSheet
+  const snapPoints = useMemo(
+    () => [semesters.length === 2 ? '62%' : '52%'],
+    [semesters.length]
+  );
+
   useEffect(() => {
     const loadSavedClasses = async () => {
       try {
@@ -407,16 +416,23 @@ const EnterGrades = () => {
   const handleSheetChanges = (index: number) => {
     if (index === -1) {
       setCurrentSnapPosition('hidden');
+    } else if (currentSnapPosition === null) {
+      const snapValue = semesters.length === 2 ? '62%' : '52%';
+      setCurrentSnapPosition(snapValue);
     } else {
-      setCurrentSnapPosition('54%');
+      setCurrentSnapPosition('52%');
     }
   };
 
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', () => {
-      if (!modalClosedByOutsideTap && currentSnapPosition !== '92%' && currentSnapPosition !== 'hidden') {
-        addClassRef.current?.snapToPosition('92%', { duration: 150 });
-        setCurrentSnapPosition('92%');
+      if (
+        !modalClosedByOutsideTap &&
+        currentSnapPosition !== '100%' &&
+        (currentSnapPosition !== 'hidden' && currentSnapPosition !== null)
+      ) {
+        addClassRef.current?.snapToPosition('100%', { duration: 150 });
+        setCurrentSnapPosition('100%');
       }
     });
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
@@ -424,16 +440,17 @@ const EnterGrades = () => {
         setModalClosedByOutsideTap(false);
         return;
       }
-      if (currentSnapPosition === '92%') {
-        addClassRef.current?.snapToPosition('54%', { duration: 150 });
-        setCurrentSnapPosition('54%');
+      if (currentSnapPosition === '100%') {
+        const snapValue = semesters.length === 2 ? '62%' : '52%';
+        addClassRef.current?.snapToPosition(snapValue, { duration: 150 });
+        setCurrentSnapPosition(snapValue);
       }
     });
     return () => {
       showSub.remove();
       hideSub.remove();
     };
-  }, [currentSnapPosition, modalClosedByOutsideTap]);
+  }, [currentSnapPosition, modalClosedByOutsideTap, semesters.length]);
 
   const onSubmit = async () => {
     if (!name.trim()) {
@@ -446,11 +463,22 @@ const EnterGrades = () => {
       return;
     }
 
-    const newClass: SavedClass = {
+    if (semesters.length === 0) {
+      toast({
+        title: 'Missing Info',
+        message: 'Select at least one semester',
+        preset: 'error',
+        duration: 1.2,
+      });
+      return;
+    }
+
+    const newClass: SavedClass & { semesters?: string[] } = {
       className: name.trim(),
-      sm1: Number(sm1Value),
-      sm2: Number(outOf),
-      teacher: '', // optional
+      sm1: semesters.includes('Fall Semester') ? Number(sm1Value) : -1,
+      sm2: semesters.includes('Spring Semester') ? Number(outOf) : -1,
+      teacher: '',
+      semesters,
     };
 
     try {
@@ -502,9 +530,10 @@ const EnterGrades = () => {
                     activeOpacity={0.8}
                     className="bg-highlight px-6 py-2 rounded-full shadow-lg"
                     onPress={() => {
-                    setModalClosedByOutsideTap(false);
-                    setCurrentSnapPosition('54%');
-                    addClassRef.current?.snapToPosition('54%');
+                      setModalClosedByOutsideTap(false);
+                      const snapValue = semesters.length === 2 ? '62%' : '52%';
+                      addClassRef.current?.snapToPosition(snapValue);
+                      setCurrentSnapPosition(snapValue);
                     }}
                 >
                     <Text className="text-highlightText font-semibold text-base text-center">
@@ -536,7 +565,7 @@ const EnterGrades = () => {
       <BottomSheet
         ref={addClassRef}
         index={-1}
-        snapPoints={['54%']}
+        snapPoints={snapPoints}
         enablePanDownToClose={true}
         backgroundStyle={{ backgroundColor: cardColor }}
         enableDynamicSizing={false}
@@ -563,8 +592,9 @@ const EnterGrades = () => {
       >
         <TouchableWithoutFeedback onPress={() => {
           Keyboard.dismiss();
-          addClassRef.current?.snapToPosition('54%', { duration: 350 });
-          setCurrentSnapPosition('54%');
+          const snapValue = semesters.length === 2 ? '62%' : '52%';
+          addClassRef.current?.snapToPosition(snapValue, { duration: 350 });
+          setCurrentSnapPosition(snapValue);
         }}>
           <BottomSheetView className="bg-cardColor p-4">
             <Text className="text-2xl text-main">Add a Class</Text>
@@ -618,46 +648,92 @@ const EnterGrades = () => {
             </View>
 
             <View className="mb-5">
-              <Text className="text-sm font-semibold text-main mb-1">SM1 Grade</Text>
-              <TextInput
-                ref={gradeInputRef}
-                className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
-                keyboardType="numeric"
-                value={sm1Value}
-                onChangeText={setSm1Value}
-                onBlur={() => {
-                  const num = Number(sm1Value);
-                  if (!isNaN(num)) setSm1Value(num.toFixed(2));
-                  setGrade(num.toFixed(2));
-                }}
-                onSubmitEditing={() => {
-                  const num = Number(sm1Value);
-                  if (!isNaN(num)) setGrade(num.toFixed(2));
-                }}
-                returnKeyType="done"
-              />
+              <Text className="text-sm font-semibold text-main mb-1">Select Semester(s)</Text>
+              <View className="flex-row flex-wrap gap-2">
+                {['Fall Semester', 'Spring Semester'].map((sem) => {
+                  const selected = semesters.includes(sem);
+                  return (
+                    <TouchableOpacity
+                      key={sem}
+                      className={`px-4 py-2 rounded-full border ${
+                        selected ? 'bg-highlight border-highlight' : 'bg-primary border-accent'
+                      }`}
+                      onPress={() => {
+                        let next;
+                        if (selected) {
+                          // Prevent removing the last semester
+                          if (semesters.length > 1) {
+                            next = semesters.filter((s) => s !== sem);
+                          } else {
+                            return;
+                          }
+                        } else {
+                          next = [...semesters, sem];
+                        }
+                        setSemesters(next);
+
+                        // Update snap position if not in keyboard interaction mode
+                        const snapValue = next.length === 2 ? '62%' : '52%';
+                        if (currentSnapPosition !== '100%') {
+                          addClassRef.current?.snapToPosition(snapValue, { duration: 200 });
+                          setCurrentSnapPosition(snapValue);
+                        }
+                      }}
+                    >
+                      <Text className={`font-medium ${selected ? 'text-highlightText' : 'text-main'}`}>
+                        {sem}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
 
-            <View className="mb-5">
-              <Text className="text-sm font-semibold text-main mb-1">SM2 Grade</Text>
-              <TextInput
-                ref={outOfInputRef}
-                className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
-                keyboardType="numeric"
-                value={outOfValue}
-                onChangeText={setOutOfValue}
-                onBlur={() => {
-                  const num = Number(outOfValue);
-                  if (!isNaN(num)) setOutOfValue(num.toFixed(2));
-                  setOutOf(Number(outOfValue));
-                }}
-                onSubmitEditing={() => {
-                  const num = Number(outOfValue);
-                  if (!isNaN(num)) setOutOf(Number(num.toFixed(2)));
-                }}
-                returnKeyType="done"
-              />
-            </View>
+            {semesters.includes('Fall Semester') && (
+              <View className="mb-5">
+                <Text className="text-sm font-semibold text-main mb-1">SM1 Grade</Text>
+                <TextInput
+                  ref={gradeInputRef}
+                  className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
+                  keyboardType="numeric"
+                  value={sm1Value}
+                  onChangeText={setSm1Value}
+                  onBlur={() => {
+                    const num = Number(sm1Value);
+                    if (!isNaN(num)) setSm1Value(num.toFixed(2));
+                    setGrade(num.toFixed(2));
+                  }}
+                  onSubmitEditing={() => {
+                    const num = Number(sm1Value);
+                    if (!isNaN(num)) setGrade(num.toFixed(2));
+                  }}
+                  returnKeyType="done"
+                />
+              </View>
+            )}
+
+            {semesters.includes('Spring Semester') && (
+              <View className="mb-5">
+                <Text className="text-sm font-semibold text-main mb-1">SM2 Grade</Text>
+                <TextInput
+                  ref={outOfInputRef}
+                  className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
+                  keyboardType="numeric"
+                  value={outOfValue}
+                  onChangeText={setOutOfValue}
+                  onBlur={() => {
+                    const num = Number(outOfValue);
+                    if (!isNaN(num)) setOutOfValue(num.toFixed(2));
+                    setOutOf(Number(outOfValue));
+                  }}
+                  onSubmitEditing={() => {
+                    const num = Number(outOfValue);
+                    if (!isNaN(num)) setOutOf(Number(num.toFixed(2)));
+                  }}
+                  returnKeyType="done"
+                />
+              </View>
+            )}
 
             <TouchableOpacity
               onPress={onSubmit}
