@@ -351,10 +351,18 @@ type SavedClass = {
   sm1: number;
   sm2: number;
   teacher?: string;
+  isNew?: boolean;
 };
 
 const EnterGrades = () => {
-  const { gradeLevel } = useLocalSearchParams();
+  const { gradeLevel, preloadedClasses } = useLocalSearchParams();
+
+  useEffect(() => {
+    if (preloadedClasses) {
+      const parsed = JSON.parse(preloadedClasses as string);
+      setSavedClasses(parsed.map((c: SavedClass) => ({ ...c, isNew: false })));
+    }
+  }, [preloadedClasses]);
 
   const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '52%' | '100%' | '62%' | null>(null);
   const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
@@ -408,7 +416,7 @@ const EnterGrades = () => {
       try {
         const stored = await AsyncStorage.getItem(`savedClasses-${gradeLevel}`);
         if (stored) {
-          setSavedClasses(JSON.parse(stored));
+          setSavedClasses(JSON.parse(stored).map((c: SavedClass) => ({ ...c, isNew: false })));
         }
       } catch (e) {
         console.error('Failed to load saved classes', e);
@@ -483,13 +491,21 @@ const EnterGrades = () => {
       sm2: semesters.includes('Spring Semester') ? Number(outOf) : -1,
       teacher: '',
       semesters,
+      isNew: true,
     };
 
     try {
-      const updatedClasses = [newClass, ...savedClasses.filter(c => c.className !== newClass.className)];
+      const updatedClasses = [newClass, ...savedClasses.filter(c => c.className !== newClass.className)].map(c => ({
+        ...c,
+        isNew: c.className === newClass.className,
+      }));
       setSavedClasses(updatedClasses);
 
-      await AsyncStorage.setItem(`savedClasses-${gradeLevel}`, JSON.stringify(updatedClasses));
+      // Don't persist isNew in storage
+      await AsyncStorage.setItem(
+        `savedClasses-${gradeLevel}`,
+        JSON.stringify(updatedClasses.map(({ isNew, ...rest }) => rest))
+      );
       
       toast({ title: 'Class added', preset: 'done', duration: 0.7 });
       setModalClosedByOutsideTap(true);
@@ -514,14 +530,16 @@ const EnterGrades = () => {
     <>
       <Stack.Screen
         options={{
-        title: decodeURIComponent(gradeLevel.toString().concat(" year grades")),
-        headerStyle: { backgroundColor: '#2563eb' },
-        headerTintColor: '#fff',
-        headerTitleStyle: {
-            fontWeight: 'bold',
-            fontSize: 18,
-        },
-        headerBackTitle: 'GPA',
+          title: decodeURIComponent(gradeLevel.toString().concat(" year grades")),
+          headerStyle: { backgroundColor: '#2563eb' },
+          headerTintColor: '#fff',
+          headerTitleStyle: {
+              fontWeight: 'bold',
+              fontSize: 18,
+          },
+          headerBackTitle: 'GPA',
+          
+          // animation: 'none'
         }}
       />
       <ScrollView className="flex-1 bg-primary">
@@ -550,51 +568,45 @@ const EnterGrades = () => {
           {savedClasses.length > 0 && (
             <View className="mt-4 space-y-4 w-full">
               <AnimatePresence>
-                {savedClasses.map((cls) => (
-                  <Animated.View
-                    key={cls.className}
-                    layout={ReanimatedLayout
-                      .duration(300)
-                      .easing(Easing.bezier(0.77, 0, 0.175, 1)) // ease-in-out-quart
-                    }
-                  >
-                    <MotiView
-                      from={{ opacity: 0, translateX: 400, height: 0 }}
-                      animate={{
-                        opacity: 1,
-                        translateX: 0,
-                        height: 80,
-                      }}
-                      exit={{
-                        opacity: 0,
-                        translateX: -400,
-                        height: 0,
-                      }}
-                      transition={{
-                        type: 'timing',
-                        duration: 300,
-                        easing: Easing.bezier(0.25, 0.46, 0.45, 0.94),
-                      }}
-                      exitTransition={{
-                        height: {
-                          delay: 250,
+                {savedClasses.map((cls) => {
+                  const { isNew, ...restCls } = cls;
+                  return (
+                    <Animated.View
+                      key={cls.className}
+                      layout={ReanimatedLayout
+                        .duration(300)
+                        .easing(Easing.bezier(0.77, 0, 0.175, 1)) // ease-in-out-quart
+                      }
+                    >
+                      <MotiView
+                        from={
+                          isNew
+                            ? { opacity: 0, translateX: 700 }
+                            : { opacity: 1, translateX: 0 }
+                        }
+                        animate={{ opacity: 1, translateX: 0 }}
+                        exit={{
+                          opacity: 0,
+                          translateX: -400,
+                        }}
+                        transition={{
                           type: 'timing',
                           duration: 200,
-                          easing: Easing.bezier(1, 0, 0, 1),
-                        },
-                      }}
-                    >
-                      <ClassCard2Sem
-                        gradeLevel={gradeLevel.toString()}
-                        name={cls.className}
-                        teacher={cls.teacher || ''}
-                        s1={{ categories: { names: [], weights: [] }, total: cls.sm1 }}
-                        s2={{ categories: { names: [], weights: [] }, total: cls.sm2 }}
-                        term={"SM1 Grade"}
-                      />
-                    </MotiView>
-                  </Animated.View>
-                ))}
+                          easing: Easing.bezier(.455, .03, .515, .955),
+                        }}
+                      >
+                        <ClassCard2Sem
+                          gradeLevel={gradeLevel.toString()}
+                          name={cls.className}
+                          teacher={cls.teacher || ''}
+                          s1={{ categories: { names: [], weights: [] }, total: cls.sm1 }}
+                          s2={{ categories: { names: [], weights: [] }, total: cls.sm2 }}
+                          term={"SM1 Grade"}
+                        />
+                      </MotiView>
+                    </Animated.View>
+                  );
+                })}
               </AnimatePresence>
             </View>
           )}
