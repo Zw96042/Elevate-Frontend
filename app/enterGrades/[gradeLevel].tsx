@@ -558,7 +558,7 @@ const EnterGrades = () => {
                     transition={{
                       type: 'timing',
                       duration: 250,
-                      easing: Easing.out(Easing.quad),
+                      easing: Easing.bezier(0.25, 0.46, 0.45, 0.94), // ease-out-quad
                     }}
                   >
                     <ClassCard2Sem
