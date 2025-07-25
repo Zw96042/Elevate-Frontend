@@ -8,6 +8,9 @@ import { colors } from '@/utils/colorTheme';
 import { AddClassSheetProvider, useAddClassSheet } from "@/context/AddClassSheetContext";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ClassCard2Sem from '@/components/ClassCard2Sem';
+import { MotiView } from 'moti';
+import { AnimatePresence } from 'moti';
+import { Easing } from 'react-native-reanimated';
 import { ScrollView, Swipeable } from 'react-native-gesture-handler';
 
 const availableClasses = [
@@ -545,17 +548,30 @@ const EnterGrades = () => {
         <View className="w-full">
           {savedClasses.length > 0 && (
             <View className="mt-4 space-y-4 w-full">
-              {savedClasses.map((cls) => (
-                <ClassCard2Sem
-                  gradeLevel={gradeLevel.toString()}
-                  key={cls.className}
-                  name={cls.className}
-                  teacher={cls.teacher || ''}
-                  s1={{ categories: { names: [], weights: [] }, total: cls.sm1 }}
-                  s2={{ categories: { names: [], weights: [] }, total: cls.sm2 }}
-                  term={"SM1 Grade"}
-                />
-              ))}
+              <AnimatePresence>
+                {savedClasses.map((cls) => (
+                  <MotiView
+                    key={cls.className}
+                    from={{ opacity: 1, translateX: 0 }}
+                    animate={{ opacity: 1, translateX: 0 }}
+                    exit={{ opacity: 0, translateX: -400 }}
+                    transition={{
+                      type: 'timing',
+                      duration: 250,
+                      easing: Easing.out(Easing.quad),
+                    }}
+                  >
+                    <ClassCard2Sem
+                      gradeLevel={gradeLevel.toString()}
+                      name={cls.className}
+                      teacher={cls.teacher || ''}
+                      s1={{ categories: { names: [], weights: [] }, total: cls.sm1 }}
+                      s2={{ categories: { names: [], weights: [] }, total: cls.sm2 }}
+                      term={"SM1 Grade"}
+                    />
+                  </MotiView>
+                ))}
+              </AnimatePresence>
             </View>
           )}
         </View>
