@@ -1,16 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 
 const ManualGradeEntryCard = ({ selectedGrade }: { selectedGrade: string }) => {
   const router = useRouter();
   const [savedClasses, setSavedClasses] = useState<any[]>([]); // You can replace any[] with your class type if defined
 
-  const isFocused = useIsFocused();
-
-  useEffect(() => {
+  useFocusEffect(() => {
     const loadSavedClasses = async () => {
       try {
         const stored = await AsyncStorage.getItem(`savedClasses-${selectedGrade}`);
@@ -21,10 +19,8 @@ const ManualGradeEntryCard = ({ selectedGrade }: { selectedGrade: string }) => {
       }
     };
 
-    if (isFocused) {
       loadSavedClasses();
-    }
-  }, [isFocused]);
+  });
 
   return (
     <View className="flex-1 mt-2 px-6">
