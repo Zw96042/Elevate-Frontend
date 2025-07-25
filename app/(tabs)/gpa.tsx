@@ -37,8 +37,9 @@ const GPA = () => {
   const [hasCredentials, setHasCredentials] = useState(false);
   const [selectedGrade, setSelectedGrade] = useState<GradeLevel>('Freshman');
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
-  const [hoverX, setHoverX] = useState<number | null>(null); // NEW: track finger X
+  const [hoverX, setHoverX] = useState<number | null>(null);
   const [isGraphAnimating, setIsGraphAnimating] = useState(false);
+  const [savedClasses, setSavedClasses] = useState<any[] | null>(null);
   
   // Use extracted hook for current grade level
   const currentGradeLevel = useGradeLevel();
@@ -315,7 +316,7 @@ const GPA = () => {
   };
 
 
-  const renderGPADisplay = () => {
+  const renderGPADisplay = (showPrs : Boolean) => {
     const screenWidth = Dimensions.get('window').width;
     const graphWidth = screenWidth - 42; 
     const graphHeight = 100;
@@ -522,13 +523,16 @@ const GPA = () => {
                       </View>
                     );
                     handledRCs.add(rcLabels[idx]);
-                    rows.push(
-                      <View className="flex-row justify-between mb-3" key={`${prList[0]}-${prList[1]}-extra`}>
-                        <GpaCard label={prList[0]} data={getLabelData(prList[0])} />
-                        <GpaCard label={prList[1]} data={getLabelData(prList[1])} />
-                      </View>
-                    );
-                    handledRCs.add(rcLabels[idx+1]);
+                    if (showPrs) {
+                      rows.push(
+                        <View className="flex-row justify-between mb-3" key={`${prList[0]}-${prList[1]}-extra`}>
+                          <GpaCard label={prList[0]} data={getLabelData(prList[0])} />
+                          <GpaCard label={prList[1]} data={getLabelData(prList[1])} />
+                        </View>
+                      );
+                    } 
+                    handledRCs.add(rcLabels[idx+1])
+                    
                   } else {
                     // Render the RC after its PRs
                     rows.push(
@@ -586,6 +590,14 @@ const GPA = () => {
               />
             );
 
+            if (!showPrs) {
+              rows.push(
+                <ManualGradeEntryCard
+                  key="MANCARD"
+                 selectedGrade={selectedGrade} minimized={!!(savedClasses && savedClasses.length > 0)} />
+              );
+            }
+
             return rows;
           })()}
         </View>
@@ -594,7 +606,7 @@ const GPA = () => {
     );
     };
 
-  const isPastGrade = gradeLevels.indexOf(selectedGrade) < gradeLevels.indexOf(currentGradeLevel);
+  // Remove isPastGrade; replaced by hasSavedClasses logic
 
   // Animation state effect for graph
   useEffect(() => {
@@ -605,6 +617,24 @@ const GPA = () => {
       return () => clearTimeout(timeout);
     }
   }, [isGraphAnimating]);
+
+  // Check for saved classes in AsyncStorage whenever selectedGrade changes
+  useEffect(() => {
+    const checkSavedClasses = async () => {
+      try {
+        const data = await AsyncStorage.getItem(`savedClasses-${selectedGrade}`);
+        if (data) {
+          setSavedClasses(JSON.parse(data));
+        } else {
+          setSavedClasses(null);
+        }
+      } catch (error) {
+        console.error('Error reading saved classes:', error);
+        setSavedClasses(null);
+      }
+    };
+    checkSavedClasses();
+  }, [selectedGrade]);
 
   return (
     <View className="flex-1 bg-primary">
@@ -625,10 +655,13 @@ const GPA = () => {
       </View>
 
       <View className="flex-1 bg-primary">
-        {isPastGrade ? (
-          <ManualGradeEntryCard selectedGrade={selectedGrade} />
+        {(selectedGrade === 'All Time' || selectedGrade === currentGradeLevel || (savedClasses && savedClasses.length > 0)) ? (
+          renderGPADisplay(!(savedClasses && savedClasses.length > 0))
         ) : (
-          renderGPADisplay()
+          <ManualGradeEntryCard
+            selectedGrade={selectedGrade}
+            minimized={!!(savedClasses && savedClasses.length > 0)}
+          />
         )}
       </View>
     </View>

@@ -24,7 +24,7 @@ const GradeLevelSelector = ({ grades, selectedGrade, onSelectGrade }: Props) => 
         >
           <Text className={`font-medium text-center ${
             selectedGrade === grade ? 'text-highlightText font-bold' : 'text-main'
-          } ${grades.length >= 4 ? 'text-xs' : 'text-sm'}`}>
+          } ${grades.length > 4 ? 'text-xs leading-[20px]' : 'text-sm'}`}>
             {grade}
           </Text>
         </TouchableOpacity>
