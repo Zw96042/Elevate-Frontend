@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Keyboard, TextInput, TouchableWithoutFeedback, DeviceEventEmitter } from 'react-native';
+import { View, Text, TouchableOpacity, Keyboard, TextInput, TouchableWithoutFeedback, DeviceEventEmitter, FlatList } from 'react-native';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetView } from '@gorhom/bottom-sheet';
 import { useColorScheme } from 'nativewind';
 import { toast } from 'burnt';
@@ -8,7 +8,7 @@ import { colors } from '@/utils/colorTheme';
 import { AddClassSheetProvider, useAddClassSheet } from "@/context/AddClassSheetContext";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ClassCard2Sem from '@/components/ClassCard2Sem';
-import { Swipeable } from 'react-native-gesture-handler';
+import { ScrollView, Swipeable } from 'react-native-gesture-handler';
 
 const availableClasses = [
   "INTEGRATED PHYSICS AND CHEMISTRY MODIFIED - SE300 ( IPC)",
@@ -520,7 +520,7 @@ const EnterGrades = () => {
         headerBackTitle: 'GPA',
         }}
       />
-      <View className="flex-1 bg-primary items-center">
+      <ScrollView className="flex-1 bg-primary">
         <View className='px-6'>
             <View className="bg-cardColor rounded-2xl p-6 border border-dashed border-highlightText shadow-md flex items-center justify-center space-y-4 mt-5">
                 <Text className="text-main text-lg mb-3 text-center">
@@ -554,14 +554,12 @@ const EnterGrades = () => {
                   s1={{ categories: { names: [], weights: [] }, total: cls.sm1 }}
                   s2={{ categories: { names: [], weights: [] }, total: cls.sm2 }}
                   term={"SM1 Grade"}
-                  // If ClassCard2Sem renders a pie chart and takes animation props, ensure they're removed/disabled
-                  // e.g. if it uses <PieChart animate={true} /> inside, set animate={false} or remove prop
                 />
               ))}
             </View>
           )}
         </View>
-      </View>
+      </ScrollView>
       <BottomSheet
         ref={addClassRef}
         index={-1}
