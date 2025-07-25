@@ -10,6 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import ClassCard2Sem from '@/components/ClassCard2Sem';
 import { MotiView } from 'moti';
 import { AnimatePresence } from 'moti';
+import Animated, { Layout as ReanimatedLayout } from 'react-native-reanimated';
 import { Easing } from 'react-native-reanimated';
 import { ScrollView, Swipeable } from 'react-native-gesture-handler';
 
@@ -550,38 +551,49 @@ const EnterGrades = () => {
             <View className="mt-4 space-y-4 w-full">
               <AnimatePresence>
                 {savedClasses.map((cls) => (
-                  <MotiView
+                  <Animated.View
                     key={cls.className}
-                    from={{ opacity: 1, translateX: 0, height: 80  }}
-                    animate={{ opacity: 1, translateX: 0, height: 80 }}
-                    exit={{
-                      opacity: 0,
-                      translateX: -400,
-                      height: 0,
-                    }}
-                    transition={{
-                      type: 'timing',
-                      duration: 300,
-                      easing: Easing.bezier(0.25, 0.46, 0.45, 0.94),
-                    }}
-                    exitTransition={{
-                      height: {
-                        delay: 250,
-                        type: 'timing',
-                        duration: 200,
-                        easing: Easing.bezier(1, 0, 0, 1),
-                      },
-                    }}
+                    layout={ReanimatedLayout
+                      .duration(300)
+                      .easing(Easing.bezier(0.77, 0, 0.175, 1)) // ease-in-out-quart
+                    }
                   >
-                    <ClassCard2Sem
-                      gradeLevel={gradeLevel.toString()}
-                      name={cls.className}
-                      teacher={cls.teacher || ''}
-                      s1={{ categories: { names: [], weights: [] }, total: cls.sm1 }}
-                      s2={{ categories: { names: [], weights: [] }, total: cls.sm2 }}
-                      term={"SM1 Grade"}
-                    />
-                  </MotiView>
+                    <MotiView
+                      from={{ opacity: 0, translateX: 400, height: 0 }}
+                      animate={{
+                        opacity: 1,
+                        translateX: 0,
+                        height: 80,
+                      }}
+                      exit={{
+                        opacity: 0,
+                        translateX: -400,
+                        height: 0,
+                      }}
+                      transition={{
+                        type: 'timing',
+                        duration: 300,
+                        easing: Easing.bezier(0.25, 0.46, 0.45, 0.94),
+                      }}
+                      exitTransition={{
+                        height: {
+                          delay: 250,
+                          type: 'timing',
+                          duration: 200,
+                          easing: Easing.bezier(1, 0, 0, 1),
+                        },
+                      }}
+                    >
+                      <ClassCard2Sem
+                        gradeLevel={gradeLevel.toString()}
+                        name={cls.className}
+                        teacher={cls.teacher || ''}
+                        s1={{ categories: { names: [], weights: [] }, total: cls.sm1 }}
+                        s2={{ categories: { names: [], weights: [] }, total: cls.sm2 }}
+                        term={"SM1 Grade"}
+                      />
+                    </MotiView>
+                  </Animated.View>
                 ))}
               </AnimatePresence>
             </View>
