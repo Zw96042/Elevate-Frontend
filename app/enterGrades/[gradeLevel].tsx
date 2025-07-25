@@ -552,13 +552,25 @@ const EnterGrades = () => {
                 {savedClasses.map((cls) => (
                   <MotiView
                     key={cls.className}
-                    from={{ opacity: 1, translateX: 0 }}
-                    animate={{ opacity: 1, translateX: 0 }}
-                    exit={{ opacity: 0, translateX: -400 }}
+                    from={{ opacity: 1, translateX: 0, height: 80  }}
+                    animate={{ opacity: 1, translateX: 0, height: 80 }}
+                    exit={{
+                      opacity: 0,
+                      translateX: -400,
+                      height: 0,
+                    }}
                     transition={{
                       type: 'timing',
-                      duration: 250,
-                      easing: Easing.bezier(0.25, 0.46, 0.45, 0.94), // ease-out-quad
+                      duration: 300,
+                      easing: Easing.bezier(0.25, 0.46, 0.45, 0.94),
+                    }}
+                    exitTransition={{
+                      height: {
+                        delay: 250,
+                        type: 'timing',
+                        duration: 200,
+                        easing: Easing.bezier(1, 0, 0, 1),
+                      },
                     }}
                   >
                     <ClassCard2Sem
