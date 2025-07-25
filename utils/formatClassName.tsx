@@ -6,7 +6,11 @@ const formatClassName = (raw: string) => {
   return raw
     .toUpperCase()
     .split('_')
-    .map(word => acronyms.has(word) ? word : word.charAt(0) + word.slice(1).toLowerCase())
+    .map(word => {
+      if (acronyms.has(word)) return word;
+      if (/i{2,}/i.test(word)) return word.toUpperCase();
+      return word.charAt(0) + word.slice(1).toLowerCase();
+    })
     .join(' ');
 };
 

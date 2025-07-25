@@ -11,7 +11,8 @@ import { authenticate } from '@/lib/authHandler'
 import * as Burnt from "burnt";
 
 const InnerLayout = () => {
-  const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '35%' | '80%'>('hidden');
+  const [gradeLevel, setGradeLevel] = useState('');
+  const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '45%' | '83%'>('hidden');
   const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
   const {
     settingSheetRef,
@@ -27,26 +28,26 @@ const InnerLayout = () => {
   const cardColor = colorScheme === 'dark' ? colors.cardColor.dark : colors.cardColor.light;
 
   // Ref to store the last saved values
-  const lastSaved = useRef({ link: '', username: '', password: '' });
+  const lastSaved = useRef({ link: '', username: '', password: '', gradeLevel: '' });
 
   // Keyboard show/hide snap logic
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', () => {
       if (
         !modalClosedByOutsideTap &&
-        currentSnapPosition !== '80%' &&
+        currentSnapPosition !== '83%' &&
         currentSnapPosition !== 'hidden'
       ) {
-        settingSheetRef.current?.snapToPosition('80%', { duration: 150 });
-        setCurrentSnapPosition('80%');
+        settingSheetRef.current?.snapToPosition('83%', { duration: 150 });
+        setCurrentSnapPosition('83%');
       }
     });
 
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
       setModalClosedByOutsideTap(false);
-      if (currentSnapPosition === '80%') {
-        settingSheetRef.current?.snapToPosition('35%', { duration: 150 });
-        setCurrentSnapPosition('35%');
+      if (currentSnapPosition === '83%') {
+        settingSheetRef.current?.snapToIndex(0, { duration: 150 });
+        setCurrentSnapPosition('45%');
       }
     });
 
@@ -61,7 +62,7 @@ const InnerLayout = () => {
       setCurrentSnapPosition('hidden');
       DeviceEventEmitter.emit('settingsSheetClosed');
     } else {
-      setCurrentSnapPosition('35%');
+      setCurrentSnapPosition('45%');
     }
   };
   useEffect(() => {
@@ -69,16 +70,19 @@ const InnerLayout = () => {
       const storedLink = await AsyncStorage.getItem('skywardLink');
       const storedUser = await AsyncStorage.getItem('skywardUser');
       const storedPass = await AsyncStorage.getItem('skywardPass');
+      const storedGrade = await AsyncStorage.getItem('gradeLevel');
 
       if (storedLink) setLink(storedLink);
       if (storedUser) setUsername(storedUser);
       if (storedPass) setPassword(storedPass);
+      if (storedGrade) setGradeLevel(storedGrade);
 
       // Store loaded credentials in lastSaved
       lastSaved.current = {
         link: storedLink || '',
         username: storedUser || '',
         password: storedPass || '',
+        gradeLevel: storedGrade || '',
       };
     };
 
@@ -92,7 +96,8 @@ const InnerLayout = () => {
     const changed =
       // link !== lastSaved.current.link ||
       username !== lastSaved.current.username ||
-      password !== lastSaved.current.password;
+      password !== lastSaved.current.password ||
+      gradeLevel !== lastSaved.current.gradeLevel;
 
     if (!changed) return;
 
@@ -100,17 +105,17 @@ const InnerLayout = () => {
       await AsyncStorage.setItem('skywardUser', username);
       await AsyncStorage.setItem('skywardPass', password);
       await AsyncStorage.setItem('skywardLink', "https://skyward-eisdprod.iscorp.com/scripts/wsisa.dll/WService=wsedueanesisdtx/"); // TODO: Change back to add more districts
+      await AsyncStorage.setItem('gradeLevel', gradeLevel);
 
-      lastSaved.current = { link, username, password };
+      lastSaved.current = { link, username, password, gradeLevel };
 
       const authResult = await authenticate();
 
-    
-      
       if (authResult.success) {
         Burnt.toast({
           title: 'Information Verified',
-          preset: 'done'
+          preset: 'done',
+          duration: 0.75
         });
         DeviceEventEmitter.emit('credentialsAdded');
       } else {
@@ -118,6 +123,7 @@ const InnerLayout = () => {
           title: 'Error',
           preset: 'error',
           message: "Couldn't verify details",
+          duration: 1
         });
         DeviceEventEmitter.emit('credentialsInvalid');
       }
@@ -164,14 +170,14 @@ const InnerLayout = () => {
               }}
             />
             <Tabs.Screen 
-              name="assignments"
+              name="gpa"
               options={{
-                title: "Assignments",
+                title: "GPA",
                 headerShown: false,
                 tabBarIcon: ({ focused }) => (
                   <View className="items-center justify-center w-[240%] mt-5 h-[80%]">
                     <Ionicons name="document-text-outline" size={22} color={focused ? '#2A52BE' : '#A8B5DB'} />
-                    <Text style={{ color: focused ? '#2A52BE' : '#A8B5DB', fontSize: 12, marginTop: 5 }}>Assignments</Text>
+                    <Text style={{ color: focused ? '#2A52BE' : '#A8B5DB', fontSize: 12, marginTop: 5 }}>GPA</Text>
                   </View>
                 )
               }}
@@ -183,7 +189,7 @@ const InnerLayout = () => {
                 headerShown: false,
                 tabBarIcon: ({ focused }) => (
                   <View className="items-center justify-center w-[180%] mt-5 h-[80%]">
-                    <Ionicons name="file-tray-outline" size={22} color={focused ? '#2A52BE' : '#A8B5DB'} />
+                    <Ionicons name="mail-outline" size={22} color={focused ? '#2A52BE' : '#A8B5DB'} />
                     <Text style={{ color: focused ? '#2A52BE' : '#A8B5DB', fontSize: 12, marginTop: 5 }}>Inbox</Text>
                   </View>
                 )
@@ -194,7 +200,7 @@ const InnerLayout = () => {
           <BottomSheet
             ref={settingSheetRef}
             index={-1}
-            snapPoints={["35%"]}
+            snapPoints={["45%"]}
             backgroundStyle={{ backgroundColor: cardColor }}
             overDragResistanceFactor={1}
             enableDynamicSizing={false}
@@ -219,10 +225,10 @@ const InnerLayout = () => {
           >
             <TouchableWithoutFeedback onPress={() => {
               Keyboard.dismiss();
-              settingSheetRef.current?.snapToPosition('35%', { duration: 350 });
+              settingSheetRef.current?.snapToIndex(0, { duration: 350 });
             }}>
               <BottomSheetView className="bg-cardColor px-8  ">
-                <Text className="text-2xl text-main">Credentials</Text>
+                <Text className="text-2xl text-main">Settings</Text>
                 <View className='my-4 border-slate-600 border-[0.5px]'></View>
                 <View className="pb-3 ">
                   <Text className="text-base font-medium text-main">School District</Text>
@@ -240,6 +246,34 @@ const InnerLayout = () => {
                     <Text className='text-blue-400 decoration-solid text-sm font-semibold mt-1'>Don't see your district?</Text>
                   </TouchableOpacity>
                 </View>
+                {/* Grade Level block */}
+                <View className="mb-5">
+                  <Text className="text-base font-medium text-main pb-2">Grade Level</Text>
+                  <View className="flex-row flex-wrap gap-2">
+                    {["Freshman", "Sophomore", "Junior", "Senior"].map((level) => (
+                      <TouchableOpacity
+                        key={level}
+                        onPress={() => setGradeLevel(level)}
+                        className={`px-3 py-1 rounded-full border ${
+                          gradeLevel === level
+                            ? 'bg-highlight border-highlight'
+                            : 'border-accent'
+                        }`}
+                      >
+                        <Text
+                          className={`text-sm ${
+                            gradeLevel === level
+                              ? 'text-highlightText font-bold'
+                              : 'text-main'
+                          }`}
+                        >
+                          {level}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+                <View className="h-[1px] bg-accent opacity-20 mb-5" />
 
                 <View className="pb-3">
                   <Text className="font-medium text-main">Username</Text>
@@ -267,6 +301,7 @@ const InnerLayout = () => {
                       placeholder="Password"
                       placeholderTextColor="#888"
                       secureTextEntry={!showPassword}
+                      autoCapitalize="none"
                     />
                     <TouchableOpacity onPress={() => setShowPassword(prev => !prev)}>
                       <Ionicons

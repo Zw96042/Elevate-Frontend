@@ -50,16 +50,16 @@ const Inbox = () => {
           if (result.messages.length === 0) throw new Error('Session Expired');
           setMessages(result.messages);
         } catch (error: any) {
-          Burnt.toast({ title: "Session expired", preset: "none" });
+          Burnt.toast({ title: "Session expired", preset: "none", duration: 2 });
           if (error.message === 'Session Expired') {
             await authenticate();
             try {
               const retryResult = await loadMessages();
               if (retryResult.success === false) throw new Error(retryResult.error);
               setMessages(retryResult.messages);
-              Burnt.toast({ title: "Re-authenticated", preset: "done" });
+              Burnt.toast({ title: "Re-authenticated", preset: "done", duration: 2 });
             } catch {
-              Burnt.toast({ title: "Error re-authenticating", preset: "error" });
+              Burnt.toast({ title: "Error re-authenticating", preset: "error", duration: 2 });
             }
           }
         } finally {
