@@ -51,7 +51,7 @@ const GPA = () => {
     RC1: { unweighted: 90, weighted: 95 },
     PR3: { unweighted: 85, weighted: 110 },
     PR4: { unweighted: 89, weighted: 50 },
-    RC2: { unweighted: 92, weighted: 96 },
+    RC2: { unweighted: 92, weighted: 100 },
     SM1: { unweighted: 91, weighted: 97 },
     PR5: { unweighted: 92, weighted: 91 },
     PR6: { unweighted: 86, weighted: 85 },
@@ -104,9 +104,13 @@ const GPA = () => {
     }
 
     const numSegments = gpaPoints.length - 1;
+    const minGPA = Math.min(...gpaPoints);
+    const maxGPA = Math.max(...gpaPoints);
+    const dynamicRange = Math.max(maxGPA - minGPA, 1); // Prevent divide by zero
+
     const normalizedPoints = gpaPoints.map((gpa, index) => {
       const x = (index / numSegments) * graphWidth;
-      const y = 30 + ((gpaScale - gpa) / gpaScale) * (graphHeight - 20);
+      const y = 10 + ((maxGPA - gpa) / dynamicRange) * (graphHeight - 20);
       return { x, y };
     });
     const segmentWidth = graphWidth / (gpaPoints.length - 1);
@@ -119,22 +123,37 @@ const GPA = () => {
     if (hoverX !== null) {
       // Clamp hoverX to graph bounds
       let x = Math.max(0, Math.min(hoverX, graphWidth));
-      // Find nearest segment
-      const idx = Math.round(x / segmentWidth);
-      snappedIndex = Math.max(0, Math.min(idx, gpaPoints.length - 1));
       // Interpolate between points for smooth dot/tooltip
       if (x <= 0) {
         dotX = normalizedPoints[0].x;
         dotY = normalizedPoints[0].y;
+        snappedIndex = 0;
       } else if (x >= graphWidth) {
         dotX = normalizedPoints[normalizedPoints.length - 1].x;
         dotY = normalizedPoints[normalizedPoints.length - 1].y;
+        snappedIndex = gpaPoints.length - 1;
       } else {
         const leftIdx = Math.floor(x / segmentWidth);
-        const rightIdx = Math.ceil(x / segmentWidth);
+        const rightIdx = Math.min(leftIdx + 1, normalizedPoints.length - 1);
+        const p0 = normalizedPoints[leftIdx];
+        const p1 = normalizedPoints[rightIdx];
+        // Recompute control points for this segment
+        const cp1 = { x: p0.x + (p1.x - p0.x) * 0.3, y: p0.y };
+        const cp2 = { x: p1.x - (p1.x - p0.x) * 0.3, y: p1.y };
         const t = (x - leftIdx * segmentWidth) / segmentWidth;
-        dotX = normalizedPoints[leftIdx].x * (1 - t) + normalizedPoints[rightIdx].x * t;
-        dotY = normalizedPoints[leftIdx].y * (1 - t) + normalizedPoints[rightIdx].y * t;
+        const u = 1 - t;
+        // Cubic Bezier interpolation
+        dotX = u * u * u * p0.x
+             + 3 * u * u * t * cp1.x
+             + 3 * u * t * t * cp2.x
+             + t * t * t * p1.x;
+        dotY = u * u * u * p0.y
+             + 3 * u * u * t * cp1.y
+             + 3 * u * t * t * cp2.y
+             + t * t * t * p1.y;
+        // New snapping logic: switch at the midpoint between leftIdx and rightIdx
+        const midpoint = (normalizedPoints[leftIdx].x + normalizedPoints[rightIdx].x) / 2;
+        snappedIndex = x < midpoint ? leftIdx : rightIdx;
       }
     } else if (activePointIndex !== null) {
       dotX = normalizedPoints[activePointIndex].x;

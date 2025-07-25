@@ -34,7 +34,7 @@ const ManualGradeEntryCard = ({ selectedGrade }: { selectedGrade: string }) => {
         </Text>
         <TouchableOpacity
           onPress={() => router.push({
-            pathname: `/enterGrades/[gradeLevel]`,
+            pathname: '/enterGrades/[gradeLevel]',
             params: {
               gradeLevel: selectedGrade,
               preloadedClasses: JSON.stringify(savedClasses),
