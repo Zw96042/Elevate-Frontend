@@ -619,7 +619,7 @@ const GPA = () => {
   }, [isGraphAnimating]);
 
   // Check for saved classes in AsyncStorage whenever selectedGrade changes
-  useEffect(() => {
+  useFocusEffect(() => {
     const checkSavedClasses = async () => {
       try {
         const data = await AsyncStorage.getItem(`savedClasses-${selectedGrade}`);
@@ -634,7 +634,7 @@ const GPA = () => {
       }
     };
     checkSavedClasses();
-  }, [selectedGrade]);
+  });
 
   return (
     <View className="flex-1 bg-primary">
