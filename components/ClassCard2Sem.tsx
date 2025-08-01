@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react'
 import { Link } from 'expo-router'
 import formatClassName from '@/utils/formatClassName'
 import PieChart from 'react-native-pie-chart'
-import { Swipeable } from 'react-native-gesture-handler';
+import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MotiView } from 'moti'
 
