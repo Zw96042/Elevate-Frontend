@@ -536,26 +536,28 @@ const gpaData = React.useMemo<Record<string, GPAData>>(() => {
     }
   }, [isGraphAnimating]);
 
-
-  const prevSelectedGrade = React.useRef<GradeLevel | null>(null);
-
-  useEffect(
+  useFocusEffect(
     React.useCallback(() => {
+      let isActive = true;
       const checkSavedClasses = async () => {
         try {
           const data = await AsyncStorage.getItem(`savedClasses-${selectedGrade}`);
           const parsedData = data ? JSON.parse(data) : null;
-          setSavedClasses(prev => {
-            if (JSON.stringify(prev) === JSON.stringify(parsedData)) return prev;
-            return parsedData;
-          });
+          if (isActive) {
+            setSavedClasses(parsedData);
+          }
         } catch (error) {
           console.error('Error reading saved classes:', error);
-          setSavedClasses(null);
+          if (isActive) {
+            setSavedClasses(null);
+          }
         }
       };
       checkSavedClasses();
-    }, []) // no dependencies, only on focus
+      return () => {
+        isActive = false;
+      };
+    }, [selectedGrade])
   );
 
   return (
