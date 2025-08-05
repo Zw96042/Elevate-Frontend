@@ -207,7 +207,7 @@ const availableClasses = [
   "LATIN 2 - FL621 (LATIN2)",
   "LATIN 3 HONORS - FL624 (LATIN3)",
   "LATIN 5 ADVANCED - FL626 (LATIN 5)",
-  "LATIN VI ADVANCED - FL627 (LATIN6)",
+  "LATIN 6 ADVANCED - FL627 (LATIN6)",
   "LINEAR ALGEBRA - MA269 (LINALG)",
   "MATHEMATICAL MODELS WITH APPLICATIONS - MA227 (MTHMOD)",
   "MEDICAL TERMINOLOGY - TC771A (MEDTERM)",
@@ -263,7 +263,7 @@ const availableClasses = [
   "SPANISH 3 HONORS - FL634 (SPAN3)",
   "SPANISH 4 - FL637 (SPAN4)",
   "SPANISH 5 - FL636 (SPAN5)",
-  "SPANISH VI Advanced (FL640)",
+  "SPANISH 6 Advanced (FL640)",
   "STAR STEPPERS",
   "STATISTICS - MA261 (STATS)",
   "STATS 2: BEYOND AP STATISTICS - MA270 (INSTMTH2)",
@@ -317,6 +317,7 @@ const availableClasses = [
   "YEARBOOK 3 - LA160 (YBK3)"
 ];
 
+
 /*
 JS to get class names:
 (() => {
@@ -352,6 +353,10 @@ type SavedClass = {
   sm2: number;
   teacher?: string;
   isNew?: boolean;
+  rc1?: number;
+  rc2?: number;
+  rc3?: number;
+  rc4?: number;
 };
 
 const EnterGrades = () => {
@@ -389,6 +394,11 @@ const EnterGrades = () => {
   const [sm1Value, setSm1Value] = React.useState(() =>
     !isNaN(Number(grade)) ? Number(grade).toFixed(2) : ''
   );
+  // RC grade state
+  const [rc1Value, setRc1Value] = useState('100.00');
+  const [rc2Value, setRc2Value] = useState('100.00');
+  const [rc3Value, setRc3Value] = useState('100.00');
+  const [rc4Value, setRc4Value] = useState('100.00');
 
   const [classQuery, setClassQuery] = useState('');
   const [filteredClasses, setFilteredClasses] = useState<string[]>([]);
@@ -489,7 +499,11 @@ const EnterGrades = () => {
     const newClass: SavedClass & { semesters?: string[] } = {
       className: name.trim(),
       sm1: semesters.includes('Fall Semester') ? Number(sm1Value) : -1,
-      sm2: semesters.includes('Spring Semester') ? Number(outOf) : -1,
+      sm2: semesters.includes('Spring Semester') ? Number(outOfValue) : -1,
+      rc1: semesters.includes('Fall Semester') ? Number(rc1Value) : undefined,
+      rc2: semesters.includes('Fall Semester') ? Number(rc2Value) : undefined,
+      rc3: semesters.includes('Spring Semester') ? Number(rc3Value) : undefined,
+      rc4: semesters.includes('Spring Semester') ? Number(rc4Value) : undefined,
       teacher: '',
       semesters,
       isNew: true,
@@ -753,48 +767,108 @@ const EnterGrades = () => {
             </View>
 
             {semesters.includes('Fall Semester') && (
-              <View className="mb-5">
-                <Text className="text-sm font-semibold text-main mb-1">SM1 Grade</Text>
-                <TextInput
-                  ref={gradeInputRef}
-                  className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
-                  keyboardType="numeric"
-                  value={sm1Value}
-                  onChangeText={setSm1Value}
-                  onBlur={() => {
-                    const num = Number(sm1Value);
-                    if (!isNaN(num)) setSm1Value(num.toFixed(2));
-                    setGrade(num.toFixed(2));
-                  }}
-                  onSubmitEditing={() => {
-                    const num = Number(sm1Value);
-                    if (!isNaN(num)) setGrade(num.toFixed(2));
-                  }}
-                  returnKeyType="done"
-                />
+              <View className='mb-5 flex-row'>
+                <View className="w-[33%] pr-2">
+                  <Text className="text-sm font-semibold text-main mb-1">RC1 Grade</Text>
+                  <TextInput
+                    className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
+                    keyboardType="numeric"
+                    value={rc1Value}
+                    onChangeText={setRc1Value}
+                    onBlur={() => {
+                      const num = Number(rc1Value);
+                      if (!isNaN(num)) setRc1Value(num.toFixed(2));
+                    }}
+                    returnKeyType="done"
+                  />
+                </View>
+                <View className="w-[33%] pr-2">
+                  <Text className="text-sm font-semibold text-main mb-1">RC2 Grade</Text>
+                  <TextInput
+                    className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
+                    keyboardType="numeric"
+                    value={rc2Value}
+                    onChangeText={setRc2Value}
+                    onBlur={() => {
+                      const num = Number(rc2Value);
+                      if (!isNaN(num)) setRc2Value(num.toFixed(2));
+                    }}
+                    returnKeyType="done"
+                  />
+                </View>
+                <View className="w-[33%]">
+                  <Text className="text-sm font-semibold text-main mb-1">SM1 Grade</Text>
+                  <TextInput
+                    ref={gradeInputRef}
+                    className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
+                    keyboardType="numeric"
+                    value={sm1Value}
+                    onChangeText={setSm1Value}
+                    onBlur={() => {
+                      const num = Number(sm1Value);
+                      if (!isNaN(num)) setSm1Value(num.toFixed(2));
+                      setGrade(num.toFixed(2));
+                    }}
+                    onSubmitEditing={() => {
+                      const num = Number(sm1Value);
+                      if (!isNaN(num)) setGrade(num.toFixed(2));
+                    }}
+                    returnKeyType="done"
+                  />
+                </View>
               </View>
             )}
 
             {semesters.includes('Spring Semester') && (
-              <View className="mb-5">
-                <Text className="text-sm font-semibold text-main mb-1">SM2 Grade</Text>
-                <TextInput
-                  ref={outOfInputRef}
-                  className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
-                  keyboardType="numeric"
-                  value={outOfValue}
-                  onChangeText={setOutOfValue}
-                  onBlur={() => {
-                    const num = Number(outOfValue);
-                    if (!isNaN(num)) setOutOfValue(num.toFixed(2));
-                    setOutOf(Number(outOfValue));
-                  }}
-                  onSubmitEditing={() => {
-                    const num = Number(outOfValue);
-                    if (!isNaN(num)) setOutOf(Number(num.toFixed(2)));
-                  }}
-                  returnKeyType="done"
-                />
+              <View className='mb-5 flex-row'>
+                <View className="w-[33%] pr-2">
+                  <Text className="text-sm font-semibold text-main mb-1">RC3 Grade</Text>
+                  <TextInput
+                    className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
+                    keyboardType="numeric"
+                    value={rc3Value}
+                    onChangeText={setRc3Value}
+                    onBlur={() => {
+                      const num = Number(rc3Value);
+                      if (!isNaN(num)) setRc3Value(num.toFixed(2));
+                    }}
+                    returnKeyType="done"
+                  />
+                </View>
+                <View className="w-[33%] pr-2">
+                  <Text className="text-sm font-semibold text-main mb-1">RC4 Grade</Text>
+                  <TextInput
+                    className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
+                    keyboardType="numeric"
+                    value={rc4Value}
+                    onChangeText={setRc4Value}
+                    onBlur={() => {
+                      const num = Number(rc4Value);
+                      if (!isNaN(num)) setRc4Value(num.toFixed(2));
+                    }}
+                    returnKeyType="done"
+                  />
+                </View>
+                <View className="w-[33%]">
+                  <Text className="text-sm font-semibold text-main mb-1">SM2 Grade</Text>
+                  <TextInput
+                    ref={outOfInputRef}
+                    className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
+                    keyboardType="numeric"
+                    value={outOfValue}
+                    onChangeText={setOutOfValue}
+                    onBlur={() => {
+                      const num = Number(outOfValue);
+                      if (!isNaN(num)) setOutOfValue(num.toFixed(2));
+                      setOutOf(Number(outOfValue));
+                    }}
+                    onSubmitEditing={() => {
+                      const num = Number(outOfValue);
+                      if (!isNaN(num)) setOutOf(Number(num.toFixed(2)));
+                    }}
+                    returnKeyType="done"
+                  />
+                </View>
               </View>
             )}
 

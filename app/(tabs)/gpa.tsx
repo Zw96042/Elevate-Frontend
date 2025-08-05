@@ -12,22 +12,13 @@ import GradeLevelSelector from '@/components/GradeLevelSelector';
 import ManualGradeEntryCard from '@/components/ManualGradeEntryCard';
 import { GpaCard, GpaSoloCard } from '@/components/GpaCard';
 import { useGradeLevel } from '@/hooks/useGradeLevel';
+import { calculateTermGPAs } from '@/utils/gpaCalculator';
 
 type GradeLevel = 'Freshman' | 'Sophomore' | 'Junior' | 'Senior' | 'All Time';
 
 interface GPAData {
   unweighted: number;
   weighted: number;
-}
-
-interface QuarterData {
-  q1: GPAData;
-  q2: GPAData;
-  q3: GPAData;
-  q4: GPAData;
-  s1: GPAData;
-  s2: GPAData;
-  fullYear: GPAData;
 }
 
 const gpaScale = 100; // Change this to 4, 5, etc. as needed
@@ -40,30 +31,17 @@ const GPA = () => {
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [isGraphAnimating, setIsGraphAnimating] = useState(false);
   const [savedClasses, setSavedClasses] = useState<any[] | null>(null);
-  
+const gpaData = React.useMemo<Record<string, GPAData>>(() => {
+  return savedClasses ? calculateTermGPAs(savedClasses) : {};
+}, [savedClasses]);
+  console.log(gpaData);
+    
   // Use extracted hook for current grade level
   const currentGradeLevel = useGradeLevel();
   
   const allLabels = ['PR1','PR2','RC1','PR3','PR4','RC2','PR5','PR6','RC3','PR7','PR8','RC4'];
 
-  const mockGPAData: Record<string, GPAData> = {
-    PR1: { unweighted: 88, weighted: 105 },
-    PR2: { unweighted: 91, weighted: 90 },
-    RC1: { unweighted: 90, weighted: 95 },
-    PR3: { unweighted: 85, weighted: 110 },
-    PR4: { unweighted: 89, weighted: 50 },
-    RC2: { unweighted: 92, weighted: 100 },
-    SM1: { unweighted: 91, weighted: 97 },
-    PR5: { unweighted: 92, weighted: 91 },
-    PR6: { unweighted: 86, weighted: 85 },
-    RC3: { unweighted: 90, weighted: 95 },
-    PR7: { unweighted: 85, weighted: 110 },
-    PR8: { unweighted: 89, weighted: 50 },
-    RC4: { unweighted: 92, weighted: 96 },
-    SM2: { unweighted: 91, weighted: 97 },
-  };
-
-  const validLabels = allLabels.filter(label => mockGPAData[label] && mockGPAData[label].weighted > 0);
+  const validLabels = allLabels.filter(label => gpaData[label] && gpaData[label].weighted > 0);
 
   const gradeLevels: GradeLevel[] = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'All Time'];
   
@@ -92,7 +70,7 @@ const GPA = () => {
     const graphHeight = 100;
     const containerWidth = screenWidth - 24; 
 
-    const gpaPoints = validLabels.map(label => mockGPAData[label].weighted);
+    const gpaPoints = validLabels.map(label => gpaData[label]?.weighted ?? 0);
 
     // Prevent rendering with insufficient data
     if (gpaPoints.length < 2) {
@@ -116,15 +94,11 @@ const GPA = () => {
     });
     const segmentWidth = graphWidth / (gpaPoints.length - 1);
 
-    // --- Smooth pan logic ---
-    // Compute snapped index and interpolated position
     let dotX = null;
     let dotY = null;
     let snappedIndex = null;
     if (hoverX !== null) {
-      // Clamp hoverX to graph bounds
       let x = Math.max(0, Math.min(hoverX, graphWidth));
-      // Interpolate between points for smooth dot/tooltip
       if (x <= 0) {
         dotX = normalizedPoints[0].x;
         dotY = normalizedPoints[0].y;
@@ -138,12 +112,10 @@ const GPA = () => {
         const rightIdx = Math.min(leftIdx + 1, normalizedPoints.length - 1);
         const p0 = normalizedPoints[leftIdx];
         const p1 = normalizedPoints[rightIdx];
-        // Recompute control points for this segment
         const cp1 = { x: p0.x + (p1.x - p0.x) * 0.3, y: p0.y };
         const cp2 = { x: p1.x - (p1.x - p0.x) * 0.3, y: p1.y };
         const t = (x - leftIdx * segmentWidth) / segmentWidth;
         const u = 1 - t;
-        // Cubic Bezier interpolation
         dotX = u * u * u * p0.x
              + 3 * u * u * t * cp1.x
              + 3 * u * t * t * cp2.x
@@ -152,7 +124,6 @@ const GPA = () => {
              + 3 * u * u * t * cp1.y
              + 3 * u * t * t * cp2.y
              + t * t * t * p1.y;
-        // New snapping logic: switch at the midpoint between leftIdx and rightIdx
         const midpoint = (normalizedPoints[leftIdx].x + normalizedPoints[rightIdx].x) / 2;
         snappedIndex = x < midpoint ? leftIdx : rightIdx;
       }
@@ -162,7 +133,6 @@ const GPA = () => {
       snappedIndex = activePointIndex;
     }
 
-    // PanResponder for touch gestures, disable gestures when animating
     const panResponder = PanResponder.create({
       onStartShouldSetPanResponder: () => !isGraphAnimating,
       onPanResponderGrant: (evt) => {
@@ -187,7 +157,6 @@ const GPA = () => {
       }
     });
 
-    // Create smooth SVG path with curves
     const pathData = normalizedPoints.map((point, index) => {
       if (index === 0) return `M ${point.x} ${point.y}`;
       const prevPoint = normalizedPoints[index - 1];
@@ -198,10 +167,8 @@ const GPA = () => {
       return `C ${controlX1} ${controlY1} ${controlX2} ${controlY2} ${point.x} ${point.y}`;
     }).join(' ');
 
-    // Create fill path (area under the line)
     const fillPathData = pathData + ` L ${graphWidth} ${graphHeight + 5} L 0 ${graphHeight} Z`;
 
-    // Only show dot/tooltip if finger is on the graph or a point is selected
     const showDotAndTooltip = (hoverX !== null || activePointIndex !== null) && dotX !== null && dotY !== null && snappedIndex !== null;
 
     return (
@@ -221,9 +188,7 @@ const GPA = () => {
                 </LinearGradient>
               </Defs>
               <Path d={fillPathData} fill="url(#gradient)" />
-              {/* Line */}
               <Path d={pathData} stroke="#0090FF" strokeWidth="2" fill="none" />
-              {/* Animated dot */}
               {showDotAndTooltip && (
                 <Circle
                   cx={dotX ?? 0}
@@ -257,9 +222,7 @@ const GPA = () => {
             onLayout={() => setIsGraphAnimating(true)}
           />
         </View>
-        {/* Tooltip overlay at the highest level */}
         {showDotAndTooltip && (() => {
-          // Use dotX/dotY for position, snappedIndex for value
           const tooltipWidth = 140;
           const tooltipHeight = 40;
           const padding = 24;
@@ -320,7 +283,7 @@ const GPA = () => {
     const screenWidth = Dimensions.get('window').width;
     const graphWidth = screenWidth - 42; 
     const graphHeight = 100;
-    const gpaPoints = validLabels.map(label => mockGPAData[label].weighted);
+    const gpaPoints = validLabels.map(label => gpaData[label]?.weighted ?? 0);
     
     const numSegments = gpaPoints.length - 1;
     const normalizedPoints = gpaPoints.map((gpa, index) => {
@@ -335,58 +298,32 @@ const GPA = () => {
           {/* GPA Graph */}
           {renderGPAGraph()}
           
-          {/* Tooltip overlay at the highest level */}
           {activePointIndex !== null && gpaPoints.length >= 2 && (() => {
-            const tooltipWidth = 140; // maxWidth
-            const tooltipHeight = 40; // approximate height
-            const padding = 24; // container padding
+            const tooltipWidth = 140; 
+            const tooltipHeight = 40; 
+            const padding = 24;
             
-            // Use the actual device screen width
             const actualScreenWidth = Dimensions.get('window').width;
-            const graphWidth = actualScreenWidth - 42; // Same as in renderGPAGraph
-            const containerWidth = actualScreenWidth - 24; // Same as in renderGPAGraph
+            const graphWidth = actualScreenWidth - 42; 
             
-            // Calculate initial position relative to graph
-            const graphLeft = padding; // Left edge of graph container
-            const graphRight = graphLeft + graphWidth - 10; // Right edge minus small buffer for tooltip
+            const graphLeft = padding;
+            const graphRight = graphLeft + graphWidth - 10;
             
-            console.log("ACTUAL screen width:", actualScreenWidth);
-            console.log("Graph width:", graphWidth);
-            console.log("Graph right edge:", graphRight);
-            
-            // The normalizedPoints are already scaled to fit within graphWidth
-            // So we just need to add the graph's left position
             const screenX = graphLeft + normalizedPoints[activePointIndex].x;
-            let left = screenX - (tooltipWidth / 2); // Center tooltip on cursor
-            let top = normalizedPoints[activePointIndex].y; // Reduced from 120 to be closer to cursor
+            let left = screenX - (tooltipWidth / 2); 
+            let top = normalizedPoints[activePointIndex].y;
             
-            console.log("normalized x:", normalizedPoints[activePointIndex].x);
-            console.log("screen x:", screenX);
-            console.log("tooltip left:", left);
-            console.log("tooltip right edge:", left + tooltipWidth);
-            console.log("graph right edge:", graphRight);
-            console.log("graph left edge:", graphLeft);
-
-            // Check if tooltip would be cut off on the right (allow a larger buffer before restricting)
-            console.log("Checking right edge:", left + tooltipWidth, ">", graphRight + 60, "=", left + tooltipWidth > graphRight + 55);
             if (left + tooltipWidth > graphRight + 55) {
               const overshoot = (left + tooltipWidth) - (graphRight + 55);
-              left = left - overshoot - 10; // Adjust just enough to keep it within bounds
-              console.log("ADJUSTED RIGHT - new left:", left);
+              left = left - overshoot - 10;
             }
             
-            // Check if tooltip would be cut off on the left
             if (left < graphLeft) {
               left = graphLeft;
-              console.log("ADJUSTED LEFT - new left:", left);
             }
-            
-            console.log("FINAL left position:", left);
-            
-            // Check if tooltip would be cut off at the bottom (optional)
             const screenHeight = Dimensions.get('window').height;
             if (top + tooltipHeight > screenHeight - 100) {
-              top = normalizedPoints[activePointIndex].y - tooltipHeight - 20; // Show above cursor
+              top = normalizedPoints[activePointIndex].y - tooltipHeight - 20;
             }
             
             return (
@@ -424,16 +361,12 @@ const GPA = () => {
               </View>
             );
           })()}
-        {/* Dynamic GPA cards */}
         <View className="flex-1">
           {(() => {
             const fallback: GPAData = { unweighted: 100, weighted: 100 };
-            const exists = (label: string) => !!mockGPAData[label];
-            const getLabelData = (label: string) => mockGPAData[label] || fallback;
+            const exists = (label: string) => !!gpaData[label];
+            const getLabelData = (label: string) => gpaData[label] || fallback;
 
-            // Use new GpaCard and GpaSoloCard components
-
-            // Map PRs to their RC group
             const prToRCMap: Record<string, string> = {
               PR1: 'RC1', PR2: 'RC1',
               PR3: 'RC2', PR4: 'RC2',
@@ -446,40 +379,31 @@ const GPA = () => {
             const rcGroups = [
               { rcLabels: ['RC1', 'RC2'], prLabels: ['PR1', 'PR2', 'PR3', 'PR4'] },
               { rcLabels: ['RC3', 'RC4'], prLabels: ['PR5', 'PR6', 'PR7', 'PR8'] }
-            ];
-
-            // Find all valid PRs across both groups, get the 2 most recent overall
+            ]; 
             const allPRLabels = rcGroups.flatMap(({ prLabels }) => prLabels);
             const validAllPRs = allPRLabels.filter(pr => exists(pr));
-            // Only keep the 2 most recent PRs globally
+
             const latestTwoPRs = validAllPRs.slice(-2);
 
-            // Determine which RC group(s) these PRs belong to
             const rcGroupMap: Record<string, number> = {
               PR1: 0, PR2: 0, PR3: 0, PR4: 0,
               PR5: 1, PR6: 1, PR7: 1, PR8: 1
             };
 
-            // Which RC group index the latest PRs belong to
             const latestGroups = [...new Set(latestTwoPRs.map(pr => rcGroupMap[pr]))];
 
-            // Helper to render RCs in a group, skipping any RC already handled
             const handledRCs = new Set<string>();
 
             rcGroups.forEach(({ rcLabels, prLabels }, idx) => {
-              // If this group is the group of the latest PRs, render only the latest PRs and their RC
               if (latestGroups.includes(idx)) {
-                // Among the latestTwoPRs, select those belonging to this group
                 const latestGroupPRs = latestTwoPRs.filter(pr => rcGroupMap[pr] === idx);
 
-                // Map PRs to their RC
                 const prByRC: Record<string, string[]> = {};
                 latestGroupPRs.forEach(pr => {
                   const rc = prToRCMap[pr];
                   if (!prByRC[rc]) prByRC[rc] = [];
                   prByRC[rc].push(pr);
                 });
-                // For each RC in this group, if it has PRs, render the PR cards
                 const prList = [
                   ...(prByRC[rcLabels[0]] || []),
                   ...(prByRC[rcLabels[1]] || [])
@@ -534,7 +458,6 @@ const GPA = () => {
                     handledRCs.add(rcLabels[idx+1])
                     
                   } else {
-                    // Render the RC after its PRs
                     rows.push(
                       <View className="flex-row justify-between mb-3" key={`${rcLabels[0]}-${rcLabels[1]}`}>
                         <GpaCard label={rcLabels[0]} data={getLabelData(rcLabels[0])} />
@@ -546,7 +469,6 @@ const GPA = () => {
                   }
                 } 
               } else {
-                // For groups NOT containing the latest PRs: render RCs in pairs, unless one is already handled
                 const unhandledRCs = rcLabels.filter(rc => !handledRCs.has(rc));
                 if (unhandledRCs.length === 2) {
                   rows.push(
@@ -561,7 +483,6 @@ const GPA = () => {
                   );
                 }
               }
-              // Render SM1/SM2 as before
               if (idx === 0) {
                 rows.push(
                   <GpaSoloCard key="SM1" label="SM1" data={getLabelData('SM1')} />
@@ -606,39 +527,39 @@ const GPA = () => {
     );
     };
 
-  // Remove isPastGrade; replaced by hasSavedClasses logic
-
-  // Animation state effect for graph
   useEffect(() => {
     if (isGraphAnimating) {
       const timeout = setTimeout(() => {
         setIsGraphAnimating(false);
-      }, 600); // Adjust if animation duration changes
+      }, 600);
       return () => clearTimeout(timeout);
     }
   }, [isGraphAnimating]);
 
-  // Check for saved classes in AsyncStorage whenever selectedGrade changes
-  useFocusEffect(() => {
-    const checkSavedClasses = async () => {
-      try {
-        const data = await AsyncStorage.getItem(`savedClasses-${selectedGrade}`);
-        if (data) {
-          setSavedClasses(JSON.parse(data));
-        } else {
+
+  const prevSelectedGrade = React.useRef<GradeLevel | null>(null);
+
+  useEffect(
+    React.useCallback(() => {
+      const checkSavedClasses = async () => {
+        try {
+          const data = await AsyncStorage.getItem(`savedClasses-${selectedGrade}`);
+          const parsedData = data ? JSON.parse(data) : null;
+          setSavedClasses(prev => {
+            if (JSON.stringify(prev) === JSON.stringify(parsedData)) return prev;
+            return parsedData;
+          });
+        } catch (error) {
+          console.error('Error reading saved classes:', error);
           setSavedClasses(null);
         }
-      } catch (error) {
-        console.error('Error reading saved classes:', error);
-        setSavedClasses(null);
-      }
-    };
-    checkSavedClasses();
-  });
+      };
+      checkSavedClasses();
+    }, []) // no dependencies, only on focus
+  );
 
   return (
     <View className="flex-1 bg-primary">
-      {/* Header */}
       <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
         <Text className="text-white text-3xl font-bold">Grade Point Average</Text>
         <TouchableOpacity onPress={() => settingSheetRef.current?.snapToIndex(0)}>
