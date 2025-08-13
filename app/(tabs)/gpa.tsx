@@ -4,7 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MotiView } from 'moti';
 import React, { JSX, useState, useEffect, useRef } from 'react';
-import { Alert, Dimensions, PanResponder, ScrollView, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
+import { Alert, Dimensions, PanResponder, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler'
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 import GradeLevelSelector from '@/components/GradeLevelSelector';
 import ManualGradeEntryCard from '@/components/ManualGradeEntryCard';
@@ -341,24 +342,27 @@ const GPA = () => {
             </Svg>
           </View>
           <MotiView
-            from={{ width: containerWidth }}
-            animate={{ width: 0 }}
+            from={{ width: '100%' }}
+            animate={{ width: '0%' }}
             transition={{
               type: 'spring',
-              damping: 1000,
-              mass: 8,
-              stiffness: 80,
-              restDisplacementThreshold: 0.01,
-              restSpeedThreshold: 0.001,
+              damping: 35,
+              mass: 6,
+              stiffness: 60,
             }}
             style={{
               position: 'absolute',
               top: 0,
               bottom: 0,
               right: 0,
+              backgroundColor: '#1f2937', // cardColor background to match container
+              zIndex: 10,
             }}
-            className="bg-cardColor"
-            onLayout={() => setIsGraphAnimating(true)}
+            onDidAnimate={(key, finished) => {
+              if (key === 'width' && finished) {
+                setIsGraphAnimating(false);
+              }
+            }}
           />
         </View>
         {showDotAndTooltip && (() => {
@@ -444,7 +448,7 @@ const GPA = () => {
           />
         }
       >
-        <View className="px-6 pb-4">
+        <View className="px-6">
           {/* GPA Graph */}
           {renderGPAGraph()}
           
@@ -671,7 +675,10 @@ const GPA = () => {
 
             return rows;
           })()}
+
+          
         </View>
+
               </View>
       </ScrollView>
     );
