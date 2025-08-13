@@ -76,6 +76,9 @@ const GPA = () => {
       return;
     }
 
+    // Only show loading screen if this is initial load (no existing data)
+    const isInitialLoad = !academicHistoryData && !savedClasses;
+    
     // Double-check with state
     if (loading && !forceRefresh) {
       console.log('Academic history load already in progress (state check), skipping...');
@@ -83,7 +86,12 @@ const GPA = () => {
     }
 
     loadingRef.current = true;
-    setLoading(true);
+    
+    // Only set loading state for initial load, not for refresh
+    if (isInitialLoad) {
+      setLoading(true);
+    }
+    
     try {
       // Check credentials first
       const credentialsExist = await SkywardAuth.hasCredentials();
@@ -108,15 +116,28 @@ const GPA = () => {
       console.error('Error loading academic history:', error);
     } finally {
       loadingRef.current = false;
-      setLoading(false);
+      // Only clear loading state if we set it
+      if (isInitialLoad) {
+        setLoading(false);
+      }
     }
   };
 
   // Function for pull-to-refresh
   const onRefresh = async () => {
+    console.log('Pull-to-refresh triggered, forcing API refresh...');
     setRefreshing(true);
-    await loadAcademicHistory(true); // Force refresh
-    setRefreshing(false);
+    // Temporarily allow API calls during refresh even if graph interaction flag is set
+    const wasInteracting = isInteractingWithGraph.current;
+    isInteractingWithGraph.current = false;
+    
+    try {
+      await loadAcademicHistory(true); // Force refresh
+    } finally {
+      setRefreshing(false);
+      // Restore the previous interaction state
+      isInteractingWithGraph.current = wasInteracting;
+    }
   };
 
   // Initial load when component mounts (only once)
@@ -418,8 +439,8 @@ const GPA = () => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#0090FF"
-            title="Pull to refresh grades"
+            tintColor="#FFFFFF"
+            colors={['#FFFFFF']}
           />
         }
       >
