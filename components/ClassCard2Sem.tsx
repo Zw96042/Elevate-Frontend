@@ -23,6 +23,8 @@ type TermData = {
   total: number;
 };
 
+type CourseLevel = "AP" | "Honors" | "Regular";
+
 // Props with term data for SM1 and SM2
 const ClassCard2Sem = ({
   name,
@@ -30,14 +32,20 @@ const ClassCard2Sem = ({
   s1,
   s2,
   term,
-  gradeLevel
+  gradeLevel,
+  courseLevel,
+  showDeleteAction = true,
+  termLabels = { s1: "SM1", s2: "SM2" }
 }: {
   name: string,
   teacher: string,
   s1: TermData,
   s2: TermData,
   term: TermLabel,
-  gradeLevel: string
+  gradeLevel: string,
+  courseLevel?: CourseLevel,
+  showDeleteAction?: boolean,
+  termLabels?: { s1: string, s2: string }
 }) => {
   const [displaySM1, setDisplaySM1] = useState(0)
   const [displaySM2, setDisplaySM2] = useState(0)
@@ -55,6 +63,57 @@ const ClassCard2Sem = ({
   const theme = useColorScheme()
   const highlightColor = theme === 'dark' ? '#3b5795' : '#a4bfed'
   const cardColor = theme === 'dark' ? '#1e293b' : '#fafafa'
+
+  // Get badge color based on course level
+  const getBadgeColor = () => {
+    switch (courseLevel) {
+      case "AP": return "bg-purple-600";
+      case "Honors": return "bg-blue-600";
+      case "Regular": return "bg-gray-600";
+      default: return "bg-gray-600";
+    }
+  };
+
+  const cardContent = (
+    <View className='bg-bgColor mx-6'>
+      <View className="w-full h-20 rounded-3xl bg-cardColor flex-row items-center justify-between px-5 mb-3">
+        <View className="flex-1 mr-3">
+          <Text className="text-lg text-main font-normal">
+            {(() => {
+              const stripped = formatClassName(name.split(' - ')[0].replaceAll(" ", "_").split(":")[0]);
+              return stripped.length > 20 ? `${stripped.slice(0, 20).trim()}...` : stripped;
+            })()}
+          </Text>
+          {courseLevel && (
+            <View className={`self-start px-2 py-0.5 rounded-full ${getBadgeColor()} mt-1`}>
+              <Text className="text-white text-xs font-medium">
+                {courseLevel}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View className="flex-col items-center justify-center space-y-1">
+          <View className="items-center flex-row mb-2">
+            <Text className="text-xs text-main">{termLabels.s1}:</Text>
+            <Text className="text-highlightText font-bold text-sm ml-1">
+              {displaySM1 === -1 ? '--' : `${displaySM1.toFixed(1)}%`}
+            </Text>
+          </View>
+          <View className="items-center flex-row">
+            <Text className="text-xs text-main">{termLabels.s2}:</Text>
+            <Text className="text-highlightText font-bold text-sm ml-1">
+              {displaySM2 === -1 ? '--' : `${displaySM2.toFixed(1)}%`}
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+
+  if (!showDeleteAction) {
+    return cardContent;
+  }
 
   return (
     <Swipeable
@@ -76,33 +135,7 @@ const ClassCard2Sem = ({
         </TouchableOpacity>
       )}
     >
-      <View className='bg-bgColor mx-6'>
-        <View className="w-full h-20 rounded-3xl bg-cardColor flex-row items-center justify-between px-5 mb-3">
-          <View>
-            <Text className="text-lg text-main font-normal">
-              {(() => {
-                const stripped = formatClassName(name.split(' - ')[0].replaceAll(" ", "_").split(":")[0]);
-                return stripped.length > 27 ? `${stripped.slice(0, 27).trim()}...` : stripped;
-              })()}
-            </Text>
-          </View>
-
-          <View className="flex-col items-center justify-center space-y-1">
-            <View className="items-center flex-row mb-2">
-              <Text className="text-xs text-main">SM1:</Text>
-              <Text className="text-highlightText font-bold text-sm">
-                {displaySM1 === -1 ? '--' : `${displaySM1.toFixed(1)}%`}
-              </Text>
-            </View>
-            <View className="items-center flex-row">
-              <Text className="text-xs text-main">SM2:</Text>
-              <Text className="text-highlightText font-bold text-sm">
-                {displaySM2 === -1 ? '--' : `${displaySM2.toFixed(1)}%`}
-              </Text>
-            </View>
-          </View>
-        </View>
-      </View>
+      {cardContent}
     </Swipeable>
   );
 }
