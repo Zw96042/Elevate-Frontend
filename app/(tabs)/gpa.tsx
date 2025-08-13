@@ -13,6 +13,9 @@ import ManualGradeEntryCard from '@/components/ManualGradeEntryCard';
 import { GpaCard, GpaSoloCard } from '@/components/GpaCard';
 import { useGradeLevel } from '@/hooks/useGradeLevel';
 import { calculateTermGPAs } from '@/utils/gpaCalculator';
+import { fetchAcademicHistory } from '@/lib/academicHistoryClient';
+import { processAcademicHistory, getCurrentGradeLevel } from '@/utils/academicHistoryProcessor';
+import { authenticate } from '@/lib/authHandler';
 
 type GradeLevel = 'Freshman' | 'Sophomore' | 'Junior' | 'Senior' | 'All Time';
 
@@ -31,10 +34,19 @@ const GPA = () => {
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [isGraphAnimating, setIsGraphAnimating] = useState(false);
   const [savedClasses, setSavedClasses] = useState<any[] | null>(null);
-const gpaData = React.useMemo<Record<string, GPAData>>(() => {
-  return savedClasses ? calculateTermGPAs(savedClasses) : {};
-}, [savedClasses]);
-  console.log(gpaData);
+  const [academicHistoryData, setAcademicHistoryData] = useState<any | null>(null);
+  const [loading, setLoading] = useState(false);
+  
+  // Use academic history data if available, otherwise fall back to manual classes
+  const gpaData = React.useMemo<Record<string, GPAData>>(() => {
+    if (academicHistoryData) {
+      return processAcademicHistory(academicHistoryData);
+    }
+    return savedClasses ? calculateTermGPAs(savedClasses) : {};
+  }, [academicHistoryData, savedClasses]);
+  
+  console.log('GPA Data:', gpaData);
+  console.log('Academic History:', academicHistoryData);
     
   // Use extracted hook for current grade level
   const currentGradeLevel = useGradeLevel();
@@ -58,6 +70,39 @@ const gpaData = React.useMemo<Record<string, GPAData>>(() => {
       const checkCredentials = async () => {
         const result = await SkywardAuth.hasCredentials();
         setHasCredentials(result);
+        
+        // If we have credentials, try to fetch academic history
+        if (result) {
+          setLoading(true);
+          try {
+            // Force fresh authentication before fetching academic history
+            console.log('Starting fresh authentication...');
+            const authResult = await authenticate();
+            console.log('Authentication result:', authResult);
+            
+            if (!authResult.success) {
+              console.error('Authentication failed:', authResult.error);
+              setLoading(false);
+              return;
+            }
+            
+            console.log('Authentication successful, fetching academic history...');
+            const historyResult = await fetchAcademicHistory();
+            console.log('Academic history result:', historyResult);
+            
+            if (historyResult.success && historyResult.data) {
+              setAcademicHistoryData(historyResult.data);
+              console.log('Academic history loaded successfully', historyResult.data);
+            } else {
+              console.error('Failed to load academic history:', historyResult.error);
+              // Fall back to manual grades if academic history fails
+            }
+          } catch (error) {
+            console.error('Error fetching academic history:', error);
+          } finally {
+            setLoading(false);
+          }
+        }
       };
       checkCredentials();
       // no need to loadGradeLevel or subscribe, handled by useGradeLevel hook
@@ -515,7 +560,7 @@ const gpaData = React.useMemo<Record<string, GPAData>>(() => {
               rows.push(
                 <ManualGradeEntryCard
                   key="MANCARD"
-                 selectedGrade={selectedGrade} minimized={!!(savedClasses && savedClasses.length > 0)} />
+                 selectedGrade={selectedGrade} minimized={!!(academicHistoryData || (savedClasses && savedClasses.length > 0))} />
               );
             }
 
@@ -553,11 +598,16 @@ const gpaData = React.useMemo<Record<string, GPAData>>(() => {
           }
         }
       };
-      checkSavedClasses();
+      
+      // Only load saved classes if we don't have academic history data
+      if (!academicHistoryData) {
+        checkSavedClasses();
+      }
+      
       return () => {
         isActive = false;
       };
-    }, [selectedGrade])
+    }, [selectedGrade, academicHistoryData])
   );
 
   return (
@@ -578,12 +628,16 @@ const gpaData = React.useMemo<Record<string, GPAData>>(() => {
       </View>
 
       <View className="flex-1 bg-primary">
-        {(selectedGrade === 'All Time' || selectedGrade === currentGradeLevel || (savedClasses && savedClasses.length > 0)) ? (
-          renderGPADisplay(!(savedClasses && savedClasses.length > 0))
+        {loading ? (
+          <View className="flex-1 justify-center items-center">
+            <Text className="text-main text-lg">Loading academic history...</Text>
+          </View>
+        ) : (selectedGrade === 'All Time' || selectedGrade === currentGradeLevel || academicHistoryData || (savedClasses && savedClasses.length > 0)) ? (
+          renderGPADisplay(!(academicHistoryData || (savedClasses && savedClasses.length > 0)))
         ) : (
           <ManualGradeEntryCard
             selectedGrade={selectedGrade}
-            minimized={!!(savedClasses && savedClasses.length > 0)}
+            minimized={!!(academicHistoryData || (savedClasses && savedClasses.length > 0))}
           />
         )}
       </View>

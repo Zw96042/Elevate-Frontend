@@ -93,21 +93,6 @@ function calculateGPAForGrades(grades: { grade: number; level: string }[]): GPAR
   };
 }
 
-export function calculatePeriodicGPA(classes: SavedClass[]): PeriodicGPA {
-  const fallGrades = classes
-    .filter(c => c.sm1 >= 0)
-    .map(c => ({ grade: c.sm1, level: getCourseLevel(c.className) }));
-
-  const springGrades = classes
-    .filter(c => c.sm2 >= 0)
-    .map(c => ({ grade: c.sm2, level: getCourseLevel(c.className) }));
-
-  return {
-    fall: calculateGPAForGrades(fallGrades),
-    spring: calculateGPAForGrades(springGrades),
-  };
-}
-
 export function calculateTermGPAs(classes: SavedClass[]): Record<string, GPAResult> {
   const termLabels = ['sm1', 'sm2', 'rc1', 'rc2', 'rc3', 'rc4'] as const;
 

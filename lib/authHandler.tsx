@@ -25,6 +25,10 @@ export async function authenticate(): Promise<AuthResult> {
       });
       
       if (!response.ok) {
+        console.error(`Authentication request failed with status: ${response.status}`);
+        const errorText = await response.text();
+        console.error('Auth error response:', errorText);
+        
         await AsyncStorage.setItem('dwd', "");
         await AsyncStorage.setItem('wfaacl', "");
         await AsyncStorage.setItem('encses',"");
@@ -34,10 +38,16 @@ export async function authenticate(): Promise<AuthResult> {
         
         DeviceEventEmitter.emit('credentialsInvalid');
 
-        return { success: false, error: 'Authentication failed' };
+        return { success: false, error: `Authentication failed: ${response.status} - ${errorText}` };
       }
 
       const sessionCodes = await response.json();
+      console.log('Received session codes:', sessionCodes);
+
+      if (!sessionCodes || !sessionCodes.dwd || !sessionCodes.wfaacl || !sessionCodes.encses) {
+        console.error('Invalid session codes received:', sessionCodes);
+        return { success: false, error: 'Invalid session codes received from server' };
+      }
 
       await AsyncStorage.setItem('dwd', sessionCodes.dwd);
       await AsyncStorage.setItem('wfaacl', sessionCodes.wfaacl);
