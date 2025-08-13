@@ -92,6 +92,34 @@ const isValidGrade = (grade: string): boolean => {
   return !!grade && grade !== "" && grade !== "P" && grade !== "X" && !isNaN(Number(grade));
 };
 
+// Helper function to check if a course is scheduled for a specific term
+const isCourseScheduledForTerm = (courseData: CourseData, termKey: string): boolean => {
+  const terms = courseData.terms.toLowerCase();
+  
+  // Map term keys to their corresponding term numbers
+  const termMapping: Record<string, number[]> = {
+    'pr1': [1], 'pr2': [1],
+    'pr3': [2], 'pr4': [2], 
+    'pr5': [3], 'pr6': [3],
+    'pr7': [4], 'pr8': [4],
+    'rc1': [1], 'rc2': [2], 'rc3': [3], 'rc4': [4],
+    'sm1': [1, 2], 'sm2': [3, 4]
+  };
+  
+  const termNumbers = termMapping[termKey] || [];
+  
+  // Check if any of the term numbers for this key are in the course's terms
+  return termNumbers.some(termNum => {
+    return terms.includes(termNum.toString()) || 
+           terms.includes(`${termNum} -`) || 
+           terms.includes(`- ${termNum}`) ||
+           terms.includes(`1 - ${termNum}`) ||
+           (termNum <= 4 && (terms.includes('1 - 4') || terms.includes('1-4'))) ||
+           (termNum >= 1 && termNum <= 2 && (terms.includes('1 - 2') || terms.includes('1-2'))) ||
+           (termNum >= 3 && termNum <= 4 && (terms.includes('3 - 4') || terms.includes('3-4')));
+  });
+};
+
 // Calculate GPA for a specific term across all courses for a given grade level
 const calculateTermGPA = (coursesData: Record<string, CourseData>, termKey: string, gradeLevel: number): GPAData => {
   let totalPoints = 0;
@@ -103,8 +131,19 @@ const calculateTermGPA = (coursesData: Record<string, CourseData>, termKey: stri
     // Extract the original class name (remove the year suffix)
     const className = courseKey.replace(/_\d{4}-\d{4}$/, '');
     
+    let numericGrade: number = 0;
+    let shouldInclude = false;
+    
     if (isValidGrade(grade)) {
-      const numericGrade = Number(grade);
+      numericGrade = Number(grade);
+      shouldInclude = true;
+    } else if (isCourseScheduledForTerm(courseData, termKey)) {
+      // Course is scheduled for this term but no grade recorded - default to 100
+      numericGrade = 100;
+      shouldInclude = true;
+    }
+    
+    if (shouldInclude) {
       totalPoints += numericGrade;
       
       // Get the course level and add appropriate weight
