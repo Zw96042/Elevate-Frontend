@@ -1,12 +1,13 @@
 // lib/academicHistoryClient.tsx
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authenticate } from './authHandler';
+import { AcademicHistoryResponse, AcademicHistoryData } from '../interfaces/academicHistory';
 
 const config = require('./development.config.js');
 
 interface AcademicHistoryResult {
   success: boolean;
-  data?: any;
+  data?: AcademicHistoryData;
   error?: string;
 }
 
@@ -21,8 +22,9 @@ export const fetchAcademicHistory = async (retryCount: number = 0): Promise<Acad
     const dwd = await AsyncStorage.getItem('dwd');
     const wfaacl = await AsyncStorage.getItem('wfaacl');
     const encses = await AsyncStorage.getItem('encses');
+    const sessionid = await AsyncStorage.getItem('sessionid');
 
-    const allSessionCodesExist = dwd && wfaacl && encses;
+    const allSessionCodesExist = dwd && wfaacl && encses && sessionid;
 
     if (!allSessionCodesExist) {
       console.log('Session codes missing, attempting authentication...');
@@ -35,13 +37,16 @@ export const fetchAcademicHistory = async (retryCount: number = 0): Promise<Acad
     }
 
     // Make the API call to the history endpoint
-    const response = await fetch(`http://localhost:3000/api/history`, {
+    const response = await fetch(`${config.BACKEND_IP}/history`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         dwd,
         wfaacl,
         encses,
+        sessionid,
+        baseUrl: config.skywardUrl,
+        'User-Type': '2'
       }),
     });
 
@@ -49,7 +54,7 @@ export const fetchAcademicHistory = async (retryCount: number = 0): Promise<Acad
       if ((response.status === 401 || response.status === 400) && retryCount === 0) {
         console.log('Session expired, attempting re-authentication...');
         // Clear invalid session codes
-        await AsyncStorage.multiRemove(['dwd', 'wfaacl', 'encses']);
+        await AsyncStorage.multiRemove(['dwd', 'wfaacl', 'encses', 'sessionid']);
         // Try to re-authenticate and retry once
         const authResult = await authenticate();
         if (authResult.success) {
@@ -64,12 +69,10 @@ export const fetchAcademicHistory = async (retryCount: number = 0): Promise<Acad
 
     const responseData = await response.json();
     
-    // Extract the actual academic data from the response
-    // The API returns { success: true, data: { "2024-2025": {...}, "alt": {...} } }
-    // We need just the data part: { "2024-2025": {...}, "alt": {...} }
-    const academicData = responseData.data || responseData;
+    // The backend returns the academic data directly (not wrapped in success/data structure)
+    // Academic data format: { "2024-2025": { grade: 12, courses: {...} }, "alt": {...} }
     
-    return { success: true, data: academicData };
+    return { success: true, data: responseData };
   } catch (error: any) {
     console.error('Error fetching academic history:', error);
     
