@@ -171,16 +171,21 @@ const calculateTermGPA = (coursesData: Record<string, CourseData>, termKey: stri
   };
 };
 
-// Process academic history data and return GPA data for all terms
-export const processAcademicHistory = (academicData: AcademicHistoryData): Record<string, GPAData> => {
+// Process academic history data and return GPA data for all terms, filtered by grade level
+export const processAcademicHistory = (academicData: AcademicHistoryData, targetGradeLevel?: number): Record<string, GPAData> => {
   const gpaData: Record<string, GPAData> = {};
   
   // Filter to only include grades 9-12 and exclude alt
-  const validYears = Object.entries(academicData).filter(([year, data]) => {
+  let validYears = Object.entries(academicData).filter(([year, data]) => {
     return year !== 'alt' && data.grade >= 9 && data.grade <= 12;
   });
 
-  // Combine all courses from all valid years
+  // If a specific grade level is requested, filter to only that grade
+  if (targetGradeLevel !== undefined && targetGradeLevel >= 9 && targetGradeLevel <= 12) {
+    validYears = validYears.filter(([year, data]) => data.grade === targetGradeLevel);
+  }
+
+  // Combine all courses from the filtered years
   const allCourses: Record<string, CourseData> = {};
   
   validYears.forEach(([year, yearData]) => {
@@ -197,7 +202,7 @@ export const processAcademicHistory = (academicData: AcademicHistoryData): Recor
   const terms = ['PR1', 'PR2', 'RC1', 'PR3', 'PR4', 'RC2', 'PR5', 'PR6', 'RC3', 'PR7', 'PR8', 'RC4', 'SM1', 'SM2'];
   
   terms.forEach(term => {
-    gpaData[term] = calculateTermGPA(allCourses, term.toLowerCase(), 0);
+    gpaData[term] = calculateTermGPA(allCourses, term.toLowerCase(), targetGradeLevel || 0);
   });
 
   return gpaData;

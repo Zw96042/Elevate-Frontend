@@ -23,6 +23,18 @@ interface GPAData {
 
 const gpaScale = 100; // Change this to 4, 5, etc. as needed
 
+// Helper function to convert grade level names to numbers
+const getGradeNumber = (gradeLevel: GradeLevel): number | undefined => {
+  switch (gradeLevel) {
+    case 'Freshman': return 9;
+    case 'Sophomore': return 10;
+    case 'Junior': return 11;
+    case 'Senior': return 12;
+    case 'All Time': return undefined; // All grades
+    default: return undefined;
+  }
+};
+
 const GPA = () => {
   const { settingSheetRef } = useSettingSheet();
   const [hasCredentials, setHasCredentials] = useState(false);
@@ -46,22 +58,19 @@ const GPA = () => {
     return savedClasses ? calculateTermGPAs(savedClasses) : {};
   }, [academicHistoryData, savedClasses]);
     
-  // Use extracted hook for current grade level
-  const currentGradeLevel = useGradeLevel();
+  // Use extracted hook for current grade level and available grade levels
+  const { currentGradeLevel, availableGradeLevels } = useGradeLevel();
+  
+  // Update selectedGrade when currentGradeLevel changes
+  useEffect(() => {
+    setSelectedGrade(currentGradeLevel);
+  }, [currentGradeLevel]);
   
   const allLabels = ['PR1','PR2','RC1','PR3','PR4','RC2','PR5','PR6','RC3','PR7','PR8','RC4'];
 
   const validLabels = allLabels.filter(label => gpaData[label] && gpaData[label].weighted > 0);
 
   const gradeLevels: GradeLevel[] = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'All Time'];
-  
-  const availableGradeLevels = gradeLevels.filter((grade, index) => {
-    const gradeIndex = gradeLevels.indexOf(currentGradeLevel);
-    if (grade === 'All Time' && gradeIndex === 0) {
-      return false;
-    }
-    return index <= gradeIndex || grade === 'All Time';
-  });
 
   // Function to load academic history data
   const loadAcademicHistory = async (forceRefresh: boolean = false) => {
@@ -101,7 +110,8 @@ const GPA = () => {
         return;
       }
 
-      const result = await AcademicHistoryManager.getAcademicHistory(forceRefresh);
+      const gradeNumber = getGradeNumber(selectedGrade);
+      const result = await AcademicHistoryManager.getAcademicHistory(forceRefresh, gradeNumber);
       if (result.success && result.gpaData) {
         setAcademicHistoryData(result.gpaData);
         if (result.fromCache) {
@@ -175,24 +185,30 @@ const GPA = () => {
     };
   }, []); // Empty dependency array - only run once on mount
 
-  // Load manual classes when selectedGrade changes, but only if no academic history
+  // Load data when selectedGrade changes
   useEffect(() => {
-    if (academicHistoryData) return; // Don't load manual classes if we have academic history
     if (isInteractingWithGraph.current) return; // Don't load during graph interaction
     
-    const checkSavedClasses = async () => {
-      try {
-        const data = await AsyncStorage.getItem(`savedClasses-${selectedGrade}`);
-        const parsedData = data ? JSON.parse(data) : null;
-        setSavedClasses(parsedData);
-      } catch (error) {
-        console.error('Error reading saved classes:', error);
-        setSavedClasses(null);
+    const loadGradeData = async () => {
+      // If we have credentials, reload academic history for the new grade level
+      const credentialsExist = await SkywardAuth.hasCredentials();
+      if (credentialsExist && isInitialized) {
+        await loadAcademicHistory(false); // Use cache if available, but filter by grade level
+      } else {
+        // Fallback to manual classes if no academic history
+        try {
+          const data = await AsyncStorage.getItem(`savedClasses-${selectedGrade}`);
+          const parsedData = data ? JSON.parse(data) : null;
+          setSavedClasses(parsedData);
+        } catch (error) {
+          console.error('Error reading saved classes:', error);
+          setSavedClasses(null);
+        }
       }
     };
     
-    checkSavedClasses();
-  }, [selectedGrade, academicHistoryData]);
+    loadGradeData();
+  }, [selectedGrade, isInitialized]);
 
     const renderGPAGraph = () => {
     const screenWidth = Dimensions.get('window').width;

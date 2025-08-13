@@ -12,7 +12,7 @@ import * as Burnt from "burnt";
 
 const InnerLayout = () => {
   const [gradeLevel, setGradeLevel] = useState('');
-  const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '45%' | '83%'>('hidden');
+  const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '35%' | '75%'>('hidden');
   const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
   const {
     settingSheetRef,
@@ -35,19 +35,19 @@ const InnerLayout = () => {
     const showSub = Keyboard.addListener('keyboardDidShow', () => {
       if (
         !modalClosedByOutsideTap &&
-        currentSnapPosition !== '83%' &&
+        currentSnapPosition !== '75%' &&
         currentSnapPosition !== 'hidden'
       ) {
-        settingSheetRef.current?.snapToPosition('83%', { duration: 150 });
-        setCurrentSnapPosition('83%');
+        settingSheetRef.current?.snapToPosition('75%', { duration: 150 });
+        setCurrentSnapPosition('75%');
       }
     });
 
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
       setModalClosedByOutsideTap(false);
-      if (currentSnapPosition === '83%') {
+      if (currentSnapPosition === '75%') {
         settingSheetRef.current?.snapToIndex(0, { duration: 150 });
-        setCurrentSnapPosition('45%');
+        setCurrentSnapPosition('35%');
       }
     });
 
@@ -62,7 +62,7 @@ const InnerLayout = () => {
       setCurrentSnapPosition('hidden');
       DeviceEventEmitter.emit('settingsSheetClosed');
     } else {
-      setCurrentSnapPosition('45%');
+      setCurrentSnapPosition('35%');
     }
   };
   useEffect(() => {
@@ -200,7 +200,7 @@ const InnerLayout = () => {
           <BottomSheet
             ref={settingSheetRef}
             index={-1}
-            snapPoints={["45%"]}
+            snapPoints={["35%"]}
             backgroundStyle={{ backgroundColor: cardColor }}
             overDragResistanceFactor={1}
             enableDynamicSizing={false}
@@ -247,33 +247,7 @@ const InnerLayout = () => {
                   </TouchableOpacity>
                 </View>
                 {/* Grade Level block */}
-                <View className="mb-5">
-                  <Text className="text-base font-medium text-main pb-2">Grade Level</Text>
-                  <View className="flex-row flex-wrap gap-2">
-                    {["Freshman", "Sophomore", "Junior", "Senior"].map((level) => (
-                      <TouchableOpacity
-                        key={level}
-                        onPress={() => setGradeLevel(level)}
-                        className={`px-3 py-1 rounded-full border ${
-                          gradeLevel === level
-                            ? 'bg-highlight border-highlight'
-                            : 'border-accent'
-                        }`}
-                      >
-                        <Text
-                          className={`text-sm ${
-                            gradeLevel === level
-                              ? 'text-highlightText font-bold'
-                              : 'text-main'
-                          }`}
-                        >
-                          {level}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-                <View className="h-[1px] bg-accent opacity-20 mb-5" />
+                {/* <View className="h-[1px] bg-accent opacity-20 mb-5" /> */}
 
                 <View className="pb-3">
                   <Text className="font-medium text-main">Username</Text>

@@ -1,7 +1,7 @@
 // lib/academicHistoryManager.tsx
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchAcademicHistory } from './academicHistoryClient';
-import { processAcademicHistory } from '@/utils/academicHistoryProcessor';
+import { processAcademicHistory, getCurrentGradeLevel } from '@/utils/academicHistoryProcessor';
 
 interface CachedAcademicData {
   data: any;
@@ -31,6 +31,19 @@ export class AcademicHistoryManager {
     } else { // Before August
       return `${year - 1}-${year}`;
     }
+  }
+
+  // Get available grade levels from academic data
+  private static getAvailableGradeLevels(academicData: any): number[] {
+    const gradeLevels = new Set<number>();
+    
+    Object.entries(academicData).forEach(([year, yearData]: [string, any]) => {
+      if (year !== 'alt' && yearData.grade >= 9 && yearData.grade <= 12) {
+        gradeLevels.add(yearData.grade);
+      }
+    });
+    
+    return Array.from(gradeLevels).sort();
   }
 
   // Check if we have valid cached data for the current academic year
@@ -82,10 +95,12 @@ export class AcademicHistoryManager {
   }
 
   // Get academic history with smart caching
-  public static async getAcademicHistory(forceRefresh: boolean = false): Promise<{
+  public static async getAcademicHistory(forceRefresh: boolean = false, gradeLevel?: number): Promise<{
     success: boolean;
     gpaData?: Record<string, GPAData>;
     rawData?: any;
+    currentGradeLevel?: number;
+    availableGradeLevels?: number[];
     error?: string;
     fromCache?: boolean;
   }> {
@@ -96,7 +111,7 @@ export class AcademicHistoryManager {
     }
 
     // Create the request promise
-    const requestPromise = this.executeRequest(forceRefresh);
+    const requestPromise = this.executeRequest(forceRefresh, gradeLevel);
     
     // Store it as the active request
     this.activeRequest = requestPromise;
@@ -110,10 +125,12 @@ export class AcademicHistoryManager {
     }
   }
 
-  private static async executeRequest(forceRefresh: boolean): Promise<{
+  private static async executeRequest(forceRefresh: boolean, gradeLevel?: number): Promise<{
     success: boolean;
     gpaData?: Record<string, GPAData>;
     rawData?: any;
+    currentGradeLevel?: number;
+    availableGradeLevels?: number[];
     error?: string;
     fromCache?: boolean;
   }> {
@@ -123,11 +140,18 @@ export class AcademicHistoryManager {
         const cachedData = await this.getCachedData();
         if (cachedData) {
           console.log('Using cached academic history data');
-          const gpaData = processAcademicHistory(cachedData);
+          
+          // Determine current grade level and available grade levels
+          const currentGradeLevel = getCurrentGradeLevel(cachedData);
+          const availableGradeLevels = this.getAvailableGradeLevels(cachedData);
+          
+          const gpaData = processAcademicHistory(cachedData, gradeLevel);
           return {
             success: true,
             gpaData,
             rawData: cachedData,
+            currentGradeLevel,
+            availableGradeLevels,
             fromCache: true
           };
         }
@@ -142,12 +166,18 @@ export class AcademicHistoryManager {
         await this.cacheData(result.data);
         console.log('Successfully fetched and cached academic history');
         
+        // Determine current grade level and available grade levels
+        const currentGradeLevel = getCurrentGradeLevel(result.data);
+        const availableGradeLevels = this.getAvailableGradeLevels(result.data);
+        
         // Process and return
-        const gpaData = processAcademicHistory(result.data);
+        const gpaData = processAcademicHistory(result.data, gradeLevel);
         return {
           success: true,
           gpaData,
           rawData: result.data,
+          currentGradeLevel,
+          availableGradeLevels,
           fromCache: false
         };
       }
