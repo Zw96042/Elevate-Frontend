@@ -45,8 +45,8 @@ export const fetchAcademicHistory = async (retryCount: number = 0): Promise<Acad
       }),
     });
 
-    if (!response.ok) {
-      if (response.status === 401 && retryCount === 0) {
+    if (!response.ok || response.status === 401 || response.status === 400) {
+      if ((response.status === 401 || response.status === 400) && retryCount === 0) {
         console.log('Session expired, attempting re-authentication...');
         // Clear invalid session codes
         await AsyncStorage.multiRemove(['dwd', 'wfaacl', 'encses']);
