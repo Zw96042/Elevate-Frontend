@@ -10,8 +10,13 @@ interface AcademicHistoryResult {
   error?: string;
 }
 
-export const fetchAcademicHistory = async (): Promise<AcademicHistoryResult> => {
+export const fetchAcademicHistory = async (retryCount: number = 0): Promise<AcademicHistoryResult> => {
   try {
+    // Prevent infinite retry loops
+    if (retryCount > 1) {
+      return { success: false, error: 'Max retry attempts reached' };
+    }
+
     // Get session codes from AsyncStorage
     const dwd = await AsyncStorage.getItem('dwd');
     const wfaacl = await AsyncStorage.getItem('wfaacl');
@@ -20,12 +25,13 @@ export const fetchAcademicHistory = async (): Promise<AcademicHistoryResult> => 
     const allSessionCodesExist = dwd && wfaacl && encses;
 
     if (!allSessionCodesExist) {
+      console.log('Session codes missing, attempting authentication...');
       const authResult = await authenticate();
       if (!authResult.success) {
         console.error('Authentication failed:', authResult.error);
         return { success: false, error: authResult.error };
       }
-      return await fetchAcademicHistory(); // retry with new credentials
+      return await fetchAcademicHistory(retryCount + 1); // retry with new credentials
     }
 
     // Make the API call to the history endpoint
@@ -40,21 +46,28 @@ export const fetchAcademicHistory = async (): Promise<AcademicHistoryResult> => 
     });
 
     if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('Session Expired');
+      if (response.status === 401 && retryCount === 0) {
+        console.log('Session expired, attempting re-authentication...');
+        // Clear invalid session codes
+        await AsyncStorage.multiRemove(['dwd', 'wfaacl', 'encses']);
+        // Try to re-authenticate and retry once
+        const authResult = await authenticate();
+        if (authResult.success) {
+          return await fetchAcademicHistory(retryCount + 1);
+        } else {
+          return { success: false, error: 'Re-authentication failed' };
+        }
       } else {
         throw new Error(`Failed to fetch academic history: ${response.statusText}`);
       }
     }
 
     const responseData = await response.json();
-    console.log('Raw API response:', responseData);
     
     // Extract the actual academic data from the response
     // The API returns { success: true, data: { "2024-2025": {...}, "alt": {...} } }
     // We need just the data part: { "2024-2025": {...}, "alt": {...} }
     const academicData = responseData.data || responseData;
-    console.log('Extracted academic data:', academicData);
     
     return { success: true, data: academicData };
   } catch (error: any) {
@@ -62,13 +75,11 @@ export const fetchAcademicHistory = async (): Promise<AcademicHistoryResult> => 
     
     // Handle session expiry by re-authenticating
     if (error.message?.toLowerCase().includes('session expired')) {
-      console.log('Session expired, attempting to re-authenticate...');
       const authResult = await authenticate();
       if (!authResult.success) {
         console.error('Re-authentication failed:', authResult.error);
         return { success: false, error: authResult.error };
       }
-      console.log('Re-authentication successful, retrying academic history fetch...');
       return await fetchAcademicHistory(); // retry after re-auth
     }
     

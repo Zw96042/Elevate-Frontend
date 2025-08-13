@@ -1,21 +1,17 @@
 import { useSettingSheet } from '@/context/SettingSheetContext';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
-import { DeviceEventEmitter } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MotiView } from 'moti';
-import React, { JSX, useCallback, useState, useEffect } from 'react';
-import { Alert, Dimensions, PanResponder, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import React, { JSX, useState, useEffect, useRef } from 'react';
+import { Alert, Dimensions, PanResponder, ScrollView, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 import GradeLevelSelector from '@/components/GradeLevelSelector';
 import ManualGradeEntryCard from '@/components/ManualGradeEntryCard';
 import { GpaCard, GpaSoloCard } from '@/components/GpaCard';
 import { useGradeLevel } from '@/hooks/useGradeLevel';
 import { calculateTermGPAs } from '@/utils/gpaCalculator';
-import { fetchAcademicHistory } from '@/lib/academicHistoryClient';
-import { processAcademicHistory, getCurrentGradeLevel } from '@/utils/academicHistoryProcessor';
-import { authenticate } from '@/lib/authHandler';
+import { AcademicHistoryManager } from '@/lib/academicHistoryManager';
 
 type GradeLevel = 'Freshman' | 'Sophomore' | 'Junior' | 'Senior' | 'All Time';
 
@@ -36,17 +32,18 @@ const GPA = () => {
   const [savedClasses, setSavedClasses] = useState<any[] | null>(null);
   const [academicHistoryData, setAcademicHistoryData] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false); // Track if we've done initial load
+  const loadingRef = React.useRef(false); // Ref to track loading state across renders
+  const isInteractingWithGraph = useRef(false); // Prevent API calls during graph interaction
   
   // Use academic history data if available, otherwise fall back to manual classes
   const gpaData = React.useMemo<Record<string, GPAData>>(() => {
     if (academicHistoryData) {
-      return processAcademicHistory(academicHistoryData);
+      return academicHistoryData; // Already processed GPA data
     }
     return savedClasses ? calculateTermGPAs(savedClasses) : {};
   }, [academicHistoryData, savedClasses]);
-  
-  console.log('GPA Data:', gpaData);
-  console.log('Academic History:', academicHistoryData);
     
   // Use extracted hook for current grade level
   const currentGradeLevel = useGradeLevel();
@@ -65,49 +62,115 @@ const GPA = () => {
     return index <= gradeIndex || grade === 'All Time';
   });
 
-  useFocusEffect(
-    useCallback(() => {
-      const checkCredentials = async () => {
-        const result = await SkywardAuth.hasCredentials();
-        setHasCredentials(result);
-        
-        // If we have credentials, try to fetch academic history
-        if (result) {
-          setLoading(true);
-          try {
-            // Force fresh authentication before fetching academic history
-            console.log('Starting fresh authentication...');
-            const authResult = await authenticate();
-            console.log('Authentication result:', authResult);
-            
-            if (!authResult.success) {
-              console.error('Authentication failed:', authResult.error);
-              setLoading(false);
-              return;
-            }
-            
-            console.log('Authentication successful, fetching academic history...');
-            const historyResult = await fetchAcademicHistory();
-            console.log('Academic history result:', historyResult);
-            
-            if (historyResult.success && historyResult.data) {
-              setAcademicHistoryData(historyResult.data);
-              console.log('Academic history loaded successfully', historyResult.data);
-            } else {
-              console.error('Failed to load academic history:', historyResult.error);
-              // Fall back to manual grades if academic history fails
-            }
-          } catch (error) {
-            console.error('Error fetching academic history:', error);
-          } finally {
-            setLoading(false);
-          }
+  // Function to load academic history data
+  const loadAcademicHistory = async (forceRefresh: boolean = false) => {
+    // NEVER load during graph interaction
+    if (isInteractingWithGraph.current) {
+      console.log('Graph interaction in progress, blocking API call');
+      return;
+    }
+
+    // Prevent multiple simultaneous calls using ref
+    if (loadingRef.current && !forceRefresh) {
+      console.log('Academic history load already in progress (ref check), skipping...');
+      return;
+    }
+
+    // Double-check with state
+    if (loading && !forceRefresh) {
+      console.log('Academic history load already in progress (state check), skipping...');
+      return;
+    }
+
+    loadingRef.current = true;
+    setLoading(true);
+    try {
+      // Check credentials first
+      const credentialsExist = await SkywardAuth.hasCredentials();
+      if (!credentialsExist) {
+        console.log('No credentials found, skipping academic history load');
+        return;
+      }
+
+      const result = await AcademicHistoryManager.getAcademicHistory(forceRefresh);
+      if (result.success && result.gpaData) {
+        setAcademicHistoryData(result.gpaData);
+        if (result.fromCache) {
+          console.log('Loaded academic history from cache');
+        } else {
+          console.log('Loaded fresh academic history from API');
         }
-      };
-      checkCredentials();
-      // no need to loadGradeLevel or subscribe, handled by useGradeLevel hook
-    }, [])
-  );
+      } else {
+        console.error('Failed to load academic history:', result.error);
+        // Keep existing data if refresh fails
+      }
+    } catch (error) {
+      console.error('Error loading academic history:', error);
+    } finally {
+      loadingRef.current = false;
+      setLoading(false);
+    }
+  };
+
+  // Function for pull-to-refresh
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadAcademicHistory(true); // Force refresh
+    setRefreshing(false);
+  };
+
+  // Initial load when component mounts (only once)
+  useEffect(() => {
+    let isMounted = true;
+    
+    const initializeData = async () => {
+      // Skip if already initialized
+      if (isInitialized) {
+        console.log('Already initialized, skipping...');
+        return;
+      }
+
+      if (!isMounted) return;
+
+      const result = await SkywardAuth.hasCredentials();
+      if (!isMounted) return;
+      
+      setHasCredentials(result);
+      
+      // Only load academic history if we have credentials
+      if (result) {
+        await loadAcademicHistory(false); // Use cache if available
+        if (isMounted) {
+          setIsInitialized(true);
+        }
+      }
+    };
+    
+    initializeData();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, []); // Empty dependency array - only run once on mount
+
+  // Load manual classes when selectedGrade changes, but only if no academic history
+  useEffect(() => {
+    if (academicHistoryData) return; // Don't load manual classes if we have academic history
+    if (isInteractingWithGraph.current) return; // Don't load during graph interaction
+    
+    const checkSavedClasses = async () => {
+      try {
+        const data = await AsyncStorage.getItem(`savedClasses-${selectedGrade}`);
+        const parsedData = data ? JSON.parse(data) : null;
+        setSavedClasses(parsedData);
+      } catch (error) {
+        console.error('Error reading saved classes:', error);
+        setSavedClasses(null);
+      }
+    };
+    
+    checkSavedClasses();
+  }, [selectedGrade, academicHistoryData]);
 
     const renderGPAGraph = () => {
     const screenWidth = Dimensions.get('window').width;
@@ -182,11 +245,13 @@ const GPA = () => {
       onStartShouldSetPanResponder: () => !isGraphAnimating,
       onPanResponderGrant: (evt) => {
         if (isGraphAnimating) return;
+        isInteractingWithGraph.current = true; // Block API calls
         const x = evt.nativeEvent.locationX;
         setHoverX(x);
       },
       onPanResponderMove: (evt) => {
         if (isGraphAnimating) return;
+        isInteractingWithGraph.current = true; // Block API calls
         const x = evt.nativeEvent.locationX;
         setHoverX(x);
       },
@@ -194,11 +259,19 @@ const GPA = () => {
         if (isGraphAnimating) return;
         setHoverX(null);
         setActivePointIndex(null);
+        // Delay clearing the flag to prevent any immediate re-renders from triggering API calls
+        setTimeout(() => {
+          isInteractingWithGraph.current = false;
+        }, 100);
       },
       onPanResponderTerminate: () => {
         if (isGraphAnimating) return;
         setHoverX(null);
         setActivePointIndex(null);
+        // Delay clearing the flag to prevent any immediate re-renders from triggering API calls
+        setTimeout(() => {
+          isInteractingWithGraph.current = false;
+        }, 100);
       }
     });
 
@@ -338,7 +411,18 @@ const GPA = () => {
     });
 
     return (
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false} scrollEnabled={false}>
+      <ScrollView 
+        className="flex-1" 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#0090FF"
+            title="Pull to refresh grades"
+          />
+        }
+      >
         <View className="px-6 pb-4">
           {/* GPA Graph */}
           {renderGPAGraph()}
@@ -580,35 +664,6 @@ const GPA = () => {
       return () => clearTimeout(timeout);
     }
   }, [isGraphAnimating]);
-
-  useFocusEffect(
-    React.useCallback(() => {
-      let isActive = true;
-      const checkSavedClasses = async () => {
-        try {
-          const data = await AsyncStorage.getItem(`savedClasses-${selectedGrade}`);
-          const parsedData = data ? JSON.parse(data) : null;
-          if (isActive) {
-            setSavedClasses(parsedData);
-          }
-        } catch (error) {
-          console.error('Error reading saved classes:', error);
-          if (isActive) {
-            setSavedClasses(null);
-          }
-        }
-      };
-      
-      // Only load saved classes if we don't have academic history data
-      if (!academicHistoryData) {
-        checkSavedClasses();
-      }
-      
-      return () => {
-        isActive = false;
-      };
-    }, [selectedGrade, academicHistoryData])
-  );
 
   return (
     <View className="flex-1 bg-primary">
