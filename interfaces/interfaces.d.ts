@@ -61,6 +61,7 @@ interface Class {
 }
 
 interface Assignment {
+  id?: string; // Optional for backward compatibility
   className: string;
   name: string;
   term: string;

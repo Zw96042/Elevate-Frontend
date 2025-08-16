@@ -2,6 +2,7 @@ import React, { createContext, useContext, useRef, useState, ReactNode } from 'r
 import AddSheet from '@gorhom/bottom-sheet';
 import formatClassName from '@/utils/formatClassName';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { generateUniqueId, ensureUniqueAssignmentIds } from '@/utils/uniqueId';
 
 type TermData = {
   categories: {
@@ -12,6 +13,7 @@ type TermData = {
 };
 
 type Assignment = {
+  id?: string;
   className: string;
   name: string;
   term: string;
@@ -87,6 +89,7 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
     if (!modalData) return;
 
     const assignment = {
+      id: generateUniqueId(), // Generate unique ID for new assignments
       className: modalData.className,
       name,
       term: modalData.selectedCategory.split(" ")[0],
@@ -115,15 +118,21 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
         )
       : [];
 
-    const artificialNames = new Set(artificial.map(a => a.name));
-    const filteredReal = real.filter(r => !artificialNames.has(r.name));
+    // Use ID-based filtering instead of name-based
+    const artificialIds = new Set(artificial.map(a => a.id).filter(Boolean));
+    const artificialNames = new Set(artificial.map(a => a.name)); // Keep name fallback for compatibility
+    const filteredReal = real.filter(r => 
+      !artificialIds.has(r.id) && !artificialNames.has(r.name)
+    );
 
-    modalData.setFilteredAssignments([...artificial, ...filteredReal]);
+    // Ensure all assignments have unique IDs
+    const allAssignments = ensureUniqueAssignmentIds([...artificial, ...filteredReal]);
+    modalData.setFilteredAssignments(allAssignments);
 
     const existing = JSON.parse(await AsyncStorage.getItem("artificialAssignments") ?? "{}");
     const updated = {
       ...existing,
-      [modalData.className]: updatedArtificial,
+      [modalData.className]: ensureUniqueAssignmentIds(updatedArtificial),
     };
 
     await AsyncStorage.setItem("artificialAssignments", JSON.stringify(updated));

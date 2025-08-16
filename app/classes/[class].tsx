@@ -29,6 +29,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useLocalSearchParams } from "expo-router";
 import formatClassName from "@/utils/formatClassName";
 import { calculateGradeSummary } from "@/utils/calculateGrades";
+import { ensureUniqueAssignmentIds } from "@/utils/uniqueId";
 import { Ionicons } from "@expo/vector-icons";
 import AssignmentCard from "@/components/AssignmentCard";
 import { useAddAssignmentSheet } from "@/context/AddAssignmentSheetContext";
@@ -40,6 +41,7 @@ import { MotiView, AnimatePresence } from 'moti'
 
 export const ASSIN = [
   {
+    id: "assign_bio_pig_practical",
     className: "BIOLOGY_1_HONORS",
     name: "Pig Practical",
     term: "Q1",
@@ -50,6 +52,7 @@ export const ASSIN = [
     artificial: false,
   },
   {
+    id: "assign_bio_pig_dissection",
     className: "BIOLOGY_1_HONORS",
     name: "Pig Disection #1",
     term: "Q1",
@@ -60,6 +63,7 @@ export const ASSIN = [
     artificial: false,
   },
   {
+    id: "assign_bio_biodiv_threats",
     className: "BIOLOGY_1_HONORS",
     name: "Biodiv. Threats",
     term: "Q2",
@@ -70,6 +74,7 @@ export const ASSIN = [
     artificial: false,
   },
   {
+    id: "assign_precalc_trig_test",
     className: "AP_PRECALCULUS",
     name: "Test Intro to Trig",
     term: "SM1",
@@ -90,6 +95,7 @@ type TermLabel =
   | "SM2 Grades";
 
 type Assignment = {
+  id?: string;
   className: string;
   name: string;
   term: string;
@@ -185,7 +191,10 @@ const ClassDetails = () => {
         (item) => item.className === className && item.term === selectedCategory.split(" ")[0]
       );
 
-      const all = real.filter(a => a.grade !== '*');
+      // Ensure all assignments have unique IDs
+      const realWithIds = ensureUniqueAssignmentIds(real);
+
+      const all = realWithIds.filter(a => a.grade !== '*');
       const weightsMap = Object.fromEntries(
         currTerm.categories.names.map((name, i) => [name, currTerm.categories.weights[i]])
       );
@@ -206,14 +215,13 @@ const ClassDetails = () => {
       );
 
       setArtificialAssignments([]);
-      setFilteredAssignments(real);
+      setFilteredAssignments(realWithIds);
       setCourseSummary(calculateGradeSummary(all, normalizedWeights));
       return;
     }
 
     const parsed = JSON.parse(data);
     const classAssignments = parsed[className] ?? [];
-    setArtificialAssignments(classAssignments);
 
     const real = ASSIN.filter(
       (item) => item.className === className && item.term === selectedCategory.split(" ")[0]
@@ -229,9 +237,16 @@ const ClassDetails = () => {
     const artificialNames = new Set(artificial.map((a: any) => a.name));
     const filteredReal = real.filter((r) => !artificialNames.has(r.name));
 
-    setFilteredAssignments([...artificial, ...filteredReal]);
+    // Combine and ensure unique IDs for all assignments
+    const allAssignments = [...artificial, ...filteredReal];
+    const assignmentsWithIds = ensureUniqueAssignmentIds(allAssignments);
+    
+    // Separate them back out
+    const artificialWithIds = assignmentsWithIds.filter(a => artificial.some((orig: any) => orig.name === a.name));
+    setArtificialAssignments(artificialWithIds);
+    setFilteredAssignments(assignmentsWithIds);
 
-    const all = [...artificial, ...filteredReal].filter(a => a.grade !== '*');
+    const all = assignmentsWithIds.filter(a => a.grade !== '*');
     const weightsMap = Object.fromEntries(
       currTerm.categories.names.map((name, i) => [name, currTerm.categories.weights[i]])
     );
@@ -498,7 +513,7 @@ const handleResetArtificialAssignments = async () => {
                 </MotiView>
               </AnimatePresence>
             )}
-            keyExtractor={(item) => item.name.toString()}
+            keyExtractor={(item) => item.id || `${item.className}-${item.name}-${item.term}-${item.dueDate}`}
             className="mt-6 pb-32 px-3"
             scrollEnabled={false}
             ItemSeparatorComponent={() => <View className="h-4" />}

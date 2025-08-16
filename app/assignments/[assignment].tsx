@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AssignmentDetails = () => {
   const router = useRouter();
-  const { class: classParam, name, category, grade, outOf, dueDate, artificial, editing, term } = useLocalSearchParams();
+  const { class: classParam, name, category, grade, outOf, dueDate, artificial, editing, term, assignmentId } = useLocalSearchParams();
   const formattedClass = formatClassName(classParam?.toString() || '');
 
   const [gradeValue, setGradeValue] = React.useState(() =>
@@ -47,6 +47,7 @@ const AssignmentDetails = () => {
     if (isNaN(formattedOutOf)) return;
     // console.log(formattedGrade);
     const updatedAssignment = {
+      id: assignmentId, // Preserve the ID
       className,
       name,
       category,
@@ -57,9 +58,15 @@ const AssignmentDetails = () => {
       term: term
     };
 
+    // Use ID for identification if available, fallback to name
+    const identifier = assignmentId || name;
+    const filterFn = assignmentId 
+      ? (a: any) => a.id !== assignmentId 
+      : (a: any) => a.name !== name;
+
     const updatedClassList = [
       updatedAssignment,
-      ...(existing[className]?.filter((a: any) => a.name !== name) ?? [])
+      ...(existing[className]?.filter(filterFn) ?? [])
     ];
 
     const updated = { ...existing, [className]: updatedClassList };
@@ -176,7 +183,13 @@ const AssignmentDetails = () => {
                     onPress={async () => {
                       const className = Array.isArray(classParam) ? classParam[0] : classParam;
                       const existing = JSON.parse(await AsyncStorage.getItem('artificialAssignments') ?? '{}');
-                      const updatedClassList = (existing[className] ?? []).filter((a: any) => a.name !== name);
+                      
+                      // Use ID for identification if available, fallback to name
+                      const filterFn = assignmentId 
+                        ? (a: any) => a.id !== assignmentId 
+                        : (a: any) => a.name !== name;
+                      
+                      const updatedClassList = (existing[className] ?? []).filter(filterFn);
                       const updated = { ...existing, [className]: updatedClassList };
 
                       await AsyncStorage.setItem('artificialAssignments', JSON.stringify(updated));
