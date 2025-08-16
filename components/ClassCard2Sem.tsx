@@ -78,19 +78,18 @@ const ClassCard2Sem = ({
     <View className='bg-bgColor mx-6'>
       <View className="w-full h-20 rounded-3xl bg-cardColor flex-row items-center justify-between px-5 mb-3">
         <View className="flex-1 mr-3">
+          {courseLevel != "Regular" && (
+            <View className={`self-start rounded-md bg-highlight px-2`}>
+              <Text className="text-sm text-highlightText font-bold">{courseLevel}</Text>
+            </View>
+          )}
           <Text className="text-lg text-main font-normal">
             {(() => {
               const stripped = formatClassName(name.split(' - ')[0].replaceAll(" ", "_").split(":")[0]);
               return stripped.length > 20 ? `${stripped.slice(0, 20).trim()}...` : stripped;
             })()}
           </Text>
-          {courseLevel && (
-            <View className={`self-start px-2 py-0.5 rounded-full ${getBadgeColor()} mt-1`}>
-              <Text className="text-white text-xs font-medium">
-                {courseLevel}
-              </Text>
-            </View>
-          )}
+          
         </View>
 
         <View className="flex-col items-center justify-center space-y-1">

@@ -39,50 +39,182 @@ interface GPAData {
 // === Course Level Detection (copied from gpaCalculator.tsx) ===
 
 const apExceptions = new Set([
-  "Multivariable Calculus", 
-  "Linear Algebra",
-  "Stats 2: Beyond AP Statistics",
-  "Computer Science 2",
-  "Computer Science 3",
-  "Computer Science Ind Study 1",
-  "Organic Chemistry",
-  "Art Historical Methods",
-  "Art Historical Methods 2",
-  "Chinese 5 Advanced",
-  "Chinese 6 Advanced",
-  "French 5 Advanced",
-  "French 6 Advanced",
-  "German 5 Advanced",
-  "German 6 Advanced",
-  "Latin 5 Advanced",
-  "Latin 6 Advanced",
-  "Heritage, and Immersion Students",
-  "Spanish 6"
+  "multivariable calculus", 
+  "linear algebra",
+  "stats 2: beyond ap statistics",
+  "computer science 2",
+  "computer science ii",
+  "computer science 3",
+  "computer science iii",
+  "computer science ind study 1",
+  "organic chemistry",
+  "art historical methods",
+  "art historical methods 2",
+  "chinese 5 advanced",
+  "chinese 6 advanced",
+  "french 5 advanced",
+  "french 6 advanced",
+  "german 5 advanced",
+  "german 6 advanced",
+  "latin 5 advanced",
+  "latin 6 advanced",
+  "heritage, and immersion students",
+  "spanish 6"
 ]);
 
 const honorsExceptions = new Set([
-  "Editorial Leadership 1, 2, and 3",
-  "Anatomy & Physiology ",
-  "Mentorship",
-  "Health Science Clinical",
-  "Practicum in Health Science - Pharmacy or Phlebotomy",
-  "Robotics 2",
-  "Robotics 3",
-  "Swift Coding",
-  "Business Incubator",
-  "Business ACCeleratoredu",
-  "Anatomy and Physiology",
-  "Engineering"
+  "editorial leadership 1, 2, and 3",
+  "anatomy & physiology",
+  "mentorship",
+  "health science clinical",
+  "practicum in health science - pharmacy or phlebotomy",
+  "robotics 2",
+  "robotics ii",
+  "robotics 3",
+  "robotics iii",
+  "swift coding",
+  "business incubator",
+  "business acceleratoredu",
+  "anatomy and physiology",
+  "engineering"
 ]);
 
+// Helper function to convert Roman numerals to numbers and vice versa
+function normalizeNumbers(text: string): string {
+  const romanToNumber: { [key: string]: string } = {
+    ' i': ' 1', ' ii': ' 2', ' iii': ' 3', ' iv': ' 4', ' v': ' 5', ' vi': ' 6'
+  };
+  const numberToRoman: { [key: string]: string } = {
+    ' 1': ' i', ' 2': ' ii', ' 3': ' iii', ' 4': ' iv', ' 5': ' v', ' 6': ' vi'
+  };
+  
+  let normalized = text;
+  // Convert Roman numerals to numbers
+  Object.entries(romanToNumber).forEach(([roman, number]) => {
+    normalized = normalized.replace(new RegExp(roman, 'gi'), number);
+  });
+  // Also try converting numbers to Roman numerals for comparison
+  Object.entries(numberToRoman).forEach(([number, roman]) => {
+    normalized = normalized.replace(new RegExp(number, 'gi'), roman);
+  });
+  
+  return normalized;
+}
+
 function getCourseLevel(className: string): "AP" | "Honors" | "Regular" {
-  const normalized = className.toLowerCase();
+  if (!className || typeof className !== 'string' || className.trim() === '') {
+    return "Regular";
+  }
+  
+  const normalized = className.toLowerCase().trim();
 
-  const isAP = /\bap\b/.test(normalized) || [...apExceptions].some(ex => normalized.includes(ex.toLowerCase()));
-  if (isAP) return "AP";
+  // First check for explicit AP pattern
+  const hasAPKeyword = /\bap\b/.test(normalized);
+  
+  // Check AP exceptions - look for exact matches or close matches with Roman numeral normalization
+  let matchedAPException = null;
+  const isAPException = [...apExceptions].some(ex => {
+    const normalizedCourse = normalizeNumbers(normalized);
+    const normalizedEx = normalizeNumbers(ex);
+    
+    // Exact match (direct or after normalization)
+    if (normalized === ex || normalizedCourse === normalizedEx) {
+      matchedAPException = ex;
+      return true;
+    }
+    
+    // For longer exception names, check if course name contains the full exception
+    if (ex.length > 10 && (normalized.includes(ex) || normalizedCourse.includes(normalizedEx))) {
+      matchedAPException = ex;
+      return true;
+    }
+    
+    // For shorter exception names, be more strict - only match if they are very similar
+    // Don't match partial course names like "computer science" with "computer science 2"
+    if (ex.length <= 10 && normalized.length > 5) {
+      // Split into words and check for meaningful overlap
+      const courseWords = normalizedCourse.split(/\s+/);
+      const exWords = normalizedEx.split(/\s+/);
+      
+      // For courses like "computer science i" vs "computer science 2", they need to match more precisely
+      if (courseWords.length >= 2 && exWords.length >= 2) {
+        // Both must have same base words and the level must match exactly
+        const courseBase = courseWords.slice(0, -1).join(' ');
+        const courseLevel = courseWords[courseWords.length - 1];
+        const exBase = exWords.slice(0, -1).join(' ');
+        const exLevel = exWords[exWords.length - 1];
+        
+        if (courseBase === exBase && courseLevel === exLevel) {
+          matchedAPException = ex;
+          return true;
+        }
+      } else {
+        // Single word courses - use exact match only
+        if (ex.includes(normalized) || normalizedEx.includes(normalizedCourse)) {
+          matchedAPException = ex;
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  });
+  
+  if (hasAPKeyword || isAPException) return "AP";
 
-  const isHonors = /\bhonors?\b/.test(normalized) || [...honorsExceptions].some(ex => normalized.includes(ex.toLowerCase()));
-  if (isHonors) return "Honors";
+  // Check for Honors pattern
+  const hasHonorsKeyword = /\bhonors?\b/.test(normalized);
+  
+  // Check Honors exceptions with Roman numeral normalization
+  let matchedHonorsException = null;
+  const isHonorsException = [...honorsExceptions].some(ex => {
+    const normalizedCourse = normalizeNumbers(normalized);
+    const normalizedEx = normalizeNumbers(ex);
+    
+    // Exact match (direct or after normalization)
+    if (normalized === ex || normalizedCourse === normalizedEx) {
+      matchedHonorsException = ex;
+      return true;
+    }
+    
+    // For longer exception names, check if course name contains the full exception
+    if (ex.length > 10 && (normalized.includes(ex) || normalizedCourse.includes(normalizedEx))) {
+      matchedHonorsException = ex;
+      return true;
+    }
+    
+    // For shorter exception names, be more strict - only match if they are very similar
+    // Don't match partial course names like "robotics" with "robotics 2"
+    if (ex.length <= 10 && normalized.length > 5) {
+      // Split into words and check for meaningful overlap
+      const courseWords = normalizedCourse.split(/\s+/);
+      const exWords = normalizedEx.split(/\s+/);
+      
+      // For courses like "robotics i" vs "robotics 2", they need to match more precisely
+      if (courseWords.length >= 2 && exWords.length >= 2) {
+        // Both must have same base word and the second word must match exactly
+        const courseBase = courseWords[0];
+        const courseLevel = courseWords[1];
+        const exBase = exWords[0];
+        const exLevel = exWords[1];
+        
+        if (courseBase === exBase && courseLevel === exLevel) {
+          matchedHonorsException = ex;
+          return true;
+        }
+      } else {
+        // Single word courses - use exact match only
+        if (ex.includes(normalized) || normalizedEx.includes(normalizedCourse)) {
+          matchedHonorsException = ex;
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  });
+
+  if (hasHonorsKeyword || isHonorsException) return "Honors";
 
   return "Regular";
 }
@@ -125,50 +257,56 @@ const calculateTermGPA = (coursesData: Record<string, CourseData>, termKey: stri
   let totalPoints = 0;
   let totalWeightedPoints = 0;
   let totalCourses = 0;
+  let hasScheduledCourses = false;
 
   Object.entries(coursesData).forEach(([courseKey, courseData]) => {
     const grade = courseData[termKey as keyof CourseData];
     // Extract the original class name (remove the year suffix)
     const className = courseKey.replace(/_\d{4}-\d{4}$/, '');
     
-    let numericGrade: number = 0;
-    let shouldInclude = false;
+    // Always get the course level for all courses (not just ones with grades)
+    const courseLevel = getCourseLevel(className);
     
-    if (isValidGrade(grade)) {
-      numericGrade = Number(grade);
-      shouldInclude = true;
-    } else if (isCourseScheduledForTerm(courseData, termKey)) {
-      // Course is scheduled for this term but no grade recorded - default to 100
-      numericGrade = 100;
-      shouldInclude = true;
-    }
-    
-    if (shouldInclude) {
-      totalPoints += numericGrade;
+    // Check if this course is scheduled for this term
+    if (isCourseScheduledForTerm(courseData, termKey)) {
+      hasScheduledCourses = true;
       
-      // Get the course level and add appropriate weight
-      const courseLevel = getCourseLevel(className);
-      let weightedGrade = numericGrade;
-      
-      if (courseLevel === "AP") {
-        weightedGrade = numericGrade + 10;
-      } else if (courseLevel === "Honors") {
-        weightedGrade = numericGrade + 5;
+      // Only include courses that have actual valid grades in the GPA calculation
+      if (isValidGrade(grade)) {
+        const numericGrade = Number(grade);
+        totalPoints += numericGrade;
+        
+        // Add appropriate weight based on course level
+        let weightedGrade = numericGrade;
+        
+        if (courseLevel === "AP") {
+          weightedGrade = numericGrade + 10;
+        } else if (courseLevel === "Honors") {
+          weightedGrade = numericGrade + 5;
+        }
+        
+        totalWeightedPoints += Math.min(weightedGrade, 110);
+        totalCourses++;
       }
-      
-      totalWeightedPoints += Math.min(weightedGrade, 110);
-      totalCourses++;
     }
   });
 
+  // If no courses are scheduled for this term, return 0 (term won't be included)
+  if (!hasScheduledCourses) {
+    return { unweighted: 0, weighted: 0 };
+  }
+
+  // If courses are scheduled but no grades yet, return 0 GPA (term will be included but with 0)
   if (totalCourses === 0) {
     return { unweighted: 0, weighted: 0 };
   }
 
-  return {
+  const result = {
     unweighted: parseFloat((totalPoints / totalCourses).toFixed(2)),
     weighted: parseFloat((totalWeightedPoints / totalCourses).toFixed(2))
   };
+
+  return result;
 };
 
 // Process academic history data and return GPA data for all terms, filtered by grade level
@@ -190,7 +328,8 @@ export const processAcademicHistory = (academicData: AcademicHistoryData, target
   
   validYears.forEach(([year, yearData]) => {
     Object.entries(yearData.courses).forEach(([className, courseData]) => {
-      // Skip courses with final grade of "P"
+      // Only filter out courses with final grade of "P" (Pass/Fail)
+      // Keep courses even if they have empty grades in individual terms
       if (courseData.finalGrade !== "P") {
         // Use a unique key that includes the year to avoid conflicts
         allCourses[`${className}_${year}`] = courseData;
@@ -211,11 +350,14 @@ export const processAcademicHistory = (academicData: AcademicHistoryData, target
 // Get current grade level from academic history
 export const getCurrentGradeLevel = (academicData: AcademicHistoryData): number => {
   const validYears = Object.entries(academicData).filter(([year, data]) => {
-    return year !== 'alt' && data.grade >= 9 && data.grade <= 12;
+    const isValid = year !== 'alt' && data.grade >= 9 && data.grade <= 12;
+    return isValid;
   });
 
-  if (validYears.length === 0) return 9; // Default to freshman
+  if (validYears.length === 0) {
+    return 9;
+  }
 
-  // Get the highest grade level
-  return Math.max(...validYears.map(([, data]) => data.grade));
+  const maxGrade = Math.max(...validYears.map(([, data]) => data.grade));
+  return maxGrade;
 };

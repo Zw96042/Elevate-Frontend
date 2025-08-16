@@ -50,22 +50,103 @@ const getGradeLevelName = (gradeNumber: number): string => {
 
 // Helper function to get course level
 const getCourseLevel = (className: string): "AP" | "Honors" | "Regular" => {
-  const normalized = className.toLowerCase();
+  if (!className || typeof className !== 'string' || className.trim() === '') {
+    return "Regular";
+  }
   
-  const apExceptions = ["multivariable calculus", "linear algebra", "stats 2: beyond ap statistics", "computer science 2", "computer science 3", "organic chemistry", "art historical methods"];
-  const honorsExceptions = ["editorial leadership", "anatomy & physiology", "mentorship", "health science clinical", "robotics", "swift coding", "business incubator", "engineering"];
+  const normalized = className.toLowerCase().trim();
   
-  const isAP = /\bap\b/.test(normalized) || apExceptions.some(ex => normalized.includes(ex));
-  if (isAP) return "AP";
+  // Roman numeral normalization
+  const normalizeNumbers = (text: string): string => {
+    const romanToNumber: { [key: string]: string } = {
+      ' i': ' 1', ' ii': ' 2', ' iii': ' 3', ' iv': ' 4', ' v': ' 5', ' vi': ' 6'
+    };
+    const numberToRoman: { [key: string]: string } = {
+      ' 1': ' i', ' 2': ' ii', ' 3': ' iii', ' 4': ' iv', ' 5': ' v', ' 6': ' vi'
+    };
+    
+    let normalizedText = text;
+    Object.entries(romanToNumber).forEach(([roman, number]) => {
+      normalizedText = normalizedText.replace(new RegExp(roman, 'gi'), number);
+    });
+    Object.entries(numberToRoman).forEach(([number, roman]) => {
+      normalizedText = normalizedText.replace(new RegExp(number, 'gi'), roman);
+    });
+    return normalizedText;
+  };
   
-  const isHonors = /\bhonors?\b/.test(normalized) || honorsExceptions.some(ex => normalized.includes(ex));
-  if (isHonors) return "Honors";
+  const apExceptions = ["multivariable calculus", "linear algebra", "stats 2: beyond ap statistics", "computer science 2", "computer science ii", "computer science 3", "computer science iii", "organic chemistry", "art historical methods"];
+  const honorsExceptions = ["editorial leadership", "anatomy & physiology", "mentorship", "health science clinical", "robotics 2", "robotics ii", "robotics 3", "robotics iii", "swift coding", "business incubator", "engineering"];
+  
+  // First check for explicit AP pattern
+  const hasAPKeyword = /\bap\b/.test(normalized);
+  
+  // Check AP exceptions with improved matching
+  const isAPException = apExceptions.some(ex => {
+    const normalizedCourse = normalizeNumbers(normalized);
+    const normalizedEx = normalizeNumbers(ex);
+    
+    if (normalized === ex || normalizedCourse === normalizedEx) return true;
+    if (ex.length > 10 && (normalized.includes(ex) || normalizedCourse.includes(normalizedEx))) return true;
+    
+    if (ex.length <= 10 && normalized.length > 5) {
+      const courseWords = normalizedCourse.split(/\s+/);
+      const exWords = normalizedEx.split(/\s+/);
+      
+      if (courseWords.length >= 2 && exWords.length >= 2) {
+        const courseBase = courseWords.slice(0, -1).join(' ');
+        const courseLevel = courseWords[courseWords.length - 1];
+        const exBase = exWords.slice(0, -1).join(' ');
+        const exLevel = exWords[exWords.length - 1];
+        
+        if (courseBase === exBase && courseLevel === exLevel) return true;
+      } else {
+        if (ex.includes(normalized) || normalizedEx.includes(normalizedCourse)) return true;
+      }
+    }
+    
+    return false;
+  });
+  
+  if (hasAPKeyword || isAPException) return "AP";
+  
+  // Check for Honors pattern
+  const hasHonorsKeyword = /\bhonors?\b/.test(normalized);
+  
+  // Check Honors exceptions with improved matching
+  const isHonorsException = honorsExceptions.some(ex => {
+    const normalizedCourse = normalizeNumbers(normalized);
+    const normalizedEx = normalizeNumbers(ex);
+    
+    if (normalized === ex || normalizedCourse === normalizedEx) return true;
+    if (ex.length > 10 && (normalized.includes(ex) || normalizedCourse.includes(normalizedEx))) return true;
+    
+    if (ex.length <= 10 && normalized.length > 5) {
+      const courseWords = normalizedCourse.split(/\s+/);
+      const exWords = normalizedEx.split(/\s+/);
+      
+      if (courseWords.length >= 2 && exWords.length >= 2) {
+        const courseBase = courseWords[0];
+        const courseLevel = courseWords[1];
+        const exBase = exWords[0];
+        const exLevel = exWords[1];
+        
+        if (courseBase === exBase && courseLevel === exLevel) return true;
+      } else {
+        if (ex.includes(normalized) || normalizedEx.includes(normalizedCourse)) return true;
+      }
+    }
+    
+    return false;
+  });
+  
+  if (hasHonorsKeyword || isHonorsException) return "Honors";
   
   return "Regular";
 };
 
 const AcademicHistoryView = () => {
-  const { gradeLevel } = useLocalSearchParams();
+  const { gradeLevel, preloadedClasses } = useLocalSearchParams();
   const { colorScheme } = useColorScheme();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -82,6 +163,19 @@ const AcademicHistoryView = () => {
     };
     return gradeMap[gradeLevel.toString()] || 9;
   }, [gradeLevel]);
+
+  // Parse preloaded classes if they exist
+  const preloadedCourses = React.useMemo(() => {
+    if (preloadedClasses && typeof preloadedClasses === 'string') {
+      try {
+        const parsed = JSON.parse(preloadedClasses);
+        return parsed;
+      } catch (error) {
+        console.error('Failed to parse preloaded classes:', error);
+      }
+    }
+    return null;
+  }, [preloadedClasses]);
 
   const loadAcademicHistory = useCallback(async (forceRefresh = false) => {
     try {
@@ -101,8 +195,15 @@ const AcademicHistoryView = () => {
   }, []);
 
   useEffect(() => {
+    // If we have preloaded classes, don't show loading and don't try to load from API initially
+    if (preloadedCourses && preloadedCourses.length > 0) {
+      setLoading(false);
+      return;
+    }
+    
+    // Otherwise, load from academic history API
     loadAcademicHistory();
-  }, [loadAcademicHistory]);
+  }, [loadAcademicHistory, preloadedCourses]);
 
   const onRefresh = useCallback(() => {
     loadAcademicHistory(true);
@@ -121,19 +222,56 @@ const AcademicHistoryView = () => {
   }, [academicData, gradeNumber]);
 
   const courses = React.useMemo(() => {
-    if (!gradeData) return [];
+    // First, try to use academic history data
+    if (gradeData) {
+      return Object.entries(gradeData.courses)
+        .filter(([courseName, courseData]) => {
+          // Filter out courses with no meaningful data
+          return courseData.finalGrade !== "P" && (
+            courseData.sm1 || 
+            courseData.sm2 || 
+            courseData.finalGrade
+          );
+        })
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([courseName, courseData]) => ({
+          courseName,
+          courseData,
+          savedLevel: null // No saved level for API data
+        }));
+    }
     
-    return Object.entries(gradeData.courses)
-      .filter(([courseName, courseData]) => {
-        // Filter out courses with no meaningful data
-        return courseData.finalGrade !== "P" && (
-          courseData.sm1 || 
-          courseData.sm2 || 
-          courseData.finalGrade
-        );
-      })
-      .sort(([a], [b]) => a.localeCompare(b));
-  }, [gradeData]);
+    // If no academic history, use preloaded classes from AsyncStorage
+    if (preloadedCourses && Array.isArray(preloadedCourses)) {
+      // Convert from our saved format to the expected format
+      return preloadedCourses.map(course => ({
+        courseName: course.name,
+        courseData: {
+          terms: course.terms,
+          finalGrade: course.grades.finalGrade,
+          sm1: course.grades.sm1,
+          sm2: course.grades.sm2,
+          pr1: course.grades.pr1,
+          pr2: course.grades.pr2,
+          pr3: course.grades.pr3,
+          pr4: course.grades.pr4,
+          pr5: course.grades.pr5,
+          pr6: course.grades.pr6,
+          pr7: course.grades.pr7,
+          pr8: course.grades.pr8,
+          rc1: course.grades.rc1,
+          rc2: course.grades.rc2,
+          rc3: course.grades.rc3,
+          rc4: course.grades.rc4,
+          ex1: course.grades.ex1 || '',
+          ex2: course.grades.ex2 || ''
+        },
+        savedLevel: course.level // Use saved level from AsyncStorage
+      })).sort((a, b) => a.courseName.localeCompare(b.courseName));
+    }
+    
+    return [];
+  }, [gradeData, preloadedCourses, gradeLevel]);
 
   if (loading && !refreshing) {
     return (
@@ -188,7 +326,7 @@ const AcademicHistoryView = () => {
     );
   }
 
-  if (!gradeData || courses.length === 0) {
+  if (courses.length === 0) {
     return (
       <>
         <Stack.Screen
@@ -228,7 +366,7 @@ const AcademicHistoryView = () => {
     <>
       <Stack.Screen
         options={{
-          title: `${getGradeLevelName(gradeNumber)} Academic History`,
+          title: `Academic History`,
           headerStyle: { backgroundColor: '#2563eb' },
           headerTintColor: '#fff',
           headerTitleStyle: {
@@ -246,7 +384,7 @@ const AcademicHistoryView = () => {
       >
         {/* Header Info */}
         <View className="mx-6 mt-6 mb-4">
-          <View className="bg-cardColor rounded-2xl p-4 border border-accent shadow-sm">
+          <View className="bg-cardColor rounded-2xl p-4 shadow-sm">
             <Text className="text-main text-xl font-semibold mb-2">
               {getGradeLevelName(gradeNumber)} Year Overview
             </Text>
@@ -254,16 +392,15 @@ const AcademicHistoryView = () => {
               <Text className="text-accent">
                 Total Courses: {courses.length}
               </Text>
-              <Text className="text-accent text-sm">
-                Pull to refresh
-              </Text>
             </View>
           </View>
         </View>
 
         {/* Course List */}
-        {courses.map(([courseName, courseData]) => {
-          const courseLevel = getCourseLevel(courseName);
+        {courses.map((course) => {
+          const { courseName, courseData, savedLevel } = course;
+          // Use saved level if available, otherwise calculate it
+          const courseLevel = savedLevel || getCourseLevel(courseName);
           const sm1Grade = courseData.sm1 && courseData.sm1 !== "" && courseData.sm1 !== "P" && courseData.sm1 !== "X" 
             ? Number(courseData.sm1) 
             : -1;

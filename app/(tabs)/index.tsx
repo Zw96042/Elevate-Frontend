@@ -67,12 +67,58 @@ const transformCourseData = (apiCourses: any[]) => {
   });
 };
 
+const filterCoursesBySemester = (courses: any[], selectedTerm: string) => {
+  // Map display terms to semester filtering terms
+  const termMapping: Record<string, string> = {
+    'Q1 Grades': 'RC1',
+    'Q2 Grades': 'RC2', 
+    'SM1 Grade': 'SM1',
+    'Q3 Grades': 'RC3',
+    'Q4 Grades': 'RC4',
+    'SM2 Grades': 'SM2'
+  };
+  
+  // Get the actual term code for filtering
+  const filterTerm = termMapping[selectedTerm] || selectedTerm;
+  
+  // Define term to semester mapping
+  const fallTerms = ['RC1', 'RC2', 'SM1'];
+  const springTerms = ['RC3', 'RC4', 'SM2'];
+  
+  // If term is not specified or is "All", return all courses
+  if (!filterTerm || filterTerm === 'All') {
+    return courses;
+  }
+  
+  // Determine which semester to filter for
+  let targetSemesters: string[] = [];
+  
+  if (fallTerms.includes(filterTerm)) {
+    targetSemesters = ['fall', 'both'];
+  } else if (springTerms.includes(filterTerm)) {
+    targetSemesters = ['spring', 'both'];
+  } else {
+    // If it's not a recognized term, return all courses
+    return courses;
+  }
+  
+  // Filter courses based on semester property
+  return courses.filter(course => {
+    // If course doesn't have semester property, include it (backwards compatibility)
+    if (!course.semester) {
+      return true;
+    }
+    
+    return targetSemesters.includes(course.semester);
+  });
+};
 
 export default function Index() {
   const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
   const { settingSheetRef } = useSettingSheet();
   const [hasCredentials, setHasCredentials] = useState(false);
   const [coursesData, setCoursesData] = useState<any[]>([]);
+  const [filteredCourses, setFilteredCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,19 +137,29 @@ export default function Index() {
       if (result.success && result.courses) {
         const transformedData = transformCourseData(result.courses);
         setCoursesData(transformedData);
+        const filtered = filterCoursesBySemester(transformedData, selectedCategory);
+        setFilteredCourses(filtered);
       } else {
         setError(result.error || 'Failed to load courses');
         setCoursesData([]);
+        setFilteredCourses([]);
       }
     } catch (err: any) {
       console.error('Error loading courses:', err);
       setError(err.message || 'Failed to load courses');
       setCoursesData([]);
+      setFilteredCourses([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
+
+  // Effect to filter courses when selectedCategory changes
+  useEffect(() => {
+    const filtered = filterCoursesBySemester(coursesData, selectedCategory);
+    setFilteredCourses(filtered);
+  }, [coursesData, selectedCategory]);
 
   const onRefresh = useCallback(() => {
     if (hasCredentials) {
@@ -141,7 +197,7 @@ export default function Index() {
         </View>
         <FlatList
           className='mb-[4rem]'
-          data={coursesData}
+          data={filteredCourses}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />

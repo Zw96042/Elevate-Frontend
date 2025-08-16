@@ -12,7 +12,8 @@ const ManualGradeEntryCard = ({ selectedGrade, minimized = false }: { selectedGr
   useFocusEffect(() => {
     const loadSavedClasses = async () => {
       try {
-        const stored = await AsyncStorage.getItem(`savedClasses-${selectedGrade}`);
+        const storageKey = `savedClasses-${selectedGrade}`;
+        const stored = await AsyncStorage.getItem(storageKey);
         const parsed = stored ? JSON.parse(stored) : [];
         setSavedClasses(parsed);
       } catch (error) {

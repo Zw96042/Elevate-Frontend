@@ -12,6 +12,7 @@ import ManualGradeEntryCard from '@/components/ManualGradeEntryCard';
 import { GpaCard, GpaSoloCard } from '@/components/GpaCard';
 import { useGradeLevel } from '@/hooks/useGradeLevel';
 import { calculateTermGPAs } from '@/utils/gpaCalculator';
+import { processAcademicHistory } from '@/utils/academicHistoryProcessor';
 import { AcademicHistoryManager } from '@/lib/academicHistoryManager';
 
 type GradeLevel = 'Freshman' | 'Sophomore' | 'Junior' | 'Senior' | 'All Time';
@@ -43,7 +44,8 @@ const GPA = () => {
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [isGraphAnimating, setIsGraphAnimating] = useState(false);
   const [savedClasses, setSavedClasses] = useState<any[] | null>(null);
-  const [academicHistoryData, setAcademicHistoryData] = useState<any | null>(null);
+  const [academicHistoryData, setAcademicHistoryData] = useState<any | null>(null); // Store raw academic data
+  const [rawAcademicData, setRawAcademicData] = useState<any | null>(null); // Store raw academic data
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false); // Track if we've done initial load
@@ -52,11 +54,13 @@ const GPA = () => {
   
   // Use academic history data if available, otherwise fall back to manual classes
   const gpaData = React.useMemo<Record<string, GPAData>>(() => {
-    if (academicHistoryData) {
-      return academicHistoryData; // Already processed GPA data
+    if (rawAcademicData) {
+      // Process raw academic data for the currently selected grade level
+      const gradeNumber = getGradeNumber(selectedGrade);
+      return processAcademicHistory(rawAcademicData, gradeNumber);
     }
     return savedClasses ? calculateTermGPAs(savedClasses) : {};
-  }, [academicHistoryData, savedClasses]);
+  }, [rawAcademicData, savedClasses, selectedGrade]);
     
   // Use extracted hook for current grade level and available grade levels
   const { currentGradeLevel, availableGradeLevels } = useGradeLevel();
@@ -68,7 +72,8 @@ const GPA = () => {
   
   const allLabels = ['PR1','PR2','RC1','PR3','PR4','RC2','PR5','PR6','RC3','PR7','PR8','RC4'];
 
-  const validLabels = allLabels.filter(label => gpaData[label] && gpaData[label].weighted > 0);
+  // Show labels even if they have zero GPA (for courses without grades yet)
+  const validLabels = allLabels.filter(label => gpaData[label] !== undefined);
 
   const gradeLevels: GradeLevel[] = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'All Time'];
 
@@ -82,16 +87,14 @@ const GPA = () => {
 
     // Prevent multiple simultaneous calls using ref
     if (loadingRef.current && !forceRefresh) {
-      console.log('Academic history load already in progress (ref check), skipping...');
       return;
     }
 
     // Only show loading screen if this is initial load (no existing data)
-    const isInitialLoad = !academicHistoryData && !savedClasses;
+    const isInitialLoad = !rawAcademicData && !savedClasses;
     
     // Double-check with state
     if (loading && !forceRefresh) {
-      console.log('Academic history load already in progress (state check), skipping...');
       return;
     }
 
@@ -111,14 +114,13 @@ const GPA = () => {
       }
 
       const gradeNumber = getGradeNumber(selectedGrade);
-      const result = await AcademicHistoryManager.getAcademicHistory(forceRefresh, gradeNumber);
-      if (result.success && result.gpaData) {
+      // Always fetch all data, let the component filter it by grade level
+      const result = await AcademicHistoryManager.getAcademicHistory(forceRefresh, undefined);
+      if (result.success && result.gpaData && result.rawData) {
+        // Store both processed GPA data and raw data
         setAcademicHistoryData(result.gpaData);
-        if (result.fromCache) {
-          console.log('Loaded academic history from cache');
-        } else {
-          console.log('Loaded fresh academic history from API');
-        }
+        setRawAcademicData(result.rawData);
+        // Cache status tracking removed for cleaner logs
       } else {
         console.error('Failed to load academic history:', result.error);
         // Keep existing data if refresh fails
@@ -136,13 +138,14 @@ const GPA = () => {
 
   // Function for pull-to-refresh
   const onRefresh = async () => {
-    console.log('Pull-to-refresh triggered, forcing API refresh...');
     setRefreshing(true);
     // Temporarily allow API calls during refresh even if graph interaction flag is set
     const wasInteracting = isInteractingWithGraph.current;
     isInteractingWithGraph.current = false;
     
     try {
+      // Clear the cache first to ensure fresh data
+      await AcademicHistoryManager.clearCache();
       await loadAcademicHistory(true); // Force refresh
     } finally {
       setRefreshing(false);
@@ -533,8 +536,8 @@ const GPA = () => {
           })()}
         <View className="flex-1">
           {(() => {
-            const fallback: GPAData = { unweighted: 100, weighted: 100 };
-            const exists = (label: string) => !!gpaData[label];
+            const fallback: GPAData = { unweighted: 0, weighted: 0 }; // Changed from 100 to 0
+            const exists = (label: string) => gpaData[label] !== undefined;
             const getLabelData = (label: string) => gpaData[label] || fallback;
 
             const prToRCMap: Record<string, string> = {
@@ -667,8 +670,20 @@ const GPA = () => {
 
             const sm1 = exists('SM1') ? getLabelData('SM1') : fallback;
             const sm2 = exists('SM2') ? getLabelData('SM2') : fallback;
-            const finUnweighted = (sm1.unweighted + sm2.unweighted) / 2;
-            const finWeighted = (sm1.weighted + sm2.weighted) / 2;
+            // Only calculate average if at least one semester has data
+            const validSemesters = [sm1, sm2].filter(sem => sem.weighted > 0);
+            let finUnweighted, finWeighted;
+            
+            if (validSemesters.length === 0) {
+              finUnweighted = 0;
+              finWeighted = 0;
+            } else if (validSemesters.length === 1) {
+              finUnweighted = validSemesters[0].unweighted;
+              finWeighted = validSemesters[0].weighted;
+            } else {
+              finUnweighted = (sm1.unweighted + sm2.unweighted) / 2;
+              finWeighted = (sm1.weighted + sm2.weighted) / 2;
+            }
 
             rows.push(
               <GpaSoloCard
