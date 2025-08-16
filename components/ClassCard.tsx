@@ -181,15 +181,16 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
   }, [fetchArtificialAssignments]);
 
   useEffect(() => {
-    const value =
-      courseSummary.courseTotal === '*'
+    const value = currTerm.total > 0 
+      ? currTerm.total 
+      : courseSummary.courseTotal === '*'
         ? 100
         : Number(courseSummary.courseTotal);
     animatedGrade.value = withTiming(value, {
       duration: 700,
       easing: Easing.inOut(Easing.ease)
     });
-  }, [courseSummary.courseTotal]);
+  }, [currTerm.total, courseSummary.courseTotal]);
 
   useFocusEffect(
     useCallback(() => {
@@ -250,7 +251,11 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
                           />
                           <View className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 justify-center items-center">
                             <Text className="text-highlightText font-bold text-sm">
-                              {courseSummary.courseTotal === '*'
+                              {currTerm.total > 0
+                                ? currTerm.total === 100
+                                  ? '100%'
+                                  : `${currTerm.total.toFixed(1)}%`
+                                : courseSummary.courseTotal === '*'
                                 ? '--'
                                 : Number(courseSummary.courseTotal) === 100
                                 ? '100%'

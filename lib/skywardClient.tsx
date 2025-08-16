@@ -165,9 +165,9 @@ export const fetchSkywardReportCard = async ({
     'User-Type': userType || '2',
   };
 
-  console.log('📡 Fetching report card with:');
-  console.log('Backend URL:', `${config.BACKEND_IP}/scrape-report`);
-  console.log('Request body:', JSON.stringify(requestBody, null, 2));
+  // console.log('📡 Fetching report card with:');
+  // console.log('Backend URL:', `${config.BACKEND_IP}/scrape-report`);
+  // console.log('Request body:', JSON.stringify(requestBody, null, 2));
 
   try {
     const res = await fetch(`${config.BACKEND_IP}/scrape-report`, {
@@ -176,12 +176,8 @@ export const fetchSkywardReportCard = async ({
       body: JSON.stringify(requestBody),
     });
 
-    console.log('📨 Response status:', res.status);
-    console.log('📨 Response headers:', res.headers);
-
     if (!res.ok) {
       const errorText = await res.text();
-      console.error('❌ Error response:', errorText);
       
       if (res.status === 401) {
         throw new Error(`Session Expired`);
@@ -191,10 +187,8 @@ export const fetchSkywardReportCard = async ({
     }
 
     const data = await res.json();
-    console.log('✅ Report card data received:', data);
     return data;
   } catch (error: any) {
-    console.error('🚨 Network error in fetchSkywardReportCard:', error);
     throw error;
   }
 };

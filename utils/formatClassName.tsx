@@ -1,7 +1,7 @@
 const formatClassName = (raw: string) => {
   if (raw.endsWith("FF")) return "Invention & Innovation FF";
 
-  const acronyms = new Set(["AP", "IB", "GT", "ELA"]);
+  const acronyms = new Set(["AP", "IB", "GT", "ELA", "BC", "AB", "CSA", "CSP", "APUSH", "US", "UK", "EU", "PE", "IT", "CS", "AI", "ML", "CAD", "CTE", "STEM"]);
 
   return raw
     .toUpperCase()

@@ -26,9 +26,14 @@ const transformCourseData = (apiCourses: any[]) => {
       scoreMap[bucketKey] = score.score;
     });
 
-    // Helper function to get score with fallbacks
-    const getScore = (primary: string, fallback: string) => {
-      return scoreMap[primary] || scoreMap[fallback] || 0;
+    // Helper function to get score with API term mapping
+    const getScore = (...keys: string[]) => {
+      for (const key of keys) {
+        if (scoreMap[key] !== undefined) {
+          return scoreMap[key];
+        }
+      }
+      return 0;
     };
 
     return {
@@ -36,27 +41,27 @@ const transformCourseData = (apiCourses: any[]) => {
       teacher: course.instructor?.toUpperCase().replace(/\s+/g, '_') || 'UNKNOWN_INSTRUCTOR',
       t1: {
         categories: DEFAULT_CATEGORIES,
-        total: getScore('t1', 'term1')
+        total: getScore('term 3', 'term3') // TERM 3 → RC1 (t1)
       },
       t2: {
         categories: DEFAULT_CATEGORIES,
-        total: getScore('t2', 'term2')
+        total: getScore('term 6', 'term6') // TERM 6 → RC2 (t2) 
       },
       s1: {
         categories: DEFAULT_CATEGORIES,
-        total: getScore('s1', 'semester1')
+        total: getScore('sem 1', 'semester 1', 'semester1') // SEM 1 → SM1 (s1)
       },
       t3: {
         categories: DEFAULT_CATEGORIES,
-        total: getScore('t3', 'term3')
+        total: getScore('term 9', 'term9') // TERM 9 → RC3 (t3)
       },
       t4: {
         categories: DEFAULT_CATEGORIES,
-        total: getScore('t4', 'term4')
+        total: getScore('term 12', 'term12') // TERM 12 → RC4 (t4)
       },
       s2: {
         categories: DEFAULT_CATEGORIES,
-        total: getScore('s2', 'semester2')
+        total: getScore('sem 2', 'semester 2', 'semester2') // SEM 2 → SM2 (s2)
       },
     };
   });
