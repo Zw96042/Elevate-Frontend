@@ -141,3 +141,60 @@ const EMAILS = [
     "subject": "2025 Build Season Kickoff Materials"
   }
 ]
+
+export const fetchSkywardReportCard = async ({
+  dwd, wfaacl, encses, userType, sessionid, baseUrl
+}: {
+  dwd: string,
+  wfaacl: string,
+  encses: string,
+  userType?: string,
+  sessionid: string,
+  baseUrl: string,
+}) => {
+  if (!sessionid || !encses || !dwd || !wfaacl || !baseUrl) {
+    throw new Error('Missing session credentials');
+  }
+
+  const requestBody = {
+    sessionid,
+    encses,
+    dwd,
+    wfaacl,
+    baseUrl,
+    'User-Type': userType || '2',
+  };
+
+  console.log('📡 Fetching report card with:');
+  console.log('Backend URL:', `${config.BACKEND_IP}/scrape-report`);
+  console.log('Request body:', JSON.stringify(requestBody, null, 2));
+
+  try {
+    const res = await fetch(`${config.BACKEND_IP}/scrape-report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+    });
+
+    console.log('📨 Response status:', res.status);
+    console.log('📨 Response headers:', res.headers);
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error('❌ Error response:', errorText);
+      
+      if (res.status === 401) {
+        throw new Error(`Session Expired`);
+      } else {
+        throw new Error(`Failed to fetch report card: ${res.status} ${res.statusText} - ${errorText}`);
+      }
+    }
+
+    const data = await res.json();
+    console.log('✅ Report card data received:', data);
+    return data;
+  } catch (error: any) {
+    console.error('🚨 Network error in fetchSkywardReportCard:', error);
+    throw error;
+  }
+};

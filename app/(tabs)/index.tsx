@@ -1,350 +1,122 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, FlatList, useColorScheme, LayoutAnimation } from 'react-native';
+import { View, Text, TouchableOpacity, FlatList, useColorScheme, LayoutAnimation, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ClassCard from '@/components/ClassCard';
 import { useFocusEffect } from 'expo-router';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { useBottomSheet, BottomSheetProvider } from '@/context/BottomSheetContext'
 import { useSettingSheet } from '@/context/SettingSheetContext';
+import { loadReportCard } from '@/lib/loadReportCardHandler';
 import * as Animatable from 'react-native-animatable';
 
 
-const DATA = [
-  {
-    name: 'BIOLOGY_1_HONORS',
-    teacher: 'MARISA_SPEARS',
-    t1: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
+// Default categories and weights (to be replaced by different API later)
+const DEFAULT_CATEGORIES = {
+  names: ["Daily", "Labs", "Major"],
+  weights: [10, 30, 60],
+};
+
+// Transform API course data to component format
+const transformCourseData = (apiCourses: any[]) => {
+  return apiCourses.map(course => {
+    // Create score map from API scores
+    const scoreMap: { [key: string]: number } = {};
+    course.scores?.forEach((score: any) => {
+      const bucketKey = score.bucket?.toLowerCase();
+      scoreMap[bucketKey] = score.score;
+    });
+
+    // Helper function to get score with fallbacks
+    const getScore = (primary: string, fallback: string) => {
+      return scoreMap[primary] || scoreMap[fallback] || 0;
+    };
+
+    return {
+      name: course.courseName?.toUpperCase().replace(/\s+/g, '_') || 'UNKNOWN_COURSE',
+      teacher: course.instructor?.toUpperCase().replace(/\s+/g, '_') || 'UNKNOWN_INSTRUCTOR',
+      t1: {
+        categories: DEFAULT_CATEGORIES,
+        total: getScore('t1', 'term1')
       },
-      total: 100
-    },
-    t2: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
+      t2: {
+        categories: DEFAULT_CATEGORIES,
+        total: getScore('t2', 'term2')
       },
-      total: 100
-    },
-    s1: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
+      s1: {
+        categories: DEFAULT_CATEGORIES,
+        total: getScore('s1', 'semester1')
       },
-      total: 100
-    },
-    t3: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
+      t3: {
+        categories: DEFAULT_CATEGORIES,
+        total: getScore('t3', 'term3')
       },
-      total: 98
-    },
-    t4: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
+      t4: {
+        categories: DEFAULT_CATEGORIES,
+        total: getScore('t4', 'term4')
       },
-      total: 100
-    },
-    s2: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
+      s2: {
+        categories: DEFAULT_CATEGORIES,
+        total: getScore('s2', 'semester2')
       },
-      total: 95
-    },
-  },
-  {
-    name: 'AP_PRECALCULUS',
-    teacher: 'KENZIE_SANCHEZ',
-    t1: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    t2: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    s1: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    t3: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 98
-    },
-    t4: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 96
-    },
-    s2: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 95
-    },
-  },
-  {
-    name: 'AP_HUMAN_GEOGRAPHY',
-    teacher: 'IAN_FULLMER',
-    t1: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    t2: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    s1: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    t3: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 98
-    },
-    t4: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 96
-    },
-    s2: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 95
-    },
-  },
-  {
-    name: 'INVENTION_&_INNOVATION_FF',
-    teacher: 'NORMAN_MORGAN',
-    t1: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    t2: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    s1: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    t3: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 98
-    },
-    t4: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 96
-    },
-    s2: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 85
-    },
-  },
-  {
-    name: 'WATER_POLO_B_1',
-    teacher: 'DARCI_CARRUTHERS',
-    t1: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    t2: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    s1: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    t3: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 98
-    },
-    t4: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 96
-    },
-    s2: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 95
-    },
-  },
-  {
-    name: 'ENGLISH_1_HONORS',
-    teacher: 'CATHERINE_KELLY',
-    t1: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    t2: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    s1: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    t3: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 98
-    },
-    t4: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 96
-    },
-    s2: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 95
-    },
-  },
-  {
-    name: 'AP_COMPUTER_SCIENCE_A_Math',
-    teacher: 'ISIANA_RENDON',
-    t1: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    t2: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    s1: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 100
-    },
-    t3: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 98
-    },
-    t4: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 96
-    },
-    s2: {
-      categories: {
-        names: ["Daily", "Labs", "Major"],
-        weights: [10, 30, 60],
-      },
-      total: 95
-    },
-  },
-];
+    };
+  });
+};
 
 
 export default function Index() {
   const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
   const { settingSheetRef } = useSettingSheet();
   const [hasCredentials, setHasCredentials] = useState(false);
+  const [coursesData, setCoursesData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadCourses = async (isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+      
+      const result = await loadReportCard();
+      
+      if (result.success && result.courses) {
+        const transformedData = transformCourseData(result.courses);
+        setCoursesData(transformedData);
+      } else {
+        setError(result.error || 'Failed to load courses');
+        setCoursesData([]);
+      }
+    } catch (err: any) {
+      console.error('Error loading courses:', err);
+      setError(err.message || 'Failed to load courses');
+      setCoursesData([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = useCallback(() => {
+    if (hasCredentials) {
+      loadCourses(true);
+    }
+  }, [hasCredentials]);
 
   useFocusEffect(
     useCallback(() => {
       const checkCredentials = async () => {
         const result = await SkywardAuth.hasCredentials();
         setHasCredentials(result);
+        
+        if (result) {
+          await loadCourses();
+        } else {
+          setLoading(false);
+        }
       };
 
       checkCredentials();
@@ -364,8 +136,11 @@ export default function Index() {
         </View>
         <FlatList
           className='mb-[4rem]'
-          data={DATA}
+          data={coursesData}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
           ListHeaderComponent={
             <>
               <Text className="text-slate-500 font-bold mt-3 text-sm px-5">Term</Text>
@@ -394,23 +169,27 @@ export default function Index() {
               />
             </View>
           )}
-          keyExtractor={(item) => item.name.toString()}
+          keyExtractor={(item, index) => `${item.name}-${index}`}
           ItemSeparatorComponent={() => <View className="h-4" />}
           ListEmptyComponent={
             <View className="mt-10 px-5">
-              {hasCredentials ? (
+              {loading ? (
+                <Text className="text-center text-gray-500">Loading courses...</Text>
+              ) : error ? (
+                <Text className="text-center text-red-500">Error: {error}</Text>
+              ) : hasCredentials ? (
                 <Text className="text-center text-gray-500">No classes found.</Text>
               ) : (
                 <Text className="text-center text-gray-500">
-                No credentials found.{' '}
-                <Text
-                  className="text-blue-400 underline"
-                  onPress={() => settingSheetRef.current?.snapToIndex(0)}
-                >
-                  Update the settings
-                </Text>{' '}
-                to configure your account.
-              </Text>
+                  No credentials found.{' '}
+                  <Text
+                    className="text-blue-400 underline"
+                    onPress={() => settingSheetRef.current?.snapToIndex(0)}
+                  >
+                    Update the settings
+                  </Text>{' '}
+                  to configure your account.
+                </Text>
               )}
             </View>
           }
