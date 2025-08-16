@@ -9,7 +9,7 @@ type TermData = {
     names: string[];
     weights: number[];
   };
-  total: number;
+  total: number | string; // Allow both number and string (for "--")
 };
 
 type Assignment = {

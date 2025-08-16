@@ -111,7 +111,7 @@ type TermData = {
     names: string[];
     weights: number[];
   };
-  total: number;
+  total: number | string; // Allow both number and string (for "--")
 };
 
 const ClassDetails = () => {
@@ -131,10 +131,10 @@ const ClassDetails = () => {
       try {
         return JSON.parse(param);
       } catch {
-        return { categories: { names: [], weights: [] }, total: 0 };
+        return { categories: { names: [], weights: [] }, total: "--" };
       }
     }
-    return { categories: { names: [], weights: [] }, total: 0 };
+    return { categories: { names: [], weights: [] }, total: "--" };
   };
 
   const t1 = parseTermData(searchParams.t1);
@@ -275,15 +275,32 @@ const ClassDetails = () => {
   }, [fetchArtificialAssignments]);
 
   useEffect(() => {
-    const value =
-      courseSummary.courseTotal === '*'
-        ? 100
-        : Number(courseSummary.courseTotal);
+    // Use the actual term grade if no calculated grade is available
+    let value: number;
+    
+    if (courseSummary.courseTotal === '*') {
+      // Use the actual term grade from API, handle "--" case
+      if (currTerm.total === "--" || currTerm.total === undefined || currTerm.total === null) {
+        value = 100; // Animate to 100 when grade is "--"
+      } else {
+        value = Number(currTerm.total);
+      }
+    } else {
+      value = Number(courseSummary.courseTotal);
+    }
+    
     animatedGrade.value = withTiming(value, {
       duration: 700,
       easing: Easing.inOut(Easing.ease),
     });
-  }, [courseSummary.courseTotal]);
+  }, [courseSummary.courseTotal, currTerm.total]);
+
+  useAnimatedReaction(
+    () => animatedGrade.value,
+    (currentValue) => {
+      runOnJS(setDisplayGrade)(currentValue);
+    }
+  );
 
   useAnimatedReaction(
     () => animatedGrade.value,
@@ -400,11 +417,26 @@ const handleResetArtificialAssignments = async () => {
                 ]}
               />
               <Text className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-highlightText font-bold text-sm">
-                {courseSummary.courseTotal === '*'
-                  ? '--'
-                  : Number(courseSummary.courseTotal) === 100
-                  ? '100%'
-                  : `${Number(courseSummary.courseTotal).toFixed(1)}%`}
+                {(() => {
+                  // Use actual term grade if no calculated grade is available
+                  const grade = courseSummary.courseTotal === '*' 
+                    ? currTerm.total 
+                    : Number(courseSummary.courseTotal);
+                  
+                  if (grade === "--" || grade === undefined || grade === null) {
+                    return '--';
+                  }
+                  
+                  const numGrade = typeof grade === 'string' ? parseFloat(grade) : grade;
+                  
+                  if (isNaN(numGrade)) {
+                    return '--';
+                  }
+                  
+                  return numGrade === 100 
+                    ? '100%' 
+                    : `${numGrade.toFixed(1)}%`;
+                })()}
               </Text>
             </View>
           </View>
