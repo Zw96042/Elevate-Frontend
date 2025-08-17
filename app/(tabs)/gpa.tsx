@@ -81,7 +81,6 @@ const GPA = () => {
   const loadAcademicHistory = async (forceRefresh: boolean = false) => {
     // NEVER load during graph interaction
     if (isInteractingWithGraph.current) {
-      console.log('Graph interaction in progress, blocking API call');
       return;
     }
 
@@ -109,7 +108,6 @@ const GPA = () => {
       // Check credentials first
       const credentialsExist = await SkywardAuth.hasCredentials();
       if (!credentialsExist) {
-        console.log('No credentials found, skipping academic history load');
         return;
       }
 
@@ -161,7 +159,6 @@ const GPA = () => {
     const initializeData = async () => {
       // Skip if already initialized
       if (isInitialized) {
-        console.log('Already initialized, skipping...');
         return;
       }
 

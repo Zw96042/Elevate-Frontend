@@ -100,7 +100,6 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
       artificial: true,
     };
 
-    console.log(assignment);
     const updatedArtificial = [assignment, ...modalData.artificialAssignments];
     modalData.setArtificialAssignments(updatedArtificial);
 

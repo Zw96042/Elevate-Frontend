@@ -42,7 +42,6 @@ export async function authenticate(): Promise<AuthResult> {
       }
 
       const sessionCodes = await response.json();
-      console.log('Received session codes:', sessionCodes);
 
       if (!sessionCodes || !sessionCodes.dwd || !sessionCodes.wfaacl || !sessionCodes.encses) {
         console.error('Invalid session codes received:', sessionCodes);

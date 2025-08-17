@@ -6,6 +6,7 @@ import { colors } from '@/utils/colorTheme';
 import { ScrollView } from 'react-native-gesture-handler';
 import ClassCard2Sem from '@/components/ClassCard2Sem';
 import { AcademicHistoryManager } from '@/lib/academicHistoryManager';
+import { ensureUniqueCourseIds } from '@/utils/uniqueId';
 
 interface CourseData {
   terms: string;
@@ -222,9 +223,15 @@ const AcademicHistoryView = () => {
   }, [academicData, gradeNumber]);
 
   const courses = React.useMemo(() => {
+    let coursesArray: Array<{
+      courseName: string;
+      courseData: CourseData;
+      savedLevel: string | null;
+    }> = [];
+    
     // First, try to use academic history data
     if (gradeData) {
-      return Object.entries(gradeData.courses)
+      coursesArray = Object.entries(gradeData.courses)
         .filter(([courseName, courseData]) => {
           // Filter out courses with no meaningful data
           return courseData.finalGrade !== "P" && (
@@ -239,12 +246,11 @@ const AcademicHistoryView = () => {
           courseData,
           savedLevel: null // No saved level for API data
         }));
-    }
-    
+    } 
     // If no academic history, use preloaded classes from AsyncStorage
-    if (preloadedCourses && Array.isArray(preloadedCourses)) {
+    else if (preloadedCourses && Array.isArray(preloadedCourses)) {
       // Convert from our saved format to the expected format
-      return preloadedCourses.map(course => ({
+      coursesArray = preloadedCourses.map(course => ({
         courseName: course.name,
         courseData: {
           terms: course.terms,
@@ -270,7 +276,8 @@ const AcademicHistoryView = () => {
       })).sort((a, b) => a.courseName.localeCompare(b.courseName));
     }
     
-    return [];
+    // Ensure all courses have unique IDs
+    return ensureUniqueCourseIds(coursesArray, gradeLevel.toString());
   }, [gradeData, preloadedCourses, gradeLevel]);
 
   if (loading && !refreshing) {
@@ -395,6 +402,8 @@ const AcademicHistoryView = () => {
             </View>
           </View>
         </View>
+        {/* Course List */}
+        
 
         {/* Course List */}
         {courses.map((course) => {
@@ -410,7 +419,7 @@ const AcademicHistoryView = () => {
 
           return (
             <ClassCard2Sem
-              key={courseName}
+              key={course.id}
               name={courseName}
               teacher=""
               s1={{ categories: { names: [], weights: [] }, total: sm1Grade }}

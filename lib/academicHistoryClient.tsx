@@ -27,7 +27,6 @@ export const fetchAcademicHistory = async (retryCount: number = 0): Promise<Acad
     const allSessionCodesExist = dwd && wfaacl && encses && sessionid;
 
     if (!allSessionCodesExist) {
-      console.log('Session codes missing, attempting authentication...');
       const authResult = await authenticate();
       if (!authResult.success) {
         console.error('Authentication failed:', authResult.error);

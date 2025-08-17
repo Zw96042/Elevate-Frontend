@@ -157,14 +157,12 @@ export class AcademicHistoryManager {
         }
       }
 
-      console.log('Fetching fresh academic history from API...');
       // Fetch fresh data from API
       const result = await fetchAcademicHistory();
       
       if (result.success && result.data) {
         // Cache the fresh data
         await this.cacheData(result.data);
-        console.log('Successfully fetched and cached academic history');
         
         // Save courses to storage for manual grade entry
         await this.saveCoursesToStorage(result.data);

@@ -86,7 +86,7 @@ const ClassCard2Sem = ({
           <Text className="text-lg text-main font-normal">
             {(() => {
               const stripped = formatClassName(name.split(' - ')[0].replaceAll(" ", "_").split(":")[0]);
-              return stripped.length > 20 ? `${stripped.slice(0, 20).trim()}...` : stripped;
+              return stripped.length > 26 ? `${stripped.slice(0, 26).trim()}...` : stripped;
             })()}
           </Text>
           

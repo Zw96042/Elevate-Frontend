@@ -87,3 +87,64 @@ export const ensureUniqueAssignmentIds = (assignments: any[]): any[] => {
     };
   });
 };
+
+/**
+ * Generates a unique ID for a course based on its properties
+ * This ensures consistent IDs for the same course across app restarts
+ * @param course - The course object with courseName and courseData
+ * @param gradeLevel - The grade level (e.g., "Freshman", "Sophomore")
+ * @param index - Optional index to ensure uniqueness for similar courses
+ * @returns {string} A unique identifier for the course
+ */
+export const generateCourseId = (course: {
+  courseName: string;
+  courseData: any;
+  savedLevel?: string | null;
+}, gradeLevel: string, index?: number): string => {
+  // Create a comprehensive key including grade level and course data
+  const key = `${gradeLevel}-${course.courseName}-${course.courseData.finalGrade || ''}-${course.courseData.sm1 || ''}-${course.courseData.sm2 || ''}-${course.savedLevel || ''}${index !== undefined ? `-${index}` : ''}`;
+  
+  // Simple hash function to convert string to consistent ID
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    const char = key.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  
+  // Convert to positive string and add prefix
+  return `course_${Math.abs(hash).toString(36)}`;
+};
+
+/**
+ * Ensures all courses in an array have unique IDs
+ * @param courses - Array of course objects
+ * @param gradeLevel - The grade level for context
+ * @returns {Course[]} Array of courses with guaranteed unique IDs
+ */
+export const ensureUniqueCourseIds = (courses: any[], gradeLevel: string): any[] => {
+  const seenIds = new Set<string>();
+  
+  return courses.map((course, index) => {
+    if (course.id && !seenIds.has(course.id)) {
+      seenIds.add(course.id);
+      return course;
+    }
+    
+    // Generate a new ID, potentially with index for uniqueness
+    let newId = generateCourseId(course, gradeLevel, index);
+    let counter = 0;
+    
+    // If ID already exists, keep incrementing until we get a unique one
+    while (seenIds.has(newId)) {
+      counter++;
+      newId = generateCourseId(course, gradeLevel, index + counter * 1000);
+    }
+    
+    seenIds.add(newId);
+    return {
+      ...course,
+      id: newId,
+    };
+  });
+};
