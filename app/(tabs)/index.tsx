@@ -6,7 +6,7 @@ import { useFocusEffect } from 'expo-router';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { useBottomSheet, BottomSheetProvider } from '@/context/BottomSheetContext'
 import { useSettingSheet } from '@/context/SettingSheetContext';
-import { loadReportCard } from '@/lib/loadReportCardHandler';
+import { UnifiedDataManager, UnifiedCourseData } from '@/lib/unifiedDataManager';
 import * as Animatable from 'react-native-animatable';
 
 
@@ -16,52 +16,63 @@ const DEFAULT_CATEGORIES = {
   weights: [10, 30, 60],
 };
 
-// Transform API course data to component format
-const transformCourseData = (apiCourses: any[]) => {
-  return apiCourses.map(course => {
-    // Create score map from API scores
+// Transform unified course data to component format
+const transformCourseData = (unifiedCourses: UnifiedCourseData[]) => {
+  return unifiedCourses.map(course => {
+    // Create score map from current scores
     const scoreMap: { [key: string]: number } = {};
-    course.scores?.forEach((score: any) => {
+    course.currentScores?.forEach((score: any) => {
       const bucketKey = score.bucket?.toLowerCase();
       scoreMap[bucketKey] = score.score;
     });
 
-    // Helper function to get score with API term mapping
-    const getScore = (...keys: string[]) => {
-      for (const key of keys) {
+    // Helper function to get score with fallback to historical data
+    const getScore = (historicalKey: string, ...currentKeys: string[]) => {
+      // First try current scores with multiple key variations
+      for (const key of currentKeys) {
         if (scoreMap[key] !== undefined && scoreMap[key] !== null) {
           return scoreMap[key];
         }
       }
-      return undefined;
+      
+      // Fall back to historical grades
+      const historicalValue = course.historicalGrades[historicalKey as keyof typeof course.historicalGrades];
+      
+      if (historicalValue && historicalValue !== '' && !isNaN(Number(historicalValue))) {
+        return Number(historicalValue);
+      }
+      
+      return "--";
     };
 
     return {
       name: course.courseName?.toUpperCase().replace(/\s+/g, '_') || 'UNKNOWN_COURSE',
       teacher: course.instructor?.toUpperCase().replace(/\s+/g, '_') || 'UNKNOWN_INSTRUCTOR',
+      period: course.period,
+      semester: course.semester,
       t1: {
         categories: DEFAULT_CATEGORIES,
-        total: getScore('term 3') ?? "--"
+        total: getScore('rc1', 'term 1', 'quarter 1', 'rc1')
       },
       t2: {
         categories: DEFAULT_CATEGORIES,
-        total: getScore('term 6') ?? "--"
+        total: getScore('rc2', 'term 2', 'quarter 2', 'rc2')
       },
       s1: {
         categories: DEFAULT_CATEGORIES,
-        total: getScore('sem 1') ?? "--"
+        total: getScore('sm1', 'sem 1', 'semester 1', 'sm1')
       },
       t3: {
         categories: DEFAULT_CATEGORIES,
-        total: getScore('term 9') ?? "--"
+        total: getScore('rc3', 'term 3', 'quarter 3', 'rc3')
       },
       t4: {
         categories: DEFAULT_CATEGORIES,
-        total: getScore('term 12') ?? "--"
+        total: getScore('rc4', 'term 4', 'quarter 4', 'rc4')
       },
       s2: {
         categories: DEFAULT_CATEGORIES,
-        total: getScore('sem 2') ?? "--"
+        total: getScore('sm2', 'sem 2', 'semester 2', 'sm2')
       },
     };
   });
@@ -132,13 +143,18 @@ export default function Index() {
       }
       setError(null);
       
-      const result = await loadReportCard();
+      const result = await UnifiedDataManager.getCombinedData(isRefresh);
       
       if (result.success && result.courses) {
         const transformedData = transformCourseData(result.courses);
         setCoursesData(transformedData);
         const filtered = filterCoursesBySemester(transformedData, selectedCategory);
         setFilteredCourses(filtered);
+        
+        // Show warning if there was an error but we're using cached data
+        if (result.error) {
+          setError(result.error);
+        }
       } else {
         setError(result.error || 'Failed to load courses');
         setCoursesData([]);

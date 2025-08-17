@@ -16,8 +16,9 @@ const getGradeLevelName = (gradeNumber: number): GradeLevel => {
 };
 
 export const useGradeLevel = () => {
-  const [currentGradeLevel, setCurrentGradeLevel] = useState<GradeLevel>('Freshman');
-  const [availableGradeLevels, setAvailableGradeLevels] = useState<GradeLevel[]>(['Freshman']);
+  // Start with Sophomore (10th grade) as the current default instead of Freshman
+  const [currentGradeLevel, setCurrentGradeLevel] = useState<GradeLevel>('Sophomore');
+  const [availableGradeLevels, setAvailableGradeLevels] = useState<GradeLevel[]>(['Sophomore']);
 
   const loadGradeFromAcademicHistory = useCallback(async () => {
     try {

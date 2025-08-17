@@ -240,7 +240,7 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
             <View className='w-full h-28 rounded-3xl bg-cardColor flex-row items-center justify-between'>
                 <View>
                     <Text className='text-lg text-main font-normal ml-5'>{formatClassName(name)}</Text>
-                    <Text className='text-sm text-secondary ml-5'>{formatClassName(teacher)}</Text>
+                    <Text className='text-sm text-secondary ml-5'>{formatClassName(teacher) }</Text>
                 </View>
                 <View className="flex-row items-center gap-4">
                     {/* <View className="items-center">
