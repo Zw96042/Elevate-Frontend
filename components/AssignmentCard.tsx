@@ -6,10 +6,11 @@ import CircularProgress from 'react-native-circular-progress-indicator';
 
 type AssignmentCardProps = Assignment & {
   editing: boolean;
+  classId?: string; // Add classId prop
 };
 
 // Course Name, Teacher Name, Numerical Grade
-const AssignmentCard = ({ id, className, name, term, category, grade, outOf, dueDate, artificial, editing }: AssignmentCardProps) => {
+const AssignmentCard = ({ id, className, name, term, category, grade, outOf, dueDate, artificial, editing, classId }: AssignmentCardProps) => {
    const [value, setValue] = useState(0);
    const theme = useColorScheme();
    const highlight = theme === 'dark' ? "#3b5795" : "#a4bfed";
@@ -23,6 +24,7 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
           assignment: id || name, // Use ID if available, fallback to name
           assignmentId: id, // Always pass the ID separately
           class: className,
+          classId: classId, // Pass classId to assignment detail page
           name,
           term,
           category,

@@ -125,6 +125,8 @@ const ClassDetails = () => {
 
   const classParam = searchParams.class;
   const className = Array.isArray(classParam) ? classParam[0] : classParam;
+  const classIdParam = searchParams.classId;
+  const classId = Array.isArray(classIdParam) ? classIdParam[0] : classIdParam;
 
   const parseTermData = (param: string | string[] | undefined): TermData => {
     if (typeof param === "string") {
@@ -221,7 +223,9 @@ const ClassDetails = () => {
     }
 
     const parsed = JSON.parse(data);
-    const classAssignments = parsed[className] ?? [];
+    // Use classId to create unique storage key for identical classes
+    const storageKey = classId ? `${className}_${classId}` : className;
+    const classAssignments = parsed[storageKey] ?? parsed[className] ?? []; // Fallback to old format for backwards compatibility
 
     const real = ASSIN.filter(
       (item) => item.className === className && item.term === selectedCategory.split(" ")[0]
@@ -268,7 +272,7 @@ const ClassDetails = () => {
     // console.log(calculateGradeSummary(all, normalizedWeights));
 
     setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-  }, [className, selectedCategory, isEnabled, currTerm.categories.names, currTerm.categories.weights]);
+  }, [className, classId, selectedCategory, isEnabled, currTerm.categories.names, currTerm.categories.weights]);
 
   useEffect(() => {
     fetchArtificialAssignments();
@@ -325,6 +329,7 @@ const ClassDetails = () => {
             onPress={() => {
               openModal({
                 className: className || "",
+                classId: classId, // Pass classId to differentiate identical classes
                 selectedCategory,
                 currTerm: termMap[selectedCategory],
                 artificialAssignments,
@@ -335,8 +340,7 @@ const ClassDetails = () => {
                 calculateGradeSummary,
                 isEnabled,
               });
-            }
-            }
+            }}
           >
             <Ionicons
               name="add-outline"
@@ -352,6 +356,7 @@ const ClassDetails = () => {
     navigation,
     openModal,
     className,
+    classId,
     selectedCategory,
     artificialAssignments,
     setArtificialAssignments,
@@ -381,6 +386,10 @@ const handleResetArtificialAssignments = async () => {
   if (!data || !className) return;
 
   const parsed = JSON.parse(data);
+  // Use classId to create unique storage key for identical classes
+  const storageKey = classId ? `${className}_${classId}` : className;
+  delete parsed[storageKey];
+  // Also delete old format key for backwards compatibility
   delete parsed[className];
   await AsyncStorage.setItem("artificialAssignments", JSON.stringify(parsed));
 
@@ -541,7 +550,7 @@ const handleResetArtificialAssignments = async () => {
                   from={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                 >
-                  <AssignmentCard {...item} editing={isEnabled} />
+                  <AssignmentCard {...item} editing={isEnabled} classId={classId} />
                 </MotiView>
               </AnimatePresence>
             )}

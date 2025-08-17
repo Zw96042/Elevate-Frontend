@@ -186,11 +186,11 @@ function InnerLayout() {
             setCurrentSnapPosition('54%');
           }}>
             <BottomSheetView className="bg-cardColor p-4">
-               <Text className="text-xl text-main font-bold mb-4">Add New Assignment</Text>
+               <Text className="text-2xl text-main  mb-4">Add New Assignment</Text>
                 <View className="mb-5">
-                  <Text className="text-sm font-semibold text-main mb-1">Assignment Name</Text>
+                  <Text className="text-sm  text-main mb-1">Assignment Name</Text>
                   <TextInput
-                    className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
+                    className="rounded-md px-4 py-2 text-main bg-primary"
                     onChangeText={(i) => {
                       setName(i);
                     }}
@@ -200,7 +200,7 @@ function InnerLayout() {
                   />
                 </View>
                 <View className="mb-5">
-                  <Text className="text-sm font-semibold text-main mb-1">Category</Text>
+                  <Text className="text-sm text-main mb-1">Category</Text>
                   <View className="flex-row flex-wrap gap-2">
                     {categories.map((cat) => (
                       <TouchableOpacity
@@ -230,9 +230,9 @@ function InnerLayout() {
                 <View className="h-[1px] bg-accent opacity-20 mb-5" />
 
                 <View className="mb-5">
-                  <Text className="text-sm font-semibold text-main mb-1">Grade</Text>
+                  <Text className="text-sm text-main mb-1">Grade</Text>
                   <TextInput
-                    className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
+                    className="rounded-md px-4 py-2 text-main bg-primary"
                     placeholder="Enter grade"
                     keyboardType="phone-pad"
                     value={grade.toString()}
@@ -243,9 +243,9 @@ function InnerLayout() {
                 </View>
 
                 <View className="mb-6">
-                  <Text className="text-sm font-semibold text-main mb-1">Out Of</Text>
+                  <Text className="text-sm text-main mb-1">Out Of</Text>
                   <TextInput
-                    className="border border-accent rounded-md px-4 py-2 text-main bg-primary"
+                    className="rounded-md px-4 py-2 text-main bg-primary"
                     placeholder="Enter total"
                     keyboardType="numeric"
                     value={outOf.toString()}

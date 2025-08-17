@@ -26,6 +26,7 @@ type Assignment = {
 
 type ModalData = {
   className: string;
+  classId?: string; // Add classId to differentiate identical classes
   selectedCategory: string;
   currTerm: TermData;
   artificialAssignments: Assignment[];
@@ -129,9 +130,11 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
     modalData.setFilteredAssignments(allAssignments);
 
     const existing = JSON.parse(await AsyncStorage.getItem("artificialAssignments") ?? "{}");
+    // Use classId to create unique storage key for identical classes
+    const storageKey = modalData.classId ? `${modalData.className}_${modalData.classId}` : modalData.className;
     const updated = {
       ...existing,
-      [modalData.className]: ensureUniqueAssignmentIds(updatedArtificial),
+      [storageKey]: ensureUniqueAssignmentIds(updatedArtificial),
     };
 
     await AsyncStorage.setItem("artificialAssignments", JSON.stringify(updated));

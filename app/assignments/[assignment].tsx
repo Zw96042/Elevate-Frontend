@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AssignmentDetails = () => {
   const router = useRouter();
-  const { class: classParam, name, category, grade, outOf, dueDate, artificial, editing, term, assignmentId } = useLocalSearchParams();
+  const { class: classParam, classId, name, category, grade, outOf, dueDate, artificial, editing, term, assignmentId } = useLocalSearchParams();
   const formattedClass = formatClassName(classParam?.toString() || '');
 
   const [gradeValue, setGradeValue] = React.useState(() =>
@@ -39,13 +39,13 @@ const AssignmentDetails = () => {
 
   const handleSave = async () => {
     const className = Array.isArray(classParam) ? classParam[0] : classParam;
+    const classIdParam = Array.isArray(classId) ? classId[0] : classId;
     const existing = JSON.parse(await AsyncStorage.getItem('artificialAssignments') ?? '{}');
     const formattedGrade = gradeValue === '*' ? '*' : parseFloat(Number(gradeValue).toFixed(2));
     const formattedOutOf = Number(outOfValue);
 
-    // console.log("Updating");
     if (isNaN(formattedOutOf)) return;
-    // console.log(formattedGrade);
+    
     const updatedAssignment = {
       id: assignmentId, // Preserve the ID
       className,
@@ -58,6 +58,9 @@ const AssignmentDetails = () => {
       term: term
     };
 
+    // Use classId to create unique storage key for identical classes
+    const storageKey = classIdParam ? `${className}_${classIdParam}` : className;
+
     // Use ID for identification if available, fallback to name
     const identifier = assignmentId || name;
     const filterFn = assignmentId 
@@ -66,11 +69,10 @@ const AssignmentDetails = () => {
 
     const updatedClassList = [
       updatedAssignment,
-      ...(existing[className]?.filter(filterFn) ?? [])
+      ...(existing[storageKey]?.filter(filterFn) ?? [])
     ];
 
-    const updated = { ...existing, [className]: updatedClassList };
-    // console.log("Updated", updated);
+    const updated = { ...existing, [storageKey]: updatedClassList };
     await AsyncStorage.setItem('artificialAssignments', JSON.stringify(updated));
   };
 
@@ -182,15 +184,19 @@ const AssignmentDetails = () => {
                 <TouchableOpacity
                     onPress={async () => {
                       const className = Array.isArray(classParam) ? classParam[0] : classParam;
+                      const classIdParam = Array.isArray(classId) ? classId[0] : classId;
                       const existing = JSON.parse(await AsyncStorage.getItem('artificialAssignments') ?? '{}');
+                      
+                      // Use classId to create unique storage key for identical classes
+                      const storageKey = classIdParam ? `${className}_${classIdParam}` : className;
                       
                       // Use ID for identification if available, fallback to name
                       const filterFn = assignmentId 
                         ? (a: any) => a.id !== assignmentId 
                         : (a: any) => a.name !== name;
                       
-                      const updatedClassList = (existing[className] ?? []).filter(filterFn);
-                      const updated = { ...existing, [className]: updatedClassList };
+                      const updatedClassList = (existing[storageKey] ?? []).filter(filterFn);
+                      const updated = { ...existing, [storageKey]: updatedClassList };
 
                       await AsyncStorage.setItem('artificialAssignments', JSON.stringify(updated));
                       router.back();

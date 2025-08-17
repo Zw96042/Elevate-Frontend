@@ -6,6 +6,7 @@ import formatClassName from '@/utils/formatClassName';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ASSIN } from '@/app/classes/[class]';
 import { calculateGradeSummary } from '@/utils/calculateGrades';
+import { generateUniqueId } from '@/utils/uniqueId';
 import PieChart from 'react-native-pie-chart'
 import Animated, {
   useSharedValue,
@@ -28,6 +29,11 @@ type TermLabel =
 
 // Course Name, Teacher Name, Numerical Grade
 const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { term: TermLabel }) => {
+    // Generate a truly unique identifier for this class instance
+    const classId = React.useMemo(() => {
+        return generateUniqueId();
+    }, []); // Empty dependency array ensures this is truly unique per component instance
+
     const termMap: Record<TermLabel, TermData> = {
         "Q1 Grades": t1,
         "Q2 Grades": t2,
@@ -121,7 +127,9 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
       }
 
       const parsed = JSON.parse(data);
-      const classAssignments = parsed[name] ?? [];
+      // Use classId as the key instead of just the class name to differentiate identical classes
+      const classKey = `${name}_${classId}`;
+      const classAssignments = parsed[classKey] ?? parsed[name] ?? []; // Fallback to old format for backwards compatibility
       setArtificialAssignments(classAssignments);
 
       const real = ASSIN.filter(
@@ -159,10 +167,9 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
       const normalizedWeights = Object.fromEntries(
         adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
       );
-      // console.log(calculateGradeSummary(all, normalizedWeights));
 
       setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-    }, [name, term, isEnabled, currTerm.categories.names, currTerm.categories.weights]);
+    }, [name, term, isEnabled, currTerm.categories.names, currTerm.categories.weights, classId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -215,7 +222,9 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
         href={{
             pathname: '/classes/[class]',
             params: {
+                classId: classId,
                 class: name,
+                teacher: teacher,
                 t1: JSON.stringify(t1),
                 t2: JSON.stringify(t2),
                 s1: JSON.stringify(s1),
