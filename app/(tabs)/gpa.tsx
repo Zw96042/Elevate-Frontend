@@ -454,7 +454,7 @@ const GPA = () => {
                   textAlign: 'center',
                 }}
               >
-                {`${validLabels[safeIndex]}: ${gpaPoints[safeIndex].toFixed(2)}`}
+                {`${validLabels[safeIndex]}: ${gpaPoints[safeIndex] === 0 ? '--' : gpaPoints[safeIndex].toFixed(2)}`}
               </Text>
             </View>
           );
@@ -552,7 +552,7 @@ const GPA = () => {
                     textAlign: 'center',
                   }}
                 >
-                  {`${validLabels[activePointIndex]}: ${gpaPoints[activePointIndex].toFixed(2)}`}
+                  {`${validLabels[activePointIndex]}: ${gpaPoints[activePointIndex] === 0 ? '--' : gpaPoints[activePointIndex].toFixed(2)}`}
                 </Text>
               </View>
             );
