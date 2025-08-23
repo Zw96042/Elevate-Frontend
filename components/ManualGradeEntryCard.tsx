@@ -5,7 +5,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
-const ManualGradeEntryCard = ({ selectedGrade, minimized = false }: { selectedGrade: string; minimized?: boolean }) => {
+const ManualGradeEntryCard = ({ selectedGrade, minimized = false, rawCourses = null }: { selectedGrade: string; minimized?: boolean; rawCourses?: any[] | null }) => {
   const router = useRouter();
   const [savedClasses, setSavedClasses] = useState<any[]>([]); // You can replace any[] with your class type if defined
 
@@ -38,6 +38,7 @@ const ManualGradeEntryCard = ({ selectedGrade, minimized = false }: { selectedGr
               params: {
                 gradeLevel: selectedGrade,
                 preloadedClasses: JSON.stringify(savedClasses),
+                unifiedCourses: rawCourses ? JSON.stringify(rawCourses) : undefined,
               }
             })}
             activeOpacity={0.8}
@@ -56,6 +57,7 @@ const ManualGradeEntryCard = ({ selectedGrade, minimized = false }: { selectedGr
           params: {
             gradeLevel: selectedGrade,
             preloadedClasses: JSON.stringify(savedClasses),
+            unifiedCourses: rawCourses ? JSON.stringify(rawCourses) : undefined,
           }
         })}
         activeOpacity={0.7}

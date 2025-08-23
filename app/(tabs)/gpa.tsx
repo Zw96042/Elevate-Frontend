@@ -708,22 +708,23 @@ const GPA = () => {
               finWeighted = (sm1.weighted + sm2.weighted) / 2;
             }
 
-            // rows.push(
-            //   <GpaSoloCard
-            //     key="FIN"
-            //     label="FIN"
-            //     data={{
-            //       unweighted: finUnweighted,
-            //       weighted: finWeighted,
-            //     }}
-            //   />
-            // );
-
+            if (!(finUnweighted === 0 && finWeighted === 0)) {
+              rows.push(
+                <GpaSoloCard
+                  key="FIN"
+                  label="FIN"
+                  data={{
+                    unweighted: finUnweighted,
+                    weighted: finWeighted,
+                  }}
+                />
+              );
+            }
             if (!showPrs) {
               rows.push(
                 <ManualGradeEntryCard
                   key={`MANCARD-${selectedGrade}`}
-                 selectedGrade={selectedGrade} minimized={!!((Object.keys(gpaData).length > 0 || rawCourses) || (savedClasses && savedClasses.length > 0))} />
+                 selectedGrade={selectedGrade} minimized={!!((Object.keys(gpaData).length > 0 || rawCourses) || (savedClasses && savedClasses.length > 0))} rawCourses={rawCourses} />
               );
             }
 
@@ -777,6 +778,7 @@ const GPA = () => {
             key={`MANCARD-${selectedGrade}`}
             selectedGrade={selectedGrade}
             minimized={!!((Object.keys(gpaData).length > 0 || rawCourses) || (savedClasses && savedClasses.length > 0))}
+            rawCourses={rawCourses}
           />
         )}
       </View>

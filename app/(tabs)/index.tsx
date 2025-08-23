@@ -52,11 +52,11 @@ const transformCourseData = (unifiedCourses: UnifiedCourseData[]) => {
       semester: course.semester,
       t1: {
         categories: DEFAULT_CATEGORIES,
-        total: getScore('rc1', 'term 1', 'quarter 1', 'rc1')
+        total: getScore('rc1', 'term 3', 'quarter 1', 'rc1')
       },
       t2: {
         categories: DEFAULT_CATEGORIES,
-        total: getScore('rc2', 'term 2', 'quarter 2', 'rc2')
+        total: getScore('rc2', 'term 6', 'quarter 2', 'rc2')
       },
       s1: {
         categories: DEFAULT_CATEGORIES,
@@ -64,11 +64,11 @@ const transformCourseData = (unifiedCourses: UnifiedCourseData[]) => {
       },
       t3: {
         categories: DEFAULT_CATEGORIES,
-        total: getScore('rc3', 'term 3', 'quarter 3', 'rc3')
+        total: getScore('rc3', 'term 9', 'quarter 3', 'rc3')
       },
       t4: {
         categories: DEFAULT_CATEGORIES,
-        total: getScore('rc4', 'term 4', 'quarter 4', 'rc4')
+        total: getScore('rc4', 'term 12', 'quarter 4', 'rc4')
       },
       s2: {
         categories: DEFAULT_CATEGORIES,
@@ -144,13 +144,14 @@ export default function Index() {
       setError(null);
       
       const result = await UnifiedDataManager.getCombinedData(isRefresh);
-      
+      // console.log('Loaded courses:', JSON.stringify(result, null, 1));
       if (result.success && result.courses) {
         const transformedData = transformCourseData(result.courses);
         setCoursesData(transformedData);
         const filtered = filterCoursesBySemester(transformedData, selectedCategory);
         setFilteredCourses(filtered);
-        
+
+        // console.log('Loaded courses:', JSON.stringify(filtered, null, 1));
         // Show warning if there was an error but we're using cached data
         if (result.error) {
           setError(result.error);

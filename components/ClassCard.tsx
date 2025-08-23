@@ -263,12 +263,12 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
                               {currTerm.total > 0
                                 ? currTerm.total === 100
                                   ? '100%'
-                                  : `${currTerm.total.toFixed(1)}%`
+                                  : `${currTerm.total.toFixed(0)}%`
                                 : courseSummary.courseTotal === '*'
                                 ? '--'
                                 : Number(courseSummary.courseTotal) === 100
                                 ? '100%'
-                                : `${Number(courseSummary.courseTotal).toFixed(1)}%`}
+                                : `${Number(courseSummary.courseTotal).toFixed(0)}%`}
                             </Text>
                           </View>
                         </View>

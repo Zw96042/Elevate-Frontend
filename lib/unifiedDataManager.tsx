@@ -273,22 +273,75 @@ export class UnifiedDataManager {
       
       console.log(`   📏 Final term length: ${termLength} (from ${termLength === this.inferTermLengthFromSemester(scrapeInfo.semester || 'unknown') ? 'semester inference' : 'academic history'})`);
 
-      const combinedCourse: UnifiedCourseData = {
-        courseId: scrapeInfo.course,
-        courseName: scrapeInfo.courseName,
-        instructor: scrapeInfo.instructor || null,
-        period: scrapeInfo.period || null,
-        time: scrapeInfo.time || null,
-        semester: scrapeInfo.semester || 'unknown',
-        termLength: termLength,
-        currentScores: scrapeInfo.scores || [],
+      // Get the academic terms for this course to determine splitting logic
+      let academicTerms: string | undefined = undefined;
+      let matchedAcademicCourse: any = null;
+      
+      for (const [academicName, academicCourse] of Object.entries(currentYearCourses)) {
+        const academicLower = academicName.toLowerCase();
+        const academicCleaned = academicLower.replace(/[^\w\s]/g, '').trim();
+        const academicSpacesRemoved = academicLower.replace(/\s+/g, '');
         
-        // Leave historical grades empty since we're focusing on current data
-        historicalGrades: {}
-      };
+        // Check for exact match or base name match (ignoring _2, _3 suffixes)
+        const baseAcademicName = academicLower.replace(/_\d+$/, ''); // Remove _2, _3 etc.
+        
+        if (academicLower === originalName || 
+            academicCleaned === cleanedName ||
+            academicSpacesRemoved === spacesRemoved ||
+            academicLower.includes(cleanedName) ||
+            cleanedName.includes(academicCleaned) ||
+            baseAcademicName === originalName ||
+            originalName.includes(baseAcademicName)) {
+          
+          academicTerms = academicCourse.terms;
+          matchedAcademicCourse = { name: academicName, course: academicCourse };
+          console.log(`   ✅ Academic match found: ${academicName} -> terms: ${academicTerms}`);
+          break;
+        }
+      }
 
-      console.log(`   ➕ Created current course: ${combinedCourse.courseName} (term: ${combinedCourse.termLength}, period: ${combinedCourse.period})`);
-      combinedCourses.push(combinedCourse);
+      // Check if this is a semester course that should be split based on academic history terms
+      const shouldSplitCourse = this.shouldSplitIntoSemesters(scrapeInfo.courseName, scrapeInfo.scores || [], academicTerms);
+      
+      if (shouldSplitCourse) {
+        console.log(`   🔄 Splitting course into separate semesters: ${scrapeInfo.courseName}`);
+        
+        // Look for both semester courses in academic history (base name and base name + "_2")
+        const baseName = scrapeInfo.courseName;
+        const fallAcademic = currentYearCourses[baseName] || null;
+        const springAcademic = currentYearCourses[`${baseName}_2`] || null;
+        
+        console.log(`   📊 Semester course search:`, {
+          baseName,
+          hasFallAcademic: !!fallAcademic,
+          hasSpringAcademic: !!springAcademic,
+          fallTerms: fallAcademic?.terms,
+          springTerms: springAcademic?.terms
+        });
+        
+        const semesterCourses = this.splitIntoSemesterCourses(scrapeInfo, termLength, fallAcademic, springAcademic);
+        semesterCourses.forEach(course => {
+          console.log(`   ➕ Created semester course: ${course.courseName} (semester: ${course.semester}, terms: ${course.termLength})`);
+          combinedCourses.push(course);
+        });
+      } else {
+        const combinedCourse: UnifiedCourseData = {
+          courseId: scrapeInfo.course,
+          courseName: scrapeInfo.courseName,
+          instructor: scrapeInfo.instructor || null,
+          period: scrapeInfo.period || null,
+          time: scrapeInfo.time || null,
+          semester: scrapeInfo.semester || 'unknown',
+          termLength: termLength,
+          currentScores: scrapeInfo.scores || [],
+          
+          // Leave historical grades empty since we're focusing on current data
+          historicalGrades: {}
+        };
+
+        console.log(`   ➕ Created current course: ${combinedCourse.courseName} (term: ${combinedCourse.termLength}, period: ${combinedCourse.period})`);
+        combinedCourses.push(combinedCourse);
+      }
     });
 
     console.log(`✅ Data combination complete. Current courses only: ${combinedCourses.length}`);
@@ -309,7 +362,7 @@ export class UnifiedDataManager {
       return null;
     }
 
-    // Find the most recent year that's not 'alt' and has actual grade data
+    // Find the most recent year that's not 'alt' 
     const years = Object.keys(academicData)
       .filter(year => year !== 'alt' && /^\d{4}-\d{4}$/.test(year))
       .sort((a, b) => {
@@ -320,27 +373,16 @@ export class UnifiedDataManager {
 
     console.log('📅 Available academic years:', years);
 
-    // Look for a year that actually has grades (not all empty)
-    for (const year of years) {
-      const yearData = academicData[year];
-      if (yearData && yearData.courses) {
-        // Check if any course in this year has actual grades
-        const hasGrades = Object.values(yearData.courses).some((course: any) => {
-          return course.pr1 || course.pr2 || course.sm1 || course.sm2 || course.finalGrade ||
-                 course.rc1 || course.rc2 || course.rc3 || course.rc4;
-        });
-        
-        console.log(`📊 Year ${year}: ${Object.keys(yearData.courses).length} courses, hasGrades: ${hasGrades}`);
-        
-        if (hasGrades) {
-          console.log(`✅ Selected year ${year} (has actual grades)`);
-          return year;
-        }
-      }
+    // For current course data, prioritize the most recent year (current academic year)
+    // This should be 2025-2026 for current courses, even if it doesn't have grades yet
+    if (years.length > 0) {
+      const currentYear = years[0]; // Most recent year
+      console.log(`✅ Selected current academic year: ${currentYear} (most recent)`);
+      return currentYear;
     }
 
-    console.log('⚠️ No year with grades found, using most recent:', years[0]);
-    return years[0] || null;
+    console.log('⚠️ No valid academic years found');
+    return null;
   }
 
   // Get current grade level from academic data (static helper, not async)
@@ -390,6 +432,121 @@ export class UnifiedDataManager {
       default:
         return 'unknown';
     }
+  }
+
+  // Check if a course should be split into separate semester courses based on academic history terms
+  private static shouldSplitIntoSemesters(courseName: string, scores: Array<{ bucket: string; score: number }>, academicTerms?: string): boolean {
+    // If we have academic history terms, use that to determine if it's a semester course
+    if (academicTerms) {
+      // Parse terms like "1", "1-2", "3-4", etc.
+      // If it's NOT a full year course (1-4), then it might be a semester course
+      const isFullYear = academicTerms === '1 - 4' || academicTerms === 'unknown';
+      
+      if (!isFullYear) {
+        console.log(`   🔍 Course ${courseName} has terms "${academicTerms}" - not full year, should split`);
+        
+        // If we have semester-specific terms, we should split regardless of current scores
+        // This handles cases where academic history shows separate fall/spring courses
+        return true;
+      }
+    }
+
+    // Fallback: Don't split if we don't have clear academic history guidance
+    console.log(`   🔍 Course ${courseName} - no split needed (terms: ${academicTerms || 'unknown'})`);
+    return false;
+  }
+
+  // Split a course into separate semester courses
+  private static splitIntoSemesterCourses(scrapeInfo: any, termLength: string, fallAcademic?: any, springAcademic?: any): UnifiedCourseData[] {
+    const courses: UnifiedCourseData[] = [];
+    const scores = scrapeInfo.scores || [];
+    
+    // For semester courses, filter scores based on academic terms mapping to Skyward buckets
+    let fallScores: any[] = [];
+    let springScores: any[] = [];
+    
+    if (fallAcademic && fallAcademic.terms) {
+      // Map academic terms to Skyward buckets for fall course
+      if (fallAcademic.terms === '1 - 2') {
+        // Academic terms 1-2 map to Skyward TERM 1, TERM 2 
+        fallScores = scores.filter((s: any) => 
+          s.bucket === 'TERM 1' ||
+          s.bucket === 'TERM 2'
+        );
+      }
+    }
+    
+    if (springAcademic && springAcademic.terms) {
+      // Map academic terms to Skyward buckets for spring course  
+      if (springAcademic.terms === '3 - 4') {
+        // Academic terms 3-4 map to Skyward TERM 3, TERM 4
+        springScores = scores.filter((s: any) => 
+          s.bucket === 'TERM 3' ||
+          s.bucket === 'TERM 4'
+        );
+      }
+    }
+
+    console.log(`   📊 Course splitting analysis:`, {
+      courseName: scrapeInfo.courseName,
+      totalScores: scores.length,
+      fallScores: fallScores.length,
+      springScores: springScores.length,
+      fallBuckets: fallScores.map((s: any) => s.bucket),
+      springBuckets: springScores.map((s: any) => s.bucket),
+      fallAcademicTerms: fallAcademic?.terms,
+      springAcademicTerms: springAcademic?.terms
+    });
+
+    // Create fall semester course if we have fall data OR academic fall course
+    if (fallScores.length > 0 || fallAcademic) {
+      const fallTermLength = fallAcademic?.terms || '1-2';
+      courses.push({
+        courseId: scrapeInfo.course,
+        courseName: `${scrapeInfo.courseName}`,
+        instructor: scrapeInfo.instructor || null,
+        period: scrapeInfo.period || null,
+        time: scrapeInfo.time || null,
+        semester: 'fall',
+        termLength: fallTermLength,
+        currentScores: fallScores,
+        historicalGrades: {}
+      });
+    }
+
+    // Create spring semester course if we have spring data OR academic spring course
+    if (springScores.length > 0 || springAcademic) {
+      const springTermLength = springAcademic?.terms || '3-4';
+      courses.push({
+        courseId: scrapeInfo.course ? scrapeInfo.course + 1000 : undefined, // Different ID for spring
+        courseName: `${scrapeInfo.courseName}`,
+        instructor: scrapeInfo.instructor || null,
+        period: scrapeInfo.period || null,
+        time: scrapeInfo.time || null,
+        semester: 'spring',
+        termLength: springTermLength,
+        currentScores: springScores,
+        historicalGrades: {}
+      });
+    }
+
+    // If no clear semester data but we have scores, create a single course
+    if (courses.length === 0 && scores.length > 0) {
+      console.log(`   WARNING: No clear semester split possible, creating single course`);
+      courses.push({
+        courseId: scrapeInfo.course,
+        courseName: scrapeInfo.courseName,
+        instructor: scrapeInfo.instructor || null,
+        period: scrapeInfo.period || null,
+        time: scrapeInfo.time || null,
+        semester: 'fall', // Default to fall if unclear
+        termLength: termLength,
+        currentScores: scores,
+        historicalGrades: {}
+      });
+    }
+
+    return courses;
   }
 
   // Cache management
