@@ -12,19 +12,24 @@ interface GpaCardProps {
 }
 
 export const GpaCard = ({ label, data }: GpaCardProps) => (
-  <View className="bg-cardColor rounded-xl px-3 py-2 w-[48%]">
-    <Text className="text-main font-semibold text-sm mb-1">{label}</Text>
-    <View className="flex-row justify-between">
-      <View className="items-start">
-        <Text className="text-secondary text-xs">Unweighted</Text>
-        <Text className="text-main text-sm font-bold">{data.unweighted === 0 ? '--' : data.unweighted.toFixed(2)}</Text>
+  (() => {
+    console.log(`🟦 GpaCard: label=${label}, unweighted=${data.unweighted}, weighted=${data.weighted}`);
+    return (
+      <View className="bg-cardColor rounded-xl px-3 py-2 w-[48%]">
+        <Text className="text-main font-semibold text-sm mb-1">{label}</Text>
+        <View className="flex-row justify-between">
+          <View className="items-start">
+            <Text className="text-secondary text-xs">Unweighted</Text>
+            <Text className="text-main text-sm font-bold">{data.unweighted === 0 ? '--' : data.unweighted.toFixed(2)}</Text>
+          </View>
+          <View className="items-end">
+            <Text className="text-secondary text-xs">Weighted</Text>
+            <Text className="text-main text-sm font-bold">{data.weighted === 0 ? '--' : data.weighted.toFixed(2)}</Text>
+          </View>
+        </View>
       </View>
-      <View className="items-end">
-        <Text className="text-secondary text-xs">Weighted</Text>
-        <Text className="text-main text-sm font-bold">{data.weighted === 0 ? '--' : data.weighted.toFixed(2)}</Text>
-      </View>
-    </View>
-  </View>
+    );
+  })()
 );
 
 export const GpaSoloCard = ({ label, data }: GpaCardProps) => (

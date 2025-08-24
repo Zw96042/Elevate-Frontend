@@ -173,7 +173,9 @@ function getCourseLevel(className: string): "AP" | "Honors" | "Regular" {
   if (hasHonorsKeyword || isHonorsException) return "Honors";
 
   return "Regular";
-}function calculateGPAForGrades(grades: { grade: number; level: string }[]): GPAResult {
+}
+
+export { getCourseLevel };function calculateGPAForGrades(grades: { grade: number; level: string }[]): GPAResult {
   if (grades.length === 0) return { unweighted: 0, weighted: 0 };
 
   let totalUnweighted = 0;

@@ -1,7 +1,7 @@
 // lib/unifiedGpaManager.tsx
 import { UnifiedDataManager, UnifiedCourseData } from './unifiedDataManager';
 import { processAcademicHistory } from '@/utils/academicHistoryProcessor';
-import { calculateTermGPAs } from '@/utils/gpaCalculator';
+import { calculateTermGPAs, getCourseLevel } from '@/utils/gpaCalculator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface GPAData {
@@ -210,61 +210,88 @@ export class UnifiedGPAManager extends UnifiedDataManager {
     try {
       console.log('📊 calculateCurrentGradeGPA called with courses:', courses.length);
       
-      // Create a synthetic academic history structure with real current scores
-      const syntheticAcademicData: any = {};
-      const currentYear = '2024-2025';
-      
-      // Group courses by term structure
-      const termCourses: Record<string, any[]> = {};
-      
-      courses.forEach((course, index) => {
-        const termLength = course.termLength || '1-4';
-        
-        // Convert current scores to term-based grades
-        const termGrades: Record<string, number> = {};
-        course.currentScores.forEach(score => {
-          termGrades[score.bucket] = score.score;
-        });
-        
-        // Create course entry for each relevant term based on termLength
-        const courseEntry = {
-          courseName: course.courseName,
-          termGrades,
-          termLength
-        };
-        
-        // Determine which terms this course spans
-        const terms = this.parseTermLength(termLength);
-        terms.forEach(term => {
-          if (!termCourses[term]) {
-            termCourses[term] = [];
-          }
-          termCourses[term].push(courseEntry);
-        });
+      // Test getCourseLevel function
+      console.log('🔧 Testing getCourseLevel function:');
+      courses.forEach(course => {
+        const level = getCourseLevel(course.courseName);
+        console.log(`  ${course.courseName} → ${level}`);
       });
       
-      console.log('📋 Term courses mapping:', Object.keys(termCourses).map(term => ({
-        term,
-        courseCount: termCourses[term].length
-      })));
+      console.log('📊 Course data inspection:');
+      courses.forEach(course => {
+        console.log(`  📚 ${course.courseName}: currentScores=${JSON.stringify(course.currentScores)} (length: ${course.currentScores?.length || 0})`);
+      });
       
-      // Calculate GPA for each term
+      // Only calculate for terms that have current data (PR1, PR2, RC1)
+      const currentTerms = ['PR1', 'PR2', 'RC1'];
       const termGPAs: Record<string, GPAData> = {};
       
-      Object.entries(termCourses).forEach(([term, termCourseList]) => {
-        const scores: number[] = [];
-        termCourseList.forEach(courseEntry => {
-          // Get the score for this specific term
-          const termScore = this.getScoreForTerm(courseEntry.termGrades, term);
-          if (termScore > 0) {
-            scores.push(termScore);
+      // Calculate GPA for each current term, including all courses and defaulting missing scores to 100
+      console.log('📋 All courses:', courses.map(c => ({
+        name: c.courseName,
+        scores: c.currentScores
+      })));
+      currentTerms.forEach(term => {
+        let totalUnweighted = 0;
+        let totalBonus = 0;
+        let courseCount = 0;
+        console.log(`🔍 Calculating GPA for term ${term} with ${courses.length} courses:`);
+        // Map term to score bucket
+        const termToScoreMap: Record<string, string> = {
+          'PR1': 'TERM 1',
+          'PR2': 'TERM 2',
+          'RC1': 'TERM 3',
+          'PR3': 'TERM 4',
+          'PR4': 'TERM 5',
+          'RC2': 'TERM 6',
+          'SM1': 'SEM 1',
+          'PR5': 'TERM 7',
+          'PR6': 'TERM 8',
+          'RC3': 'TERM 9',
+          'PR7': 'TERM 10',
+          'PR8': 'TERM 11',
+          'RC4': 'TERM 12',
+          'SM2': 'SEM 2'
+        };
+        courses.forEach(course => {
+          const bucket = termToScoreMap[term];
+          const scoreEntry = course.currentScores?.find(s => s.bucket === bucket);
+          let score;
+          let usedDefault = false;
+          if (scoreEntry && typeof scoreEntry.score === 'number' && scoreEntry.score > 0) {
+            score = scoreEntry.score;
+          } else {
+            score = 100;
+            usedDefault = true;
           }
+          if (usedDefault) {
+            console.log(`  ⚠️ ${course.courseName}: No score for term ${term} (bucket=${bucket}), defaulting to 100`);
+          } else {
+            console.log(`  🪣 ${course.courseName} [${term}]: bucket=${bucket}, score=${scoreEntry ? scoreEntry.score : 'undefined'}`);
+          }
+          // Unweighted: just the raw percentage
+          totalUnweighted += score;
+          // Weighted: sum bonuses separately
+          const courseLevel = getCourseLevel(course.courseName);
+          let bonus = 0;
+          if (courseLevel === "AP") {
+            bonus = 10;
+          } else if (courseLevel === "Honors") {
+            bonus = 5;
+          }
+          totalBonus += bonus;
+          console.log(`  📚 ${course.courseName}: Level=${courseLevel}, Score=${score}, Unweighted=${score}, Bonus=${bonus}`);
+          courseCount++;
         });
-        
-        if (scores.length > 0) {
-          const avgScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
-          const gpaData = this.convertScoreToGPA(avgScore);
-          termGPAs[term] = gpaData;
+        if (courseCount > 0) {
+          const avgUnweighted = totalUnweighted / courseCount;
+          const weightedTotal = totalUnweighted + totalBonus;
+          const avgWeighted = weightedTotal / courseCount;
+          console.log(`  📊 ${term} Totals: Unweighted=${totalUnweighted}/${courseCount}=${avgUnweighted.toFixed(2)}, Weighted=${weightedTotal}/${courseCount}=${avgWeighted.toFixed(2)}`);
+          termGPAs[term] = {
+            unweighted: parseFloat(avgUnweighted.toFixed(2)),
+            weighted: parseFloat(avgWeighted.toFixed(2))
+          };
         }
       });
       
@@ -347,46 +374,6 @@ export class UnifiedGPAManager extends UnifiedDataManager {
     }
     
     return -1; // No score found
-  }
-
-  // Helper method to convert percentage score to GPA
-  private static convertScoreToGPA(score: number): GPAData {
-    // Standard 4.0 scale conversion
-    let unweighted = 0;
-    let weighted = 0; // Assuming regular classes, would need course level info for true weighted
-    
-    if (score >= 97) {
-      unweighted = weighted = 4.0;
-    } else if (score >= 93) {
-      unweighted = weighted = 3.7;
-    } else if (score >= 90) {
-      unweighted = weighted = 3.3;
-    } else if (score >= 87) {
-      unweighted = weighted = 3.0;
-    } else if (score >= 83) {
-      unweighted = weighted = 2.7;
-    } else if (score >= 80) {
-      unweighted = weighted = 2.3;
-    } else if (score >= 77) {
-      unweighted = weighted = 2.0;
-    } else if (score >= 73) {
-      unweighted = weighted = 1.7;
-    } else if (score >= 70) {
-      unweighted = weighted = 1.3;
-    } else if (score >= 67) {
-      unweighted = weighted = 1.0;
-    } else if (score >= 65) {
-      unweighted = weighted = 0.7;
-    }
-    
-    // Convert to 100-point scale for display
-    const scaledUnweighted = (unweighted / 4.0) * 100;
-    const scaledWeighted = (weighted / 4.0) * 100;
-    
-    return {
-      unweighted: scaledUnweighted,
-      weighted: scaledWeighted
-    };
   }
 
   // Fallback method to get GPA data from manually saved classes

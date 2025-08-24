@@ -63,7 +63,9 @@ export function calculateGradeSummary(
     };
   }
 
-  const courseTotal = (totalWeight > 0 ? weightedSum / totalWeight : 0) === Number(0) ? '*': parseFloat((totalWeight > 0 ? weightedSum / totalWeight : 0).toFixed(2));
+  const courseTotal = (totalWeight > 0 ? weightedSum / totalWeight : 0) === Number(0)
+    ? '*'
+    : parseFloat((totalWeight > 0 ? weightedSum / totalWeight : 0).toFixed(2)).toString();
   return {
     courseTotal: courseTotal,
     categories: categoryResult,
