@@ -708,7 +708,7 @@ const GPA = () => {
               finWeighted = (sm1.weighted + sm2.weighted) / 2;
             }
 
-            if (!(finUnweighted === 0 && finWeighted === 0)) {
+            if (exists('SM1') && exists('SM2')) {
               rows.push(
                 <GpaSoloCard
                   key="FIN"

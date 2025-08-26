@@ -23,6 +23,8 @@ export async function authenticate(): Promise<AuthResult> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ baseUrl: authInfo.link, user: authInfo.username, pass: authInfo.password }),
       });
+
+      console.log("RESPONSE: ", JSON.stringify(response, null, 1));
       
       if (!response.ok) {
         console.error(`Authentication request failed with status: ${response.status}`);
