@@ -122,8 +122,9 @@ function InnerLayout() {
             />
           )}
         >
-          <View className="px-5 py-4 bg-cardColor">
-            <Text className="text-xl font-bold text-main mb-4">Select Term</Text>
+          <View className="px-5 pb-4 bg-cardColor">
+            <Text className="text-2xl text-main">Select Term</Text>
+            <View className='my-4 border-slate-600 border-[0.5px]'></View>
             <BottomSheetFlatList
               data={terms}
               keyExtractor={(item) => item}
@@ -186,7 +187,8 @@ function InnerLayout() {
             setCurrentSnapPosition('54%');
           }}>
             <BottomSheetView className="bg-cardColor p-4">
-               <Text className="text-2xl text-main  mb-4">Add New Assignment</Text>
+               <Text className="text-2xl text-main">Add New Assignment</Text>
+               <View className='mb-4 mt-2 border-slate-600 border-[0.5px]'></View>
                 <View className="mb-5">
                   <Text className="text-sm  text-main mb-1">Assignment Name</Text>
                   <TextInput
