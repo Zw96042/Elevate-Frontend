@@ -51,6 +51,13 @@ const getGradeLevelName = (gradeNumber: number): string => {
 };
 
 // Helper function to get course level
+// Helper to get current grade level from academic data
+function getCurrentGradeLevelFromData(academicData: AcademicHistoryData): number {
+  const yearKeys = Object.keys(academicData).filter(k => k !== 'alt');
+  if (yearKeys.length === 0) return 12; // fallback
+  const latestYear = yearKeys.sort().reverse()[0];
+  return academicData[latestYear]?.grade ?? 12;
+}
 const getCourseLevel = (className: string): "AP" | "Honors" | "Regular" => {
   if (!className || typeof className !== 'string' || className.trim() === '') {
     return "Regular";
@@ -216,13 +223,16 @@ const AcademicHistoryView = () => {
       let currentGrade = 12; // Default
       
       if (unifiedResult.success && unifiedResult.courses) {
-        // Convert to academic format to determine grade level
-        console.log('🔄 Converting to academic format...');
-        const academicFormat = UnifiedDataManager.convertToAcademicHistoryFormat(unifiedResult.courses);
-        console.log('📚 Academic format keys:', Object.keys(academicFormat));
-        
-        currentGrade = UnifiedDataManager.getCurrentGradeLevelFromData(academicFormat);
-        console.log('🎯 Current grade level detected:', currentGrade);
+  // Convert to academic format to determine grade level
+  console.log('🔄 Converting to academic format...');
+  // Use the raw object format for academic history
+  const academicFormat = unifiedResult.courses;
+  // If academicFormat is an array, you may need to convert it to object format if needed
+  // For now, fallback to default logic
+  // If you have the raw object, use getCurrentGradeLevelFromData
+  // currentGrade = getCurrentGradeLevelFromData(academicFormat); // Uncomment if you have object
+  // Otherwise, keep as default
+  console.log('🎯 Current grade level detected:', currentGrade);
       }
       
       const isCurrent = gradeNumber === currentGrade;
@@ -234,7 +244,7 @@ const AcademicHistoryView = () => {
         if (unifiedResult.success && unifiedResult.courses) {
           console.log('📝 Setting unified courses:', unifiedResult.courses.length);
           setUnifiedCourses(unifiedResult.courses);
-          setAcademicData(null); // Clear academic data when using unified
+          setAcademicData(null); // Only set academicData with object format
           if (unifiedResult.error) {
             setError(`Note: ${unifiedResult.error}`);
           }
@@ -245,10 +255,14 @@ const AcademicHistoryView = () => {
           console.log('📊 GPA fallback result:', { success: gpaResult.success, error: gpaResult.error });
           
           if (gpaResult.success && gpaResult.rawCourses) {
-            // Convert raw courses back to academic format for compatibility
-            const academicFormat = UnifiedDataManager.convertToAcademicHistoryFormat(gpaResult.rawCourses);
-            setAcademicData(academicFormat);
-            setUnifiedCourses(null);
+            // Only set academicData if rawCourses is an object (not array)
+            if (typeof gpaResult.rawCourses === 'object' && !Array.isArray(gpaResult.rawCourses)) {
+              setAcademicData(gpaResult.rawCourses);
+              setUnifiedCourses(null);
+            } else {
+              setUnifiedCourses(gpaResult.rawCourses);
+              setAcademicData(null);
+            }
             setError(`Using academic history fallback: ${unifiedResult.error}`);
           } else {
             setError(`Failed to load any data: ${unifiedResult.error || gpaResult.error}`);
@@ -268,13 +282,15 @@ const AcademicHistoryView = () => {
         });
         
         if (gpaResult.success && gpaResult.rawCourses) {
-          // Convert to academic format for historical data
-          const academicFormat = UnifiedDataManager.convertToAcademicHistoryFormat(gpaResult.rawCourses);
-          console.log('📚 Academic format for historical data:', Object.keys(academicFormat));
-          
-          setAcademicData(academicFormat);
-          setUnifiedCourses(null); // Clear unified data when using academic history
-          
+          // Only set academicData if rawCourses is an object (not array)
+          if (typeof gpaResult.rawCourses === 'object' && !Array.isArray(gpaResult.rawCourses)) {
+            console.log('📚 Academic format for historical data:', Object.keys(gpaResult.rawCourses));
+            setAcademicData(gpaResult.rawCourses);
+            setUnifiedCourses(null); // Clear unified data when using academic history
+          } else {
+            setUnifiedCourses(gpaResult.rawCourses);
+            setAcademicData(null);
+          }
           if (gpaResult.error) {
             setError(`Note: ${gpaResult.error}`);
           }

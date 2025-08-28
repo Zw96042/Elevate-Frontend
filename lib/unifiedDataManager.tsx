@@ -155,7 +155,7 @@ export class UnifiedDataManager {
   }
 
   // Transform the backend combined data into frontend UnifiedCourseData[]
-  private static transformCombinedData(combined: any): UnifiedCourseData[] {
+  public static transformCombinedData(combined: any): UnifiedCourseData[] {
     // Helper to infer semester from terms
     function inferSemester(terms: string): 'fall' | 'spring' | 'both' | 'unknown' {
       if (!terms) return 'unknown';
