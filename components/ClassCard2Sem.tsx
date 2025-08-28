@@ -51,12 +51,24 @@ const ClassCard2Sem = ({
   const [displaySM2, setDisplaySM2] = useState(0)
 
   useEffect(() => {
-    const sm1Total = typeof s1?.total === 'number' ? s1.total : 0;
+    // console.log('[ClassCard2Sem] s1.total:', s1?.total);
+    let sm1Total = 0;
+    if (typeof s1?.total === 'string') {
+      sm1Total = s1.total === '' ? -1 : Number(s1.total);
+    } else if (typeof s1?.total === 'number') {
+      sm1Total = s1.total;
+    }
     setDisplaySM1(sm1Total);
   }, [s1]);
 
   useEffect(() => {
-    const sm2Total = typeof s2?.total === 'number' ? s2.total : 0;
+    // console.log('[ClassCard2Sem] s2.total:', s2?.total);
+    let sm2Total = 0;
+    if (typeof s2?.total === 'string') {
+      sm2Total = s2.total === '' ? -1 : Number(s2.total);
+    } else if (typeof s2?.total === 'number') {
+      sm2Total = s2.total;
+    }
     setDisplaySM2(sm2Total);
   }, [s2]);
 

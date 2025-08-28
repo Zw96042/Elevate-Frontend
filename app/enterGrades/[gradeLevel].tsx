@@ -192,7 +192,7 @@ const AcademicHistoryView = () => {
     if (unifiedCoursesParam && typeof unifiedCoursesParam === 'string') {
       try {
         const parsed = JSON.parse(unifiedCoursesParam);
-        console.log('📊 Parsed unified courses from params:', parsed.length, 'courses');
+        // console.log('📊 Parsed unified courses from params:', parsed.length, 'courses');
         return parsed;
       } catch (error) {
         console.error('Failed to parse unified courses:', error);
@@ -313,7 +313,7 @@ const AcademicHistoryView = () => {
   useEffect(() => {
     // Priority 1: If we have passed unified courses data from GPA page, use it directly
     if (passedUnifiedCourses && passedUnifiedCourses.length > 0) {
-      console.log('🎯 Using passed unified courses data:', passedUnifiedCourses.length, 'courses');
+      // console.log('🎯 Using passed unified courses data:', passedUnifiedCourses.length, 'courses');
       setUnifiedCourses(passedUnifiedCourses);
       setAcademicData(null); // Clear academic data when using unified
       setLoading(false);
@@ -346,55 +346,53 @@ const AcademicHistoryView = () => {
   const gradeData = React.useMemo(() => {
     // If we have unified courses data, create a synthetic gradeData structure
     if (unifiedCourses && unifiedCourses.length > 0) {
-      console.log('📊 Creating synthetic gradeData from unified courses');
+      // console.log('📊 Creating synthetic gradeData from unified courses');
       const coursesRecord: Record<string, CourseData> = {};
       
       unifiedCourses.forEach(course => {
-        console.log('🔍 DEEP ANALYSIS OF COURSE:', course.courseName, {
-          fullCourse: JSON.stringify(course, null, 2)
-        });
+        const bucketNames = course.currentScores?.map(s => s.bucket) || [];
+        // console.log('🔍 DEEP ANALYSIS OF COURSE:', course.courseName, {
+        //   fullCourse: JSON.stringify(course, null, 2),
+        //   possibleBuckets: bucketNames
+        // });
         
-        // For current grade, try to convert current scores to letter grades for display
+        // For current grade, use the numerical percentage scores for display (as strings)
         if (isCurrent && course.currentScores && Array.isArray(course.currentScores) && course.currentScores.length > 0) {
-          // Convert current percentage scores to letter grades
-          const getLetterGrade = (score: number): string => {
-            if (score === -1 || score === null || score === undefined || isNaN(score)) return '';
-            if (score >= 90) return 'A';
-            if (score >= 80) return 'B';
-            if (score >= 70) return 'C';
-            if (score >= 60) return 'D';
-            return 'F';
-          };
-          
-          // Get current scores by bucket
+          // Get current scores by bucket (numerical)
           const getScoreByBucket = (bucket: string): string => {
             const scoreObj = course.currentScores?.find(s => s.bucket === bucket);
-            return scoreObj ? getLetterGrade(scoreObj.score) : '';
+            return scoreObj && typeof scoreObj.score === 'number' ? String(scoreObj.score) : '';
           };
-          
-          console.log('🔄 Converting currentScores to letter grades for:', course.courseName, {
-            currentScoresLength: course.currentScores.length,
-            currentScores: course.currentScores,
-            sample: course.currentScores[0]
-          });
-          
+
+          // console.log('🔄 Using currentScores as numerical grades for:', course.courseName, {
+          //   currentScoresLength: course.currentScores.length,
+          //   currentScores: course.currentScores,
+          //   sample: course.currentScores[0],
+          //   sm1: getScoreByBucket('S1'),
+          //   sm2: getScoreByBucket('S2'),
+          //   rc1: getScoreByBucket('TERM 3'),
+          //   rc2: getScoreByBucket('TERM 6'),
+          //   rc3: getScoreByBucket('TERM 9'),
+          //   rc4: getScoreByBucket('TERM 12'),
+          // });
+
           coursesRecord[course.courseName] = {
             terms: course.termLength || 'unknown',
             finalGrade: '', // Current courses don't have final grades yet
-            sm1: getScoreByBucket('SEM 1'), // Semester 1
-            sm2: getScoreByBucket('SEM 2'), // Semester 2  
-            pr1: getScoreByBucket('TERM 1'), // Term 1 -> PR1
-            pr2: getScoreByBucket('TERM 2'), // Term 2 -> PR2
-            pr3: getScoreByBucket('TERM 3'), // Term 3 -> PR3
-            pr4: getScoreByBucket('TERM 4'), // Term 4 -> PR4
-            pr5: '', // These are typically empty for current courses
+            sm1: getScoreByBucket('S1'),
+            sm2: getScoreByBucket('S2'),
+            pr1: '',
+            pr2: '',
+            pr3: '',
+            pr4: '',
+            pr5: '',
             pr6: '',
             pr7: '',
             pr8: '',
-            rc1: '', // Report cards might not be available from current scores
-            rc2: '',
-            rc3: '',
-            rc4: '',
+            rc1: getScoreByBucket('TERM 3'),
+            rc2: getScoreByBucket('TERM 6'),
+            rc3: getScoreByBucket('TERM 9'),
+            rc4: getScoreByBucket('TERM 12'),
             ex1: '',
             ex2: ''
           };
@@ -431,10 +429,10 @@ const AcademicHistoryView = () => {
         }
       });
       
-      console.log('📊 Sample course data created:', Object.keys(coursesRecord).length > 0 ? {
-        courseName: Object.keys(coursesRecord)[0],
-        courseData: coursesRecord[Object.keys(coursesRecord)[0]]
-      } : 'No courses');
+      // console.log('📊 Sample course data created:', Object.keys(coursesRecord).length > 0 ? {
+      //   courseName: Object.keys(coursesRecord)[0],
+      //   courseData: coursesRecord[Object.keys(coursesRecord)[0]]
+      // } : 'No courses');
       
       return {
         grade: gradeNumber,
@@ -607,9 +605,9 @@ const AcademicHistoryView = () => {
     return ensureUniqueCourseIds(coursesArray, gradeLevel.toString());
   }, [unifiedCourses, gradeData, preloadedCourses, gradeLevel]);
 
-  console.log("GRADE DATA: ", gradeData);
-  console.log("UNIFIED COURSES: ", unifiedCourses?.length || 0, "courses");
-  console.log("ACADEMIC DATA: ", academicData ? Object.keys(academicData) : "null");
+  // console.log("GRADE DATA: ", gradeData);
+  // console.log("UNIFIED COURSES: ", unifiedCourses?.length || 0, "courses");
+  // console.log("ACADEMIC DATA: ", academicData ? Object.keys(academicData) : "null");
 
   if (loading && !refreshing) {
     return (
@@ -770,8 +768,8 @@ const AcademicHistoryView = () => {
             // Find the unified course to get the actual percentage scores
             const unifiedCourse = unifiedCourses.find(uc => uc.courseName === courseName);
             if (unifiedCourse && unifiedCourse.currentScores) {
-              const s1Score = unifiedCourse.currentScores.find(score => score.bucket === 'SEM 1');
-              const s2Score = unifiedCourse.currentScores.find(score => score.bucket === 'SEM 2');
+              const s1Score = unifiedCourse.currentScores.find(score => score.bucket === 'S1');
+              const s2Score = unifiedCourse.currentScores.find(score => score.bucket === 'S2');
               sm1Grade = s1Score?.score !== undefined ? s1Score.score : -1;
               sm2Grade = s2Score?.score !== undefined ? s2Score.score : -1;
             }
