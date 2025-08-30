@@ -14,10 +14,9 @@ export interface UnifiedCourseData {
   time?: string | null;
   semester: 'fall' | 'spring' | 'both' | 'unknown';
   termLength: string; // From academic history: "1", "1-2", etc.
-  
+  gradeYear?: number; // Added for dynamic grade level detection
   // Current grades from scrape report
   currentScores: Array<{ bucket: string; score: number }>;
-  
   // Historical data from academic history
   historicalGrades: {
     pr1?: string;
@@ -156,6 +155,7 @@ export class UnifiedDataManager {
 
   // Transform the backend combined data into frontend UnifiedCourseData[]
   public static transformCombinedData(combined: any): UnifiedCourseData[] {
+  console.log('🟡 Backend response to transformCombinedData:', combined);
     // Helper to infer semester from terms
     function inferSemester(terms: string): 'fall' | 'spring' | 'both' | 'unknown' {
       if (!terms) return 'unknown';
@@ -191,6 +191,7 @@ export class UnifiedDataManager {
         time: courseObj.time || null,
         semester: inferSemester(courseObj.terms || courseObj.termLength || ''),
         termLength: courseObj.terms || courseObj.termLength || '',
+  gradeYear: courseObj.gradeYear || courseObj.grade || undefined,
         currentScores: buildCurrentScores(courseObj),
         historicalGrades: {
           pr1: courseObj.pr1,
@@ -216,39 +217,42 @@ export class UnifiedDataManager {
     const courses: UnifiedCourseData[] = [];
     const yearKeys = Object.keys(combined).filter(k => k !== 'alt');
     if (yearKeys.length === 0) return courses;
-    const latestYear = yearKeys.sort().reverse()[0];
-    const yearData = combined[latestYear];
-    if (!yearData || !yearData.courses) return courses;
-    for (const [courseName, courseObjRaw] of Object.entries(yearData.courses)) {
-      const courseObj = courseObjRaw as any;
-      courses.push({
-        courseId: courseObj.courseId,
-        courseName,
-        instructor: courseObj.instructor || null,
-        period: courseObj.period || null,
-        time: null,
-        semester: inferSemester(courseObj.terms || ''),
-        termLength: courseObj.terms || '',
-        currentScores: buildCurrentScores(courseObj),
-        historicalGrades: {
-          pr1: courseObj.pr1,
-          pr2: courseObj.pr2,
-          rc1: courseObj.rc1,
-          pr3: courseObj.pr3,
-          pr4: courseObj.pr4,
-          rc2: courseObj.rc2,
-          pr5: courseObj.pr5,
-          pr6: courseObj.pr6,
-          rc3: courseObj.rc3,
-          pr7: courseObj.pr7,
-          pr8: courseObj.pr8,
-          rc4: courseObj.rc4,
-          sm1: courseObj.sm1,
-          sm2: courseObj.sm2,
-          finalGrade: courseObj.finalGrade,
-        }
-      });
+    for (const yearKey of yearKeys) {
+      const yearData = combined[yearKey];
+      if (!yearData || !yearData.courses) continue;
+      for (const [courseName, courseObjRaw] of Object.entries(yearData.courses)) {
+        const courseObj = courseObjRaw as any;
+        courses.push({
+          courseId: courseObj.courseId,
+          courseName,
+          instructor: courseObj.instructor || null,
+          period: courseObj.period || null,
+          time: null,
+          semester: inferSemester(courseObj.terms || ''),
+          termLength: courseObj.terms || '',
+          gradeYear: yearData.grade, // Assign grade from year object
+          currentScores: buildCurrentScores(courseObj),
+          historicalGrades: {
+            pr1: courseObj.pr1,
+            pr2: courseObj.pr2,
+            rc1: courseObj.rc1,
+            pr3: courseObj.pr3,
+            pr4: courseObj.pr4,
+            rc2: courseObj.rc2,
+            pr5: courseObj.pr5,
+            pr6: courseObj.pr6,
+            rc3: courseObj.rc3,
+            pr7: courseObj.pr7,
+            pr8: courseObj.pr8,
+            rc4: courseObj.rc4,
+            sm1: courseObj.sm1,
+            sm2: courseObj.sm2,
+            finalGrade: courseObj.finalGrade,
+          }
+        });
+      }
     }
+    console.log('🟢 Transformed courses:', courses);
     return courses;
   }
 }

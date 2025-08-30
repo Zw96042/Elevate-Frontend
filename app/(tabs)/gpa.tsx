@@ -12,6 +12,7 @@ import ManualGradeEntryCard from '@/components/ManualGradeEntryCard';
 import { GpaCard, GpaSoloCard } from '@/components/GpaCard';
 import { useGradeLevel } from '@/hooks/useGradeLevel';
 import { UnifiedGPAManager, GPAData } from '@/lib/unifiedGpaManager';
+import { UnifiedCourseData } from '@/lib/unifiedDataManager';
 
 type GradeLevel = 'Freshman' | 'Sophomore' | 'Junior' | 'Senior' | 'All Time';
 
@@ -30,6 +31,8 @@ const getGradeNumber = (gradeLevel: GradeLevel): number | undefined => {
 };
 
 const GPA = () => {
+  // Cache all courses for all years
+  const [allRawCourses, setAllRawCourses] = useState<UnifiedCourseData[] | null>(null);
   const { settingSheetRef } = useSettingSheet();
   const [hasCredentials, setHasCredentials] = useState(false);
   
@@ -181,12 +184,30 @@ const GPA = () => {
 
       const result = await SkywardAuth.hasCredentials();
       if (!isMounted) return;
-      
+
       setHasCredentials(result);
-      
+
       // Only load GPA data if we have credentials
       if (result) {
-        await loadGPAData(false, selectedGrade); // Use cache if available, load for current grade
+        // Load all courses once
+        const gpaResult = await UnifiedGPAManager.getGPAData('All Time', false);
+        if (gpaResult.success && gpaResult.rawCourses) {
+          setAllRawCourses(gpaResult.rawCourses);
+          // Set initial GPA data for current grade
+          let initialCourses = gpaResult.rawCourses;
+          const gradeMap: Record<string, number> = {
+            'Freshman': 9,
+            'Sophomore': 10,
+            'Junior': 11,
+            'Senior': 12
+          };
+          const gradeNumber = gradeMap[selectedGrade] || null;
+          if (gradeNumber) {
+            initialCourses = gpaResult.rawCourses.filter(c => c.gradeYear === gradeNumber);
+          }
+          setGpaData(UnifiedGPAManager.calculateCurrentGradeGPA(initialCourses));
+          setRawCourses(initialCourses);
+        }
         if (isMounted) {
           setIsInitialized(true);
         }
@@ -202,39 +223,32 @@ const GPA = () => {
 
   // Handle grade selection changes
   const handleGradeChange = useCallback(async (newGrade: GradeLevel) => {
-    console.log('🎯 Grade change requested to:', newGrade);
-    
-    // Prevent loading during graph interaction
-    if (isInteractingWithGraph.current) {
-      console.log('⏭️ Skipping grade change during graph interaction');
-      return;
-    }
-    
-    // Prevent multiple simultaneous grade changes
-    if (loadingRef.current) {
-      console.log('⏭️ Skipping grade change - already loading data');
-      return;
-    }
-    
-    // Immediately update the selected grade state
-    console.log('🔄 Immediately updating selectedGrade to:', newGrade);
+    // Only update state and filter in-memory, never call API
     setSelectedGrade(newGrade);
-    
-    // Clear existing data to force UI updates
-    setGpaData({});
     setActivePointIndex(null);
     setHoverX(null);
     setError(null);
-    
-    // Load data for the new grade immediately (no timeout needed)
-    console.log('📊 Loading data for new grade:', newGrade);
-    try {
-      await loadGPAData(false, newGrade);
-      console.log('✅ Data loading completed for:', newGrade);
-    } catch (error) {
-      console.error('❌ Error loading data for:', newGrade, error);
+    if (allRawCourses) {
+      const gradeMap: Record<string, number> = {
+        'Freshman': 9,
+        'Sophomore': 10,
+        'Junior': 11,
+        'Senior': 12
+      };
+      const gradeNumber = gradeMap[newGrade] || null;
+      let filteredCourses = allRawCourses;
+      if (gradeNumber) {
+        filteredCourses = allRawCourses.filter(c => c.gradeYear === gradeNumber);
+      }
+      const gpaData = UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses);
+      setGpaData(gpaData);
+      setRawCourses(filteredCourses);
+      setLastLoadedGrade(newGrade);
+      console.log('✅ In-memory grade switch completed for:', newGrade);
+    } else {
+      setError('Course cache missing. Please refresh.');
     }
-  }, []); // Empty dependency array to prevent stale closures
+  }, [allRawCourses]);
 
   const renderGPAGraph = () => {
     const screenWidth = Dimensions.get('window').width;

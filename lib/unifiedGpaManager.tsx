@@ -4,6 +4,7 @@ import { processAcademicHistory } from '@/utils/academicHistoryProcessor';
 import { calculateTermGPAs, getCourseLevel } from '@/utils/gpaCalculator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+
 export interface GPAData {
   unweighted: number;
   weighted: number;
@@ -64,22 +65,43 @@ export class UnifiedGPAManager extends UnifiedDataManager {
         };
       }
       const courses = combinedResult.courses || [];
-      console.log('🔄 Processing courses for GPA calculation, count:', courses.length);
+
+      // Detect grade levels by parsing academic years from backend response
+      let currentGradeLevel: number | undefined = undefined;
+      const gradeLevelsSet = new Set<number>();
+      courses.forEach((c: UnifiedCourseData) => {
+        if (typeof c.gradeYear === 'number') {
+          gradeLevelsSet.add(c.gradeYear);
+        }
+      });
+      const availableGradeLevels = Array.from(gradeLevelsSet).sort((a, b) => a - b);
+      if (availableGradeLevels.length > 0) {
+        currentGradeLevel = availableGradeLevels[availableGradeLevels.length - 1];
+      }
+      // If user selected a grade, override currentGradeLevel
+      const gradeNumber = getGradeNumber(gradeLevel);
+      if (gradeNumber) {
+        currentGradeLevel = gradeNumber;
+      }
+      // Filter courses ONLY for GPA calculation, not for rawCourses
+      let filteredCourses = courses;
+      if (currentGradeLevel) {
+        filteredCourses = courses.filter((c: UnifiedCourseData) => c.gradeYear === currentGradeLevel);
+      }
+      console.log('🟢 Selected currentGradeLevel:', currentGradeLevel);
+      console.log('🟢 Filtered courses for current grade:', filteredCourses);
+
+      console.log('🔄 Processing courses for GPA calculation, count:', filteredCourses.length);
       // For current grade, use current scores with academicHistory term structure
-      const gpaData = this.calculateCurrentGradeGPA(courses);
-      // Only return current grade level and available grades as defaults
-      const currentGradeLevel = 10;
-      const availableGradeLevels = [9, 10, 11, 12];
+      const gpaData = this.calculateCurrentGradeGPA(filteredCourses);
       console.log('📊 Current grade GPA calculation result:', {
-        hasGpaData: Object.keys(gpaData).length > 0,
-        gpaKeys: Object.keys(gpaData),
         currentGradeLevel,
         availableGradeLevels
       });
       return {
         success: true,
         gpaData,
-        rawCourses: courses,
+        rawCourses: courses, // always return all courses
         currentGradeLevel,
         availableGradeLevels,
         lastUpdated: combinedResult.lastUpdated
@@ -142,7 +164,7 @@ export class UnifiedGPAManager extends UnifiedDataManager {
   }
 
   // Calculate GPA for current grade level using scrape report scores with academic history term structure
-  private static calculateCurrentGradeGPA(courses: UnifiedCourseData[]): Record<string, GPAData> {
+  public static calculateCurrentGradeGPA(courses: UnifiedCourseData[]): Record<string, GPAData> {
     try {
       // Calculate GPA for all terms using historicalGrades
       const allTerms = ['PR1', 'PR2', 'RC1', 'PR3', 'PR4', 'RC2', 'PR5', 'PR6', 'RC3', 'PR7', 'PR8', 'RC4', 'SM1', 'SM2'];
