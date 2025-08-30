@@ -184,22 +184,18 @@ export default function Index() {
     }
   }, [hasCredentials]);
 
-  useFocusEffect(
-    useCallback(() => {
-      const checkCredentials = async () => {
-        const result = await SkywardAuth.hasCredentials();
-        setHasCredentials(result);
-        
-        if (result) {
-          await loadCourses();
-        } else {
-          setLoading(false);
-        }
-      };
-
-      checkCredentials();
-    }, [])
-  );
+  useEffect(() => {
+    const checkCredentials = async () => {
+      const result = await SkywardAuth.hasCredentials();
+      setHasCredentials(result);
+      if (result) {
+        await loadCourses();
+      } else {
+        setLoading(false);
+      }
+    };
+    checkCredentials();
+  }, []);
 
   return (
     
