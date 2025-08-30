@@ -6,7 +6,8 @@ import { useFocusEffect } from 'expo-router';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { useBottomSheet, BottomSheetProvider } from '@/context/BottomSheetContext'
 import { useSettingSheet } from '@/context/SettingSheetContext';
-import { UnifiedDataManager, UnifiedCourseData } from '@/lib/unifiedDataManager';
+import { UnifiedCourseData } from '@/lib/unifiedDataManager';
+import { useUnifiedData } from '@/context/UnifiedDataContext';
 import * as Animatable from 'react-native-animatable';
 
 
@@ -127,74 +128,31 @@ const filterCoursesBySemester = (courses: any[], selectedTerm: string) => {
 export default function Index() {
   const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
   const { settingSheetRef } = useSettingSheet();
-  const [hasCredentials, setHasCredentials] = useState(false);
-  const [coursesData, setCoursesData] = useState<any[]>([]);
+  const { coursesData, loading, error, refreshCourses } = useUnifiedData();
   const [filteredCourses, setFilteredCourses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const loadCourses = async (isRefresh = false) => {
-    try {
-      if (isRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-      setError(null);
-      
-      const result = await UnifiedDataManager.getCombinedData(isRefresh);
-      // console.log('Loaded courses:', JSON.stringify(result, null, 1));
-      if (result.success && result.courses) {
-        const transformedData = transformCourseData(result.courses);
-        setCoursesData(transformedData);
-        const filtered = filterCoursesBySemester(transformedData, selectedCategory);
-        setFilteredCourses(filtered);
-
-        // console.log('Loaded courses:', JSON.stringify(filtered, null, 1));
-        // Show warning if there was an error but we're using cached data
-        if (result.error) {
-          setError(result.error);
-        }
-      } else {
-        setError(result.error || 'Failed to load courses');
-        setCoursesData([]);
-        setFilteredCourses([]);
-      }
-    } catch (err: any) {
-      console.error('Error loading courses:', err);
-      setError(err.message || 'Failed to load courses');
-      setCoursesData([]);
-      setFilteredCourses([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  // No need for local loadCourses, use refreshCourses from context
 
   // Effect to filter courses when selectedCategory changes
   useEffect(() => {
-    const filtered = filterCoursesBySemester(coursesData, selectedCategory);
+    const filtered = filterCoursesBySemester(
+      coursesData ? transformCourseData(coursesData) : [],
+      selectedCategory
+    );
     setFilteredCourses(filtered);
   }, [coursesData, selectedCategory]);
 
   const onRefresh = useCallback(() => {
-    if (hasCredentials) {
-      loadCourses(true);
-    }
-  }, [hasCredentials]);
+    setRefreshing(true);
+    refreshCourses(true).finally(() => setRefreshing(false));
+  }, [refreshCourses]);
 
   useEffect(() => {
-    const checkCredentials = async () => {
-      const result = await SkywardAuth.hasCredentials();
-      setHasCredentials(result);
-      if (result) {
-        await loadCourses();
-      } else {
-        setLoading(false);
-      }
-    };
-    checkCredentials();
+    if (!coursesData) {
+      refreshCourses();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -251,19 +209,8 @@ export default function Index() {
                 <Text className="text-center text-gray-500">Loading courses...</Text>
               ) : error ? (
                 <Text className="text-center text-red-500">Error: {error}</Text>
-              ) : hasCredentials ? (
-                <Text className="text-center text-gray-500">No classes found.</Text>
               ) : (
-                <Text className="text-center text-gray-500">
-                  No credentials found.{' '}
-                  <Text
-                    className="text-blue-400 underline"
-                    onPress={() => settingSheetRef.current?.snapToIndex(0)}
-                  >
-                    Update the settings
-                  </Text>{' '}
-                  to configure your account.
-                </Text>
+                <Text className="text-center text-gray-500">No classes found.</Text>
               )}
             </View>
           }
