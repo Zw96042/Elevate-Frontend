@@ -29,6 +29,9 @@ type TermLabel =
 
 // Course Name, Teacher Name, Numerical Grade
 const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { term: TermLabel }) => {
+  // Accept extra fields for gradebook linkage
+  // @ts-ignore
+  const { stuId, corNumId, section, gbID } = arguments[0];
     // Generate a truly unique identifier for this class instance
     const classId = React.useMemo(() => {
         return generateUniqueId();
@@ -219,21 +222,25 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
   return (
     
     <Link 
-        href={{
-            pathname: '/classes/[class]',
-            params: {
-                classId: classId,
-                class: name,
-                teacher: teacher,
-                t1: JSON.stringify(t1),
-                t2: JSON.stringify(t2),
-                s1: JSON.stringify(s1),
-                t3: JSON.stringify(t3),
-                t4: JSON.stringify(t4),
-                s2: JSON.stringify(s2),
-                term
-            }
-        }}
+    href={{
+      pathname: '/classes/[class]',
+      params: {
+        classId: classId,
+        class: name,
+        teacher: teacher,
+        t1: JSON.stringify(t1),
+        t2: JSON.stringify(t2),
+        s1: JSON.stringify(s1),
+        t3: JSON.stringify(t3),
+        t4: JSON.stringify(t4),
+        s2: JSON.stringify(s2),
+        term,
+        stuId,
+        corNumId,
+        section,
+        gbID
+      }
+    }}
         asChild
     >
         <TouchableOpacity  className='w-[100%]'>

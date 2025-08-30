@@ -58,6 +58,10 @@ interface Class {
         };
         total: number;
     };
+  stuId?: string;
+  corNumId?: string;
+  section?: string;
+  gbID?: string;
 }
 
 interface Assignment {
