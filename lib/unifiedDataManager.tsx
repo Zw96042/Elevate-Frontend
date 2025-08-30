@@ -155,7 +155,6 @@ export class UnifiedDataManager {
 
   // Transform the backend combined data into frontend UnifiedCourseData[]
   public static transformCombinedData(combined: any): UnifiedCourseData[] {
-  console.log('🟡 Backend response to transformCombinedData:', combined);
     // Helper to infer semester from terms
     function inferSemester(terms: string): 'fall' | 'spring' | 'both' | 'unknown' {
       if (!terms) return 'unknown';
@@ -252,7 +251,6 @@ export class UnifiedDataManager {
         });
       }
     }
-    console.log('🟢 Transformed courses:', courses);
     return courses;
   }
 }

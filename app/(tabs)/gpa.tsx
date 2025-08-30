@@ -42,10 +42,7 @@ const GPA = () => {
   // Initialize selectedGrade with currentGradeLevel instead of 'Freshman'
   const [selectedGrade, setSelectedGrade] = useState<GradeLevel>(currentGradeLevel);
   
-  // Add console logging for selectedGrade changes
-  useEffect(() => {
-    console.log('🎯 selectedGrade state changed to:', selectedGrade);
-  }, [selectedGrade]);
+  // Removed console logging for selectedGrade changes
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [isGraphAnimating, setIsGraphAnimating] = useState(false);
@@ -64,7 +61,6 @@ const GPA = () => {
     // Only update selectedGrade automatically if we haven't initialized it yet
     // and this is the very first load
     if (!hasInitializedGradeRef.current && !isInitialized && currentGradeLevel !== selectedGrade) {
-      console.log('🔧 Auto-updating selectedGrade on initial load from', selectedGrade, 'to', currentGradeLevel);
       setSelectedGrade(currentGradeLevel);
       hasInitializedGradeRef.current = true;
     }
@@ -85,17 +81,29 @@ const GPA = () => {
   // Function for pull-to-refresh
   const onRefresh = async () => {
     setRefreshing(true);
-    // Temporarily allow API calls during refresh even if graph interaction flag is set
     const wasInteracting = isInteractingWithGraph.current;
     isInteractingWithGraph.current = false;
-    
     try {
       // Clear the cache first to ensure fresh data
       await UnifiedGPAManager.clearGPACache();
-  // Removed loadGPAData, use context refreshCourses if needed
+      await refreshCourses(true);
+      // After refresh, recalculate GPA data
+      if (coursesData && coursesData.length > 0) {
+        const gradeMap: Record<string, number> = {
+          'Freshman': 9,
+          'Sophomore': 10,
+          'Junior': 11,
+          'Senior': 12
+        };
+        const gradeNumber = gradeMap[selectedGrade] || null;
+        let filteredCourses = coursesData;
+        if (gradeNumber) {
+          filteredCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
+        }
+        setGpaData(UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses));
+      }
     } finally {
       setRefreshing(false);
-      // Restore the previous interaction state
       isInteractingWithGraph.current = wasInteracting;
     }
   };
