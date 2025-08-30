@@ -129,6 +129,7 @@ export default function Index() {
   const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
   const { settingSheetRef } = useSettingSheet();
   const { coursesData, loading, error, refreshCourses } = useUnifiedData();
+  const { currentGradeLevel } = require('@/hooks/useGradeLevel').useGradeLevel();
   const [filteredCourses, setFilteredCourses] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -136,10 +137,20 @@ export default function Index() {
 
   // Effect to filter courses when selectedCategory changes
   useEffect(() => {
-    const filtered = filterCoursesBySemester(
-      coursesData ? transformCourseData(coursesData) : [],
-      selectedCategory
-    );
+    // Filter by current grade level first, then by selected term
+    let filteredRawCourses = coursesData || [];
+    if (coursesData && currentGradeLevel && currentGradeLevel !== 'All Time') {
+      // Map grade level to gradeYear
+      const gradeMap: Record<string, number> = {
+        'Freshman': 9,
+        'Sophomore': 10,
+        'Junior': 11,
+        'Senior': 12
+      };
+      const gradeYear = gradeMap[currentGradeLevel as keyof typeof gradeMap];
+      filteredRawCourses = coursesData.filter((c: any) => c.gradeYear === gradeYear);
+    }
+    const filtered = filterCoursesBySemester(transformCourseData(filteredRawCourses), selectedCategory);
     setFilteredCourses(filtered);
   }, [coursesData, selectedCategory]);
 
