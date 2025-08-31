@@ -54,7 +54,7 @@ const AssignmentDetails = () => {
       dueDate,
       grade: formattedGrade,
       outOf: parseFloat(formattedOutOf.toFixed(2)),
-      artificial: artificial,
+      artificial: true,
       term: term
     };
 

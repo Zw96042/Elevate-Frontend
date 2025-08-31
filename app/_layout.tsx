@@ -24,14 +24,15 @@ function InnerLayout() {
   const cardColor = colorScheme === 'dark' ? colors.cardColor.dark : colors.cardColor.light;
 
   // Fix missing refs and state
-  const addSheetRef = useRef<BottomSheet>(null);
+  // Use addSheetRef from context so openModal can trigger modal open from anywhere
+  const { categories, setCategory, category, addSheetRef } = useAddAssignmentSheet();
   const [currentSnapPosition, setCurrentSnapPosition] = useState('hidden');
   const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
   const [name, setName] = useState('');
-  const [category, setCategory] = useState('');
+  // category and setCategory now come from context
   const [grade, setGrade] = useState('');
   const [outOf, setOutOf] = useState('');
-  const categories = ['Homework', 'Quiz', 'Test', 'Project', 'Other'];
+  // ...removed duplicate destructuring...
 
   // Handler for sheet changes
   const handleSheetChanges = (index: number) => {

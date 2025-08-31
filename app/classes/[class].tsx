@@ -174,15 +174,7 @@ const ClassDetails = () => {
   const formattedName = formatClassName(className?.toString());
 
   const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
-  const [filteredAssignments, setFilteredAssignments] = useState<Assignment[]>(() => {
-    if (!classParam || !selectedCategory) return [];
-    return ASSIN.filter(
-      (item) =>
-        item.className === classParam &&
-        item.term === selectedCategory.split(" ")[0] &&
-        (!item.artificial || isEnabled)
-    );
-  });
+  const [filteredAssignments, setFilteredAssignments] = useState<Assignment[]>([]);
   const [courseSummary, setCourseSummary] = useState<{
     courseTotal: string;
     categories: Record<
@@ -251,6 +243,7 @@ const ClassDetails = () => {
 
     // await AsyncStorage.clear();
     const data = await AsyncStorage.getItem("artificialAssignments");
+    console.log("STORED ARTIFICIAL:", JSON.stringify(data,null,2));
     if (!data) {
       // Ensure all assignments have unique IDs
       const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
@@ -398,7 +391,8 @@ const ClassDetails = () => {
                 artificialAssignments,
                 setArtificialAssignments,
                 setFilteredAssignments,
-                ASSIN,
+                filteredAssignments,
+                categories: apiCategories.names,
                 setCourseSummary,
                 calculateGradeSummary,
                 isEnabled,
@@ -449,12 +443,14 @@ const handleResetArtificialAssignments = async () => {
   if (!data || !className) return;
 
   const parsed = JSON.parse(data);
+  console.log("BEFORE RESET:", JSON.stringify(parsed, null, 2));
   // Use classId to create unique storage key for identical classes
   const storageKey = classId ? `${className}_${classId}` : className;
   delete parsed[storageKey];
   // Also delete old format key for backwards compatibility
   delete parsed[className];
   await AsyncStorage.setItem("artificialAssignments", JSON.stringify(parsed));
+  // await AsyncStorage.removeItem("artificialAssignments");
 
   fetchArtificialAssignments();
 };

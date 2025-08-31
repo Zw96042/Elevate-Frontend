@@ -25,6 +25,7 @@ type Assignment = {
 };
 
 type ModalData = {
+  filteredAssignments: Assignment[];
   className: string;
   classId?: string; // Add classId to differentiate identical classes
   selectedCategory: string;
@@ -32,7 +33,7 @@ type ModalData = {
   artificialAssignments: Assignment[];
   setArtificialAssignments: React.Dispatch<React.SetStateAction<Assignment[]>>;
   setFilteredAssignments: React.Dispatch<React.SetStateAction<Assignment[]>>;
-  ASSIN: Assignment[];
+  categories: string[];
   setCourseSummary: React.Dispatch<React.SetStateAction<any>>;
   calculateGradeSummary: (assignments: Assignment[], weights: Record<string, number>) => any;
   isEnabled: boolean;
@@ -83,7 +84,9 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
     setTerm(data.selectedCategory);
     setClassName(formatClassName(data.className));
 
+    console.log("Opening modal for class:", data.className, "with ID:", data.classId);
     addSheetRef.current?.expand();
+    console.log("res: ", addSheetRef.current);
   };
 
   const onSubmit = async () => {
@@ -104,10 +107,12 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
     const updatedArtificial = [assignment, ...modalData.artificialAssignments];
     modalData.setArtificialAssignments(updatedArtificial);
 
-    const real = modalData.ASSIN.filter(
-      item =>
+    // Use real assignments from modalData.filteredAssignments if needed
+    const real: Assignment[] = (modalData.filteredAssignments || []).filter(
+      (item: Assignment) =>
         item.className === modalData.className &&
-        item.term === modalData.selectedCategory.split(" ")[0]
+        item.term === modalData.selectedCategory.split(" ")[0] &&
+        !item.artificial
     );
 
     const artificial = modalData.isEnabled
