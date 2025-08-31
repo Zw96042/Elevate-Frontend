@@ -61,8 +61,8 @@ export const fetchGradeInfo = async (
       }),
     });
 
-    if (!response.ok || response.status === 401 || response.status === 400) {
-      if ((response.status === 401 || response.status === 400) && retryCount === 0) {
+    if (!response.ok || response.status === 401 || response.status === 400 || response.status === 500) {
+      if ((response.status === 401 || response.status === 400 || response.status === 500) && retryCount === 0) {
         console.log('Session expired, retrying auth...');
         await AsyncStorage.multiRemove(['dwd', 'wfaacl', 'encses', 'sessionid']);
         const authResult = await authenticate();
