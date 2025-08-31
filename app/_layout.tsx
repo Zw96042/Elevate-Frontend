@@ -44,6 +44,36 @@ function InnerLayout() {
       setModalClosedByOutsideTap(false);
     }
   };
+
+  // Keyboard handling for modal snap position
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => {
+      if (
+        !modalClosedByOutsideTap &&
+        currentSnapPosition !== '90%' &&
+        currentSnapPosition !== 'hidden'
+      ) {
+        addSheetRef.current?.snapToPosition('90%', { duration: 150 });
+        setCurrentSnapPosition('90%');
+      }
+    });
+
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      if (modalClosedByOutsideTap) {
+        setModalClosedByOutsideTap(false);
+        return;
+      }
+      if (currentSnapPosition === '90%') {
+        addSheetRef.current?.snapToPosition('54%', { duration: 150 });
+        setCurrentSnapPosition('54%');
+      }
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [currentSnapPosition, modalClosedByOutsideTap]);
   return (
     <UnifiedDataProvider>
       <TouchableWithoutFeedback onPress={() => {
@@ -153,13 +183,17 @@ function InnerLayout() {
                  <Text className="text-2xl text-main">Add New Assignment</Text>
                  <View className='mb-4 mt-2 border-slate-600 border-[0.5px]'></View>
                   <View className="mb-5">
-                    <Text className="text-sm  text-main mb-1">Assignment Name</Text>
+                    <Text className="text-sm  text-main mb-1" >Assignment Name</Text>
                     <TextInput
                       className="rounded-md px-4 py-2 text-main bg-primary"
                       onChangeText={setName}
                       value={name}
                       editable
                       placeholder="Assignment Name"
+                      autoCorrect={false}
+                      autoComplete="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                     />
                   </View>
                   <View className="mb-5">

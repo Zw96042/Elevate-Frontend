@@ -178,7 +178,7 @@ const ClassDetails = () => {
         weights: backendData?.gradebook?.map((cat: any) => cat.weight) ?? []
       };
       setApiCategories(categories);
-      console.log(categories);
+      // console.log(categories);
     } catch (err) {
       setApiAssignments([]);
       setApiCategories({ names: [], weights: [] });
@@ -188,7 +188,7 @@ const ClassDetails = () => {
   // Mesh artificial assignments with API assignments
   const meshAssignments = useCallback(async () => {
     const data = await AsyncStorage.getItem("artificialAssignments");
-    console.log("artificial ", data);
+    // console.log("artificial ", data);
     if (!data) {
       const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
       setArtificialAssignments([]);
@@ -213,12 +213,12 @@ const ClassDetails = () => {
       return;
     }
     const parsed = JSON.parse(data);
-    console.log("PARSED", parsed);
+    // console.log("PARSED", parsed);
   // Use a stable key for artificial assignments
   const storageKey = `${className}_${corNumId}_${section}_${gbId}`;
-    console.log(storageKey);
+    // console.log(storageKey);
     const classAssignments = parsed[storageKey] ?? parsed[className] ?? [];
-    console.log("CLASS ASSIGNMENTS", classAssignments);
+    // console.log("CLASS ASSIGNMENTS", classAssignments);
     const artificial = isEnabled
       ? classAssignments.filter(
           (item: Assignment) =>
@@ -226,7 +226,7 @@ const ClassDetails = () => {
         )
       : [];
 
-    console.log("AFTER FILTER", artificial);
+    // console.log("AFTER FILTER", artificial);
     const artificialNames = new Set(artificial.map((a: any) => a.name));
     const filteredReal = apiAssignments.filter((r) => !artificialNames.has(r.name));
     const allAssignments = [...artificial, ...filteredReal].sort((a, b) => {
@@ -331,6 +331,7 @@ const ClassDetails = () => {
                 setCourseSummary,
                 calculateGradeSummary,
                 isEnabled,
+                meshAssignments,
               });
               // Wait for assignment to be added, then re-mesh assignments
               // You may need to trigger meshAssignments after onSubmit in your modal logic
@@ -374,7 +375,6 @@ const ClassDetails = () => {
         setIsEnabled(false);
       }
       setIsReady(true);
-      meshAssignments();
     };
     loadShowCalculated();
   }, [showCalculatedKey, meshAssignments]);
@@ -384,7 +384,6 @@ const handleToggle = async () => {
   const newValue = !isEnabled;
   await AsyncStorage.setItem(showCalculatedKey, newValue.toString());
   setIsEnabled(newValue);
-  meshAssignments();
 };
 
 const handleResetArtificialAssignments = async () => {
@@ -392,7 +391,7 @@ const handleResetArtificialAssignments = async () => {
   if (!data || !className) return;
 
   const parsed = JSON.parse(data);
-  console.log("BEFORE RESET:", JSON.stringify(parsed, null, 2));
+  // console.log("BEFORE RESET:", JSON.stringify(parsed, null, 2));
 
   // Remove all keys that match this class (with and without classId)
   // Use stable key for deletion

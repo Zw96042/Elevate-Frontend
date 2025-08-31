@@ -40,6 +40,7 @@ type ModalData = {
   setCourseSummary: React.Dispatch<React.SetStateAction<any>>;
   calculateGradeSummary: (assignments: Assignment[], weights: Record<string, number>) => any;
   isEnabled: boolean;
+  meshAssignments?: () => void;
 };
 
 type AddAssignmentSheetContextType = {
@@ -156,6 +157,10 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
       await AsyncStorage.setItem("artificialAssignments", JSON.stringify(updated));
     }
     addSheetRef.current?.close();
+    // Run meshAssignments after adding artificial assignment
+    if (modalData?.meshAssignments) {
+      modalData.meshAssignments();
+    }
   };
 
   return (
