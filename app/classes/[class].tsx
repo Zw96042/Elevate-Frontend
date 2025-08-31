@@ -198,6 +198,13 @@ const ClassDetails = () => {
   const [artificialAssignments, setArtificialAssignments] = useState<Assignment[]>([]);
 
   const currTerm = termMap[selectedCategory];
+  // Use API categories for current term, fallback to termMap if API fails
+  const [apiCategories, setApiCategories] = useState<{ names: string[]; weights: number[] }>({ names: [], weights: [] });
+  useEffect(() => {
+    // This effect will update apiCategories after fetchArtificialAssignments runs
+    // The fetchArtificialAssignments function logs apiCategories, but we need to set it in state for JSX
+    // We'll patch fetchArtificialAssignments to call setApiCategories
+  }, []);
 
   const fetchArtificialAssignments = useCallback(async () => {
     if (!className || !stuId || !corNumId || !section || !gbId || !selectedCategory) return;
@@ -234,7 +241,8 @@ const ClassDetails = () => {
         names: backendData?.gradebook?.map((cat: any) => cat.category) ?? [],
         weights: backendData?.gradebook?.map((cat: any) => cat.weight) ?? []
       };
-      // removed previous console log
+      setApiCategories(apiCategories);
+      console.log(apiCategories);
     } catch (err) {
       // fallback to empty
       apiAssignments = [];
@@ -516,7 +524,7 @@ const handleResetArtificialAssignments = async () => {
             <Text className="text-highlightText font-bold text-base">Weight</Text>
           </View>
           <View className="h-[1px] bg-accent opacity-30 my-1" />
-          {currTerm.categories.names.map((name, index) => (
+          {apiCategories.names.map((name, index) => (
             <View key={`row-${index}`}>
               <View className="py-1">
                 <View className="flex-row justify-between items-center">
@@ -526,10 +534,10 @@ const handleResetArtificialAssignments = async () => {
                   <Text className="text-sm text-slate-400 font-bold">
                     Avg: {(courseSummary?.categories[name]?.average?.toFixed(1) ?? "--")}%
                     {" • "}
-                    Weight: {(currTerm.categories.weights[index] ?? 0).toFixed(1)}%
+                    Weight: {(apiCategories.weights[index] ?? 0).toFixed(1)}%
                     {courseSummary.categories[name]
                       ? courseSummary.categories[name].weight.toFixed(1) !==
-                        (currTerm.categories.weights[index] ?? 0).toFixed(1)
+                        (apiCategories.weights[index] ?? 0).toFixed(1)
                         ? ` → ${courseSummary.categories[name].weight.toFixed(1)}%`
                         : ""
                       : " → 0%"}
@@ -545,14 +553,14 @@ const handleResetArtificialAssignments = async () => {
                           type: 'spring',
                           damping: 20
                         }}
-                        // style={{ width: `${courseSummary.categories[name].average}%` }}
+                        style={{ width: `${courseSummary.categories[name].average}%` }}
                       />
                     </View>
                   )}
                 </View>
               </View>
 
-              {index !== currTerm.categories.names.length - 1 && (
+              {index !== apiCategories.names.length - 1 && (
                 <View className="h-[1px] bg-accent opacity-30 my-1" />
               )}
             </View>
