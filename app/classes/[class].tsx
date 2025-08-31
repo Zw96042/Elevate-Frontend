@@ -300,7 +300,16 @@ const ClassDetails = () => {
     const filteredReal = real.filter((r) => !artificialNames.has(r.name));
 
     // Combine and ensure unique IDs for all assignments
-    const allAssignments = [...artificial, ...filteredReal];
+    // Sort by dueDate descending (most recent first)
+    const allAssignments = [...artificial, ...filteredReal].sort((a, b) => {
+      // Parse dates in MM/DD/YY format
+      const parseDate = (date: string) => {
+        const [month, day, year] = date.split('/').map(Number);
+        // Assume 20xx for years < 100
+        return new Date(year < 100 ? 2000 + year : year, month - 1, day);
+      };
+      return parseDate(b.dueDate).getTime() - parseDate(a.dueDate).getTime();
+    });
     const assignmentsWithIds = ensureUniqueAssignmentIds(allAssignments);
     
     // Separate them back out
