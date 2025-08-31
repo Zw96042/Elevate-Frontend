@@ -127,6 +127,12 @@ const ClassDetails = () => {
   const className = Array.isArray(classParam) ? classParam[0] : classParam;
   const classIdParam = searchParams.classId;
   const classId = Array.isArray(classIdParam) ? classIdParam[0] : classIdParam;
+  const corNumId = Array.isArray(searchParams.corNumId) ? searchParams.corNumId[0] : searchParams.corNumId;
+  const stuId = Array.isArray(searchParams.stuId) ? searchParams.stuId[0] : searchParams.stuId;
+  const section = Array.isArray(searchParams.section) ? searchParams.section[0] : searchParams.section;
+  const gbId = Array.isArray(searchParams.gbId) ? searchParams.gbId[0] : searchParams.gbId;
+
+
 
   const parseTermData = (param: string | string[] | undefined): TermData => {
     if (typeof param === "string") {

@@ -28,7 +28,7 @@ type TermLabel =
 
 
 // Course Name, Teacher Name, Numerical Grade
-const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { term: TermLabel }) => {
+const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, t3, t4, s2, term }: Class & { term: TermLabel }) => {
     // Generate a truly unique identifier for this class instance
     const classId = React.useMemo(() => {
         return generateUniqueId();
@@ -225,6 +225,10 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
                 classId: classId,
                 class: name,
                 teacher: teacher,
+                corNumId: corNumId,
+                stuId: stuId,
+                section: section,
+                gbId: gbId,
                 t1: JSON.stringify(t1),
                 t2: JSON.stringify(t2),
                 s1: JSON.stringify(s1),

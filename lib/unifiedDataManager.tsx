@@ -8,6 +8,9 @@ const config = require('./development.config.js');
 
 export interface UnifiedCourseData {
   courseId?: number;
+  stuId?: string;
+  section?: string;
+  gbId?: string;
   courseName: string;
   instructor?: string | null;
   period?: number | null;
@@ -155,7 +158,6 @@ export class UnifiedDataManager {
 
   // Transform the backend combined data into frontend UnifiedCourseData[]
   public static transformCombinedData(combined: any): UnifiedCourseData[] {
-  console.log('🟡 Backend response to transformCombinedData:', combined);
     // Helper to infer semester from terms
     function inferSemester(terms: string): 'fall' | 'spring' | 'both' | 'unknown' {
       if (!terms) return 'unknown';
@@ -185,6 +187,9 @@ export class UnifiedDataManager {
     if (Array.isArray(combined)) {
       return combined.map((courseObj: any) => ({
         courseId: courseObj.course || courseObj.courseId,
+        stuId: courseObj.stuId || "",
+        section: courseObj.section || "",
+        gbId: courseObj.gbID || "",
         courseName: courseObj.courseName,
         instructor: courseObj.instructor || null,
         period: courseObj.period || null,
@@ -224,6 +229,9 @@ export class UnifiedDataManager {
         const courseObj = courseObjRaw as any;
         courses.push({
           courseId: courseObj.courseId,
+          stuId: courseObj.stuId || "",
+          section: courseObj.section || "",
+          gbId: courseObj.gbID || "",
           courseName,
           instructor: courseObj.instructor || null,
           period: courseObj.period || null,
@@ -252,7 +260,7 @@ export class UnifiedDataManager {
         });
       }
     }
-    console.log('🟢 Transformed courses:', courses);
+    // console.log("COURSES", JSON.stringify(courses, null, 2));
     return courses;
   }
 }

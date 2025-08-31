@@ -16,6 +16,10 @@ interface Message {
 interface Class {
   name: string;
   teacher: string;
+  corNumId: string;
+  stuId: string;
+  section: string;
+  gbId: string;
   t1: {
         categories: {
             names: string[];
