@@ -68,7 +68,7 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
                               width: 30,
                             }}
                           >
-                            {grade === '*' ? '--' : ((Number(grade) / Number(outOf)) * 100).toFixed(0)}
+                            {grade === '*' ? '--' : ((Number(grade)).toFixed(0))}
                           </Text>
                         </View>
 

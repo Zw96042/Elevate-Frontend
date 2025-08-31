@@ -50,6 +50,8 @@ export async function authenticate(): Promise<AuthResult> {
         return { success: false, error: 'Invalid session codes received from server' };
       }
 
+      console.log('Session codes received:', sessionCodes);
+
       await AsyncStorage.setItem('dwd', sessionCodes.dwd);
       await AsyncStorage.setItem('wfaacl', sessionCodes.wfaacl);
       await AsyncStorage.setItem('encses', sessionCodes.encses);

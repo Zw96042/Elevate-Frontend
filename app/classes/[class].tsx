@@ -36,6 +36,7 @@ import { useAddAssignmentSheet } from "@/context/AddAssignmentSheetContext";
 import { useBottomSheet } from "@/context/BottomSheetContext";
 import PieChart from "react-native-pie-chart";
 import { MotiView, AnimatePresence } from 'moti'
+import { fetchGradeInfo } from '@/lib/gradeInfoClient';
 
 
 
@@ -85,6 +86,15 @@ export const ASSIN = [
     artificial: false,
   },
 ];
+
+const bucketMap: Record<TermLabel, string> = {
+  "Q1 Grades": "TERM 3",
+  "Q2 Grades": "TERM 6",
+  "SM1 Grade": "SEM 1",
+  "Q3 Grades": "TERM 9",
+  "Q4 Grades": "TERM 12",
+  "SM2 Grades": "SEM 2",
+};
 
 type TermLabel =
   | "Q1 Grades"
@@ -190,21 +200,56 @@ const ClassDetails = () => {
   const currTerm = termMap[selectedCategory];
 
   const fetchArtificialAssignments = useCallback(async () => {
-    if (!className) return;
+    if (!className || !stuId || !corNumId || !section || !gbId || !selectedCategory) return;
+
+    // Build the correct bucket string using bucketMap and selectedCategory
+    // selectedCategory is e.g. "Q1 Grades", "Q2 Grades", etc.
+    const bucket = bucketMap[selectedCategory as TermLabel];
+    let apiAssignments: Assignment[] = [];
+    let apiCategories: { names: string[]; weights: number[] } = { names: [], weights: [] };
+    try {
+      // Call the backend API to get assignments and categories
+      const result = await fetchGradeInfo({ stuId, corNumId, section, gbId, bucket });
+
+      const backendData = result?.data?.data;
+
+      // console.log(backendData);
+      apiAssignments = backendData?.gradebook?.flatMap((cat: any) =>
+        (cat.assignments ?? []).map((a: any, index: number) => ({
+          id: `${cat.category}-${index}-${a.name}`, // ensure unique ID
+          className: className,
+          name: a.name,
+          term: selectedCategory.split(" ")[0],
+          category: cat.category,
+          grade: a.points?.earned ?? "*",
+          outOf: a.points?.total ?? 100,
+          dueDate: a.date ?? "",
+          artificial: false,
+        }))
+      ) ?? [];
+
+      // console.log(apiAssignments);
+
+      apiCategories = {
+        names: backendData?.gradebook?.map((cat: any) => cat.category) ?? [],
+        weights: backendData?.gradebook?.map((cat: any) => cat.weight) ?? []
+      };
+      // removed previous console log
+    } catch (err) {
+      // fallback to empty
+      apiAssignments = [];
+      apiCategories = { names: [], weights: [] };
+    }
 
     // await AsyncStorage.clear();
     const data = await AsyncStorage.getItem("artificialAssignments");
     if (!data) {
-      const real = ASSIN.filter(
-        (item) => item.className === className && item.term === selectedCategory.split(" ")[0]
-      );
-
       // Ensure all assignments have unique IDs
-      const realWithIds = ensureUniqueAssignmentIds(real);
+      const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
 
       const all = realWithIds.filter(a => a.grade !== '*');
       const weightsMap = Object.fromEntries(
-        currTerm.categories.names.map((name, i) => [name, currTerm.categories.weights[i]])
+        (apiCategories.names || []).map((name, i) => [name, apiCategories.weights[i]])
       );
 
       const nonEmptyCategories = all.reduce((set, a) => {
@@ -233,9 +278,8 @@ const ClassDetails = () => {
     const storageKey = classId ? `${className}_${classId}` : className;
     const classAssignments = parsed[storageKey] ?? parsed[className] ?? []; // Fallback to old format for backwards compatibility
 
-    const real = ASSIN.filter(
-      (item) => item.className === className && item.term === selectedCategory.split(" ")[0]
-    );
+    // Use backend assignments instead of ASSIN
+    const real = apiAssignments;
 
     const artificial = isEnabled
       ? classAssignments.filter(
@@ -258,7 +302,7 @@ const ClassDetails = () => {
 
     const all = assignmentsWithIds.filter(a => a.grade !== '*');
     const weightsMap = Object.fromEntries(
-      currTerm.categories.names.map((name, i) => [name, currTerm.categories.weights[i]])
+      (apiCategories.names || []).map((name, i) => [name, apiCategories.weights[i]])
     );
 
     const nonEmptyCategories = all.reduce((set, a) => {
@@ -275,14 +319,10 @@ const ClassDetails = () => {
     const normalizedWeights = Object.fromEntries(
       adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
     );
-    // console.log(calculateGradeSummary(all, normalizedWeights));
 
     setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-  }, [className, classId, selectedCategory, isEnabled, currTerm.categories.names, currTerm.categories.weights]);
+  }, [className, classId, selectedCategory, isEnabled, currTerm.categories.names, currTerm.categories.weights, stuId, corNumId, section, gbId]);
 
-  useEffect(() => {
-    fetchArtificialAssignments();
-  }, [fetchArtificialAssignments]);
 
   useEffect(() => {
     // Use the actual term grade if no calculated grade is available
@@ -322,7 +362,7 @@ const ClassDetails = () => {
   useFocusEffect(
     useCallback(() => {
       fetchArtificialAssignments();
-    }, [fetchArtificialAssignments])
+    }, [])
   );
 
   const { openModal } = useAddAssignmentSheet();
