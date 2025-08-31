@@ -27,7 +27,10 @@ type Assignment = {
 type ModalData = {
   filteredAssignments: Assignment[];
   className: string;
-  classId?: string; // Add classId to differentiate identical classes
+  classId?: string;
+  corNumId?: string;
+  section?: string;
+  gbId?: string;
   selectedCategory: string;
   currTerm: TermData;
   artificialAssignments: Assignment[];
@@ -77,16 +80,19 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
   const [className, setClassName] = useState('');
 
   const openModal = (data: ModalData) => {
-    setModalData(data);
+  setModalData(data);
 
-    setCategories(data.currTerm.categories.names);
-    setCategory('');
-    setTerm(data.selectedCategory);
-    setClassName(formatClassName(data.className));
+  setCategories(data.categories);
+  setCategory('');
+  setName('');
+  setGrade('100');
+  setOutOf(100);
+  setTerm(data.selectedCategory);
+  setClassName(formatClassName(data.className));
 
-    console.log("Opening modal for class:", data.className, "with ID:", data.classId);
-    addSheetRef.current?.expand();
-    console.log("res: ", addSheetRef.current);
+  // console.log("Opening modal for class:", data.className, "with ID:", data.classId);
+  addSheetRef.current?.expand();
+  // console.log("res: ", addSheetRef.current);
   };
 
   const onSubmit = async () => {
@@ -135,14 +141,20 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
     modalData.setFilteredAssignments(allAssignments);
 
     const existing = JSON.parse(await AsyncStorage.getItem("artificialAssignments") ?? "{}");
-    // Use classId to create unique storage key for identical classes
-    const storageKey = modalData.classId ? `${modalData.className}_${modalData.classId}` : modalData.className;
-    const updated = {
-      ...existing,
-      [storageKey]: ensureUniqueAssignmentIds(updatedArtificial),
-    };
-
-    await AsyncStorage.setItem("artificialAssignments", JSON.stringify(updated));
+  // Use a stable key for artificial assignments
+  // Fallback to empty string if any identifier is missing
+  const storageKey = `${modalData.className || ''}_${modalData.corNumId || ''}_${modalData.section || ''}_${modalData.gbId || ''}`;
+    if (updatedArtificial.length === 0) {
+      // Remove the key if no assignments left
+      delete existing[storageKey];
+      await AsyncStorage.setItem("artificialAssignments", JSON.stringify(existing));
+    } else {
+      const updated = {
+        ...existing,
+        [storageKey]: ensureUniqueAssignmentIds(updatedArtificial),
+      };
+      await AsyncStorage.setItem("artificialAssignments", JSON.stringify(updated));
+    }
     addSheetRef.current?.close();
   };
 

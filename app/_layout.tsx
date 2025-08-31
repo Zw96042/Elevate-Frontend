@@ -25,10 +25,10 @@ function InnerLayout() {
 
   // Fix missing refs and state
   // Use addSheetRef from context so openModal can trigger modal open from anywhere
-  const { categories, setCategory, category, addSheetRef } = useAddAssignmentSheet();
+  const { categories, setCategory, category, addSheetRef, name, setName } = useAddAssignmentSheet();
   const [currentSnapPosition, setCurrentSnapPosition] = useState('hidden');
   const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
-  const [name, setName] = useState('');
+  // Remove local name state, use context
   // category and setCategory now come from context
   const [grade, setGrade] = useState('');
   const [outOf, setOutOf] = useState('');
@@ -156,9 +156,7 @@ function InnerLayout() {
                     <Text className="text-sm  text-main mb-1">Assignment Name</Text>
                     <TextInput
                       className="rounded-md px-4 py-2 text-main bg-primary"
-                      onChangeText={(i) => {
-                        setName(i);
-                      }}
+                      onChangeText={setName}
                       value={name}
                       editable
                       placeholder="Assignment Name"
@@ -214,7 +212,7 @@ function InnerLayout() {
                   </View>
                   <TouchableOpacity
                     className="bg-highlight py-3 rounded-md mt-2"
-                    // onPress handler removed due to undefined 'onSubmit'
+                    onPress={useAddAssignmentSheet().onSubmit}
                   >
                     <Text className="text-center text-highlightText font-bold text-lg">Add Assignment</Text>
                   </TouchableOpacity>

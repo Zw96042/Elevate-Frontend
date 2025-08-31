@@ -40,52 +40,6 @@ import { fetchGradeInfo } from '@/lib/gradeInfoClient';
 
 
 
-export const ASSIN = [
-  {
-    id: "assign_bio_pig_practical",
-    className: "BIOLOGY_1_HONORS",
-    name: "Pig Practical",
-    term: "Q1",
-    category: "Major",
-    grade: "96",
-    outOf: 100,
-    dueDate: "05/09/25",
-    artificial: false,
-  },
-  {
-    id: "assign_bio_pig_dissection",
-    className: "BIOLOGY_1_HONORS",
-    name: "Pig Disection #1",
-    term: "Q1",
-    category: "Labs",
-    grade: "95",
-    outOf: 100,
-    dueDate: "05/06/25",
-    artificial: false,
-  },
-  {
-    id: "assign_bio_biodiv_threats",
-    className: "BIOLOGY_1_HONORS",
-    name: "Biodiv. Threats",
-    term: "Q2",
-    category: "Daily",
-    grade: "100",
-    outOf: 100,
-    dueDate: "04/10/25",
-    artificial: false,
-  },
-  {
-    id: "assign_precalc_trig_test",
-    className: "AP_PRECALCULUS",
-    name: "Test Intro to Trig",
-    term: "SM1",
-    category: "Major",
-    grade: "89",
-    outOf: 100,
-    dueDate: "04/10/25",
-    artificial: false,
-  },
-];
 
 const bucketMap: Record<TermLabel, string> = {
   "Q1 Grades": "TERM 3",
@@ -125,7 +79,7 @@ type TermData = {
 };
 
 const ClassDetails = () => {
-  const [isEnabled, setIsEnabled] = useState(false);
+  const [isEnabled, setIsEnabled] = useState<boolean | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [displayGrade, setDisplayGrade] = useState(0);
   const animatedGrade = useSharedValue(0);
@@ -192,30 +146,22 @@ const ClassDetails = () => {
   const currTerm = termMap[selectedCategory];
   // Use API categories for current term, fallback to termMap if API fails
   const [apiCategories, setApiCategories] = useState<{ names: string[]; weights: number[] }>({ names: [], weights: [] });
-  useEffect(() => {
-    // This effect will update apiCategories after fetchArtificialAssignments runs
-    // The fetchArtificialAssignments function logs apiCategories, but we need to set it in state for JSX
-    // We'll patch fetchArtificialAssignments to call setApiCategories
-  }, []);
+  // ...existing code...
 
-  const fetchArtificialAssignments = useCallback(async () => {
+
+  // Store API assignments and categories in state
+  const [apiAssignments, setApiAssignments] = useState<Assignment[]>([]);
+
+  // Fetch assignments and categories from API only when identifiers change
+  const fetchApiAssignments = useCallback(async () => {
     if (!className || !stuId || !corNumId || !section || !gbId || !selectedCategory) return;
-
-    // Build the correct bucket string using bucketMap and selectedCategory
-    // selectedCategory is e.g. "Q1 Grades", "Q2 Grades", etc.
     const bucket = bucketMap[selectedCategory as TermLabel];
-    let apiAssignments: Assignment[] = [];
-    let apiCategories: { names: string[]; weights: number[] } = { names: [], weights: [] };
     try {
-      // Call the backend API to get assignments and categories
       const result = await fetchGradeInfo({ stuId, corNumId, section, gbId, bucket });
-
       const backendData = result?.data?.data;
-
-      // console.log(backendData);
-      apiAssignments = backendData?.gradebook?.flatMap((cat: any) =>
+      const assignments = backendData?.gradebook?.flatMap((cat: any) =>
         (cat.assignments ?? []).map((a: any, index: number) => ({
-          id: `${cat.category}-${index}-${a.name}`, // ensure unique ID
+          id: `${cat.category}-${index}-${a.name}`,
           className: className,
           name: a.name,
           term: selectedCategory.split(" ")[0],
@@ -226,62 +172,53 @@ const ClassDetails = () => {
           artificial: false,
         }))
       ) ?? [];
-
-      // console.log(apiAssignments);
-
-      apiCategories = {
+      setApiAssignments(assignments);
+      const categories = {
         names: backendData?.gradebook?.map((cat: any) => cat.category) ?? [],
         weights: backendData?.gradebook?.map((cat: any) => cat.weight) ?? []
       };
-      setApiCategories(apiCategories);
-      console.log(apiCategories);
+      setApiCategories(categories);
+      console.log(categories);
     } catch (err) {
-      // fallback to empty
-      apiAssignments = [];
-      apiCategories = { names: [], weights: [] };
+      setApiAssignments([]);
+      setApiCategories({ names: [], weights: [] });
     }
+  }, [className, classId, selectedCategory, stuId, corNumId, section, gbId]);
 
-    // await AsyncStorage.clear();
+  // Mesh artificial assignments with API assignments
+  const meshAssignments = useCallback(async () => {
     const data = await AsyncStorage.getItem("artificialAssignments");
-    console.log("STORED ARTIFICIAL:", JSON.stringify(data,null,2));
+    console.log("artificial ", data);
     if (!data) {
-      // Ensure all assignments have unique IDs
       const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
-
+      setArtificialAssignments([]);
+      setFilteredAssignments(realWithIds);
+      // Calculate summary
       const all = realWithIds.filter(a => a.grade !== '*');
       const weightsMap = Object.fromEntries(
         (apiCategories.names || []).map((name, i) => [name, apiCategories.weights[i]])
       );
-
       const nonEmptyCategories = all.reduce((set, a) => {
         if (!set.has(a.category)) set.add(a.category);
         return set;
       }, new Set<string>());
-
       const adjustedWeights = Object.entries(weightsMap).filter(([name]) =>
         nonEmptyCategories.has(name)
       );
-
       const totalAdjustedWeight = adjustedWeights.reduce((sum, [, w]) => sum + w, 0);
-
       const normalizedWeights = Object.fromEntries(
         adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
       );
-
-      setArtificialAssignments([]);
-      setFilteredAssignments(realWithIds);
       setCourseSummary(calculateGradeSummary(all, normalizedWeights));
       return;
     }
-
     const parsed = JSON.parse(data);
-    // Use classId to create unique storage key for identical classes
-    const storageKey = classId ? `${className}_${classId}` : className;
-    const classAssignments = parsed[storageKey] ?? parsed[className] ?? []; // Fallback to old format for backwards compatibility
-
-    // Use backend assignments instead of ASSIN
-    const real = apiAssignments;
-
+    console.log("PARSED", parsed);
+  // Use a stable key for artificial assignments
+  const storageKey = `${className}_${corNumId}_${section}_${gbId}`;
+    console.log(storageKey);
+    const classAssignments = parsed[storageKey] ?? parsed[className] ?? [];
+    console.log("CLASS ASSIGNMENTS", classAssignments);
     const artificial = isEnabled
       ? classAssignments.filter(
           (item: Assignment) =>
@@ -289,49 +226,38 @@ const ClassDetails = () => {
         )
       : [];
 
+    console.log("AFTER FILTER", artificial);
     const artificialNames = new Set(artificial.map((a: any) => a.name));
-    const filteredReal = real.filter((r) => !artificialNames.has(r.name));
-
-    // Combine and ensure unique IDs for all assignments
-    // Sort by dueDate descending (most recent first)
+    const filteredReal = apiAssignments.filter((r) => !artificialNames.has(r.name));
     const allAssignments = [...artificial, ...filteredReal].sort((a, b) => {
-      // Parse dates in MM/DD/YY format
       const parseDate = (date: string) => {
         const [month, day, year] = date.split('/').map(Number);
-        // Assume 20xx for years < 100
         return new Date(year < 100 ? 2000 + year : year, month - 1, day);
       };
       return parseDate(b.dueDate).getTime() - parseDate(a.dueDate).getTime();
     });
     const assignmentsWithIds = ensureUniqueAssignmentIds(allAssignments);
-    
-    // Separate them back out
     const artificialWithIds = assignmentsWithIds.filter(a => artificial.some((orig: any) => orig.name === a.name));
     setArtificialAssignments(artificialWithIds);
     setFilteredAssignments(assignmentsWithIds);
-
+    // Calculate summary
     const all = assignmentsWithIds.filter(a => a.grade !== '*');
     const weightsMap = Object.fromEntries(
       (apiCategories.names || []).map((name, i) => [name, apiCategories.weights[i]])
     );
-
     const nonEmptyCategories = all.reduce((set, a) => {
       if (!set.has(a.category)) set.add(a.category);
       return set;
     }, new Set<string>());
-
     const adjustedWeights = Object.entries(weightsMap).filter(([name]) =>
       nonEmptyCategories.has(name)
     );
-
     const totalAdjustedWeight = adjustedWeights.reduce((sum, [, w]) => sum + w, 0);
-
     const normalizedWeights = Object.fromEntries(
       adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
     );
-
     setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-  }, [className, classId, selectedCategory, isEnabled, currTerm.categories.names, currTerm.categories.weights, stuId, corNumId, section, gbId]);
+  }, [apiAssignments, apiCategories, isEnabled, className, classId, selectedCategory]);
 
 
   useEffect(() => {
@@ -369,23 +295,32 @@ const ClassDetails = () => {
     }
   );
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchArtificialAssignments();
-    }, [])
-  );
 
-  const { openModal } = useAddAssignmentSheet();
+
+  // Fetch API assignments only when identifiers change
+  useEffect(() => {
+    fetchApiAssignments();
+  }, [fetchApiAssignments]);
+
+  // Mesh assignments whenever isEnabled, apiAssignments, or apiCategories change
+  useEffect(() => {
+    meshAssignments();
+  }, [meshAssignments]);
+
+  const { openModal, onSubmit } = useAddAssignmentSheet();
 
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () =>
         isEnabled ? (
           <TouchableOpacity
-            onPress={() => {
+            onPress={async () => {
               openModal({
                 className: className || "",
-                classId: classId, // Pass classId to differentiate identical classes
+                classId: classId,
+                corNumId: corNumId,
+                section: section,
+                gbId: gbId,
                 selectedCategory,
                 currTerm: termMap[selectedCategory],
                 artificialAssignments,
@@ -397,6 +332,8 @@ const ClassDetails = () => {
                 calculateGradeSummary,
                 isEnabled,
               });
+              // Wait for assignment to be added, then re-mesh assignments
+              // You may need to trigger meshAssignments after onSubmit in your modal logic
             }}
           >
             <Ionicons
@@ -419,23 +356,35 @@ const ClassDetails = () => {
     setArtificialAssignments,
     setFilteredAssignments,
     calculateGradeSummary,
+    meshAssignments,
   ]);
 
+
+  // Use a class-specific key for showCalculated
+  const showCalculatedKey = classId ? `showCalculated_${className}_${classId}` : `showCalculated_${className}`;
+
+
+  // Load showCalculated from AsyncStorage on initial mount and on focus
   useEffect(() => {
     const loadShowCalculated = async () => {
-      const value = await AsyncStorage.getItem('showCalculated');
+      const value = await AsyncStorage.getItem(showCalculatedKey);
       if (value !== null) {
         setIsEnabled(value === 'true');
+      } else {
+        setIsEnabled(false);
       }
       setIsReady(true);
+      meshAssignments();
     };
     loadShowCalculated();
-  }, []);
+  }, [showCalculatedKey, meshAssignments]);
 
 const handleToggle = async () => {
+  if (isEnabled === null) return;
   const newValue = !isEnabled;
+  await AsyncStorage.setItem(showCalculatedKey, newValue.toString());
   setIsEnabled(newValue);
-  await AsyncStorage.setItem('showCalculated', newValue.toString());
+  meshAssignments();
 };
 
 const handleResetArtificialAssignments = async () => {
@@ -444,15 +393,21 @@ const handleResetArtificialAssignments = async () => {
 
   const parsed = JSON.parse(data);
   console.log("BEFORE RESET:", JSON.stringify(parsed, null, 2));
-  // Use classId to create unique storage key for identical classes
-  const storageKey = classId ? `${className}_${classId}` : className;
-  delete parsed[storageKey];
-  // Also delete old format key for backwards compatibility
-  delete parsed[className];
-  await AsyncStorage.setItem("artificialAssignments", JSON.stringify(parsed));
-  // await AsyncStorage.removeItem("artificialAssignments");
 
-  fetchArtificialAssignments();
+  // Remove all keys that match this class (with and without classId)
+  // Use stable key for deletion
+  const possibleKeys = [className, `${className}_${corNumId}_${section}_${gbId}`];
+
+  // Remove all keys that start with className (to catch any legacy or variant keys)
+  Object.keys(parsed).forEach(key => {
+    if (possibleKeys.some(k => key === k || key.startsWith(`${className}_`))) {
+      delete parsed[key];
+    }
+  });
+
+  await AsyncStorage.setItem("artificialAssignments", JSON.stringify(parsed));
+  setArtificialAssignments([]); // Clear local state as well
+  meshAssignments(); // Re-mesh assignments after reset
 };
 
   const theme = useColorScheme();
@@ -521,7 +476,7 @@ const handleResetArtificialAssignments = async () => {
         </View>
         <View className="flex-row mt-4 items-center px-5 justify-between">
           <Text className="text-accent text-base font-medium">Show Calculated</Text>
-          <Switch value={isEnabled} onValueChange={handleToggle} />
+          <Switch value={!!isEnabled} onValueChange={handleToggle} />
         </View>
         <View className="px-5 mt-4 space-y-2">
           <View className="flex-row justify-between mb-2">
@@ -609,7 +564,14 @@ const handleResetArtificialAssignments = async () => {
                   from={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                 >
-                  <AssignmentCard {...item} editing={isEnabled} classId={classId} />
+                  <AssignmentCard
+                    {...item}
+                    editing={!!isEnabled}
+                    classId={classId}
+                    corNumId={corNumId}
+                    section={section}
+                    gbId={gbId}
+                  />
                 </MotiView>
               </AnimatePresence>
             )}

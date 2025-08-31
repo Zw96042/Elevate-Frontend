@@ -4,7 +4,6 @@ import { Link, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons';
 import formatClassName from '@/utils/formatClassName';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ASSIN } from '@/app/classes/[class]';
 import { calculateGradeSummary } from '@/utils/calculateGrades';
 import { generateUniqueId } from '@/utils/uniqueId';
 import PieChart from 'react-native-pie-chart'
@@ -62,17 +61,8 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
 
     const [isEnabled, setIsEnabled] = useState(false);
 
-    const [artificialAssignments, setArtificialAssignments] = useState<Assignment[]>([]);
+  
 
-    const [filteredAssignments, setFilteredAssignments] = useState<Assignment[]>(() => {
-      if (!name || !term) return [];
-      return ASSIN.filter(
-        (item) =>
-          item.className === name &&
-          item.term === term.split(" ")[0] &&
-          (!item.artificial || isEnabled)
-      );
-    });
     const [courseSummary, setCourseSummary] = useState<{
         courseTotal: string;
         categories: Record<
@@ -92,82 +82,36 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
 
     const fetchArtificialAssignments = useCallback(async () => {
       if (!name) return;
-
-      // await AsyncStorage.clear();
       const data = await AsyncStorage.getItem("artificialAssignments");
-      if (!data) {
-        const real = ASSIN.filter(
-          (item) => item.className === name && item.term === term.split(" ")[0]
-        );
-
-        const all = real.filter(a => a.grade !== '*');
-        const weightsMap = Object.fromEntries(
-          currTerm.categories.names.map((name, i) => [name, currTerm.categories.weights[i]])
-        );
-
-        const nonEmptyCategories = all.reduce((set, a) => {
-          if (!set.has(a.category)) set.add(a.category);
-          return set;
-        }, new Set<string>());
-
-        const adjustedWeights = Object.entries(weightsMap).filter(([name]) =>
-          nonEmptyCategories.has(name)
-        );
-
-        const totalAdjustedWeight = adjustedWeights.reduce((sum, [, w]) => sum + w, 0);
-
-        const normalizedWeights = Object.fromEntries(
-          adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
-        );
-
-        setArtificialAssignments([]);
-        setFilteredAssignments(real);
-        setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-        return;
+      let all: Assignment[] = [];
+      if (data) {
+        const parsed = JSON.parse(data);
+    // Use a stable key for artificial assignments
+    const classKey = `${name}_${corNumId}_${section}_${gbId}`;
+        const classAssignments = parsed[classKey] ?? parsed[name] ?? [];
+        const artificial = isEnabled
+          ? classAssignments.filter(
+              (item: Assignment) =>
+                item.className === name && item.term === term.split(" ")[0]
+            )
+          : [];
+        all = artificial.filter((a: { grade: string; }) => a.grade !== '*');
       }
-
-      const parsed = JSON.parse(data);
-      // Use classId as the key instead of just the class name to differentiate identical classes
-      const classKey = `${name}_${classId}`;
-      const classAssignments = parsed[classKey] ?? parsed[name] ?? []; // Fallback to old format for backwards compatibility
-      setArtificialAssignments(classAssignments);
-
-      const real = ASSIN.filter(
-        (item) => item.className === name && item.term === term.split(" ")[0]
-      );
-
-      const artificial = isEnabled
-        ? classAssignments.filter(
-            (item: Assignment) =>
-              item.className === name && item.term === term.split(" ")[0]
-          )
-        : [];
-
-      const artificialNames = new Set(artificial.map((a: any) => a.name));
-      const filteredReal = real.filter((r) => !artificialNames.has(r.name));
-
-      setFilteredAssignments([...artificial, ...filteredReal]);
-
-      const all = [...artificial, ...filteredReal].filter(a => a.grade !== '*');
+      // If no artificial assignments, just set empty summary
       const weightsMap = Object.fromEntries(
         currTerm.categories.names.map((name, i) => [name, currTerm.categories.weights[i]])
       );
-
       const nonEmptyCategories = all.reduce((set, a) => {
         if (!set.has(a.category)) set.add(a.category);
         return set;
       }, new Set<string>());
-
       const adjustedWeights = Object.entries(weightsMap).filter(([name]) =>
         nonEmptyCategories.has(name)
       );
-
       const totalAdjustedWeight = adjustedWeights.reduce((sum, [, w]) => sum + w, 0);
-
       const normalizedWeights = Object.fromEntries(
         adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
       );
-
       setCourseSummary(calculateGradeSummary(all, normalizedWeights));
     }, [name, term, isEnabled, currTerm.categories.names, currTerm.categories.weights, classId]);
 

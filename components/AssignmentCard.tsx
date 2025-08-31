@@ -6,11 +6,14 @@ import CircularProgress from 'react-native-circular-progress-indicator';
 
 type AssignmentCardProps = Assignment & {
   editing: boolean;
-  classId?: string; // Add classId prop
+  classId?: string;
+  corNumId?: string;
+  section?: string;
+  gbId?: string;
 };
 
 // Course Name, Teacher Name, Numerical Grade
-const AssignmentCard = ({ id, className, name, term, category, grade, outOf, dueDate, artificial, editing, classId }: AssignmentCardProps) => {
+const AssignmentCard = ({ id, className, name, term, category, grade, outOf, dueDate, artificial, editing, classId, corNumId, section, gbId }: AssignmentCardProps) => {
    const [value, setValue] = useState(0);
    const theme = useColorScheme();
    const highlight = theme === 'dark' ? "#3b5795" : "#a4bfed";
@@ -25,6 +28,9 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
           assignmentId: id, // Always pass the ID separately
           class: className,
           classId: classId, // Pass classId to assignment detail page
+          corNumId,
+          section,
+          gbId,
           name,
           term,
           category,
@@ -50,12 +56,12 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
                     <View className="flex-row items-center gap-2 mr-1">
                         <View style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'center' }}>
                           <CircularProgress
-                            value={Number(grade === '*' ? 0 : (Number(grade) / Number(outOf)) * 100)}
+                            value={Number(grade === '*' ? 0 : (Math.min(Number(grade) / Number(outOf), 1)) * 100)}
                             radius={20}
                             activeStrokeWidth={3}
                             activeStrokeColor={highlight}
                             inActiveStrokeOpacity={0}
-                            duration={700}
+                            duration={0}
                             showProgressValue={false}
                           />
                           <Text

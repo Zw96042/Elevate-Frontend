@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AssignmentDetails = () => {
   const router = useRouter();
-  const { class: classParam, classId, name, category, grade, outOf, dueDate, artificial, editing, term, assignmentId } = useLocalSearchParams();
+  const { class: classParam, classId, name, category, grade, outOf, dueDate, artificial, editing, term, assignmentId, corNumId, section, gbId } = useLocalSearchParams();
   const formattedClass = formatClassName(classParam?.toString() || '');
 
   const [gradeValue, setGradeValue] = React.useState(() =>
@@ -184,20 +184,25 @@ const AssignmentDetails = () => {
                 <TouchableOpacity
                     onPress={async () => {
                       const className = Array.isArray(classParam) ? classParam[0] : classParam;
-                      const classIdParam = Array.isArray(classId) ? classId[0] : classId;
+                      const corNumIdParam = Array.isArray(corNumId) ? corNumId[0] : corNumId;
+                      const sectionParam = Array.isArray(section) ? section[0] : section;
+                      const gbIdParam = Array.isArray(gbId) ? gbId[0] : gbId;
                       const existing = JSON.parse(await AsyncStorage.getItem('artificialAssignments') ?? '{}');
-                      
-                      // Use classId to create unique storage key for identical classes
-                      const storageKey = classIdParam ? `${className}_${classIdParam}` : className;
-                      
+                      // Use stable key for artificial assignments, fallback to '0' for missing params
+                      const storageKey = [
+                        className || '0',
+                        corNumIdParam || '0',
+                        sectionParam || '0',
+                        gbIdParam || '0'
+                      ].join('_');
+
+                      console.log("STORAGE KEY", storageKey);
                       // Use ID for identification if available, fallback to name
                       const filterFn = assignmentId 
                         ? (a: any) => a.id !== assignmentId 
                         : (a: any) => a.name !== name;
-                      
                       const updatedClassList = (existing[storageKey] ?? []).filter(filterFn);
                       const updated = { ...existing, [storageKey]: updatedClassList };
-
                       await AsyncStorage.setItem('artificialAssignments', JSON.stringify(updated));
                       router.back();
                     }}
