@@ -23,6 +23,8 @@ export async function authenticate(): Promise<AuthResult> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ baseUrl: authInfo.link, user: authInfo.username, pass: authInfo.password }),
       });
+
+      // console.log("RESPONSE: ", JSON.stringify(response, null, 1));
       
       if (!response.ok) {
         console.error(`Authentication request failed with status: ${response.status}`);
@@ -47,6 +49,8 @@ export async function authenticate(): Promise<AuthResult> {
         console.error('Invalid session codes received:', sessionCodes);
         return { success: false, error: 'Invalid session codes received from server' };
       }
+
+      console.log('Session codes received:', sessionCodes);
 
       await AsyncStorage.setItem('dwd', sessionCodes.dwd);
       await AsyncStorage.setItem('wfaacl', sessionCodes.wfaacl);

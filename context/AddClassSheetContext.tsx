@@ -65,8 +65,8 @@ export const AddClassSheetProvider = ({ children }: { children: ReactNode }) => 
   const [modalData, setModalData] = useState<ModalData | null>(null);
 
   const [name, setName] = useState('');
-  const [grade, setGrade] = useState('100');
-  const [outOf, setOutOf] = useState<number>(100);
+  const [grade, setGrade] = useState('');
+  const [outOf, setOutOf] = useState<number>(0);
   const [categories, setCategories] = useState<string[]>([]);
   const [category, setCategory] = useState('');
   const [term, setTerm] = useState('');
@@ -77,6 +77,9 @@ export const AddClassSheetProvider = ({ children }: { children: ReactNode }) => 
 
     setCategories(data.currTerm.categories.names);
     setCategory('');
+    setName('');
+    setGrade('');
+    setOutOf(0);
     setTerm(data.selectedCategory);
     setClassName(formatClassName(data.className));
 

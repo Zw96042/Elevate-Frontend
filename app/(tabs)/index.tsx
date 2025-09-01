@@ -6,7 +6,8 @@ import { useFocusEffect } from 'expo-router';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { useBottomSheet, BottomSheetProvider } from '@/context/BottomSheetContext'
 import { useSettingSheet } from '@/context/SettingSheetContext';
-import { UnifiedDataManager, UnifiedCourseData } from '@/lib/unifiedDataManager';
+import { UnifiedCourseData } from '@/lib/unifiedDataManager';
+import { useUnifiedData } from '@/context/UnifiedDataContext';
 import * as Animatable from 'react-native-animatable';
 
 
@@ -48,6 +49,10 @@ const transformCourseData = (unifiedCourses: UnifiedCourseData[]) => {
     return {
       name: course.courseName?.toUpperCase().replace(/\s+/g, '_') || 'UNKNOWN_COURSE',
       teacher: course.instructor?.toUpperCase().replace(/\s+/g, '_') || 'UNKNOWN_INSTRUCTOR',
+      corNumId: course.courseId || '',
+      stuId: course.stuId || '',
+      section: course.section || '',
+      gbId: course.gbId || '',
       period: course.period,
       semester: course.semester,
       t1: {
@@ -127,79 +132,43 @@ const filterCoursesBySemester = (courses: any[], selectedTerm: string) => {
 export default function Index() {
   const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
   const { settingSheetRef } = useSettingSheet();
-  const [hasCredentials, setHasCredentials] = useState(false);
-  const [coursesData, setCoursesData] = useState<any[]>([]);
+  const { coursesData, loading, error, refreshCourses } = useUnifiedData();
+  const { currentGradeLevel } = require('@/hooks/useGradeLevel').useGradeLevel();
   const [filteredCourses, setFilteredCourses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const loadCourses = async (isRefresh = false) => {
-    try {
-      if (isRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-      setError(null);
-      
-      const result = await UnifiedDataManager.getCombinedData(isRefresh);
-      // console.log('Loaded courses:', JSON.stringify(result, null, 1));
-      if (result.success && result.courses) {
-        const transformedData = transformCourseData(result.courses);
-        setCoursesData(transformedData);
-        const filtered = filterCoursesBySemester(transformedData, selectedCategory);
-        setFilteredCourses(filtered);
-
-        // console.log('Loaded courses:', JSON.stringify(filtered, null, 1));
-        // Show warning if there was an error but we're using cached data
-        if (result.error) {
-          setError(result.error);
-        }
-      } else {
-        setError(result.error || 'Failed to load courses');
-        setCoursesData([]);
-        setFilteredCourses([]);
-      }
-    } catch (err: any) {
-      console.error('Error loading courses:', err);
-      setError(err.message || 'Failed to load courses');
-      setCoursesData([]);
-      setFilteredCourses([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  // No need for local loadCourses, use refreshCourses from context
 
   // Effect to filter courses when selectedCategory changes
   useEffect(() => {
-    const filtered = filterCoursesBySemester(coursesData, selectedCategory);
+    // Filter by current grade level first, then by selected term
+    let filteredRawCourses = coursesData || [];
+    if (coursesData && currentGradeLevel && currentGradeLevel !== 'All Time') {
+      // Map grade level to gradeYear
+      const gradeMap: Record<string, number> = {
+        'Freshman': 9,
+        'Sophomore': 10,
+        'Junior': 11,
+        'Senior': 12
+      };
+      const gradeYear = gradeMap[currentGradeLevel as keyof typeof gradeMap];
+      filteredRawCourses = coursesData.filter((c: any) => c.gradeYear === gradeYear);
+    }
+    const filtered = filterCoursesBySemester(transformCourseData(filteredRawCourses), selectedCategory);
     setFilteredCourses(filtered);
   }, [coursesData, selectedCategory]);
 
   const onRefresh = useCallback(() => {
-    if (hasCredentials) {
-      loadCourses(true);
+    setRefreshing(true);
+    refreshCourses(true).finally(() => setRefreshing(false));
+  }, [refreshCourses]);
+
+  useEffect(() => {
+    if (!coursesData) {
+      refreshCourses();
     }
-  }, [hasCredentials]);
-
-  useFocusEffect(
-    useCallback(() => {
-      const checkCredentials = async () => {
-        const result = await SkywardAuth.hasCredentials();
-        setHasCredentials(result);
-        
-        if (result) {
-          await loadCourses();
-        } else {
-          setLoading(false);
-        }
-      };
-
-      checkCredentials();
-    }, [])
-  );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     
@@ -237,6 +206,10 @@ export default function Index() {
               <ClassCard
                 name={item.name}
                 teacher={item.teacher}
+                corNumId={item.corNumId}
+                stuId={item.stuId}
+                section={item.section}
+                gbId={item.gbId}
                 t1={item.t1}
                 t2={item.t2}
                 s1={item.s1}
@@ -255,19 +228,8 @@ export default function Index() {
                 <Text className="text-center text-gray-500">Loading courses...</Text>
               ) : error ? (
                 <Text className="text-center text-red-500">Error: {error}</Text>
-              ) : hasCredentials ? (
-                <Text className="text-center text-gray-500">No classes found.</Text>
               ) : (
-                <Text className="text-center text-gray-500">
-                  No credentials found.{' '}
-                  <Text
-                    className="text-blue-400 underline"
-                    onPress={() => settingSheetRef.current?.snapToIndex(0)}
-                  >
-                    Update the settings
-                  </Text>{' '}
-                  to configure your account.
-                </Text>
+                <Text className="text-center text-gray-500">No classes found.</Text>
               )}
             </View>
           }

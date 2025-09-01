@@ -4,7 +4,6 @@ import { Link, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons';
 import formatClassName from '@/utils/formatClassName';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ASSIN } from '@/app/classes/[class]';
 import { calculateGradeSummary } from '@/utils/calculateGrades';
 import { generateUniqueId } from '@/utils/uniqueId';
 import PieChart from 'react-native-pie-chart'
@@ -28,7 +27,7 @@ type TermLabel =
 
 
 // Course Name, Teacher Name, Numerical Grade
-const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { term: TermLabel }) => {
+const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, t3, t4, s2, term }: Class & { term: TermLabel }) => {
     // Generate a truly unique identifier for this class instance
     const classId = React.useMemo(() => {
         return generateUniqueId();
@@ -62,17 +61,8 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
 
     const [isEnabled, setIsEnabled] = useState(false);
 
-    const [artificialAssignments, setArtificialAssignments] = useState<Assignment[]>([]);
+  
 
-    const [filteredAssignments, setFilteredAssignments] = useState<Assignment[]>(() => {
-      if (!name || !term) return [];
-      return ASSIN.filter(
-        (item) =>
-          item.className === name &&
-          item.term === term.split(" ")[0] &&
-          (!item.artificial || isEnabled)
-      );
-    });
     const [courseSummary, setCourseSummary] = useState<{
         courseTotal: string;
         categories: Record<
@@ -92,82 +82,51 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
 
     const fetchArtificialAssignments = useCallback(async () => {
       if (!name) return;
-
-      // await AsyncStorage.clear();
       const data = await AsyncStorage.getItem("artificialAssignments");
-      if (!data) {
-        const real = ASSIN.filter(
-          (item) => item.className === name && item.term === term.split(" ")[0]
-        );
-
-        const all = real.filter(a => a.grade !== '*');
-        const weightsMap = Object.fromEntries(
-          currTerm.categories.names.map((name, i) => [name, currTerm.categories.weights[i]])
-        );
-
-        const nonEmptyCategories = all.reduce((set, a) => {
-          if (!set.has(a.category)) set.add(a.category);
-          return set;
-        }, new Set<string>());
-
-        const adjustedWeights = Object.entries(weightsMap).filter(([name]) =>
-          nonEmptyCategories.has(name)
-        );
-
-        const totalAdjustedWeight = adjustedWeights.reduce((sum, [, w]) => sum + w, 0);
-
-        const normalizedWeights = Object.fromEntries(
-          adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
-        );
-
-        setArtificialAssignments([]);
-        setFilteredAssignments(real);
-        setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-        return;
+      let all: Assignment[] = [];
+      if (data) {
+        const parsed = JSON.parse(data);
+        
+        // For SM1/SM2, check both constituent terms and the semester term
+        const termsToCheck = [term.split(" ")[0]]; // Start with the base term
+        if (term === "SM1 Grade") {
+          termsToCheck.push("Q1", "Q2", "SM1");
+        } else if (term === "SM2 Grades") {
+          termsToCheck.push("Q3", "Q4", "SM2");
+        }
+        
+        let allAssignments: Assignment[] = [];
+        termsToCheck.forEach(termKey => {
+          const storageKey = `${name}_${corNumId}_${section}_${gbId}_${termKey}`;
+          const classAssignments = parsed[storageKey] ?? [];
+          allAssignments = [...allAssignments, ...classAssignments];
+          
+          // Also check old format for backward compatibility
+          if (termKey === term.split(" ")[0]) {
+            const oldStorageKey = `${name}_${corNumId}_${section}_${gbId}_${term}`;
+            const oldAssignments = parsed[oldStorageKey] ?? [];
+            allAssignments = [...allAssignments, ...oldAssignments];
+          }
+        });
+        
+        const artificial = isEnabled ? allAssignments : [];
+        all = artificial.filter((a: { grade: string; }) => a.grade !== '*');
       }
-
-      const parsed = JSON.parse(data);
-      // Use classId as the key instead of just the class name to differentiate identical classes
-      const classKey = `${name}_${classId}`;
-      const classAssignments = parsed[classKey] ?? parsed[name] ?? []; // Fallback to old format for backwards compatibility
-      setArtificialAssignments(classAssignments);
-
-      const real = ASSIN.filter(
-        (item) => item.className === name && item.term === term.split(" ")[0]
-      );
-
-      const artificial = isEnabled
-        ? classAssignments.filter(
-            (item: Assignment) =>
-              item.className === name && item.term === term.split(" ")[0]
-          )
-        : [];
-
-      const artificialNames = new Set(artificial.map((a: any) => a.name));
-      const filteredReal = real.filter((r) => !artificialNames.has(r.name));
-
-      setFilteredAssignments([...artificial, ...filteredReal]);
-
-      const all = [...artificial, ...filteredReal].filter(a => a.grade !== '*');
+      // If no artificial assignments, just set empty summary
       const weightsMap = Object.fromEntries(
         currTerm.categories.names.map((name, i) => [name, currTerm.categories.weights[i]])
       );
-
       const nonEmptyCategories = all.reduce((set, a) => {
         if (!set.has(a.category)) set.add(a.category);
         return set;
       }, new Set<string>());
-
       const adjustedWeights = Object.entries(weightsMap).filter(([name]) =>
         nonEmptyCategories.has(name)
       );
-
       const totalAdjustedWeight = adjustedWeights.reduce((sum, [, w]) => sum + w, 0);
-
       const normalizedWeights = Object.fromEntries(
         adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
       );
-
       setCourseSummary(calculateGradeSummary(all, normalizedWeights));
     }, [name, term, isEnabled, currTerm.categories.names, currTerm.categories.weights, classId]);
 
@@ -225,6 +184,10 @@ const ClassCard = ({ name, teacher, t1, t2, s1, t3, t4, s2, term }: Class & { te
                 classId: classId,
                 class: name,
                 teacher: teacher,
+                corNumId: corNumId,
+                stuId: stuId,
+                section: section,
+                gbId: gbId,
                 t1: JSON.stringify(t1),
                 t2: JSON.stringify(t2),
                 s1: JSON.stringify(s1),

@@ -13,7 +13,7 @@ interface GpaCardProps {
 
 export const GpaCard = ({ label, data }: GpaCardProps) => (
   (() => {
-    console.log(`🟦 GpaCard: label=${label}, unweighted=${data.unweighted}, weighted=${data.weighted}`);
+    // console.log(`🟦 GpaCard: label=${label}, unweighted=${data.unweighted}, weighted=${data.weighted}`);
     return (
       <View className="bg-cardColor rounded-xl px-3 py-2 w-[48%]">
         <Text className="text-main font-semibold text-sm mb-1">{label}</Text>

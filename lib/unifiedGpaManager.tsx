@@ -4,6 +4,7 @@ import { processAcademicHistory } from '@/utils/academicHistoryProcessor';
 import { calculateTermGPAs, getCourseLevel } from '@/utils/gpaCalculator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+
 export interface GPAData {
   unweighted: number;
   weighted: number;
@@ -35,67 +36,13 @@ const getGradeNumber = (gradeLevel: GradeLevel): number | undefined => {
 
 export class UnifiedGPAManager extends UnifiedDataManager {
 
-  // Get GPA data for a specific grade level
+  // Get GPA data for current/all grade levels (historical grade support removed)
   public static async getGPAData(
     gradeLevel: GradeLevel = 'All Time', 
     forceRefresh: boolean = false
   ): Promise<UnifiedGPAResult> {
     try {
       console.log('📊 UnifiedGPAManager.getGPAData called with:', { gradeLevel, forceRefresh });
-      
-      const gradeNumber = getGradeNumber(gradeLevel);
-      console.log('🎯 Target grade number:', gradeNumber);
-      
-      // For historical grade levels (not current Sophomore), fetch historical data directly
-      if (gradeNumber && gradeNumber !== 10) {
-        console.log(`📚 Fetching historical academic data specifically for grade level ${gradeNumber} (${gradeLevel})`);
-        
-        const historicalData = await UnifiedDataManager.getAcademicHistoryForGrade(gradeNumber, forceRefresh);
-        console.log('📖 Historical data result:', {
-          hasData: !!historicalData,
-          dataKeys: historicalData ? Object.keys(historicalData) : []
-        });
-        
-        if (!historicalData) {
-          console.log('⚠️ No historical data found, trying fallback...');
-          const fallbackResult = await this.getFallbackGPAData(gradeLevel);
-          if (fallbackResult.success) {
-            console.log('✅ Fallback GPA data succeeded for historical grade');
-            return fallbackResult;
-          }
-          
-          return {
-            success: false,
-            error: `No academic history found for grade level ${gradeLevel}`
-          };
-        }
-        
-        // Calculate GPA from historical data
-        const gpaData = this.calculateGPAFromUnifiedData(historicalData, gradeNumber);
-        console.log('📊 Historical GPA calculation result:', {
-          hasGpaData: Object.keys(gpaData).length > 0,
-          gpaKeys: Object.keys(gpaData)
-        });
-        
-        // Get context for available grade levels
-        const contextData = await UnifiedDataManager.getAcademicHistoryForGrade(10, false);
-        const { currentGradeLevel: contextCurrentGrade, availableGradeLevels: contextAvailableGrades } = 
-          contextData ? UnifiedDataManager.extractGradeLevelInfo(contextData) : 
-          { currentGradeLevel: 10, availableGradeLevels: [9, 10, 11, 12] };
-
-        return {
-          success: true,
-          gpaData,
-          rawCourses: [], // No current courses for historical grades
-          currentGradeLevel: contextCurrentGrade,
-          availableGradeLevels: contextAvailableGrades,
-          lastUpdated: new Date().toISOString()
-        };
-      }
-      
-      // For current grade level (Sophomore/10) or All Time, use the unified system
-      console.log('📈 Using unified system for current/all grade levels');
-      
       // Get combined data from parent class
       const combinedResult = await this.getCombinedData(forceRefresh);
       console.log('📈 Combined data result:', { 
@@ -103,7 +50,6 @@ export class UnifiedGPAManager extends UnifiedDataManager {
         coursesCount: combinedResult.courses?.length || 0,
         error: combinedResult.error 
       });
-      
       if (!combinedResult.success) {
         console.log('⚠️ Combined data failed, trying fallback...');
         // Try to fallback to manual classes if no unified data available
@@ -112,40 +58,54 @@ export class UnifiedGPAManager extends UnifiedDataManager {
           console.log('✅ Fallback GPA data succeeded');
           return fallbackResult;
         }
-        
         console.log('❌ Both unified and fallback failed');
         return {
           success: false,
           error: combinedResult.error || 'Failed to get combined data'
         };
       }
-
       const courses = combinedResult.courses || [];
-      console.log('🔄 Processing courses for GPA calculation, count:', courses.length);
-      
+
+      // Detect grade levels by parsing academic years from backend response
+      let currentGradeLevel: number | undefined = undefined;
+      const gradeLevelsSet = new Set<number>();
+      courses.forEach((c: UnifiedCourseData) => {
+        if (typeof c.gradeYear === 'number') {
+          gradeLevelsSet.add(c.gradeYear);
+        }
+      });
+      const availableGradeLevels = Array.from(gradeLevelsSet).sort((a, b) => a - b);
+      if (availableGradeLevels.length > 0) {
+        currentGradeLevel = availableGradeLevels[availableGradeLevels.length - 1];
+      }
+      // If user selected a grade, override currentGradeLevel
+      const gradeNumber = getGradeNumber(gradeLevel);
+      if (gradeNumber) {
+        currentGradeLevel = gradeNumber;
+      }
+      // Filter courses ONLY for GPA calculation, not for rawCourses
+      let filteredCourses = courses;
+      if (currentGradeLevel) {
+        filteredCourses = courses.filter((c: UnifiedCourseData) => c.gradeYear === currentGradeLevel);
+      }
+      console.log('🟢 Selected currentGradeLevel:', currentGradeLevel);
+      console.log('🟢 Filtered courses for current grade:', filteredCourses);
+
+      console.log('🔄 Processing courses for GPA calculation, count:', filteredCourses.length);
       // For current grade, use current scores with academicHistory term structure
-      const gpaData = this.calculateCurrentGradeGPA(courses);
-      
-      // Extract available grade levels and current grade level from academic history
-      const academicHistoryFormat = UnifiedDataManager.convertToAcademicHistoryFormat(courses);
-      const { currentGradeLevel, availableGradeLevels } = UnifiedDataManager.extractGradeLevelInfo(academicHistoryFormat);
-      
+      const gpaData = this.calculateCurrentGradeGPA(filteredCourses);
       console.log('📊 Current grade GPA calculation result:', {
-        hasGpaData: Object.keys(gpaData).length > 0,
-        gpaKeys: Object.keys(gpaData),
         currentGradeLevel,
         availableGradeLevels
       });
-
       return {
         success: true,
         gpaData,
-        rawCourses: courses,
+        rawCourses: courses, // always return all courses
         currentGradeLevel,
         availableGradeLevels,
         lastUpdated: combinedResult.lastUpdated
       };
-      
     } catch (error: any) {
       console.error('❌ Error in UnifiedGPAManager.getGPAData:', error);
       console.error('❌ Error details:', { 
@@ -154,7 +114,6 @@ export class UnifiedGPAManager extends UnifiedDataManager {
         gradeLevel,
         forceRefresh 
       });
-      
       // Try fallback to manual classes
       console.log('🔄 Attempting fallback to manual classes...');
       const fallbackResult = await this.getFallbackGPAData(gradeLevel);
@@ -165,7 +124,6 @@ export class UnifiedGPAManager extends UnifiedDataManager {
           error: `Using manual grades due to error: ${error.message}`
         };
       }
-      
       console.log('❌ Fallback also failed');
       return {
         success: false,
@@ -206,100 +164,41 @@ export class UnifiedGPAManager extends UnifiedDataManager {
   }
 
   // Calculate GPA for current grade level using scrape report scores with academic history term structure
-  private static calculateCurrentGradeGPA(courses: UnifiedCourseData[]): Record<string, GPAData> {
+  public static calculateCurrentGradeGPA(courses: UnifiedCourseData[]): Record<string, GPAData> {
     try {
-      console.log('📊 calculateCurrentGradeGPA called with courses:', courses.length);
-      
-      // Test getCourseLevel function
-      console.log('🔧 Testing getCourseLevel function:');
-      courses.forEach(course => {
-        const level = getCourseLevel(course.courseName);
-        console.log(`  ${course.courseName} → ${level}`);
-      });
-      
-      console.log('📊 Course data inspection:');
-      courses.forEach(course => {
-        console.log(`  📚 ${course.courseName}: currentScores=${JSON.stringify(course.currentScores)} (length: ${course.currentScores?.length || 0})`);
-      });
-      
-      // Only calculate for terms that have current data (PR1, PR2, RC1)
-      const currentTerms = ['PR1', 'PR2', 'RC1'];
+      // Calculate GPA for all terms using historicalGrades
+      const allTerms = ['PR1', 'PR2', 'RC1', 'PR3', 'PR4', 'RC2', 'PR5', 'PR6', 'RC3', 'PR7', 'PR8', 'RC4', 'SM1', 'SM2'];
       const termGPAs: Record<string, GPAData> = {};
-      
-      // Calculate GPA for each current term, including all courses and defaulting missing scores to 100
-      console.log('📋 All courses:', courses.map(c => ({
-        name: c.courseName,
-        scores: c.currentScores
-      })));
-      currentTerms.forEach(term => {
+      allTerms.forEach(term => {
         let totalUnweighted = 0;
         let totalBonus = 0;
         let courseCount = 0;
-        console.log(`🔍 Calculating GPA for term ${term} with ${courses.length} courses:`);
-        // Map term to score bucket
-        const termToScoreMap: Record<string, string> = {
-          'PR1': 'TERM 1',
-          'PR2': 'TERM 2',
-          'RC1': 'TERM 3',
-          'PR3': 'TERM 4',
-          'PR4': 'TERM 5',
-          'RC2': 'TERM 6',
-          'SM1': 'SEM 1',
-          'PR5': 'TERM 7',
-          'PR6': 'TERM 8',
-          'RC3': 'TERM 9',
-          'PR7': 'TERM 10',
-          'PR8': 'TERM 11',
-          'RC4': 'TERM 12',
-          'SM2': 'SEM 2'
-        };
         courses.forEach(course => {
-          const bucket = termToScoreMap[term];
-          const scoreEntry = course.currentScores?.find(s => s.bucket === bucket);
-          let score;
-          let usedDefault = false;
-          if (scoreEntry && typeof scoreEntry.score === 'number' && scoreEntry.score > 0) {
-            score = scoreEntry.score;
-          } else {
-            score = 100;
-            usedDefault = true;
+          const gradeStr = course.historicalGrades[term.toLowerCase() as keyof typeof course.historicalGrades];
+          if (gradeStr !== undefined && gradeStr !== null && gradeStr !== '' && !isNaN(Number(gradeStr))) {
+            const score = Number(gradeStr);
+            totalUnweighted += score;
+            const courseLevel = getCourseLevel(course.courseName);
+            let bonus = 0;
+            if (courseLevel === "AP") {
+              bonus = 10;
+            } else if (courseLevel === "Honors") {
+              bonus = 5;
+            }
+            totalBonus += bonus;
+            courseCount++;
           }
-          if (usedDefault) {
-            console.log(`  ⚠️ ${course.courseName}: No score for term ${term} (bucket=${bucket}), defaulting to 100`);
-          } else {
-            console.log(`  🪣 ${course.courseName} [${term}]: bucket=${bucket}, score=${scoreEntry ? scoreEntry.score : 'undefined'}`);
-          }
-          // Unweighted: just the raw percentage
-          totalUnweighted += score;
-          // Weighted: sum bonuses separately
-          const courseLevel = getCourseLevel(course.courseName);
-          let bonus = 0;
-          if (courseLevel === "AP") {
-            bonus = 10;
-          } else if (courseLevel === "Honors") {
-            bonus = 5;
-          }
-          totalBonus += bonus;
-          console.log(`  📚 ${course.courseName}: Level=${courseLevel}, Score=${score}, Unweighted=${score}, Bonus=${bonus}`);
-          courseCount++;
         });
         if (courseCount > 0) {
           const avgUnweighted = totalUnweighted / courseCount;
           const weightedTotal = totalUnweighted + totalBonus;
           const avgWeighted = weightedTotal / courseCount;
-          console.log(`  📊 ${term} Totals: Unweighted=${totalUnweighted}/${courseCount}=${avgUnweighted.toFixed(2)}, Weighted=${weightedTotal}/${courseCount}=${avgWeighted.toFixed(2)}`);
           termGPAs[term] = {
             unweighted: parseFloat(avgUnweighted.toFixed(2)),
             weighted: parseFloat(avgWeighted.toFixed(2))
           };
         }
       });
-      
-      console.log('✅ Current grade GPA calculation complete:', {
-        termsCalculated: Object.keys(termGPAs).length,
-        terms: Object.keys(termGPAs)
-      });
-      
       return termGPAs;
     } catch (error) {
       console.warn('❌ Failed to calculate current grade GPA:', error);
@@ -415,8 +314,22 @@ export class UnifiedGPAManager extends UnifiedDataManager {
     }
   }
 
-  // Clear GPA cache (delegates to parent class)
+  // Clear GPA cache (clears saved classes data used for fallback)
   public static async clearGPACache(): Promise<void> {
-    return this.clearCache();
+    try {
+      console.log('🧹 Clearing GPA cache...');
+      // Clear saved classes for all grade levels
+      const gradeLevels: GradeLevel[] = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'All Time'];
+      const clearPromises = gradeLevels.map(gradeLevel => {
+        const key = `savedClasses-${gradeLevel}`;
+        console.log(`🗑️ Removing cache key: ${key}`);
+        return AsyncStorage.removeItem(key);
+      });
+
+      await Promise.all(clearPromises);
+      console.log('✅ GPA cache cleared successfully');
+    } catch (error) {
+      console.error('❌ Error clearing GPA cache:', error);
+    }
   }
 }
