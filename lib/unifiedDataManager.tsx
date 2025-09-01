@@ -260,7 +260,6 @@ export class UnifiedDataManager {
         });
       }
     }
-    // console.log("COURSES", JSON.stringify(courses, null, 2));
     return courses;
   }
 }
