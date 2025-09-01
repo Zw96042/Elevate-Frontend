@@ -92,7 +92,6 @@ type TermData = {
 
 const ClassDetails = () => {
   const [isEnabled, setIsEnabled] = useState<boolean | null>(null);
-  const [isReady, setIsReady] = useState(false);
   const [displayGrade, setDisplayGrade] = useState(0);
   const animatedGrade = useSharedValue(0);
 
@@ -404,7 +403,6 @@ const ClassDetails = () => {
       } else {
         setIsEnabled(false);
       }
-      setIsReady(true);
     };
     loadShowCalculated();
   }, [showCalculatedKey, meshAssignments]);
