@@ -63,7 +63,7 @@ const AssignmentDetails = () => {
     };
 
     // Use stable key for artificial assignments (same format as class page)
-    const storageKey = `${className}_${corNumIdParam}_${sectionParam}_${gbIdParam}`;
+    const storageKey = `${className}_${corNumIdParam}_${sectionParam}_${gbIdParam}_${term}`;
 
     // Use ID for identification if available, fallback to name
     const identifier = assignmentId || name;
@@ -199,21 +199,39 @@ const AssignmentDetails = () => {
                       const sectionParam = section?.toString() || '';
                       const gbIdParam = gbId?.toString() || '';
                       const existing = JSON.parse(await AsyncStorage.getItem('artificialAssignments') ?? '{}');
-                      const storageKey = `${className}_${corNumIdParam}_${sectionParam}_${gbIdParam}`;
+                      // Check for the assignment in the current term format
+                      const currentStorageKey = `${className}_${corNumIdParam}_${sectionParam}_${gbIdParam}_${term}`;
+                      
+                      // Also check for old format (full term name) for backward compatibility
+                      const oldTerm = term === "Q1" ? "Q1 Grades" : 
+                                     term === "Q2" ? "Q2 Grades" :
+                                     term === "Q3" ? "Q3 Grades" :
+                                     term === "Q4" ? "Q4 Grades" :
+                                     term === "SM1" ? "SM1 Grade" :
+                                     term === "SM2" ? "SM2 Grades" : null;
+                      const oldStorageKey = oldTerm ? `${className}_${corNumIdParam}_${sectionParam}_${gbIdParam}_${oldTerm}` : null;
+                      
+                      const assignmentsToFilter = existing[currentStorageKey] ?? (oldStorageKey && existing[oldStorageKey]) ?? [];
+                      const storageKeyToUse = existing[currentStorageKey] ? currentStorageKey : 
+                                             (oldStorageKey && existing[oldStorageKey]) ? oldStorageKey : currentStorageKey;
                       // Use ID for identification if available, fallback to name
                       const filterFn = assignmentId 
                         ? (a: any) => a.id !== assignmentId 
                         : (a: any) => a.name !== name;
-                      console.log("ASSIGNMENTS BEFORE FILTER", existing[storageKey]);
-                      const updatedClassList = (existing[storageKey] ?? []).filter(filterFn);
+                      console.log("ASSIGNMENTS BEFORE FILTER", assignmentsToFilter);
+                      const updatedClassList = assignmentsToFilter.filter(filterFn);
                       console.log("ASSIGNMENTS AFTER FILTER", updatedClassList);
                       
                       const updated = { ...existing };
                       if (updatedClassList.length === 0) {
                         // Remove the key entirely if no assignments left
-                        delete updated[storageKey];
+                        if (storageKeyToUse) {
+                          delete updated[storageKeyToUse];
+                        }
                       } else {
-                        updated[storageKey] = updatedClassList;
+                        if (storageKeyToUse) {
+                          updated[storageKeyToUse] = updatedClassList;
+                        }
                       }
                       
                       await AsyncStorage.setItem('artificialAssignments', JSON.stringify(updated));

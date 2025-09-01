@@ -50,6 +50,18 @@ const bucketMap: Record<TermLabel, string> = {
   "SM2 Grades": "SEM 2",
 };
 
+// Helper function to get relevant terms for a selected category
+const getRelevantTerms = (selectedCategory: TermLabel): string[] => {
+  switch (selectedCategory) {
+    case "SM1 Grade":
+      return ["Q1", "Q2"]; // RC1 + RC2
+    case "SM2 Grades":
+      return ["Q3", "Q4"]; // RC3 + RC4
+    default:
+      return [selectedCategory.split(" ")[0]]; // Single term
+  }
+};
+
 type TermLabel =
   | "Q1 Grades"
   | "Q2 Grades"
@@ -212,12 +224,33 @@ const ClassDetails = () => {
       return;
     }
     const parsed = JSON.parse(data);
-    // Use a stable key for artificial assignments
-    const storageKey = `${className}_${corNumId}_${section}_${gbId}`;
-    // Only use the exact storageKey, do not fallback to parsed[className]
-    const classAssignments = parsed[storageKey] ?? [];
-    // Only use assignments from the correct storageKey, do not filter by name/id from other keys
-    const artificial = isEnabled ? classAssignments : [];
+    // Get relevant terms for the current selected category
+    const relevantTerms = getRelevantTerms(selectedCategory);
+    
+    // Collect artificial assignments from all relevant term storage keys
+    let allArtificialAssignments: Assignment[] = [];
+    
+    // For SM1/SM2, also check for assignments stored directly with the semester term
+    const termsToCheck = [...relevantTerms];
+    if (selectedCategory === "SM1 Grade" || selectedCategory === "SM2 Grades") {
+      termsToCheck.push(selectedCategory.split(" ")[0]); // Add "SM1" or "SM2"
+    }
+    
+    termsToCheck.forEach(term => {
+      const storageKey = `${className}_${corNumId}_${section}_${gbId}_${term}`;
+      const classAssignments = parsed[storageKey] ?? [];
+      allArtificialAssignments = [...allArtificialAssignments, ...classAssignments];
+      
+      // For individual terms, also check the old format (full term name)
+      if (term === selectedCategory.split(" ")[0]) {
+        const oldStorageKey = `${className}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
+        const oldAssignments = parsed[oldStorageKey] ?? [];
+        allArtificialAssignments = [...allArtificialAssignments, ...oldAssignments];
+      }
+    });
+    
+    // Only use assignments from the relevant terms
+    const artificial = isEnabled ? allArtificialAssignments : [];
 
     // Ensure artificial assignments have grade and outOf, do NOT mutate in place
     const fixedArtificial = artificial.map((a: Assignment) => ({
@@ -256,7 +289,7 @@ const ClassDetails = () => {
       adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
     );
     setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-  }, [apiAssignments, apiCategories, isEnabled, className, corNumId, section, gbId]);
+  }, [apiAssignments, apiCategories, isEnabled, className, corNumId, section, gbId, selectedCategory]);
 
 
   useEffect(() => {
@@ -390,19 +423,38 @@ const handleResetArtificialAssignments = async () => {
   const parsed = JSON.parse(data);
   // console.log("BEFORE RESET:", JSON.stringify(parsed, null, 2));
 
-  // Remove all keys that match this class (with and without classId)
-  // Use stable key for deletion
-  const possibleKeys = [className, `${className}_${corNumId}_${section}_${gbId}`];
+  // Get relevant terms for the current selected category
+  const relevantTerms = getRelevantTerms(selectedCategory);
+  
+  // For SM1/SM2, also include the semester term itself for resetting
+  const termsToReset = [...relevantTerms];
+  if (selectedCategory === "SM1 Grade" || selectedCategory === "SM2 Grades") {
+    termsToReset.push(selectedCategory.split(" ")[0]); // Add "SM1" or "SM2"
+  }
 
-  // Remove all keys that start with className (to catch any legacy or variant keys)
-  Object.keys(parsed).forEach(key => {
-    if (possibleKeys.some(k => key === k || key.startsWith(`${className}_`))) {
-      delete parsed[key];
+  // Remove only the keys that match the relevant terms for this class
+  termsToReset.forEach(term => {
+    const storageKey = `${className}_${corNumId}_${section}_${gbId}_${term}`;
+    if (parsed[storageKey]) {
+      delete parsed[storageKey];
+    }
+    
+    // For individual terms, also delete the old format (full term name)
+    if (term === selectedCategory.split(" ")[0]) {
+      const oldStorageKey = `${className}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
+      if (parsed[oldStorageKey]) {
+        delete parsed[oldStorageKey];
+      }
     }
   });
 
   await AsyncStorage.setItem("artificialAssignments", JSON.stringify(parsed));
-  setArtificialAssignments([]); // Clear local state as well
+
+  // Clear artificial assignments that belong to the relevant terms
+  setArtificialAssignments(prev => prev.filter(assignment =>
+    !termsToReset.includes(assignment.term as TermLabel)
+  ));
+
   meshAssignments(); // Re-mesh assignments after reset
 };
 
@@ -516,7 +568,7 @@ const handleResetArtificialAssignments = async () => {
           )}
           
           <AnimatePresence>
-            {isEnabled && (
+            {isEnabled && apiCategories.names.length > 0 && (
               <MotiView
                 key={`reset-${isEnabled}`}
                 from={{ opacity: 0, height: 0, marginTop: 0 }}

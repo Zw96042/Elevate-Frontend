@@ -103,7 +103,7 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
       id: generateUniqueId(), // Generate unique ID for new assignments
       className: modalData.className,
       name,
-      term: modalData.selectedCategory.split(" ")[0],
+      term: modalData.selectedCategory.split(" ")[0], // Store the split term format
       category,
       grade,
       outOf,
@@ -142,9 +142,9 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
     modalData.setFilteredAssignments(allAssignments);
 
     const existing = JSON.parse(await AsyncStorage.getItem("artificialAssignments") ?? "{}");
-  // Use a stable key for artificial assignments
+  // Use a stable key for artificial assignments that includes the term
   // Fallback to empty string if any identifier is missing
-  const storageKey = `${modalData.className || ''}_${modalData.corNumId || ''}_${modalData.section || ''}_${modalData.gbId || ''}`;
+  const storageKey = `${modalData.className || ''}_${modalData.corNumId || ''}_${modalData.section || ''}_${modalData.gbId || ''}_${modalData.selectedCategory.split(" ")[0]}`;
     if (updatedArtificial.length === 0) {
       // Remove the key if no assignments left
       delete existing[storageKey];

@@ -86,15 +86,30 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
       let all: Assignment[] = [];
       if (data) {
         const parsed = JSON.parse(data);
-    // Use a stable key for artificial assignments
-    const classKey = `${name}_${corNumId}_${section}_${gbId}`;
-        const classAssignments = parsed[classKey] ?? parsed[name] ?? [];
-        const artificial = isEnabled
-          ? classAssignments.filter(
-              (item: Assignment) =>
-                item.className === name && item.term === term.split(" ")[0]
-            )
-          : [];
+        
+        // For SM1/SM2, check both constituent terms and the semester term
+        const termsToCheck = [term.split(" ")[0]]; // Start with the base term
+        if (term === "SM1 Grade") {
+          termsToCheck.push("Q1", "Q2", "SM1");
+        } else if (term === "SM2 Grades") {
+          termsToCheck.push("Q3", "Q4", "SM2");
+        }
+        
+        let allAssignments: Assignment[] = [];
+        termsToCheck.forEach(termKey => {
+          const storageKey = `${name}_${corNumId}_${section}_${gbId}_${termKey}`;
+          const classAssignments = parsed[storageKey] ?? [];
+          allAssignments = [...allAssignments, ...classAssignments];
+          
+          // Also check old format for backward compatibility
+          if (termKey === term.split(" ")[0]) {
+            const oldStorageKey = `${name}_${corNumId}_${section}_${gbId}_${term}`;
+            const oldAssignments = parsed[oldStorageKey] ?? [];
+            allAssignments = [...allAssignments, ...oldAssignments];
+          }
+        });
+        
+        const artificial = isEnabled ? allAssignments : [];
         all = artificial.filter((a: { grade: string; }) => a.grade !== '*');
       }
       // If no artificial assignments, just set empty summary
