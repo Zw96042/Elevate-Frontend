@@ -25,7 +25,7 @@ function InnerLayout() {
 
   // Fix missing refs and state
   // Use addSheetRef from context so openModal can trigger modal open from anywhere
-  const { categories, setCategory, category, addSheetRef, name, setName, grade, setGrade, outOf, setOutOf } = useAddAssignmentSheet();
+  const { categories, setCategory, category, addSheetRef, name, setName, grade, setGrade, outOf, setOutOf, onSubmit } = useAddAssignmentSheet();
   const [currentSnapPosition, setCurrentSnapPosition] = useState('hidden');
   const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
   // Remove local name state, use context
@@ -245,7 +245,7 @@ function InnerLayout() {
                   </View>
                   <TouchableOpacity
                     className="bg-highlight py-3 rounded-md mt-2"
-                    onPress={useAddAssignmentSheet().onSubmit}
+                    onPress={onSubmit}
                   >
                     <Text className="text-center text-highlightText font-bold text-lg">Add Assignment</Text>
                   </TouchableOpacity>

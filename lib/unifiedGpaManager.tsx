@@ -314,9 +314,22 @@ export class UnifiedGPAManager extends UnifiedDataManager {
     }
   }
 
-  // Clear GPA cache (delegates to parent class)
+  // Clear GPA cache (clears saved classes data used for fallback)
   public static async clearGPACache(): Promise<void> {
-  // No cache logic, so nothing to clear
-  return;
+    try {
+      console.log('🧹 Clearing GPA cache...');
+      // Clear saved classes for all grade levels
+      const gradeLevels: GradeLevel[] = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'All Time'];
+      const clearPromises = gradeLevels.map(gradeLevel => {
+        const key = `savedClasses-${gradeLevel}`;
+        console.log(`🗑️ Removing cache key: ${key}`);
+        return AsyncStorage.removeItem(key);
+      });
+
+      await Promise.all(clearPromises);
+      console.log('✅ GPA cache cleared successfully');
+    } catch (error) {
+      console.error('❌ Error clearing GPA cache:', error);
+    }
   }
 }

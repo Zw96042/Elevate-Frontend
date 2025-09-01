@@ -93,7 +93,6 @@ const AssignmentDetails = () => {
     } else if (!isNaN(Number(gradeValue)) && !isNaN(Number(outOfValue)) && Number(outOfValue) !== 0) {
       setPercentage(((Number(gradeValue) / Number(outOfValue)) * 100).toFixed(2));
     }
-    // console.log(percentage);
   };
 
   return (
@@ -218,9 +217,7 @@ const AssignmentDetails = () => {
                       const filterFn = assignmentId 
                         ? (a: any) => a.id !== assignmentId 
                         : (a: any) => a.name !== name;
-                      console.log("ASSIGNMENTS BEFORE FILTER", assignmentsToFilter);
                       const updatedClassList = assignmentsToFilter.filter(filterFn);
-                      console.log("ASSIGNMENTS AFTER FILTER", updatedClassList);
                       
                       const updated = { ...existing };
                       if (updatedClassList.length === 0) {
