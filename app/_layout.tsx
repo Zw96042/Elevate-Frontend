@@ -24,14 +24,14 @@ function InnerLayout() {
   const cardColor = colorScheme === 'dark' ? colors.cardColor.dark : colors.cardColor.light;
 
   // Fix missing refs and state
-  const addSheetRef = useRef<BottomSheet>(null);
+  // Use addSheetRef from context so openModal can trigger modal open from anywhere
+  const { categories, setCategory, category, addSheetRef, name, setName, grade, setGrade, outOf, setOutOf } = useAddAssignmentSheet();
   const [currentSnapPosition, setCurrentSnapPosition] = useState('hidden');
   const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
-  const [name, setName] = useState('');
-  const [category, setCategory] = useState('');
-  const [grade, setGrade] = useState('');
-  const [outOf, setOutOf] = useState('');
-  const categories = ['Homework', 'Quiz', 'Test', 'Project', 'Other'];
+  // Remove local name state, use context
+  // category and setCategory now come from context
+  // grade and outOf now come from context
+  // ...removed duplicate destructuring...
 
   // Handler for sheet changes
   const handleSheetChanges = (index: number) => {
@@ -43,6 +43,36 @@ function InnerLayout() {
       setModalClosedByOutsideTap(false);
     }
   };
+
+  // Keyboard handling for modal snap position
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => {
+      if (
+        !modalClosedByOutsideTap &&
+        currentSnapPosition !== '90%' &&
+        currentSnapPosition !== 'hidden'
+      ) {
+        addSheetRef.current?.snapToPosition('90%', { duration: 150 });
+        setCurrentSnapPosition('90%');
+      }
+    });
+
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      if (modalClosedByOutsideTap) {
+        setModalClosedByOutsideTap(false);
+        return;
+      }
+      if (currentSnapPosition === '90%') {
+        addSheetRef.current?.snapToPosition('54%', { duration: 150 });
+        setCurrentSnapPosition('54%');
+      }
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [currentSnapPosition, modalClosedByOutsideTap]);
   return (
     <UnifiedDataProvider>
       <TouchableWithoutFeedback onPress={() => {
@@ -152,15 +182,17 @@ function InnerLayout() {
                  <Text className="text-2xl text-main">Add New Assignment</Text>
                  <View className='mb-4 mt-2 border-slate-600 border-[0.5px]'></View>
                   <View className="mb-5">
-                    <Text className="text-sm  text-main mb-1">Assignment Name</Text>
+                    <Text className="text-sm  text-main mb-1" >Assignment Name</Text>
                     <TextInput
                       className="rounded-md px-4 py-2 text-main bg-primary"
-                      onChangeText={(i) => {
-                        setName(i);
-                      }}
+                      onChangeText={setName}
                       value={name}
                       editable
                       placeholder="Assignment Name"
+                      autoCorrect={false}
+                      autoComplete="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                     />
                   </View>
                   <View className="mb-5">
@@ -204,8 +236,8 @@ function InnerLayout() {
                     <Text className="text-sm text-main mb-1">Out Of</Text>
                     <TextInput
                       className="rounded-md px-4 py-2 text-main bg-primary"
-                      onChangeText={(i) => setOutOf(i)}
-                      value={outOf}
+                      onChangeText={(i) => setOutOf(parseFloat(i) || 0)}
+                      value={outOf.toString()}
                       editable
                       placeholder="Out Of"
                       keyboardType="numeric"
@@ -213,7 +245,7 @@ function InnerLayout() {
                   </View>
                   <TouchableOpacity
                     className="bg-highlight py-3 rounded-md mt-2"
-                    // onPress handler removed due to undefined 'onSubmit'
+                    onPress={useAddAssignmentSheet().onSubmit}
                   >
                     <Text className="text-center text-highlightText font-bold text-lg">Add Assignment</Text>
                   </TouchableOpacity>

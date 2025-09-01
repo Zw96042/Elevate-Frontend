@@ -62,9 +62,7 @@ const getCourseLevel = (className: string): "AP" | "Honors" | "Regular" => {
   if (!className || typeof className !== 'string' || className.trim() === '') {
     return "Regular";
   }
-  
   const normalized = className.toLowerCase().trim();
-  
   // Roman numeral normalization
   const normalizeNumbers = (text: string): string => {
     const romanToNumber: { [key: string]: string } = {
@@ -73,7 +71,6 @@ const getCourseLevel = (className: string): "AP" | "Honors" | "Regular" => {
     const numberToRoman: { [key: string]: string } = {
       ' 1': ' i', ' 2': ' ii', ' 3': ' iii', ' 4': ' iv', ' 5': ' v', ' 6': ' vi'
     };
-    
     let normalizedText = text;
     Object.entries(romanToNumber).forEach(([roman, number]) => {
       normalizedText = normalizedText.replace(new RegExp(roman, 'gi'), number);
@@ -83,74 +80,56 @@ const getCourseLevel = (className: string): "AP" | "Honors" | "Regular" => {
     });
     return normalizedText;
   };
-  
   const apExceptions = ["multivariable calculus", "linear algebra", "stats 2: beyond ap statistics", "computer science 2", "computer science ii", "computer science 3", "computer science iii", "organic chemistry", "art historical methods"];
   const honorsExceptions = ["editorial leadership", "anatomy & physiology", "mentorship", "health science clinical", "robotics 2", "robotics ii", "robotics 3", "robotics iii", "swift coding", "business incubator", "engineering"];
-  
   // First check for explicit AP pattern
   const hasAPKeyword = /\bap\b/.test(normalized);
-  
   // Check AP exceptions with improved matching
   const isAPException = apExceptions.some(ex => {
     const normalizedCourse = normalizeNumbers(normalized);
     const normalizedEx = normalizeNumbers(ex);
-    
     if (normalized === ex || normalizedCourse === normalizedEx) return true;
     if (ex.length > 10 && (normalized.includes(ex) || normalizedCourse.includes(normalizedEx))) return true;
-    
     if (ex.length <= 10 && normalized.length > 5) {
       const courseWords = normalizedCourse.split(/\s+/);
       const exWords = normalizedEx.split(/\s+/);
-      
       if (courseWords.length >= 2 && exWords.length >= 2) {
         const courseBase = courseWords.slice(0, -1).join(' ');
         const courseLevel = courseWords[courseWords.length - 1];
         const exBase = exWords.slice(0, -1).join(' ');
         const exLevel = exWords[exWords.length - 1];
-        
         if (courseBase === exBase && courseLevel === exLevel) return true;
       } else {
         if (ex.includes(normalized) || normalizedEx.includes(normalizedCourse)) return true;
       }
     }
-    
     return false;
   });
-  
   if (hasAPKeyword || isAPException) return "AP";
-  
   // Check for Honors pattern
   const hasHonorsKeyword = /\bhonors?\b/.test(normalized);
-  
   // Check Honors exceptions with improved matching
   const isHonorsException = honorsExceptions.some(ex => {
     const normalizedCourse = normalizeNumbers(normalized);
     const normalizedEx = normalizeNumbers(ex);
-    
     if (normalized === ex || normalizedCourse === normalizedEx) return true;
     if (ex.length > 10 && (normalized.includes(ex) || normalizedCourse.includes(normalizedEx))) return true;
-    
     if (ex.length <= 10 && normalized.length > 5) {
       const courseWords = normalizedCourse.split(/\s+/);
       const exWords = normalizedEx.split(/\s+/);
-      
       if (courseWords.length >= 2 && exWords.length >= 2) {
         const courseBase = courseWords[0];
         const courseLevel = courseWords[1];
         const exBase = exWords[0];
         const exLevel = exWords[1];
-        
         if (courseBase === exBase && courseLevel === exLevel) return true;
       } else {
         if (ex.includes(normalized) || normalizedEx.includes(normalizedCourse)) return true;
       }
     }
-    
     return false;
   });
-  
   if (hasHonorsKeyword || isHonorsException) return "Honors";
-  
   return "Regular";
 };
 
@@ -221,20 +200,14 @@ const AcademicHistoryView = () => {
       });
       
       let currentGrade = 12; // Default
-      
-      if (unifiedResult.success && unifiedResult.courses) {
-  // Convert to academic format to determine grade level
-  console.log('🔄 Converting to academic format...');
-  // Use the raw object format for academic history
-  const academicFormat = unifiedResult.courses;
-  // If academicFormat is an array, you may need to convert it to object format if needed
-  // For now, fallback to default logic
-  // If you have the raw object, use getCurrentGradeLevelFromData
-  // currentGrade = getCurrentGradeLevelFromData(academicFormat); // Uncomment if you have object
-  // Otherwise, keep as default
-  console.log('🎯 Current grade level detected:', currentGrade);
+      // If academicData is available, use it to get current grade
+      if (unifiedResult.success && unifiedResult.courses && typeof unifiedResult.courses === 'object' && !Array.isArray(unifiedResult.courses)) {
+        currentGrade = getCurrentGradeLevelFromData(unifiedResult.courses);
+        console.log('🎯 Current grade level detected (from academic data):', currentGrade);
+      } else {
+        // fallback to default
+        currentGrade = 12;
       }
-      
       const isCurrent = gradeNumber === currentGrade;
       console.log(`🔍 Is current grade level? ${isCurrent} (page: ${gradeNumber}, current: ${currentGrade})`);
 
@@ -442,12 +415,15 @@ const AcademicHistoryView = () => {
     
     // Otherwise, use academicData as before
     if (!academicData) return null;
-    
     // Find the year data that matches our target grade level
     const yearEntry = Object.entries(academicData).find(([year, data]) => {
       return year !== 'alt' && data.grade === gradeNumber;
     });
-    
+    if (yearEntry) {
+      console.log(`[AcademicHistory] Filtering for grade: ${gradeNumber}, yearKey: ${yearEntry[0]}, yearData:`, yearEntry[1]);
+    } else {
+      console.log(`[AcademicHistory] No year entry found for grade: ${gradeNumber}`);
+    }
     return yearEntry ? yearEntry[1] : null;
   }, [academicData, gradeNumber, unifiedCourses, isCurrent]);
 
@@ -459,59 +435,30 @@ const AcademicHistoryView = () => {
     }> = [];
     
     // First priority: Use unified courses data
+    const isAllTime = gradeLevel === 'All Time' || gradeLevel === 'all' || gradeLevel === 'ALL';
     if (unifiedCourses && unifiedCourses.length > 0) {
       coursesArray = unifiedCourses
-        .filter(course => {
-          // For current grade, check current scores; for past grades, check historical grades
-          if (isCurrent) {
-            const hasCurrentScores = course.currentScores && course.currentScores.length > 0;
-            return hasCurrentScores || course.instructor; // Include if has current scores or instructor info
-          } else {
-            const hasHistoricalGrades = course.historicalGrades.finalGrade !== "P" && (
-              course.historicalGrades.sm1 || 
-              course.historicalGrades.sm2 || 
-              course.historicalGrades.finalGrade ||
-              course.historicalGrades.rc1 ||
-              course.historicalGrades.rc2 ||
-              course.historicalGrades.rc3 ||
-              course.historicalGrades.rc4
-            );
-            return hasHistoricalGrades;
-          }
-        })
+        .filter(course => isAllTime || course.gradeYear === gradeNumber)
         .sort((a, b) => a.courseName.localeCompare(b.courseName))
         .map(course => {
-          // For current grade level, use current scores; for past grades, use historical grades
           if (isCurrent && course.currentScores && course.currentScores.length > 0) {
-            // Calculate semester grades from current scores (percentages)
             const s1Score = course.currentScores.find(score => score.bucket === 'S1')?.score || -1;
             const s2Score = course.currentScores.find(score => score.bucket === 'S2')?.score || -1;
             const q1Score = course.currentScores.find(score => score.bucket === 'Q1')?.score || -1;
             const q2Score = course.currentScores.find(score => score.bucket === 'Q2')?.score || -1;
             const q3Score = course.currentScores.find(score => score.bucket === 'Q3')?.score || -1;
             const q4Score = course.currentScores.find(score => score.bucket === 'Q4')?.score || -1;
-
-            // Convert scores to letter grades for storage
-            const scoreToLetterGrade = (score: number): string => {
-              if (score === -1) return '';
-              if (score >= 90) return 'A';
-              if (score >= 80) return 'B';
-              if (score >= 70) return 'C';
-              if (score >= 60) return 'D';
-              return 'F';
-            };
-
             return {
               courseName: course.courseName,
               courseData: {
                 terms: course.termLength || 'unknown',
                 finalGrade: '',
-                sm1: scoreToLetterGrade(s1Score),
-                sm2: scoreToLetterGrade(s2Score),
-                pr1: scoreToLetterGrade(q1Score),
-                pr2: scoreToLetterGrade(q2Score),
-                pr3: scoreToLetterGrade(q3Score),
-                pr4: scoreToLetterGrade(q4Score),
+                sm1: s1Score !== -1 ? String(s1Score) : '',
+                sm2: s2Score !== -1 ? String(s2Score) : '',
+                pr1: q1Score !== -1 ? String(q1Score) : '',
+                pr2: q2Score !== -1 ? String(q2Score) : '',
+                pr3: q3Score !== -1 ? String(q3Score) : '',
+                pr4: q4Score !== -1 ? String(q4Score) : '',
                 pr5: '',
                 pr6: '',
                 pr7: '',
@@ -523,10 +470,10 @@ const AcademicHistoryView = () => {
                 ex1: '',
                 ex2: ''
               },
-              savedLevel: null
+              savedLevel: null,
+              id: `course_${course.courseName.replace(/\s+/g, '').toLowerCase()}_${isAllTime ? 'all' : gradeNumber}`
             };
           } else {
-            // Use historical grades for past grade levels
             return {
               courseName: course.courseName,
               courseData: {
@@ -549,14 +496,15 @@ const AcademicHistoryView = () => {
                 ex1: '',
                 ex2: ''
               },
-              savedLevel: null
+              savedLevel: null,
+              id: `course_${course.courseName.replace(/\s+/g, '').toLowerCase()}_${isAllTime ? 'all' : gradeNumber}`
             };
           }
         });
     }
     // Second priority: Use academic history data for past grade levels
     else if (gradeData) {
-      coursesArray = Object.entries(gradeData.courses)
+      const filteredCourses = Object.entries(gradeData.courses)
         .filter(([courseName, courseData]) => {
           // Filter out courses with no meaningful data
           return courseData.finalGrade !== "P" && (
@@ -571,7 +519,9 @@ const AcademicHistoryView = () => {
           courseData,
           savedLevel: null // No saved level for API data
         }));
-    } 
+      console.log(`[AcademicHistory] Filtered courses for grade ${gradeData.grade}:`, filteredCourses);
+      coursesArray = filteredCourses;
+    }
     // Last priority: Use preloaded classes from AsyncStorage
     else if (preloadedCourses && Array.isArray(preloadedCourses)) {
       // Convert from our saved format to the expected format
@@ -697,6 +647,7 @@ const AcademicHistoryView = () => {
       </>
     );
   }
+  // console.log(JSON.stringify(courses, null, 2));
 
   return (
     <>

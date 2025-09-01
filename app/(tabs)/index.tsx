@@ -49,6 +49,10 @@ const transformCourseData = (unifiedCourses: UnifiedCourseData[]) => {
     return {
       name: course.courseName?.toUpperCase().replace(/\s+/g, '_') || 'UNKNOWN_COURSE',
       teacher: course.instructor?.toUpperCase().replace(/\s+/g, '_') || 'UNKNOWN_INSTRUCTOR',
+      corNumId: course.courseId || '',
+      stuId: course.stuId || '',
+      section: course.section || '',
+      gbId: course.gbId || '',
       period: course.period,
       semester: course.semester,
       t1: {
@@ -202,6 +206,10 @@ export default function Index() {
               <ClassCard
                 name={item.name}
                 teacher={item.teacher}
+                corNumId={item.corNumId}
+                stuId={item.stuId}
+                section={item.section}
+                gbId={item.gbId}
                 t1={item.t1}
                 t2={item.t2}
                 s1={item.s1}

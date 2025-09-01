@@ -25,17 +25,22 @@ type Assignment = {
 };
 
 type ModalData = {
+  filteredAssignments: Assignment[];
   className: string;
-  classId?: string; // Add classId to differentiate identical classes
+  classId?: string;
+  corNumId?: string;
+  section?: string;
+  gbId?: string;
   selectedCategory: string;
   currTerm: TermData;
   artificialAssignments: Assignment[];
   setArtificialAssignments: React.Dispatch<React.SetStateAction<Assignment[]>>;
   setFilteredAssignments: React.Dispatch<React.SetStateAction<Assignment[]>>;
-  ASSIN: Assignment[];
+  categories: string[];
   setCourseSummary: React.Dispatch<React.SetStateAction<any>>;
   calculateGradeSummary: (assignments: Assignment[], weights: Record<string, number>) => any;
   isEnabled: boolean;
+  meshAssignments?: () => void;
 };
 
 type AddAssignmentSheetContextType = {
@@ -76,14 +81,19 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
   const [className, setClassName] = useState('');
 
   const openModal = (data: ModalData) => {
-    setModalData(data);
+  setModalData(data);
 
-    setCategories(data.currTerm.categories.names);
-    setCategory('');
-    setTerm(data.selectedCategory);
-    setClassName(formatClassName(data.className));
+  setCategories(data.categories);
+  setCategory('');
+  setName('');
+  setGrade('100');
+  setOutOf(100);
+  setTerm(data.selectedCategory);
+  setClassName(formatClassName(data.className));
 
-    addSheetRef.current?.expand();
+  // console.log("Opening modal for class:", data.className, "with ID:", data.classId);
+  addSheetRef.current?.expand();
+  // console.log("res: ", addSheetRef.current);
   };
 
   const onSubmit = async () => {
@@ -93,7 +103,7 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
       id: generateUniqueId(), // Generate unique ID for new assignments
       className: modalData.className,
       name,
-      term: modalData.selectedCategory.split(" ")[0],
+      term: modalData.selectedCategory.split(" ")[0], // Store the split term format
       category,
       grade,
       outOf,
@@ -104,10 +114,12 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
     const updatedArtificial = [assignment, ...modalData.artificialAssignments];
     modalData.setArtificialAssignments(updatedArtificial);
 
-    const real = modalData.ASSIN.filter(
-      item =>
+    // Use real assignments from modalData.filteredAssignments if needed
+    const real: Assignment[] = (modalData.filteredAssignments || []).filter(
+      (item: Assignment) =>
         item.className === modalData.className &&
-        item.term === modalData.selectedCategory.split(" ")[0]
+        item.term === modalData.selectedCategory.split(" ")[0] &&
+        !item.artificial
     );
 
     const artificial = modalData.isEnabled
@@ -130,15 +142,25 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
     modalData.setFilteredAssignments(allAssignments);
 
     const existing = JSON.parse(await AsyncStorage.getItem("artificialAssignments") ?? "{}");
-    // Use classId to create unique storage key for identical classes
-    const storageKey = modalData.classId ? `${modalData.className}_${modalData.classId}` : modalData.className;
-    const updated = {
-      ...existing,
-      [storageKey]: ensureUniqueAssignmentIds(updatedArtificial),
-    };
-
-    await AsyncStorage.setItem("artificialAssignments", JSON.stringify(updated));
+  // Use a stable key for artificial assignments that includes the term
+  // Fallback to empty string if any identifier is missing
+  const storageKey = `${modalData.className || ''}_${modalData.corNumId || ''}_${modalData.section || ''}_${modalData.gbId || ''}_${modalData.selectedCategory.split(" ")[0]}`;
+    if (updatedArtificial.length === 0) {
+      // Remove the key if no assignments left
+      delete existing[storageKey];
+      await AsyncStorage.setItem("artificialAssignments", JSON.stringify(existing));
+    } else {
+      const updated = {
+        ...existing,
+        [storageKey]: ensureUniqueAssignmentIds(updatedArtificial),
+      };
+      await AsyncStorage.setItem("artificialAssignments", JSON.stringify(updated));
+    }
     addSheetRef.current?.close();
+    // Run meshAssignments after adding artificial assignment
+    if (modalData?.meshAssignments) {
+      modalData.meshAssignments();
+    }
   };
 
   return (
