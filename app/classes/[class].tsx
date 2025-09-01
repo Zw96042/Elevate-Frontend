@@ -188,7 +188,6 @@ const ClassDetails = () => {
   // Mesh artificial assignments with API assignments
   const meshAssignments = useCallback(async () => {
     const data = await AsyncStorage.getItem("artificialAssignments");
-    console.log("artificial ", data);
     if (!data) {
       const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
       setArtificialAssignments([]);
@@ -213,18 +212,12 @@ const ClassDetails = () => {
       return;
     }
     const parsed = JSON.parse(data);
-    // console.log("PARSED", parsed);
-  // Use a stable key for artificial assignments
-  const storageKey = `${className}_${corNumId}_${section}_${gbId}`;
-    // console.log(storageKey);
-  // Only use the exact storageKey, do not fallback to parsed[className]
-  const classAssignments = parsed[storageKey] ?? [];
-    // console.log("CLASS ASSIGNMENTS", classAssignments);
-  // Only use assignments from the correct storageKey, do not filter by name/id from other keys
-  const artificial = isEnabled ? classAssignments : [];
-
-    // Log artificial assignments for debugging
-    console.log("AFTER FILTER artificial assignments:", artificial);
+    // Use a stable key for artificial assignments
+    const storageKey = `${className}_${corNumId}_${section}_${gbId}`;
+    // Only use the exact storageKey, do not fallback to parsed[className]
+    const classAssignments = parsed[storageKey] ?? [];
+    // Only use assignments from the correct storageKey, do not filter by name/id from other keys
+    const artificial = isEnabled ? classAssignments : [];
 
     // Ensure artificial assignments have grade and outOf, do NOT mutate in place
     const fixedArtificial = artificial.map((a: Assignment) => ({
@@ -242,7 +235,6 @@ const ClassDetails = () => {
       };
       return parseDate(b.dueDate).getTime() - parseDate(a.dueDate).getTime();
     });
-    console.log("Merged assignments (artificial + real):", allAssignments);
     const assignmentsWithIds = ensureUniqueAssignmentIds(allAssignments);
     const artificialWithIds = assignmentsWithIds.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
     setArtificialAssignments(artificialWithIds);
@@ -264,7 +256,7 @@ const ClassDetails = () => {
       adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
     );
     setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-  }, [apiAssignments, apiCategories, isEnabled, className, classId, selectedCategory]);
+  }, [apiAssignments, apiCategories, isEnabled, className, corNumId, section, gbId]);
 
 
   useEffect(() => {
@@ -295,15 +287,6 @@ const ClassDetails = () => {
     }
   );
 
-  useAnimatedReaction(
-    () => animatedGrade.value,
-    (currentValue) => {
-      runOnJS(setDisplayGrade)(currentValue);
-    }
-  );
-
-
-
   // Fetch API assignments only when identifiers change
   useEffect(() => {
     fetchApiAssignments();
@@ -313,6 +296,13 @@ const ClassDetails = () => {
   useEffect(() => {
     meshAssignments();
   }, [meshAssignments]);
+
+  // Refresh data when returning to this screen
+  useFocusEffect(
+    React.useCallback(() => {
+      meshAssignments();
+    }, [meshAssignments])
+  );
 
   const { openModal, onSubmit } = useAddAssignmentSheet();
 
