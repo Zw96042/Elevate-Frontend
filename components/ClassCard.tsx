@@ -206,12 +206,6 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
                     <Text className='text-sm text-secondary ml-5'>{formatClassName(teacher) }</Text>
                 </View>
                 <View className="flex-row items-center gap-4">
-                    {/* <View className="items-center">
-                        <View className={`w-10 h-10 rounded-full ${bgColor} items-center justify-center`}>
-                            <Text className="text-white font-semibold">{letter}</Text>
-                        </View>
-                        <Text className="text-xs text-main mt-1">{percentage.toFixed(1)}%</Text>
-                    </View> */}
                     <View className="items-center w-3 mr-4">
                         <View className="relative w-[50] h-[50]">
                           <PieChart

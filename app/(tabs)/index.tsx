@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, FlatList, useColorScheme, LayoutAnimation, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ClassCard from '@/components/ClassCard';
+import SkeletonClassCard from '@/components/SkeletonClassCard';
 import { useFocusEffect } from 'expo-router';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { useBottomSheet, BottomSheetProvider } from '@/context/BottomSheetContext'
@@ -183,7 +184,7 @@ export default function Index() {
         </View>
         <FlatList
           className='mb-[4rem]'
-          data={filteredCourses}
+          data={loading ? Array.from({ length: 6 }) : filteredCourses}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -201,35 +202,39 @@ export default function Index() {
               </View>
             </>
           }
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <View className="px-5">
-              <ClassCard
-                name={item.name}
-                teacher={item.teacher}
-                corNumId={item.corNumId}
-                stuId={item.stuId}
-                section={item.section}
-                gbId={item.gbId}
-                t1={item.t1}
-                t2={item.t2}
-                s1={item.s1}
-                t3={item.t3}
-                t4={item.t4}
-                s2={item.s2}
-                term={selectedCategory}
-              />
+              {loading ? (
+                <SkeletonClassCard />
+              ) : (
+                <ClassCard
+                  name={item.name}
+                  teacher={item.teacher}
+                  corNumId={item.corNumId}
+                  stuId={item.stuId}
+                  section={item.section}
+                  gbId={item.gbId}
+                  t1={item.t1}
+                  t2={item.t2}
+                  s1={item.s1}
+                  t3={item.t3}
+                  t4={item.t4}
+                  s2={item.s2}
+                  term={selectedCategory}
+                />
+              )}
             </View>
           )}
-          keyExtractor={(item, index) => `${item.name}-${index}`}
+          keyExtractor={(item, index) => loading ? `skeleton-${index}` : `${item.name}-${index}`}
           ItemSeparatorComponent={() => <View className="h-4" />}
           ListEmptyComponent={
             <View className="mt-10 px-5">
-              {loading ? (
-                <Text className="text-center text-gray-500">Loading courses...</Text>
-              ) : error ? (
-                <Text className="text-center text-red-500">Error: {error}</Text>
-              ) : (
-                <Text className="text-center text-gray-500">No classes found.</Text>
+              {!loading && (
+                error ? (
+                  <Text className="text-center text-red-500">Error: {error}</Text>
+                ) : (
+                  <Text className="text-center text-gray-500">No classes found.</Text>
+                )
               )}
             </View>
           }
