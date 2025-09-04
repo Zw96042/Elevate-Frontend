@@ -208,6 +208,7 @@ const InnerLayout = () => {
             enablePanDownToClose={true}
             keyboardBehavior={'extend'}
             onChange={handleSheetChanges}
+            detached={true}
             backdropComponent={(props) => (
               <TouchableWithoutFeedback onPress={() => {
                 Keyboard.dismiss();
@@ -227,12 +228,12 @@ const InnerLayout = () => {
               Keyboard.dismiss();
               settingSheetRef.current?.snapToIndex(0, { duration: 350 });
             }}>
-              <BottomSheetView className="bg-cardColor px-8  ">
+              <BottomSheetView className="bg-cardColor px-8 rounded-2xl">
                 <Text className="text-2xl text-main">Settings</Text>
                 <View className='my-4 border-slate-600 border-[0.5px]'></View>
                 <View className="pb-3 ">
                   <Text className="text-base font-medium text-main">School District</Text>
-                  <View className="flex-row items-center rounded-md px-3 py-2 bg-primary">
+                  <View className="flex-row items-center rounded-md px-3 py-2 bg-primary ">
                     <Ionicons name="school-outline" size={18} color="#888" style={{ marginRight: 8 }} />
                     <TextInput
                       className="flex-1 text-gray-400"
@@ -260,6 +261,10 @@ const InnerLayout = () => {
                       placeholder="Username"
                       placeholderTextColor="#888"
                       autoCapitalize="none"
+                      autoComplete='off'
+                      autoCorrect={false}
+                      spellCheck={false}
+                      textContentType="none"
                     />
                   </View>
                 </View>
@@ -276,6 +281,10 @@ const InnerLayout = () => {
                       placeholderTextColor="#888"
                       secureTextEntry={!showPassword}
                       autoCapitalize="none"
+                      autoCorrect={false}
+                      spellCheck={false}
+                      textContentType="none"
+                      autoComplete="off"
                     />
                     <TouchableOpacity onPress={() => setShowPassword(prev => !prev)}>
                       <Ionicons

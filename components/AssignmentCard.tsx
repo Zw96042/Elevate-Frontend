@@ -74,7 +74,10 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
                               width: 30,
                             }}
                           >
-                            {grade === '*' ? '--' : (isNaN(Number(grade)) ? '--' : Number(grade).toFixed(0))}
+                            {grade === '*' ? '--' : (isNaN(Number(grade)) ? '--' : (() => {
+                              const numGrade = Number(grade);
+                              return numGrade >= 100 ? numGrade.toFixed(0) : numGrade.toFixed(1);
+                            })())}
                           </Text>
                         </View>
 
