@@ -1,7 +1,6 @@
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
   FlatList,
   Keyboard,
@@ -37,6 +36,7 @@ import { useBottomSheet } from "@/context/BottomSheetContext";
 import PieChart from "react-native-pie-chart";
 import { MotiView, AnimatePresence } from 'moti'
 import { fetchGradeInfo } from '@/lib/gradeInfoClient';
+import { ScrollView } from "react-native-gesture-handler";
 
 
 
@@ -475,8 +475,6 @@ const handleResetArtificialAssignments = async () => {
             headerBackTitle: "Classes",
           }}
         />
-        {/* If my category name length is greater than 0*/}
-
         
         <ScrollView>
           <View className="flex-row items-center">
@@ -529,7 +527,8 @@ const handleResetArtificialAssignments = async () => {
             <><View className="flex-row mt-4 items-center px-5 justify-between">
               <Text className="text-accent text-base font-medium">Show Calculated</Text>
               <Switch value={!!isEnabled} onValueChange={handleToggle} />
-            </View><View className="px-5 mt-4 space-y-2">
+            </View>
+            <View className="px-5 mt-4 space-y-2">
                 <View className="flex-row justify-between mb-2">
                   <Text className="text-highlightText font-bold text-base">Category</Text>
                   <Text className="text-highlightText font-bold text-base">Weight</Text>
