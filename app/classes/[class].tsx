@@ -7,8 +7,10 @@ import {
   TouchableWithoutFeedback,
   Switch,
   useColorScheme,
+  Animated,
+  StyleSheet,
 } from "react-native";
-import Animated, {
+import AnimatedReanimated, {
   useSharedValue,
   useAnimatedReaction,
   withTiming,
@@ -16,6 +18,8 @@ import Animated, {
   Easing,
   useAnimatedStyle,
 } from 'react-native-reanimated';
+import MaskedView from '@react-native-masked-view/masked-view';
+import { LinearGradient } from 'react-native-linear-gradient';
 import React, {
   useEffect,
   useState,
@@ -37,9 +41,7 @@ import PieChart from "react-native-pie-chart";
 import { MotiView, AnimatePresence } from 'moti'
 import { fetchGradeInfo } from '@/lib/gradeInfoClient';
 import { ScrollView } from "react-native-gesture-handler";
-
-
-
+import SkeletonAssignment from '@/components/SkeletonAssignment';
 
 const bucketMap: Record<TermLabel, string> = {
   "Q1 Grades": "TERM 3",
@@ -50,15 +52,14 @@ const bucketMap: Record<TermLabel, string> = {
   "SM2 Grades": "SEM 2",
 };
 
-// Helper function to get relevant terms for a selected category
 const getRelevantTerms = (selectedCategory: TermLabel): string[] => {
   switch (selectedCategory) {
     case "SM1 Grade":
-      return ["Q1", "Q2"]; // RC1 + RC2
+      return ["Q1", "Q2"];
     case "SM2 Grades":
-      return ["Q3", "Q4"]; // RC3 + RC4
+      return ["Q3", "Q4"];
     default:
-      return [selectedCategory.split(" ")[0]]; // Single term
+      return [selectedCategory.split(" ")[0]];
   }
 };
 
@@ -87,12 +88,13 @@ type TermData = {
     names: string[];
     weights: number[];
   };
-  total: number | string; // Allow both number and string (for "--")
+  total: number | string;
 };
 
 const ClassDetails = () => {
   const [isEnabled, setIsEnabled] = useState<boolean | null>(null);
   const [displayGrade, setDisplayGrade] = useState(0);
+  const [loading, setLoading] = useState(false);
   const animatedGrade = useSharedValue(0);
 
   const searchParams = useLocalSearchParams();
@@ -155,17 +157,15 @@ const ClassDetails = () => {
   const [artificialAssignments, setArtificialAssignments] = useState<Assignment[]>([]);
 
   const currTerm = termMap[selectedCategory];
-  // Use API categories for current term, fallback to termMap if API fails
   const [apiCategories, setApiCategories] = useState<{ names: string[]; weights: number[] }>({ names: [], weights: [] });
-  // ...existing code...
-
-
-  // Store API assignments and categories in state
   const [apiAssignments, setApiAssignments] = useState<Assignment[]>([]);
 
-  // Fetch assignments and categories from API only when identifiers change
-  const fetchApiAssignments = useCallback(async () => {
-    if (!className || !stuId || !corNumId || !section || !gbId || !selectedCategory) return;
+  const fetchApiAssignments = async () => {
+    if (!className || !stuId || !corNumId || !section || !gbId || !selectedCategory) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     const bucket = bucketMap[selectedCategory as TermLabel];
     try {
       const result = await fetchGradeInfo({ stuId, corNumId, section, gbId, bucket });
@@ -189,21 +189,20 @@ const ClassDetails = () => {
         weights: backendData?.gradebook?.map((cat: any) => cat.weight) ?? []
       };
       setApiCategories(categories);
-      // console.log(categories);
     } catch (err) {
       setApiAssignments([]);
       setApiCategories({ names: [], weights: [] });
+    } finally {
+      setLoading(false);
     }
-  }, [className, classId, selectedCategory, stuId, corNumId, section, gbId]);
+  };
 
-  // Mesh artificial assignments with API assignments
-  const meshAssignments = useCallback(async () => {
+  const meshAssignments = async () => {
     const data = await AsyncStorage.getItem("artificialAssignments");
     if (!data) {
       const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
       setArtificialAssignments([]);
       setFilteredAssignments(realWithIds);
-      // Calculate summary
       const all = realWithIds.filter(a => a.grade !== '*');
       const weightsMap = Object.fromEntries(
         (apiCategories.names || []).map((name, i) => [name, apiCategories.weights[i]])
@@ -223,16 +222,13 @@ const ClassDetails = () => {
       return;
     }
     const parsed = JSON.parse(data);
-    // Get relevant terms for the current selected category
     const relevantTerms = getRelevantTerms(selectedCategory);
     
-    // Collect artificial assignments from all relevant term storage keys
     let allArtificialAssignments: Assignment[] = [];
     
-    // For SM1/SM2, also check for assignments stored directly with the semester term
     const termsToCheck = [...relevantTerms];
     if (selectedCategory === "SM1 Grade" || selectedCategory === "SM2 Grades") {
-      termsToCheck.push(selectedCategory.split(" ")[0]); // Add "SM1" or "SM2"
+      termsToCheck.push(selectedCategory.split(" ")[0]);
     }
     
     termsToCheck.forEach(term => {
@@ -240,7 +236,6 @@ const ClassDetails = () => {
       const classAssignments = parsed[storageKey] ?? [];
       allArtificialAssignments = [...allArtificialAssignments, ...classAssignments];
       
-      // For individual terms, also check the old format (full term name)
       if (term === selectedCategory.split(" ")[0]) {
         const oldStorageKey = `${className}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
         const oldAssignments = parsed[oldStorageKey] ?? [];
@@ -248,10 +243,8 @@ const ClassDetails = () => {
       }
     });
     
-    // Only use assignments from the relevant terms
     const artificial = isEnabled ? allArtificialAssignments : [];
 
-    // Ensure artificial assignments have grade and outOf, do NOT mutate in place
     const fixedArtificial = artificial.map((a: Assignment) => ({
       ...a,
       grade: a.grade !== undefined && a.grade !== null ? a.grade : "*",
@@ -271,7 +264,7 @@ const ClassDetails = () => {
     const artificialWithIds = assignmentsWithIds.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
     setArtificialAssignments(artificialWithIds);
     setFilteredAssignments(assignmentsWithIds);
-    // Calculate summary
+
     const all = assignmentsWithIds.filter(a => a.grade !== '*');
     const weightsMap = Object.fromEntries(
       (apiCategories.names || []).map((name, i) => [name, apiCategories.weights[i]])
@@ -288,17 +281,15 @@ const ClassDetails = () => {
       adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
     );
     setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-  }, [apiAssignments, apiCategories, isEnabled, className, corNumId, section, gbId, selectedCategory]);
+  };
 
 
   useEffect(() => {
-    // Use the actual term grade if no calculated grade is available
     let value: number;
     
     if (courseSummary.courseTotal === '*') {
-      // Use the actual term grade from API, handle "--" case
       if (currTerm.total === "--" || currTerm.total === undefined || currTerm.total === null) {
-        value = 100; // Animate to 100 when grade is "--"
+        value = 100;
       } else {
         value = Number(currTerm.total);
       }
@@ -319,24 +310,30 @@ const ClassDetails = () => {
     }
   );
 
-  // Fetch API assignments only when identifiers change
   useEffect(() => {
     fetchApiAssignments();
-  }, [fetchApiAssignments]);
+  }, [className, stuId, corNumId, section, gbId, selectedCategory]);
 
-  // Mesh assignments whenever isEnabled, apiAssignments, or apiCategories change
   useEffect(() => {
-    meshAssignments();
-  }, [meshAssignments]);
+    const runMeshAssignments = async () => {
+      await meshAssignments();
+    };
+    runMeshAssignments();
+  }, [apiAssignments, apiCategories, isEnabled, selectedCategory]);
 
-  // Refresh data when returning to this screen
   useFocusEffect(
     React.useCallback(() => {
-      meshAssignments();
-    }, [meshAssignments])
+      const refreshData = async () => {
+        if (className && stuId && corNumId && section && gbId && selectedCategory) {
+          setLoading(true);
+          await fetchApiAssignments();
+        }
+      };
+      refreshData();
+    }, [className, stuId, corNumId, section, gbId, selectedCategory])
   );
 
-  const { openModal, onSubmit } = useAddAssignmentSheet();
+  const { openModal } = useAddAssignmentSheet();
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -362,8 +359,6 @@ const ClassDetails = () => {
                 isEnabled,
                 meshAssignments,
               });
-              // Wait for assignment to be added, then re-mesh assignments
-              // You may need to trigger meshAssignments after onSubmit in your modal logic
             }}
           >
             <Ionicons
@@ -389,12 +384,8 @@ const ClassDetails = () => {
     meshAssignments,
   ]);
 
-
-  // Use a class-specific key for showCalculated
   const showCalculatedKey = classId ? `showCalculated_${className}_${classId}` : `showCalculated_${className}`;
 
-
-  // Load showCalculated from AsyncStorage on initial mount and on focus
   useEffect(() => {
     const loadShowCalculated = async () => {
       const value = await AsyncStorage.getItem(showCalculatedKey);
@@ -419,25 +410,20 @@ const handleResetArtificialAssignments = async () => {
   if (!data || !className) return;
 
   const parsed = JSON.parse(data);
-  // console.log("BEFORE RESET:", JSON.stringify(parsed, null, 2));
 
-  // Get relevant terms for the current selected category
   const relevantTerms = getRelevantTerms(selectedCategory);
   
-  // For SM1/SM2, also include the semester term itself for resetting
   const termsToReset = [...relevantTerms];
   if (selectedCategory === "SM1 Grade" || selectedCategory === "SM2 Grades") {
-    termsToReset.push(selectedCategory.split(" ")[0]); // Add "SM1" or "SM2"
+    termsToReset.push(selectedCategory.split(" ")[0]);
   }
 
-  // Remove only the keys that match the relevant terms for this class
   termsToReset.forEach(term => {
     const storageKey = `${className}_${corNumId}_${section}_${gbId}_${term}`;
     if (parsed[storageKey]) {
       delete parsed[storageKey];
     }
     
-    // For individual terms, also delete the old format (full term name)
     if (term === selectedCategory.split(" ")[0]) {
       const oldStorageKey = `${className}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
       if (parsed[oldStorageKey]) {
@@ -448,12 +434,11 @@ const handleResetArtificialAssignments = async () => {
 
   await AsyncStorage.setItem("artificialAssignments", JSON.stringify(parsed));
 
-  // Clear artificial assignments that belong to the relevant terms
   setArtificialAssignments(prev => prev.filter(assignment =>
     !termsToReset.includes(assignment.term as TermLabel)
   ));
 
-  meshAssignments(); // Re-mesh assignments after reset
+  meshAssignments();
 };
 
   const theme = useColorScheme();
@@ -479,56 +464,59 @@ const handleResetArtificialAssignments = async () => {
         <ScrollView>
           <View className="flex-row items-center">
             <View className="px-5">
-              <View className="relative w-[50] h-[50] mt-6">
-                <PieChart
-                  widthAndHeight={50}
-                  series={[
-                    { value: Math.min(displayGrade, 100), color: highlightColor },
-                    { value: 100 - Math.min(displayGrade, 100), color: backgroundColor },
-                  ]}
-                />
-                <Text className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-highlightText font-bold text-sm">
-                  {(() => {
-                    // Use actual term grade if no calculated grade is available
-                    const grade = courseSummary.courseTotal === '*' 
-                      ? currTerm.total 
-                      : Number(courseSummary.courseTotal);
-                    
-                    if (grade === "--" || grade === undefined || grade === null) {
-                      return '--';
-                    }
-                    
-                    const numGrade = typeof grade === 'string' ? parseFloat(grade) : grade;
-                    
-                    if (isNaN(numGrade)) {
-                      return '--';
-                    }
-                    
-                    return numGrade === 100 
-                      ? '100%' 
-                      : `${numGrade.toFixed(1)}%`;
-                  })()}
-                </Text>
-              </View>
+                <View className="relative w-[50] h-[50] mt-6">
+                  <PieChart
+                    widthAndHeight={50}
+                    series={[
+                      { value: Math.min(displayGrade, 100), color: highlightColor },
+                      { value: 100 - Math.min(displayGrade, 100), color: backgroundColor },
+                    ]}
+                  />
+                  <Text className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-highlightText font-bold text-sm">
+                    {(() => {
+                      // Use actual term grade if no calculated grade is available
+                      const grade = courseSummary.courseTotal === '*' 
+                        ? currTerm.total 
+                        : Number(courseSummary.courseTotal);
+                      
+                      if (grade === "--" || grade === undefined || grade === null) {
+                        return '--';
+                      }
+                      
+                      const numGrade = typeof grade === 'string' ? parseFloat(grade) : grade;
+                      
+                      if (isNaN(numGrade)) {
+                        return '--';
+                      }
+                      
+                      return numGrade === 100 
+                        ? '100%' 
+                        : `${numGrade.toFixed(1)}%`;
+                    })()}
+                  </Text>
+                </View>
             </View>
             <View className="w-[80%]">
               <View className="mt-6 pr-5 justify-center">
-                <TouchableOpacity
-                  onPress={() => bottomSheetRef.current?.snapToIndex(0)}
-                  className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
-                >
-                  <Text className="text-base text-main">{selectedCategory}</Text>
-                </TouchableOpacity>
+                
+                  <TouchableOpacity
+                    onPress={() => bottomSheetRef.current?.snapToIndex(0)}
+                    className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
+                  >
+                    <Text className="text-base text-main">{selectedCategory}</Text>
+                  </TouchableOpacity>
+                
               </View>
             </View>
           </View>
-          
-          {apiCategories.names.length > 0 && (
-            <><View className="flex-row mt-4 items-center px-5 justify-between">
-              <Text className="text-accent text-base font-medium">Show Calculated</Text>
-              <Switch value={!!isEnabled} onValueChange={handleToggle} />
-            </View>
-            <View className="px-5 mt-4 space-y-2">
+
+          {!loading && apiCategories.names.length > 0 && (
+            <>
+              <View className="flex-row mt-4 items-center px-5 justify-between">
+                <Text className="text-accent text-base font-medium">Show Calculated</Text>
+                <Switch value={!!isEnabled} onValueChange={handleToggle} />
+              </View>
+              <View className="px-5 mt-4 space-y-2">
                 <View className="flex-row justify-between mb-2">
                   <Text className="text-highlightText font-bold text-base">Category</Text>
                   <Text className="text-highlightText font-bold text-base">Weight</Text>
@@ -561,7 +549,8 @@ const handleResetArtificialAssignments = async () => {
                   </View>
                 ))}
                 <View className="h-[1px] bg-accent opacity-30 my-1" />
-              </View></>
+              </View>
+            </>
           )}
           
           <AnimatePresence>
@@ -593,32 +582,38 @@ const handleResetArtificialAssignments = async () => {
             )}
           </AnimatePresence>
           <FlatList
-            data={filteredAssignments}
-            renderItem={({ item }: { item: Assignment }) => (
-              <AnimatePresence >
-                <MotiView
-                  from={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                >
-                  <AssignmentCard
-                    {...item}
-                    editing={!!isEnabled}
-                    classId={classId}
-                    corNumId={corNumId}
-                    section={section}
-                    gbId={gbId}
-                  />
-                </MotiView>
-              </AnimatePresence>
+            data={loading ? Array.from({ length: 8 }) : filteredAssignments}
+            renderItem={({ item, index }) => (
+              loading ? (
+                <SkeletonAssignment key={`skeleton-${index}`} />
+              ) : (
+                <AnimatePresence key={(item as Assignment).id || `${(item as Assignment).className}-${(item as Assignment).name}-${(item as Assignment).term}-${(item as Assignment).dueDate}`}>
+                  <MotiView
+                    from={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                  >
+                    <AssignmentCard
+                      {...(item as Assignment)}
+                      editing={!!isEnabled}
+                      classId={classId}
+                      corNumId={corNumId}
+                      section={section}
+                      gbId={gbId}
+                    />
+                  </MotiView>
+                </AnimatePresence>
+              )
             )}
-            keyExtractor={(item) => item.id || `${item.className}-${item.name}-${item.term}-${item.dueDate}`}
+            keyExtractor={(item, index) => loading ? `skeleton-${index}` : ((item as Assignment).id || `${(item as Assignment).className}-${(item as Assignment).name}-${(item as Assignment).term}-${(item as Assignment).dueDate}`)}
             className="mt-6 pb-8 px-3"
             scrollEnabled={false}
             ItemSeparatorComponent={() => <View className="h-4" />}
             ListEmptyComponent={
-              <View className="mt-10 px-5">
-                <Text className="text-center text-gray-500">No assignments found</Text>
-              </View>
+              loading ? null : (
+                <View className="mt-10 px-5">
+                  <Text className="text-center text-gray-500">No assignments found</Text>
+                </View>
+              )
             }
           />
         </ScrollView>
