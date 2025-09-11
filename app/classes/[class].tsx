@@ -159,12 +159,34 @@ const ClassDetails = () => {
   const currTerm = termMap[selectedCategory];
   const [apiCategories, setApiCategories] = useState<{ names: string[]; weights: number[] }>({ names: [], weights: [] });
   const [apiAssignments, setApiAssignments] = useState<Assignment[]>([]);
+  const [lastFetchTime, setLastFetchTime] = useState<number>(0);
+  const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 
-  const fetchApiAssignments = async () => {
+  const fetchApiAssignments = async (forceRefresh = false) => {
     if (!className || !stuId || !corNumId || !section || !gbId || !selectedCategory) {
       setLoading(false);
       return;
     }
+
+    const cacheKey = `assignments_${className}_${stuId}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
+    const now = Date.now();
+
+    // Check cache if not forcing refresh
+    if (!forceRefresh && now - lastFetchTime < CACHE_DURATION) {
+      try {
+        const cachedData = await AsyncStorage.getItem(cacheKey);
+        if (cachedData) {
+          const parsed = JSON.parse(cachedData);
+          setApiAssignments(parsed.assignments || []);
+          setApiCategories(parsed.categories || { names: [], weights: [] });
+          setLoading(false);
+          return;
+        }
+      } catch (error) {
+        console.log('Cache read error:', error);
+      }
+    }
+
     setLoading(true);
     const bucket = bucketMap[selectedCategory as TermLabel];
     try {
@@ -189,6 +211,15 @@ const ClassDetails = () => {
         weights: backendData?.gradebook?.map((cat: any) => cat.weight) ?? []
       };
       setApiCategories(categories);
+
+      // Cache the data
+      const cacheData = {
+        assignments,
+        categories,
+        timestamp: now
+      };
+      await AsyncStorage.setItem(cacheKey, JSON.stringify(cacheData));
+      setLastFetchTime(now);
     } catch (err) {
       setApiAssignments([]);
       setApiCategories({ names: [], weights: [] });
@@ -325,12 +356,17 @@ const ClassDetails = () => {
     React.useCallback(() => {
       const refreshData = async () => {
         if (className && stuId && corNumId && section && gbId && selectedCategory) {
-          setLoading(true);
-          await fetchApiAssignments();
+          const now = Date.now();
+          // Only fetch if cache is stale (older than CACHE_DURATION) or no data exists
+          if (now - lastFetchTime >= CACHE_DURATION || apiAssignments.length === 0) {
+            await fetchApiAssignments();
+          }
+          // Always refresh artificial assignments when returning to the screen
+          await meshAssignments();
         }
       };
       refreshData();
-    }, [className, stuId, corNumId, section, gbId, selectedCategory])
+    }, [className, stuId, corNumId, section, gbId, selectedCategory, lastFetchTime, apiAssignments.length])
   );
 
   const { openModal } = useAddAssignmentSheet();
@@ -403,6 +439,8 @@ const handleToggle = async () => {
   const newValue = !isEnabled;
   await AsyncStorage.setItem(showCalculatedKey, newValue.toString());
   setIsEnabled(newValue);
+  // Immediately refresh assignments after toggling
+  await meshAssignments();
 };
 
 const handleResetArtificialAssignments = async () => {
