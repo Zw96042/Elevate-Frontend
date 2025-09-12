@@ -95,6 +95,7 @@ const ClassDetails = () => {
   const [isEnabled, setIsEnabled] = useState<boolean | null>(null);
   const [displayGrade, setDisplayGrade] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [waitingForRetry, setWaitingForRetry] = useState(false);
   const animatedGrade = useSharedValue(0);
 
   const searchParams = useLocalSearchParams();
@@ -165,6 +166,7 @@ const ClassDetails = () => {
   const fetchApiAssignments = async (forceRefresh = false) => {
     if (!className || !stuId || !corNumId || !section || !gbId || !selectedCategory) {
       setLoading(false);
+      setWaitingForRetry(false);
       return;
     }
 
@@ -180,6 +182,7 @@ const ClassDetails = () => {
           setApiAssignments(parsed.assignments || []);
           setApiCategories(parsed.categories || { names: [], weights: [] });
           setLoading(false);
+          setWaitingForRetry(false);
           return;
         }
       } catch (error) {
@@ -188,9 +191,35 @@ const ClassDetails = () => {
     }
 
     setLoading(true);
+    setWaitingForRetry(true);
     const bucket = bucketMap[selectedCategory as TermLabel];
     try {
       const result = await fetchGradeInfo({ stuId, corNumId, section, gbId, bucket });
+      
+      // Only stop loading if retries are complete or there was no auth error
+      if (result.success) {
+        // Success - stop loading immediately
+        setLoading(false);
+        setWaitingForRetry(false);
+      } else if (result.retryCount !== undefined && result.retryCount >= 1) {
+        // Retries exhausted - stop loading
+        setLoading(false);
+        setWaitingForRetry(false);
+      } else if (!result.wasAuthError) {
+        // No auth error - stop loading
+        setLoading(false);
+        setWaitingForRetry(false);
+      } else {
+        // Auth error with retries pending - keep loading
+        setWaitingForRetry(true);
+      }
+      
+      if (!result.success) {
+        setApiAssignments([]);
+        setApiCategories({ names: [], weights: [] });
+        return;
+      }
+      
       const backendData = result?.data?.data;
       const assignments = backendData?.gradebook?.flatMap((cat: any) =>
         (cat.assignments ?? []).map((a: any, index: number) => ({
@@ -220,11 +249,18 @@ const ClassDetails = () => {
       };
       await AsyncStorage.setItem(cacheKey, JSON.stringify(cacheData));
       setLastFetchTime(now);
+      
+      // Stop loading since we have successful data
+      setLoading(false);
+      setWaitingForRetry(false);
     } catch (err) {
+      console.error('Error fetching assignments:', err);
       setApiAssignments([]);
       setApiCategories({ names: [], weights: [] });
     } finally {
+      // Stop loading if we're not waiting for retry or if there was an error
       setLoading(false);
+      setWaitingForRetry(false);
     }
   };
 
@@ -329,7 +365,7 @@ const ClassDetails = () => {
     }
     
     animatedGrade.value = withTiming(value, {
-      duration: 0,
+      duration: 250,
       easing: Easing.inOut(Easing.ease),
     });
   }, [courseSummary.courseTotal, currTerm.total]);
@@ -360,9 +396,12 @@ const ClassDetails = () => {
           // Only fetch if cache is stale (older than CACHE_DURATION) or no data exists
           if (now - lastFetchTime >= CACHE_DURATION || apiAssignments.length === 0) {
             await fetchApiAssignments();
+          } else {
+            // Always refresh artificial assignments when returning to the screen
+            await meshAssignments();
+            setLoading(false);
+            setWaitingForRetry(false);
           }
-          // Always refresh artificial assignments when returning to the screen
-          await meshAssignments();
         }
       };
       refreshData();
@@ -634,9 +673,9 @@ const handleResetArtificialAssignments = async () => {
             )}
           </AnimatePresence>
           <FlatList
-            data={loading ? Array.from({ length: 8 }) : filteredAssignments}
+            data={loading || waitingForRetry ? Array.from({ length: 8 }) : filteredAssignments}
             renderItem={({ item, index }) => (
-              loading ? (
+              loading || waitingForRetry ? (
                 <SkeletonAssignment key={`skeleton-${index}`} />
               ) : (
                 <AnimatePresence key={(item as Assignment).id || `${(item as Assignment).className}-${(item as Assignment).name}-${(item as Assignment).term}-${(item as Assignment).dueDate}`}>
@@ -656,12 +695,12 @@ const handleResetArtificialAssignments = async () => {
                 </AnimatePresence>
               )
             )}
-            keyExtractor={(item, index) => loading ? `skeleton-${index}` : ((item as Assignment).id || `${(item as Assignment).className}-${(item as Assignment).name}-${(item as Assignment).term}-${(item as Assignment).dueDate}`)}
+            keyExtractor={(item, index) => loading || waitingForRetry ? `skeleton-${index}` : ((item as Assignment).id || `${(item as Assignment).className}-${(item as Assignment).name}-${(item as Assignment).term}-${(item as Assignment).dueDate}`)}
             className="mt-6 pb-8 px-3"
             scrollEnabled={false}
             ItemSeparatorComponent={() => <View className="h-4" />}
             ListEmptyComponent={
-              loading ? null : (
+              loading || waitingForRetry ? null : (
                 <View className="mt-10 px-5">
                   <Text className="text-center text-gray-500">No assignments found</Text>
                 </View>

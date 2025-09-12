@@ -17,6 +17,8 @@ interface GradeInfoResult {
   success: boolean;
   data?: any;
   error?: string;
+  retryCount?: number;
+  wasAuthError?: boolean;
 }
 
 export const fetchGradeInfo = async (
@@ -69,7 +71,7 @@ export const fetchGradeInfo = async (
         if (authResult.success) {
           return await fetchGradeInfo(params, retryCount + 1);
         } else {
-          return { success: false, error: 'Re-authentication failed' };
+          return { success: false, error: 'Re-authentication failed', retryCount: retryCount + 1, wasAuthError: true };
         }
       } else {
         throw new Error(`Failed to fetch grade info: ${response.statusText}`);
@@ -78,9 +80,9 @@ export const fetchGradeInfo = async (
 
     const responseData = await response.json();
 
-    return { success: true, data: responseData };
+    return { success: true, data: responseData, retryCount, wasAuthError: false };
   } catch (error: any) {
     console.error('Error fetching grade info:', error);
-    return { success: false, error: error.message || 'Unknown error' };
+    return { success: false, error: error.message || 'Unknown error', retryCount, wasAuthError: false };
   }
 };
