@@ -565,7 +565,21 @@ const handleResetArtificialAssignments = async () => {
                     <View className="py-1">
                       <View className="flex-row justify-between items-center">
                         <View className="rounded-md bg-highlight px-2">
-                          <Text className="text-sm text-highlightText font-bold">{name}</Text>
+                          <Text className="text-sm text-highlightText font-bold">{
+                            (() => {
+                              const weight = apiCategories.weights[index] ?? 0;
+                              const weightString = `Weight: ${weight.toFixed(1)}%`;
+                              const avgString = `Avg: ${(courseSummary?.categories[name]?.average?.toFixed(1) ?? "--")}% • `;
+                              const fullWeightText = avgString + weightString;
+
+                              const maxRowLength = 38;
+                              const availableForCategory = Math.max(8, maxRowLength - fullWeightText.length);
+
+                              return name.length > availableForCategory
+                                ? name.substring(0, availableForCategory - 3) + '...'
+                                : name;
+                            })()
+                          }</Text>
                         </View>
                         <Text className="text-sm text-slate-400 font-bold">
                           Avg: {(courseSummary?.categories[name]?.average?.toFixed(1) ?? "--")}%

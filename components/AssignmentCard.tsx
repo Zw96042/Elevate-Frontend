@@ -71,7 +71,7 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
                               fontWeight: 'bold',
                               fontSize: 12,
                               textAlign: 'center',
-                              width: 30,
+                              width: 34,
                             }}
                           >
                             {grade === '*' ? '--' : (isNaN(Number(grade)) ? '--' : (() => {
