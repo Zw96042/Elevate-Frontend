@@ -9,6 +9,7 @@ import {
   useColorScheme,
   Animated,
   StyleSheet,
+  RefreshControl,
 } from "react-native";
 import AnimatedReanimated, {
   useSharedValue,
@@ -161,7 +162,44 @@ const ClassDetails = () => {
   const [apiCategories, setApiCategories] = useState<{ names: string[]; weights: number[] }>({ names: [], weights: [] });
   const [apiAssignments, setApiAssignments] = useState<Assignment[]>([]);
   const [lastFetchTime, setLastFetchTime] = useState<number>(0);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
   const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+
+  // Debug function to check cache status
+  const checkCacheStatus = async () => {
+    const cacheKey = `assignments_${className}_${stuId}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
+    try {
+      const cachedData = await AsyncStorage.getItem(cacheKey);
+      if (cachedData) {
+        const parsed = JSON.parse(cachedData);
+        const cacheAge = Date.now() - (parsed.timestamp || 0);
+        console.log('Cache status:', {
+          key: cacheKey,
+          age: Math.round(cacheAge / 1000) + 's',
+          isValid: cacheAge < CACHE_DURATION,
+          assignmentsCount: parsed.assignments?.length || 0,
+          categoriesCount: parsed.categories?.names?.length || 0
+        });
+      } else {
+        console.log('No cache found for key:', cacheKey);
+      }
+    } catch (error) {
+      console.log('Cache check error:', error);
+    }
+  };
+
+  // Function to clear cache for debugging
+  const clearCache = async () => {
+    const cacheKey = `assignments_${className}_${stuId}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
+    await AsyncStorage.removeItem(cacheKey);
+    console.log('Cache cleared for:', cacheKey);
+  };
+
+  // Handle pull-to-refresh
+  const handleRefresh = async () => {
+    console.log('Pull-to-refresh triggered');
+    await fetchApiAssignments(true); // Force refresh
+  };
 
   const fetchApiAssignments = async (forceRefresh = false) => {
     if (!className || !stuId || !corNumId || !section || !gbId || !selectedCategory) {
@@ -173,25 +211,41 @@ const ClassDetails = () => {
     const cacheKey = `assignments_${className}_${stuId}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
     const now = Date.now();
 
+    // Debug: Check cache status
+    await checkCacheStatus();
+
     // Check cache if not forcing refresh
-    if (!forceRefresh && now - lastFetchTime < CACHE_DURATION) {
+    if (!forceRefresh) {
       try {
         const cachedData = await AsyncStorage.getItem(cacheKey);
         if (cachedData) {
           const parsed = JSON.parse(cachedData);
-          setApiAssignments(parsed.assignments || []);
-          setApiCategories(parsed.categories || { names: [], weights: [] });
-          setLoading(false);
-          setWaitingForRetry(false);
-          return;
+          const cacheAge = now - (parsed.timestamp || 0);
+          
+          // Use cache if it's less than CACHE_DURATION old
+          if (cacheAge < CACHE_DURATION) {
+            console.log('Using cached assignments data, age:', Math.round(cacheAge / 1000), 'seconds');
+            setApiAssignments(parsed.assignments || []);
+            setApiCategories(parsed.categories || { names: [], weights: [] });
+            setLastFetchTime(now); // Update last fetch time even when using cache
+            setLoading(false);
+            setWaitingForRetry(false);
+            return;
+          } else {
+            console.log('Cache expired, age:', Math.round(cacheAge / 1000), 'seconds');
+          }
         }
       } catch (error) {
         console.log('Cache read error:', error);
       }
     }
 
+    console.log('Fetching fresh assignments data from API');
     setLoading(true);
     setWaitingForRetry(true);
+    if (forceRefresh) {
+      setRefreshing(true);
+    }
     const bucket = bucketMap[selectedCategory as TermLabel];
     try {
       const result = await fetchGradeInfo({ stuId, corNumId, section, gbId, bucket });
@@ -261,6 +315,7 @@ const ClassDetails = () => {
       // Stop loading if we're not waiting for retry or if there was an error
       setLoading(false);
       setWaitingForRetry(false);
+      setRefreshing(false);
     }
   };
 
@@ -365,7 +420,7 @@ const ClassDetails = () => {
     }
     
     animatedGrade.value = withTiming(value, {
-      duration: 250,
+      duration: 0,
       easing: Easing.inOut(Easing.ease),
     });
   }, [courseSummary.courseTotal, currTerm.total]);
@@ -378,7 +433,11 @@ const ClassDetails = () => {
   );
 
   useEffect(() => {
-    fetchApiAssignments();
+    // Only fetch if we don't have data or if this is the initial load
+    if (apiAssignments.length === 0 && apiCategories.names.length === 0) {
+      console.log('Initial load - fetching assignments');
+      fetchApiAssignments();
+    }
   }, [className, stuId, corNumId, section, gbId, selectedCategory]);
 
   useEffect(() => {
@@ -391,21 +450,49 @@ const ClassDetails = () => {
   useFocusEffect(
     React.useCallback(() => {
       const refreshData = async () => {
+        // Don't refresh if we're already loading or waiting for retry
+        if (loading || waitingForRetry) {
+          console.log('🔄 Screen focused - already loading, skipping refresh');
+          return;
+        }
+
         if (className && stuId && corNumId && section && gbId && selectedCategory) {
+          const cacheKey = `assignments_${className}_${stuId}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
           const now = Date.now();
-          // Only fetch if cache is stale (older than CACHE_DURATION) or no data exists
-          if (now - lastFetchTime >= CACHE_DURATION || apiAssignments.length === 0) {
+          
+          // Debug: Check cache status on focus
+          await checkCacheStatus();
+          
+          try {
+            const cachedData = await AsyncStorage.getItem(cacheKey);
+            if (cachedData) {
+              const parsed = JSON.parse(cachedData);
+              const cacheAge = now - (parsed.timestamp || 0);
+              
+              // Only fetch if cache is stale
+              if (cacheAge >= CACHE_DURATION) {
+                console.log('Screen focused - cache stale, fetching assignments');
+                await fetchApiAssignments();
+              } else {
+                console.log('Screen focused - using existing cached data, age:', Math.round(cacheAge / 1000), 'seconds');
+                // Always refresh artificial assignments when returning to the screen
+                await meshAssignments();
+                setLoading(false);
+                setWaitingForRetry(false);
+              }
+            } else {
+              // No cache exists, fetch data
+              console.log('Screen focused - no cache, fetching assignments');
+              await fetchApiAssignments();
+            }
+          } catch (error) {
+            console.log('Screen focused - cache check error:', error);
             await fetchApiAssignments();
-          } else {
-            // Always refresh artificial assignments when returning to the screen
-            await meshAssignments();
-            setLoading(false);
-            setWaitingForRetry(false);
           }
         }
       };
       refreshData();
-    }, [className, stuId, corNumId, section, gbId, selectedCategory, lastFetchTime, apiAssignments.length])
+    }, [className, stuId, corNumId, section, gbId, selectedCategory])
   );
 
   const { openModal } = useAddAssignmentSheet();
@@ -521,6 +608,7 @@ const handleResetArtificialAssignments = async () => {
   const theme = useColorScheme();
   const highlightColor = theme === 'dark' ? '#3b5795' : "#a4bfed";
   const backgroundColor = theme === 'dark' ? '#030014' : "#ffffff";
+  const indicatorColor = theme === 'dark' ? '#ffffff' : '#000000';
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
@@ -538,7 +626,16 @@ const handleResetArtificialAssignments = async () => {
           }}
         />
         
-        <ScrollView>
+        <ScrollView
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={indicatorColor}
+              colors={[indicatorColor]}
+            />
+          }
+        >
           <View className="flex-row items-center">
             <View className="px-5">
                 <View className="relative w-[50] h-[50] mt-6">
