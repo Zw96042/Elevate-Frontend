@@ -226,7 +226,7 @@ export default function Index() {
             </View>
           )}
           keyExtractor={(item, index) => loading ? `skeleton-${index}` : `${item.name}-${index}`}
-          ItemSeparatorComponent={() => <View className="h-4" />}
+          ItemSeparatorComponent={() => <View className="h-[0.85rem]" />}
           ListEmptyComponent={
             <View className="mt-10 px-5">
               {!loading && (
