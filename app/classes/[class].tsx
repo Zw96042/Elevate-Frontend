@@ -638,36 +638,31 @@ const handleResetArtificialAssignments = async () => {
         >
           <View className="flex-row items-center">
             <View className="px-5">
-                <View className="relative w-[50] h-[50] mt-6">
+                <View className="relative w-[50px] h-[50px] mt-6 flex items-center justify-center">
                   <PieChart
-                    widthAndHeight={50}
+                    widthAndHeight={55}
                     series={[
                       { value: Math.min(displayGrade, 100), color: highlightColor },
                       { value: 100 - Math.min(displayGrade, 100), color: backgroundColor },
                     ]}
                   />
-                  <Text className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-highlightText font-bold text-sm">
-                    {(() => {
-                      // Use actual term grade if no calculated grade is available
-                      const grade = courseSummary.courseTotal === '*' 
-                        ? currTerm.total 
-                        : Number(courseSummary.courseTotal);
-                      
-                      if (grade === "--" || grade === undefined || grade === null) {
-                        return '--';
-                      }
-                      
-                      const numGrade = typeof grade === 'string' ? parseFloat(grade) : grade;
-                      
-                      if (isNaN(numGrade)) {
-                        return '--';
-                      }
-                      
-                      return numGrade === 100 
-                        ? '100%' 
-                        : `${numGrade.toFixed(1)}%`;
-                    })()}
-                  </Text>
+                  <View className="absolute inset-0 flex items-center justify-center">
+                    <Text className="text-highlightText font-bold text-sm text-center leading-[20px] w-[50px] h-[20px]">
+                      {(() => {
+                        const grade = courseSummary.courseTotal === '*'
+                          ? currTerm.total
+                          : Number(courseSummary.courseTotal);
+                        if (grade === "--" || grade === undefined || grade === null) {
+                          return '--';
+                        }
+                        const numGrade = typeof grade === 'string' ? parseFloat(grade) : grade;
+                        if (isNaN(numGrade)) {
+                          return '--';
+                        }
+                        return `${numGrade.toFixed(2)}`;
+                      })()}
+                    </Text>
+                  </View>
                 </View>
             </View>
             <View className="w-[80%]">
