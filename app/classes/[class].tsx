@@ -95,7 +95,7 @@ type TermData = {
 const ClassDetails = () => {
   const [isEnabled, setIsEnabled] = useState<boolean | null>(null);
   const [displayGrade, setDisplayGrade] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [waitingForRetry, setWaitingForRetry] = useState(false);
   const animatedGrade = useSharedValue(0);
 
@@ -269,12 +269,32 @@ const ClassDetails = () => {
       }
       
       if (!result.success) {
-        setApiAssignments([]);
-        setApiCategories({ names: [], weights: [] });
+        console.log('Fetch failed, result:', result);
+        // Only set to empty if we don't have existing data
+        if (apiAssignments.length === 0) {
+          // Try to use stale cache if available
+          try {
+            const staleCache = await AsyncStorage.getItem(cacheKey);
+            if (staleCache) {
+              const parsed = JSON.parse(staleCache);
+              setApiAssignments(parsed.assignments || []);
+              setApiCategories(parsed.categories || { names: [], weights: [] });
+              console.log('Using stale cache because fetch failed');
+            } else {
+              setApiAssignments([]);
+              setApiCategories({ names: [], weights: [] });
+            }
+          } catch (error) {
+            console.log('Stale cache read error:', error);
+            setApiAssignments([]);
+            setApiCategories({ names: [], weights: [] });
+          }
+        }
         return;
       }
       
       const backendData = result?.data?.data;
+      console.log('backendData.gradebook length:', backendData?.gradebook?.length);
       const assignments = backendData?.gradebook?.flatMap((cat: any) =>
         (cat.assignments ?? []).map((a: any, index: number) => ({
           id: `${cat.category}-${index}-${a.name}`,
@@ -288,6 +308,7 @@ const ClassDetails = () => {
           artificial: false,
         }))
       ) ?? [];
+      console.log('Fetched assignments count:', assignments.length);
       setApiAssignments(assignments);
       const categories = {
         names: backendData?.gradebook?.map((cat: any) => cat.category) ?? [],
@@ -309,8 +330,26 @@ const ClassDetails = () => {
       setWaitingForRetry(false);
     } catch (err) {
       console.error('Error fetching assignments:', err);
-      setApiAssignments([]);
-      setApiCategories({ names: [], weights: [] });
+      // Only set to empty if we don't have existing data
+      if (apiAssignments.length === 0) {
+        // Try to use stale cache if available
+        try {
+          const staleCache = await AsyncStorage.getItem(cacheKey);
+          if (staleCache) {
+            const parsed = JSON.parse(staleCache);
+            setApiAssignments(parsed.assignments || []);
+            setApiCategories(parsed.categories || { names: [], weights: [] });
+            console.log('Using stale cache because fetch threw error');
+          } else {
+            setApiAssignments([]);
+            setApiCategories({ names: [], weights: [] });
+          }
+        } catch (error) {
+          console.log('Stale cache read error:', error);
+          setApiAssignments([]);
+          setApiCategories({ names: [], weights: [] });
+        }
+      }
     } finally {
       // Stop loading if we're not waiting for retry or if there was an error
       setLoading(false);
@@ -320,6 +359,7 @@ const ClassDetails = () => {
   };
 
   const meshAssignments = async () => {
+    console.log('meshAssignments called, apiAssignments.length:', apiAssignments.length, 'isEnabled:', isEnabled, 'selectedCategory:', selectedCategory);
     const data = await AsyncStorage.getItem("artificialAssignments");
     if (!data) {
       const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
@@ -374,7 +414,9 @@ const ClassDetails = () => {
     }));
 
     const artificialNames = new Set(fixedArtificial.map((a: any) => a.name));
+    console.log('artificialNames:', Array.from(artificialNames));
     const filteredReal = apiAssignments.filter((r) => !artificialNames.has(r.name));
+    console.log('filteredReal count:', filteredReal.length);
     const allAssignments = [...fixedArtificial, ...filteredReal].sort((a, b) => {
       const parseDate = (date: string) => {
         const [month, day, year] = date.split('/').map(Number);
@@ -450,6 +492,7 @@ const ClassDetails = () => {
   useFocusEffect(
     React.useCallback(() => {
       const refreshData = async () => {
+        console.log('Screen focused, selectedCategory:', selectedCategory);
         // Don't refresh if we're already loading or waiting for retry
         if (loading || waitingForRetry) {
           console.log('🔄 Screen focused - already loading, skipping refresh');
@@ -610,6 +653,7 @@ const handleResetArtificialAssignments = async () => {
   const backgroundColor = theme === 'dark' ? '#030014' : "#ffffff";
   const indicatorColor = theme === 'dark' ? '#ffffff' : '#000000';
 
+  console.log(filteredAssignments);
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View className="bg-primary flex-1">
@@ -765,7 +809,7 @@ const handleResetArtificialAssignments = async () => {
             )}
           </AnimatePresence>
           <FlatList
-            data={loading || waitingForRetry ? Array.from({ length: 8 }) : filteredAssignments}
+                        data={loading || waitingForRetry ? Array.from({ length: 8 }) : filteredAssignments}
             renderItem={({ item, index }) => (
               loading || waitingForRetry ? (
                 <SkeletonAssignment key={`skeleton-${index}`} />
