@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, TextInput, Keyboard, TouchableWithoutFeedback, Pressable } from 'react-native'
+import { View, Text, TouchableOpacity, TextInput, Keyboard, TouchableWithoutFeedback, Pressable, useColorScheme } from 'react-native'
 import React, { useRef, useState } from 'react'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import formatClassName from '@/utils/formatClassName';
@@ -7,8 +7,28 @@ import { generateUniqueId } from '@/utils/uniqueId';
 
 const AssignmentDetails = () => {
   const router = useRouter();
-  const { class: classParam, classId, name, category, grade, outOf, dueDate, artificial, editing, term, assignmentId, corNumId, section, gbId } = useLocalSearchParams();
+  const theme = useColorScheme();
+  const { class: classParam, classId, name, category, grade, outOf, dueDate, artificial, editing, term, assignmentId, corNumId, section, gbId, meta } = useLocalSearchParams();
   const formattedClass = formatClassName(classParam?.toString() || '');
+
+  // Parse meta data
+  const parsedMeta = React.useMemo(() => {
+    try {
+      const metaData = meta ? JSON.parse(meta.toString()) : [];
+      
+      // Temporary test: simulate missing assignment metadata
+      if (name?.toString() === 'PS 1A 1B' && grade?.toString() === '*') {
+        return [{
+          type: 'missing',
+          note: 'This assignment is marked missing'
+        }];
+      }
+      
+      return metaData;
+    } catch {
+      return [];
+    }
+  }, [meta, name, grade]);
 
   const [gradeValue, setGradeValue] = React.useState(() =>
     grade === '*' ? '*' : !isNaN(Number(grade)) ? Number(grade).toFixed(2) : ''
@@ -59,7 +79,8 @@ const AssignmentDetails = () => {
       grade: formattedGrade,
       outOf: parseFloat(formattedOutOf.toFixed(2)),
       artificial: true,
-      term: term
+      term: term,
+      meta: parsedMeta // Preserve meta data for artificial assignments
     };
 
     // Use stable key for artificial assignments (same format as class page)
@@ -189,6 +210,51 @@ const AssignmentDetails = () => {
                         </Pressable>
                     </View>
                 </View>
+                {parsedMeta.length > 0 && (
+                <View className='mt-4 px-4'>
+                    <Text className='text-accent font-bold text-sm mb-4'>Assignment Status</Text>
+                    {parsedMeta.map((metaItem: any, index: number) => {
+                        const getMetaConfig = (type: string) => {
+                            switch (type) {
+                                case 'missing':
+                                    return {
+                                        label: 'Missing',
+                                        bgColor: theme === 'dark' ? 'bg-red-500' : 'bg-red-500'
+                                    };
+                                case 'noCount':
+                                    return {
+                                        label: 'No Count',
+                                        bgColor: theme === 'dark' ? 'bg-gray-500' : 'bg-gray-400'
+                                    };
+                                case 'absent':
+                                    return {
+                                        label: 'Absent',
+                                        bgColor: theme === 'dark' ? 'bg-yellow-500' : 'bg-yellow-500'
+                                    };
+                                default:
+                                    return {
+                                        label: metaItem.type,
+                                        bgColor: theme === 'dark' ? 'bg-gray-500' : 'bg-gray-400'
+                                    };
+                            }
+                        };
+                        
+                        const config = getMetaConfig(metaItem.type);
+                        
+                        return (
+                            <View key={index} className="bg-cardColor px-4 py-3 rounded-2xl mb-2">
+                                <View className="flex-row items-center justify-between">
+                                    <Text className='text-base text-main font-medium'>{config.label}</Text>
+                                    <View className={`w-3 h-3 rounded-full ${config.bgColor.replace('bg-', 'bg-')}`} />
+                                </View>
+                                {metaItem.note && (
+                                    <Text className='text-sm text-secondary mt-2'>{metaItem.note}</Text>
+                                )}
+                            </View>
+                        );
+                    })}
+                </View>
+                )}
                 {artificial === "true" && (
                 <TouchableOpacity
                     onPress={async () => {

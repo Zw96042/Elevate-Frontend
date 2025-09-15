@@ -173,15 +173,15 @@ const ClassDetails = () => {
       if (cachedData) {
         const parsed = JSON.parse(cachedData);
         const cacheAge = Date.now() - (parsed.timestamp || 0);
-        console.log('Cache status:', {
-          key: cacheKey,
-          age: Math.round(cacheAge / 1000) + 's',
-          isValid: cacheAge < CACHE_DURATION,
-          assignmentsCount: parsed.assignments?.length || 0,
-          categoriesCount: parsed.categories?.names?.length || 0
-        });
+        // console.log('Cache status:', {
+        //   key: cacheKey,
+        //   age: Math.round(cacheAge / 1000) + 's',
+        //   isValid: cacheAge < CACHE_DURATION,
+        //   assignmentsCount: parsed.assignments?.length || 0,
+        //   categoriesCount: parsed.categories?.names?.length || 0
+        // });
       } else {
-        console.log('No cache found for key:', cacheKey);
+        // console.log('No cache found for key:', cacheKey);
       }
     } catch (error) {
       console.log('Cache check error:', error);
@@ -192,12 +192,12 @@ const ClassDetails = () => {
   const clearCache = async () => {
     const cacheKey = `assignments_${className}_${stuId}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
     await AsyncStorage.removeItem(cacheKey);
-    console.log('Cache cleared for:', cacheKey);
+    // console.log('Cache cleared for:', cacheKey);
   };
 
   // Handle pull-to-refresh
   const handleRefresh = async () => {
-    console.log('Pull-to-refresh triggered');
+    // console.log('Pull-to-refresh triggered');
     await fetchApiAssignments(true); // Force refresh
   };
 
@@ -224,7 +224,7 @@ const ClassDetails = () => {
           
           // Use cache if it's less than CACHE_DURATION old
           if (cacheAge < CACHE_DURATION) {
-            console.log('Using cached assignments data, age:', Math.round(cacheAge / 1000), 'seconds');
+            // console.log('Using cached assignments data, age:', Math.round(cacheAge / 1000), 'seconds');
             setApiAssignments(parsed.assignments || []);
             setApiCategories(parsed.categories || { names: [], weights: [] });
             setLastFetchTime(now); // Update last fetch time even when using cache
@@ -232,7 +232,7 @@ const ClassDetails = () => {
             setWaitingForRetry(false);
             return;
           } else {
-            console.log('Cache expired, age:', Math.round(cacheAge / 1000), 'seconds');
+            // console.log('Cache expired, age:', Math.round(cacheAge / 1000), 'seconds');
           }
         }
       } catch (error) {
@@ -240,7 +240,7 @@ const ClassDetails = () => {
       }
     }
 
-    console.log('Fetching fresh assignments data from API');
+    // console.log('Fetching fresh assignments data from API');
     setLoading(true);
     setWaitingForRetry(true);
     if (forceRefresh) {
@@ -269,7 +269,7 @@ const ClassDetails = () => {
       }
       
       if (!result.success) {
-        console.log('Fetch failed, result:', result);
+        // console.log('Fetch failed, result:', result);
         // Only set to empty if we don't have existing data
         if (apiAssignments.length === 0) {
           // Try to use stale cache if available
@@ -279,13 +279,13 @@ const ClassDetails = () => {
               const parsed = JSON.parse(staleCache);
               setApiAssignments(parsed.assignments || []);
               setApiCategories(parsed.categories || { names: [], weights: [] });
-              console.log('Using stale cache because fetch failed');
+              // console.log('Using stale cache because fetch failed');
             } else {
               setApiAssignments([]);
               setApiCategories({ names: [], weights: [] });
             }
           } catch (error) {
-            console.log('Stale cache read error:', error);
+            // console.log('Stale cache read error:', error);
             setApiAssignments([]);
             setApiCategories({ names: [], weights: [] });
           }
@@ -294,7 +294,7 @@ const ClassDetails = () => {
       }
       
       const backendData = result?.data?.data;
-      console.log('backendData.gradebook length:', backendData?.gradebook?.length);
+      // console.log('backendData.gradebook length:', backendData?.gradebook?.length);
       const assignments = backendData?.gradebook?.flatMap((cat: any) =>
         (cat.assignments ?? []).map((a: any, index: number) => ({
           id: `${cat.category}-${index}-${a.name}`,
@@ -306,9 +306,10 @@ const ClassDetails = () => {
           outOf: a.points?.total ?? 100,
           dueDate: a.date ?? "",
           artificial: false,
+          meta: a.meta ?? [],
         }))
       ) ?? [];
-      console.log('Fetched assignments count:', assignments.length);
+      // console.log('Fetched assignments count:', assignments.length);
       setApiAssignments(assignments);
       const categories = {
         names: backendData?.gradebook?.map((cat: any) => cat.category) ?? [],
@@ -339,13 +340,13 @@ const ClassDetails = () => {
             const parsed = JSON.parse(staleCache);
             setApiAssignments(parsed.assignments || []);
             setApiCategories(parsed.categories || { names: [], weights: [] });
-            console.log('Using stale cache because fetch threw error');
+            // console.log('Using stale cache because fetch threw error');
           } else {
             setApiAssignments([]);
             setApiCategories({ names: [], weights: [] });
           }
         } catch (error) {
-          console.log('Stale cache read error:', error);
+          // console.log('Stale cache read error:', error);
           setApiAssignments([]);
           setApiCategories({ names: [], weights: [] });
         }
@@ -359,7 +360,7 @@ const ClassDetails = () => {
   };
 
   const meshAssignments = async () => {
-    console.log('meshAssignments called, apiAssignments.length:', apiAssignments.length, 'isEnabled:', isEnabled, 'selectedCategory:', selectedCategory);
+    // console.log('meshAssignments called, apiAssignments.length:', apiAssignments.length, 'isEnabled:', isEnabled, 'selectedCategory:', selectedCategory);
     const data = await AsyncStorage.getItem("artificialAssignments");
     if (!data) {
       const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
@@ -414,9 +415,9 @@ const ClassDetails = () => {
     }));
 
     const artificialNames = new Set(fixedArtificial.map((a: any) => a.name));
-    console.log('artificialNames:', Array.from(artificialNames));
+    // console.log('artificialNames:', Array.from(artificialNames));
     const filteredReal = apiAssignments.filter((r) => !artificialNames.has(r.name));
-    console.log('filteredReal count:', filteredReal.length);
+    // console.log('filteredReal count:', filteredReal.length);
     const allAssignments = [...fixedArtificial, ...filteredReal].sort((a, b) => {
       const parseDate = (date: string) => {
         const [month, day, year] = date.split('/').map(Number);
@@ -477,7 +478,7 @@ const ClassDetails = () => {
   useEffect(() => {
     // Only fetch if we don't have data or if this is the initial load
     if (apiAssignments.length === 0 && apiCategories.names.length === 0) {
-      console.log('Initial load - fetching assignments');
+      // console.log('Initial load - fetching assignments');
       fetchApiAssignments();
     }
   }, [className, stuId, corNumId, section, gbId, selectedCategory]);
@@ -492,10 +493,10 @@ const ClassDetails = () => {
   useFocusEffect(
     React.useCallback(() => {
       const refreshData = async () => {
-        console.log('Screen focused, selectedCategory:', selectedCategory);
+        // console.log('Screen focused, selectedCategory:', selectedCategory);
         // Don't refresh if we're already loading or waiting for retry
         if (loading || waitingForRetry) {
-          console.log('🔄 Screen focused - already loading, skipping refresh');
+          // console.log('🔄 Screen focused - already loading, skipping refresh');
           return;
         }
 
@@ -514,10 +515,10 @@ const ClassDetails = () => {
               
               // Only fetch if cache is stale
               if (cacheAge >= CACHE_DURATION) {
-                console.log('Screen focused - cache stale, fetching assignments');
+                // console.log('Screen focused - cache stale, fetching assignments');
                 await fetchApiAssignments();
               } else {
-                console.log('Screen focused - using existing cached data, age:', Math.round(cacheAge / 1000), 'seconds');
+                // console.log('Screen focused - using existing cached data, age:', Math.round(cacheAge / 1000), 'seconds');
                 // Always refresh artificial assignments when returning to the screen
                 await meshAssignments();
                 setLoading(false);
@@ -525,11 +526,11 @@ const ClassDetails = () => {
               }
             } else {
               // No cache exists, fetch data
-              console.log('Screen focused - no cache, fetching assignments');
+              // console.log('Screen focused - no cache, fetching assignments');
               await fetchApiAssignments();
             }
           } catch (error) {
-            console.log('Screen focused - cache check error:', error);
+            // console.log('Screen focused - cache check error:', error);
             await fetchApiAssignments();
           }
         }
@@ -653,7 +654,7 @@ const handleResetArtificialAssignments = async () => {
   const backgroundColor = theme === 'dark' ? '#030014' : "#ffffff";
   const indicatorColor = theme === 'dark' ? '#ffffff' : '#000000';
 
-  console.log(filteredAssignments);
+  // console.log(filteredAssignments);
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View className="bg-primary flex-1">

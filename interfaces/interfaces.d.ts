@@ -78,4 +78,10 @@ interface Assignment {
   outOf: number;
   dueDate: string;
   artificial: boolean;
+  meta?: AssignmentMeta[];
+}
+
+interface AssignmentMeta {
+  type: 'missing' | 'noCount' | 'absent';
+  note: string;
 }
