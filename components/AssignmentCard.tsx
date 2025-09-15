@@ -55,6 +55,21 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
   
   const metaDisplay = getMetaDisplay();
   
+  // Calculate dynamic padding based on content
+  const getDynamicPadding = () => {
+    // Base padding for right-side content (grade circle + divider + total circle + chevron + margins)
+    // Reduced padding to prevent over-constraining the text
+    let basePadding = 'pr-16';
+    
+    // Add extra padding if metadata badge is present
+    if (metaDisplay) {
+      // Metadata badge adds some width, but keep it reasonable
+      basePadding = 'pr-24';
+    }
+    
+    return basePadding;
+  };
+  
   // Determine card styling based on metadata
   const getCardStyle = () => {
     if (isMissing || testIsMissing) {
@@ -103,21 +118,23 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
                     <View className="self-start rounded-md bg-highlight px-2 ml-5">
                         <Text className="text-sm text-highlightText font-bold">{category}</Text>
                     </View>
-                    <View className="flex-row items-center ml-5 mt-1 pr-0">
-                        <Text 
-                            className={`${getTextStyle().replace('ml-5', '')} flex-1`} 
-                            numberOfLines={1} 
-                            ellipsizeMode="tail"
-                        >
-                            {name}
-                        </Text>
-                        {metaDisplay && (
-                            <View className={`ml-2 px-2 py-1 rounded-md ${metaDisplay.bgColor} flex-shrink-0`}>
-                                <Text className={`text-xs font-bold ${metaDisplay.textColor}`}>
-                                    {metaDisplay.label.toUpperCase()}
-                                </Text>
-                            </View>
-                        )}
+                    <View className="flex-row items-center ml-5 mt-1 mr-4 flex-1">
+                        <View className="flex-row items-center flex-1">
+                            <Text 
+                                className={`text-lg text-main font-medium flex-shrink ${isNoCount ? 'line-through opacity-60' : ''}`}
+                                numberOfLines={1} 
+                                ellipsizeMode="tail"
+                            >
+                                {name}
+                            </Text>
+                            {metaDisplay && (
+                                <View className={`px-2 py-1 rounded-md ${metaDisplay.bgColor} flex-shrink-0 ml-1`}>
+                                    <Text className={`text-xs font-bold ${metaDisplay.textColor}`}>
+                                        {metaDisplay.label.toUpperCase()}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
                     </View>
                     <Text className='text-xs text-secondary ml-5'>Due {dueDate}</Text>
                 </View>
