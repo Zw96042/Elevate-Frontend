@@ -99,14 +99,20 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
     >
         <TouchableOpacity  className='w-[100%]'>
             <View className={getCardStyle()}>
-                <View>
+                <View className="flex-1">
                     <View className="self-start rounded-md bg-highlight px-2 ml-5">
                         <Text className="text-sm text-highlightText font-bold">{category}</Text>
                     </View>
-                    <View className="flex-row items-center ml-5 mt-1">
-                        <Text className={getTextStyle().replace('ml-5', '')}>{name}</Text>
+                    <View className="flex-row items-center ml-5 mt-1 pr-0">
+                        <Text 
+                            className={`${getTextStyle().replace('ml-5', '')} flex-1`} 
+                            numberOfLines={1} 
+                            ellipsizeMode="tail"
+                        >
+                            {name}
+                        </Text>
                         {metaDisplay && (
-                            <View className={`ml-2 px-2 py-1 rounded-md ${metaDisplay.bgColor}`}>
+                            <View className={`ml-2 px-2 py-1 rounded-md ${metaDisplay.bgColor} flex-shrink-0`}>
                                 <Text className={`text-xs font-bold ${metaDisplay.textColor}`}>
                                     {metaDisplay.label.toUpperCase()}
                                 </Text>
