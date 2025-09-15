@@ -80,7 +80,7 @@ const SkeletonPlaceholder = ({ children }: { children: React.ReactNode }) => {
 
 const SkeletonClassCard = () => {
   return (
-    <View className="w-full h-28 rounded-3xl bg-cardColor flex-row items-center justify-between px-5 animate-pulse">
+    <View className="w-full h-[5.3rem] rounded-3xl bg-cardColor flex-row items-center justify-between px-5 animate-pulse">
       <SkeletonPlaceholder>
         <View className='flex-1 justify-center'>
           <View className="w-40 h-6 bg-gray-300 rounded-md mb-2" />

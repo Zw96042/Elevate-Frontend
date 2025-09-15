@@ -184,7 +184,7 @@ export default function Index() {
         </View>
         <FlatList
           className='mb-[4rem]'
-          data={loading ? Array.from({ length: 6 }) : filteredCourses}
+          data={loading ? Array.from({ length: 7 }) : filteredCourses}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
