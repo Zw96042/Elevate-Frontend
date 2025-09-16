@@ -326,9 +326,14 @@ const ClassDetails = () => {
       await AsyncStorage.setItem(cacheKey, JSON.stringify(cacheData));
       setLastFetchTime(now);
       
-      // Stop loading since we have successful data
+      // Process assignments immediately after API data is available
+      // This ensures assignments are displayed as soon as the response is received
+      await meshAssignmentsImmediate(assignments, categories);
+      
+      // Only stop loading after assignments are fully processed and displayed
       setLoading(false);
       setWaitingForRetry(false);
+      console.log('API fetch and assignment processing completed');
     } catch (err) {
       console.error('Error fetching assignments:', err);
       // Only set to empty if we don't have existing data
@@ -359,13 +364,112 @@ const ClassDetails = () => {
     }
   };
 
-  const meshAssignments = async () => {
-    // console.log('meshAssignments called:', {
-    //   apiAssignmentsLength: apiAssignments.length,
-    //   filteredAssignmentsLength: filteredAssignments.length,
-    //   isEnabled,
-    //   selectedCategory
-    // });
+    // Immediate assignment processing function that takes API data directly
+  const meshAssignmentsImmediate = async (apiAssignmentsData: Assignment[], apiCategoriesData: { names: string[]; weights: number[] }) => {
+    console.log('meshAssignmentsImmediate called with fresh API data:', apiAssignmentsData.length, 'assignments');
+    
+    const data = await AsyncStorage.getItem("artificialAssignments");
+    if (!data) {
+      // No artificial assignments, just use API data
+      const realWithIds = ensureUniqueAssignmentIds(apiAssignmentsData);
+      setArtificialAssignments([]);
+      setFilteredAssignments(realWithIds);
+      console.log('No artificial data - set filteredAssignments to:', realWithIds.length);
+      
+      const all = realWithIds.filter(a => a.grade !== '*');
+      const weightsMap = Object.fromEntries(
+        (apiCategoriesData.names || []).map((name, i) => [name, apiCategoriesData.weights[i]])
+      );
+      const nonEmptyCategories = all.reduce((set, a) => {
+        if (!set.has(a.category)) set.add(a.category);
+        return set;
+      }, new Set<string>());
+      const adjustedWeights = Object.entries(weightsMap).filter(([name]) =>
+        nonEmptyCategories.has(name)
+      );
+      const totalAdjustedWeight = adjustedWeights.reduce((sum, [, w]) => sum + w, 0);
+      const normalizedWeights = Object.fromEntries(
+        adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
+      );
+      setCourseSummary(calculateGradeSummary(all, normalizedWeights));
+      return;
+    }
+
+    // Process artificial assignments
+    const parsed = JSON.parse(data);
+    const relevantTerms = getRelevantTerms(selectedCategory);
+    
+    let allArtificialAssignments: Assignment[] = [];
+    
+    const termsToCheck = [...relevantTerms];
+    if (selectedCategory === "SM1 Grade" || selectedCategory === "SM2 Grades") {
+      termsToCheck.push(selectedCategory.split(" ")[0]);
+    }
+    
+    termsToCheck.forEach(term => {
+      const storageKey = `${className}_${corNumId}_${section}_${gbId}_${term}`;
+      const classAssignments = parsed[storageKey] ?? [];
+      allArtificialAssignments = [...allArtificialAssignments, ...classAssignments];
+      
+      if (term === selectedCategory.split(" ")[0]) {
+        const oldStorageKey = `${className}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
+        const oldAssignments = parsed[oldStorageKey] ?? [];
+        allArtificialAssignments = [...allArtificialAssignments, ...oldAssignments];
+      }
+    });
+    
+    const artificial = isEnabled ? allArtificialAssignments : [];
+    const fixedArtificial = artificial.map((a: Assignment) => ({
+      ...a,
+      grade: a.grade !== undefined && a.grade !== null ? a.grade : "*",
+      outOf: a.outOf !== undefined && a.outOf !== null ? a.outOf : 100,
+    }));
+
+    const artificialNames = new Set(fixedArtificial.map((a: any) => a.name));
+    const filteredReal = apiAssignmentsData.filter((r) => !artificialNames.has(r.name));
+    
+    const allAssignments = [...fixedArtificial, ...filteredReal].sort((a, b) => {
+      const parseDate = (date: string) => {
+        const [month, day, year] = date.split('/').map(Number);
+        return new Date(year < 100 ? 2000 + year : year, month - 1, day);
+      };
+      return parseDate(b.dueDate).getTime() - parseDate(a.dueDate).getTime();
+    });
+    
+    const assignmentsWithIds = ensureUniqueAssignmentIds(allAssignments);
+    const artificialWithIds = assignmentsWithIds.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
+    setArtificialAssignments(artificialWithIds);
+    setFilteredAssignments(assignmentsWithIds);
+    console.log('With artificial data - set filteredAssignments to:', assignmentsWithIds.length);
+
+    const all = assignmentsWithIds.filter(a => a.grade !== '*');
+    const weightsMap = Object.fromEntries(
+      (apiCategoriesData.names || []).map((name, i) => [name, apiCategoriesData.weights[i]])
+    );
+    const nonEmptyCategories = all.reduce((set, a) => {
+      if (!set.has(a.category)) set.add(a.category);
+      return set;
+    }, new Set<string>());
+    const adjustedWeights = Object.entries(weightsMap).filter(([name]) =>
+      nonEmptyCategories.has(name)
+    );
+    const totalAdjustedWeight = adjustedWeights.reduce((sum, [, w]) => sum + w, 0);
+    const normalizedWeights = Object.fromEntries(
+      adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
+    );
+    setCourseSummary(calculateGradeSummary(all, normalizedWeights));
+  };
+
+  const meshAssignments = async (toggleValue?: boolean) => {
+    // Use the passed toggleValue if provided, otherwise use current isEnabled state
+    const currentToggleState = toggleValue !== undefined ? toggleValue : isEnabled;
+    console.log('meshAssignments called:', {
+      apiAssignmentsLength: apiAssignments.length,
+      filteredAssignmentsLength: filteredAssignments.length,
+      loading,
+      waitingForRetry,
+      currentToggleState
+    });
     
     const data = await AsyncStorage.getItem("artificialAssignments");
     if (!data) {
@@ -378,6 +482,12 @@ const ClassDetails = () => {
       const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
       setArtificialAssignments([]);
       setFilteredAssignments(realWithIds);
+      
+      // Don't reset loading states here - let the immediate function handle fresh API data
+      if (realWithIds.length > 0 || apiAssignments.length === 0) {
+        console.log('Regular meshAssignments: assignments:', realWithIds.length);
+      }
+      
       const all = realWithIds.filter(a => a.grade !== '*');
       const weightsMap = Object.fromEntries(
         (apiCategories.names || []).map((name, i) => [name, apiCategories.weights[i]])
@@ -461,6 +571,10 @@ const ClassDetails = () => {
     const artificialWithIds = assignmentsWithIds.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
     setArtificialAssignments(artificialWithIds);
     setFilteredAssignments(assignmentsWithIds);
+
+    console.log('Regular meshAssignments: Setting filteredAssignments:', assignmentsWithIds.length, 'assignments');
+
+    // Don't reset loading states here - only the immediate function should do that
 
     const all = assignmentsWithIds.filter(a => a.grade !== '*');
     const weightsMap = Object.fromEntries(
@@ -817,7 +931,10 @@ const handleResetArtificialAssignments = async () => {
             )}
           </AnimatePresence>
           <FlatList
-                        data={loading || waitingForRetry ? Array.from({ length: 8 }) : filteredAssignments}
+                        data={(() => {
+                          console.log('FlatList render - loading:', loading, 'waitingForRetry:', waitingForRetry, 'filteredAssignments:', filteredAssignments.length);
+                          return loading || waitingForRetry ? Array.from({ length: 8 }) : filteredAssignments;
+                        })()}
             renderItem={({ item, index }) => (
               loading || waitingForRetry ? (
                 <SkeletonAssignment key={`skeleton-${index}`} />
