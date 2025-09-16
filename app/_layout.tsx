@@ -28,6 +28,7 @@ function InnerLayout() {
   const { categories, setCategory, category, addSheetRef, name, setName, grade, setGrade, outOf, setOutOf, onSubmit } = useAddAssignmentSheet();
   const [currentSnapPosition, setCurrentSnapPosition] = useState('hidden');
   const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   // Remove local name state, use context
   // category and setCategory now come from context
   // grade and outOf now come from context
@@ -38,6 +39,7 @@ function InnerLayout() {
     if (index === -1) {
       setCurrentSnapPosition('hidden');
       setModalClosedByOutsideTap(true);
+      setIsSubmitting(false); // Reset submitting flag when modal closes
     } else {
       setCurrentSnapPosition('54%');
       setModalClosedByOutsideTap(false);
@@ -62,6 +64,10 @@ function InnerLayout() {
         setModalClosedByOutsideTap(false);
         return;
       }
+      if (isSubmitting) {
+        setIsSubmitting(false);
+        return;
+      }
       if (currentSnapPosition === '90%') {
         addSheetRef.current?.snapToPosition('54%', { duration: 150 });
         setCurrentSnapPosition('54%');
@@ -72,7 +78,7 @@ function InnerLayout() {
       showSub.remove();
       hideSub.remove();
     };
-  }, [currentSnapPosition, modalClosedByOutsideTap]);
+  }, [currentSnapPosition, modalClosedByOutsideTap, isSubmitting]);
   return (
     <UnifiedDataProvider>
       <TouchableWithoutFeedback onPress={() => {
@@ -245,7 +251,11 @@ function InnerLayout() {
                   </View>
                   <TouchableOpacity
                     className="bg-highlight py-3 rounded-md mt-2"
-                    onPress={onSubmit}
+                    onPress={() => {
+                      setIsSubmitting(true);
+                      onSubmit();
+                      Keyboard.dismiss();
+                    }}
                   >
                     <Text className="text-center text-highlightText font-bold text-lg">Add Assignment</Text>
                   </TouchableOpacity>
