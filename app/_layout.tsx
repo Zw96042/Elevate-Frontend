@@ -87,7 +87,16 @@ function InnerLayout() {
                 setCurrentSnapPosition('hidden');
               }} accessible={false}>
         <View className="flex-1">
-          <Stack>
+          <Stack
+            screenOptions={{
+              headerTintColor: '#ffffff',
+              headerStyle: { backgroundColor: '#2563eb' },
+              headerTitleStyle: {
+                fontWeight: 'bold',
+                fontSize: 18,
+              },
+            }}
+          >
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="inbox/[message]" options={{
               headerShown: true,
@@ -95,12 +104,23 @@ function InnerLayout() {
               headerStyle: {
                 backgroundColor: '#2563eb'
               },
-              headerTintColor: '#fff',
+              headerTintColor: '#ffffff',
               headerTitleStyle: {
                 fontWeight: 'bold',
                 fontSize: 18,
               },
               headerBackTitle: 'Inbox'
+            }} />
+            <Stack.Screen name="assignments/[assignment]" options={{
+              headerShown: true,
+              headerStyle: {
+                backgroundColor: '#2563eb'
+              },
+              headerTintColor: '#ffffff',
+              headerTitleStyle: {
+                fontWeight: 'bold',
+                fontSize: 18,
+              },
             }} />
           </Stack>
           <BottomSheet

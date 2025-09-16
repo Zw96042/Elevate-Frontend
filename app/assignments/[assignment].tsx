@@ -1,6 +1,7 @@
-import { View, Text, TouchableOpacity, TextInput, Keyboard, TouchableWithoutFeedback, Pressable, useColorScheme } from 'react-native'
+import { View, Text, TouchableOpacity, TextInput, Keyboard, TouchableWithoutFeedback, Pressable, useColorScheme, Platform } from 'react-native'
 import React, { useRef, useState } from 'react'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import formatClassName from '@/utils/formatClassName';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generateUniqueId } from '@/utils/uniqueId';
@@ -121,12 +122,6 @@ const AssignmentDetails = () => {
         <Stack.Screen
             options={{
             title: decodeURIComponent(name.toString() || 'Assignment'),
-            headerStyle: { backgroundColor: '#2563eb' },
-            headerTintColor: '#fff',
-            headerTitleStyle: {
-                fontWeight: 'bold',
-                fontSize: 18,
-            },
             headerBackTitle: formattedClass.length > 10
                 ? formattedClass.slice(0, 10).trim() + '…'
                 : formattedClass,

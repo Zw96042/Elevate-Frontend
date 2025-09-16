@@ -360,13 +360,18 @@ const ClassDetails = () => {
   };
 
   const meshAssignments = async () => {
-    // console.log('meshAssignments called, apiAssignments.length:', apiAssignments.length, 'isEnabled:', isEnabled, 'selectedCategory:', selectedCategory);
+    // console.log('meshAssignments called:', {
+    //   apiAssignmentsLength: apiAssignments.length,
+    //   filteredAssignmentsLength: filteredAssignments.length,
+    //   isEnabled,
+    //   selectedCategory
+    // });
     
     const data = await AsyncStorage.getItem("artificialAssignments");
     if (!data) {
       // If apiAssignments is empty and we don't have artificial assignments data, don't clear everything
       if (apiAssignments.length === 0 && filteredAssignments.length > 0) {
-        // console.log('No artificial data and no API data, keeping existing assignments');
+        console.log('No artificial data and no API data, keeping existing assignments');
         return;
       }
       
@@ -422,12 +427,23 @@ const ClassDetails = () => {
     }));
 
     const artificialNames = new Set(fixedArtificial.map((a: any) => a.name));
-    // console.log('artificialNames:', Array.from(artificialNames));
+    // console.log('Processing assignments:', {
+    //   artificialCount: fixedArtificial.length,
+    //   artificialNames: Array.from(artificialNames),
+    //   apiAssignmentsCount: apiAssignments.length
+    // });
     
     // If we have artificial assignments but no API assignments, use only artificial ones
     let filteredReal: Assignment[];
     if (apiAssignments.length === 0 && fixedArtificial.length > 0) {
       // console.log('No API assignments but have artificial, using only artificial assignments');
+      filteredReal = [];
+    } else if (apiAssignments.length === 0 && fixedArtificial.length === 0) {
+      // If both are empty, preserve existing assignments if they exist
+      if (filteredAssignments.length > 0) {
+        // console.log('Both API and artificial are empty, preserving existing assignments');
+        return;
+      }
       filteredReal = [];
     } else {
       filteredReal = apiAssignments.filter((r) => !artificialNames.has(r.name));
@@ -518,53 +534,16 @@ const ClassDetails = () => {
 
   useFocusEffect(
     React.useCallback(() => {
-      const refreshData = async () => {
-        // console.log('Screen focused, selectedCategory:', selectedCategory);
-        // Always refresh artificial assignments when returning to the screen
-        // This ensures updates made in assignment detail view are reflected
-        await meshAssignments();
+      const refreshArtificialAssignments = async () => {
+        // console.log('Screen focused - refreshing artificial assignments only');
         
-        // Don't refresh API data if we're already loading or waiting for retry
-        if (loading || waitingForRetry) {
-          // console.log('🔄 Screen focused - already loading, skipping API refresh');
-          return;
-        }
-
-        if (className && stuId && corNumId && section && gbId && selectedCategory) {
-          const cacheKey = `assignments_${className}_${stuId}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
-          const now = Date.now();
-          
-          // Debug: Check cache status on focus
-          await checkCacheStatus();
-          
-          try {
-            const cachedData = await AsyncStorage.getItem(cacheKey);
-            if (cachedData) {
-              const parsed = JSON.parse(cachedData);
-              const cacheAge = now - (parsed.timestamp || 0);
-              
-              // Only fetch API data if cache is stale
-              if (cacheAge >= CACHE_DURATION) {
-                // console.log('Screen focused - cache stale, fetching assignments');
-                await fetchApiAssignments();
-              } else {
-                // console.log('Screen focused - using existing cached data, age:', Math.round(cacheAge / 1000), 'seconds');
-                setLoading(false);
-                setWaitingForRetry(false);
-              }
-            } else {
-              // No cache exists, fetch data
-              // console.log('Screen focused - no cache, fetching assignments');
-              await fetchApiAssignments();
-            }
-          } catch (error) {
-            // console.log('Screen focused - cache check error:', error);
-            await fetchApiAssignments();
-          }
-        }
+        // Only refresh artificial assignments when screen is focused
+        // This ensures updates made in assignment detail view are reflected
+        // without triggering a full API reload
+        await meshAssignments();
       };
-      refreshData();
-    }, [className, stuId, corNumId, section, gbId, selectedCategory])
+      refreshArtificialAssignments();
+    }, [meshAssignments])
   );
 
   const { openModal } = useAddAssignmentSheet();
