@@ -121,12 +121,6 @@ const AssignmentDetails = () => {
         <Stack.Screen
             options={{
             title: decodeURIComponent(name.toString() || 'Assignment'),
-            headerStyle: { backgroundColor: '#2563eb' },
-            headerTintColor: '#fff',
-            headerTitleStyle: {
-                fontWeight: 'bold',
-                fontSize: 18,
-            },
             headerBackTitle: formattedClass.length > 10
                 ? formattedClass.slice(0, 10).trim() + '…'
                 : formattedClass,
