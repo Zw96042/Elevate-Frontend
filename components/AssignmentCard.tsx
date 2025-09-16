@@ -14,7 +14,6 @@ type AssignmentCardProps = Assignment & {
 
 // Course Name, Teacher Name, Numerical Grade
 const AssignmentCard = ({ id, className, name, term, category, grade, outOf, dueDate, artificial, editing, classId, corNumId, section, gbId, meta }: AssignmentCardProps) => {
-   const [value, setValue] = useState(0);
    const theme = useColorScheme();
    const highlight = theme === 'dark' ? "#3b5795" : "#a4bfed";
    const highlightText = theme === 'dark' ? "#7398e6" : "#587bc5";
@@ -54,21 +53,6 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
   };
   
   const metaDisplay = getMetaDisplay();
-  
-  // Calculate dynamic padding based on content
-  const getDynamicPadding = () => {
-    // Base padding for right-side content (grade circle + divider + total circle + chevron + margins)
-    // Reduced padding to prevent over-constraining the text
-    let basePadding = 'pr-16';
-    
-    // Add extra padding if metadata badge is present
-    if (metaDisplay) {
-      // Metadata badge adds some width, but keep it reasonable
-      basePadding = 'pr-24';
-    }
-    
-    return basePadding;
-  };
   
   // Determine card styling based on metadata
   const getCardStyle = () => {
@@ -147,7 +131,7 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
                             activeStrokeWidth={3}
                             activeStrokeColor={highlight}
                             inActiveStrokeOpacity={0}
-                            duration={0}
+                            duration={200}
                             showProgressValue={false}
                           />
                           <Text

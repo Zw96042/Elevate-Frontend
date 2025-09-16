@@ -463,7 +463,7 @@ const ClassDetails = () => {
     }
     
     animatedGrade.value = withTiming(value, {
-      duration: 0,
+      duration: 200,
       easing: Easing.inOut(Easing.ease),
     });
   }, [courseSummary.courseTotal, currTerm.total]);
@@ -494,9 +494,13 @@ const ClassDetails = () => {
     React.useCallback(() => {
       const refreshData = async () => {
         // console.log('Screen focused, selectedCategory:', selectedCategory);
-        // Don't refresh if we're already loading or waiting for retry
+        // Always refresh artificial assignments when returning to the screen
+        // This ensures updates made in assignment detail view are reflected
+        await meshAssignments();
+        
+        // Don't refresh API data if we're already loading or waiting for retry
         if (loading || waitingForRetry) {
-          // console.log('🔄 Screen focused - already loading, skipping refresh');
+          // console.log('🔄 Screen focused - already loading, skipping API refresh');
           return;
         }
 
@@ -513,14 +517,12 @@ const ClassDetails = () => {
               const parsed = JSON.parse(cachedData);
               const cacheAge = now - (parsed.timestamp || 0);
               
-              // Only fetch if cache is stale
+              // Only fetch API data if cache is stale
               if (cacheAge >= CACHE_DURATION) {
                 // console.log('Screen focused - cache stale, fetching assignments');
                 await fetchApiAssignments();
               } else {
                 // console.log('Screen focused - using existing cached data, age:', Math.round(cacheAge / 1000), 'seconds');
-                // Always refresh artificial assignments when returning to the screen
-                await meshAssignments();
                 setLoading(false);
                 setWaitingForRetry(false);
               }
