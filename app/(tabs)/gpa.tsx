@@ -14,6 +14,7 @@ import { useGradeLevel } from '@/hooks/useGradeLevel';
 import { UnifiedGPAManager, GPAData } from '@/lib/unifiedGpaManager';
 import { UnifiedCourseData } from '@/lib/unifiedDataManager';
 import { useUnifiedData } from '@/context/UnifiedDataContext';
+import { useColorScheme } from 'nativewind';
 
 type GradeLevel = 'Freshman' | 'Sophomore' | 'Junior' | 'Senior' | 'All Time';
 
@@ -56,6 +57,9 @@ const GPA = () => {
   const isInteractingWithGraph = useRef(false);
   const hasInitializedGradeRef = useRef(false);
   
+  // Move useColorScheme to top level to avoid hook order violations
+  const { colorScheme } = useColorScheme();
+  
   // Update selectedGrade when currentGradeLevel changes, but only on initial load
   useEffect(() => {
     // Only update selectedGrade automatically if we haven't initialized it yet
@@ -74,7 +78,6 @@ const GPA = () => {
     return gpaValue !== undefined && gpaValue.weighted > 0;
   });
 
-  const gradeLevels: GradeLevel[] = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'All Time'];
 
   // Removed leftover loadGPAData logic. Use context and local derived state only.
 
@@ -303,6 +306,8 @@ const GPA = () => {
 
     const showDotAndTooltip = (hoverX !== null || activePointIndex !== null) && dotX !== null && dotY !== null && snappedIndex !== null;
 
+    const cardColor = colorScheme === 'dark' ? '#1f2937' : '#fafafa';
+
     return (
       <View className="mb-4 bg-cardColor rounded-xl pt-4 overflow-hidden relative">
         <Text className="text-main text-lg text-center mb-4">Weighted GPA Graph</Text>
@@ -347,7 +352,7 @@ const GPA = () => {
               top: 0,
               bottom: 0,
               right: 0,
-              backgroundColor: '#1f2937', // cardColor background to match container
+              backgroundColor: cardColor,
               zIndex: 10,
             }}
             onDidAnimate={(key, finished) => {

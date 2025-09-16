@@ -662,7 +662,7 @@ const handleResetArtificialAssignments = async () => {
           options={{
             title: decodeURIComponent(formattedName || "Class"),
             headerStyle: { backgroundColor: "#2563eb" },
-            headerTintColor: "#fff",
+            headerTintColor: "#ffffff",
             headerTitleStyle: {
               fontWeight: "bold",
               fontSize: 18,

@@ -115,10 +115,10 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
         <TouchableOpacity  className='w-[100%]'>
             <View className={getCardStyle()}>
                 <View className="flex-1">
-                    <View className="self-start rounded-md bg-highlight px-2 ml-5">
+                    <View className="self-start rounded-md bg-highlight px-2 ml-5 mt-2">
                         <Text className="text-sm text-highlightText font-bold">{category}</Text>
                     </View>
-                    <View className="flex-row items-center ml-5 mt-1 mr-4 flex-1">
+                    <View className="flex-row items-center ml-5 mr-4 flex-1">
                         <View className="flex-row items-center flex-1">
                             <Text 
                                 className={`text-lg text-main font-medium flex-shrink ${isNoCount ? 'line-through opacity-60' : ''}`}
@@ -136,7 +136,7 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
                             )}
                         </View>
                     </View>
-                    <Text className='text-xs text-secondary ml-5'>Due {dueDate}</Text>
+                    <Text className='text-xs text-secondary ml-5 mb-2'>Due {dueDate}</Text>
                 </View>
                 <View className='flex-row items-center'>
                     <View className="flex-row items-center gap-2 mr-1">
