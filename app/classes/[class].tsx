@@ -361,8 +361,15 @@ const ClassDetails = () => {
 
   const meshAssignments = async () => {
     // console.log('meshAssignments called, apiAssignments.length:', apiAssignments.length, 'isEnabled:', isEnabled, 'selectedCategory:', selectedCategory);
+    
     const data = await AsyncStorage.getItem("artificialAssignments");
     if (!data) {
+      // If apiAssignments is empty and we don't have artificial assignments data, don't clear everything
+      if (apiAssignments.length === 0 && filteredAssignments.length > 0) {
+        // console.log('No artificial data and no API data, keeping existing assignments');
+        return;
+      }
+      
       const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
       setArtificialAssignments([]);
       setFilteredAssignments(realWithIds);
@@ -416,7 +423,16 @@ const ClassDetails = () => {
 
     const artificialNames = new Set(fixedArtificial.map((a: any) => a.name));
     // console.log('artificialNames:', Array.from(artificialNames));
-    const filteredReal = apiAssignments.filter((r) => !artificialNames.has(r.name));
+    
+    // If we have artificial assignments but no API assignments, use only artificial ones
+    let filteredReal: Assignment[];
+    if (apiAssignments.length === 0 && fixedArtificial.length > 0) {
+      // console.log('No API assignments but have artificial, using only artificial assignments');
+      filteredReal = [];
+    } else {
+      filteredReal = apiAssignments.filter((r) => !artificialNames.has(r.name));
+    }
+    
     // console.log('filteredReal count:', filteredReal.length);
     const allAssignments = [...fixedArtificial, ...filteredReal].sort((a, b) => {
       const parseDate = (date: string) => {
@@ -462,10 +478,20 @@ const ClassDetails = () => {
       value = Number(courseSummary.courseTotal);
     }
     
-    animatedGrade.value = withTiming(value, {
-      duration: 200,
-      easing: Easing.inOut(Easing.ease),
-    });
+    // Check if the jump is too large (50+ points) to skip animation
+    const currentValue = animatedGrade.value;
+    const difference = Math.abs(value - currentValue);
+    
+    if (difference >= 50) {
+      // Skip animation for large jumps
+      animatedGrade.value = value;
+    } else {
+      // Normal animation for smaller changes
+      animatedGrade.value = withTiming(value, {
+        duration: 200,
+        easing: Easing.inOut(Easing.ease),
+      });
+    }
   }, [courseSummary.courseTotal, currTerm.total]);
 
   useAnimatedReaction(
