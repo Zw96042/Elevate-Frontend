@@ -386,7 +386,7 @@ const GPA = () => {
                 position: 'absolute',
                 top,
                 left,
-                backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                backgroundColor: colorScheme === 'dark' ? 'rgba(30, 41, 59, 0.95)' : 'rgba(255, 255, 255, 0.95)',
                 paddingVertical: 6,
                 paddingHorizontal: 12,
                 borderRadius: 10,
@@ -402,7 +402,7 @@ const GPA = () => {
             >
               <Text
                 style={{
-                  color: '#F8FAFC',
+                  color: colorScheme === 'dark' ? '#F8FAFC' : '#1F2937',
                   fontWeight: '600',
                   fontFamily: 'monospace',
                   fontSize: 14,
@@ -484,7 +484,7 @@ const GPA = () => {
                   position: 'absolute',
                   top,
                   left,
-                  backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                  backgroundColor: colorScheme === 'dark' ? 'rgba(30, 41, 59, 0.95)' : 'rgba(255, 255, 255, 0.95)',
                   paddingVertical: 6,
                   paddingHorizontal: 12,
                   borderRadius: 10,
@@ -500,7 +500,7 @@ const GPA = () => {
               >
                 <Text
                   style={{
-                    color: '#F8FAFC',
+                    color: colorScheme === 'dark' ? '#F8FAFC' : '#1F2937',
                     fontWeight: '600',
                     fontFamily: 'monospace',
                     fontSize: 14,
