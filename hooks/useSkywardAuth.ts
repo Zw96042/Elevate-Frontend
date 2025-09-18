@@ -25,7 +25,3 @@ export function useSkywardAuth() {
 
   return { loginToSkyward, loading, error, sessionCodes };
 }
-
-// Usage in a component:
-// const { loginToSkyward, loading, error, sessionCodes } = useSkywardAuth();
-// await loginToSkyward({ username, password, baseURL });
