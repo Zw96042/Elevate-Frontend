@@ -3,8 +3,9 @@ import React, { useState } from 'react'
 import { Link } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons';
 import CircularProgress from 'react-native-circular-progress-indicator';
+import { AssignmentCardProps } from '@/interfaces/interfaces';
 
-type AssignmentCardProps = Assignment & {
+type ExtendedAssignmentCardProps = AssignmentCardProps & {
   editing: boolean;
   classId?: string;
   corNumId?: string;
@@ -13,7 +14,7 @@ type AssignmentCardProps = Assignment & {
 };
 
 // Course Name, Teacher Name, Numerical Grade
-const AssignmentCard = ({ id, className, name, term, category, grade, outOf, dueDate, artificial, editing, classId, corNumId, section, gbId, meta }: AssignmentCardProps) => {
+const AssignmentCard = ({ id, className, name, term, category, grade, outOf, dueDate, artificial, editing, classId, corNumId, section, gbId, meta, onPress, showClass }: ExtendedAssignmentCardProps) => {
    const [value, setValue] = useState(0);
    const theme = useColorScheme();
    const highlight = theme === 'dark' ? "#3b5795" : "#a4bfed";
@@ -87,6 +88,88 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
   };
   
   // console.log(grade);
+  
+  // Common content component
+  const renderContent = () => (
+    <View className={getCardStyle()}>
+      <View className="flex-1">
+        <View className="self-start rounded-md bg-highlight px-2 ml-5 mt-2">
+          <Text className="text-sm text-highlightText font-bold">{category}</Text>
+        </View>
+        <View className="flex-row items-center ml-5 mr-4 flex-1">
+          <View className="flex-row items-center flex-1">
+            <Text 
+              className={`text-lg text-main font-medium flex-shrink ${isNoCount ? 'line-through opacity-60' : ''}`}
+              numberOfLines={1} 
+              ellipsizeMode="tail"
+            >
+              {name}
+            </Text>
+            {metaDisplay && (
+              <View className={`px-2 py-1 rounded-md ${metaDisplay.bgColor} flex-shrink-0 ml-1`}>
+                <Text className={`text-xs font-bold ${metaDisplay.textColor}`}>
+                  {metaDisplay.label.toUpperCase()}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+        {/* Conditional Class Name Display */}
+        {showClass && (
+          <Text className="text-md text-subtext font-normal ml-5" numberOfLines={1}>
+            {className}
+          </Text>
+        )}
+        <Text className='text-xs text-secondary ml-5 mb-2'>Due {dueDate}</Text>
+      </View>
+      <View className='flex-row items-center'>
+        <View className="flex-row items-center gap-2 mr-1">
+          <View style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'center' }}>
+            <CircularProgress
+              value={Number(grade === '*' ? 0 : (Math.min(Number(grade) / Number(outOf), 1)) * 100)}
+              radius={20}
+              activeStrokeWidth={3}
+              activeStrokeColor={highlight}
+              inActiveStrokeOpacity={0}
+              duration={0}
+              showProgressValue={false}
+            />
+            <Text
+              style={{
+                position: 'absolute',
+                color: highlightText,
+                fontWeight: 'bold',
+                fontSize: 12,
+                textAlign: 'center',
+                width: 34,
+              }}
+            >
+              {grade === '*' ? '--' : (isNaN(Number(grade)) ? '--' : (() => {
+                const numGrade = Number(grade);
+                return numGrade >= 100 ? numGrade.toFixed(0) : numGrade.toFixed(1);
+              })())}
+            </Text>
+          </View>
+
+          <View className="w-[1px] h-10 rounded-full bg-highlight" />
+          <View className={`w-10 h-10 rounded-full bg-highlight items-center justify-center`}>
+            <Text className='text-highlightText font-bold text-sm'>{outOf}</Text>
+          </View>
+        </View>
+        <Ionicons name="chevron-forward" size={24} color="#cbd5e1" className='mr-3'/>
+      </View>
+    </View>
+  );
+  
+  // If onPress is provided, use TouchableOpacity instead of Link
+  if (onPress) {
+    return (
+      <TouchableOpacity className='w-[100%]' onPress={onPress}>
+        {renderContent()}
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <Link
       href={{
@@ -112,73 +195,11 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
       }}
       asChild
     >
-        <TouchableOpacity  className='w-[100%]'>
-            <View className={getCardStyle()}>
-                <View className="flex-1">
-                    <View className="self-start rounded-md bg-highlight px-2 ml-5 mt-2">
-                        <Text className="text-sm text-highlightText font-bold">{category}</Text>
-                    </View>
-                    <View className="flex-row items-center ml-5 mr-4 flex-1">
-                        <View className="flex-row items-center flex-1">
-                            <Text 
-                                className={`text-lg text-main font-medium flex-shrink ${isNoCount ? 'line-through opacity-60' : ''}`}
-                                numberOfLines={1} 
-                                ellipsizeMode="tail"
-                            >
-                                {name}
-                            </Text>
-                            {metaDisplay && (
-                                <View className={`px-2 py-1 rounded-md ${metaDisplay.bgColor} flex-shrink-0 ml-1`}>
-                                    <Text className={`text-xs font-bold ${metaDisplay.textColor}`}>
-                                        {metaDisplay.label.toUpperCase()}
-                                    </Text>
-                                </View>
-                            )}
-                        </View>
-                    </View>
-                    <Text className='text-xs text-secondary ml-5 mb-2'>Due {dueDate}</Text>
-                </View>
-                <View className='flex-row items-center'>
-                    <View className="flex-row items-center gap-2 mr-1">
-                        <View style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'center' }}>
-                          <CircularProgress
-                            value={Number(grade === '*' ? 0 : (Math.min(Number(grade) / Number(outOf), 1)) * 100)}
-                            radius={20}
-                            activeStrokeWidth={3}
-                            activeStrokeColor={highlight}
-                            inActiveStrokeOpacity={0}
-                            duration={0}
-                            showProgressValue={false}
-                          />
-                          <Text
-                            style={{
-                              position: 'absolute',
-                              color: highlightText,
-                              fontWeight: 'bold',
-                              fontSize: 12,
-                              textAlign: 'center',
-                              width: 34,
-                            }}
-                          >
-                            {grade === '*' ? '--' : (isNaN(Number(grade)) ? '--' : (() => {
-                              const numGrade = Number(grade);
-                              return numGrade >= 100 ? numGrade.toFixed(0) : numGrade.toFixed(1);
-                            })())}
-                          </Text>
-                        </View>
-
-                        <View className="w-[1px] h-10 rounded-full bg-highlight" />
-                        <View className={`w-10 h-10 rounded-full bg-highlight items-center justify-center`}>
-                            <Text className='text-highlightText font-bold text-sm'>{outOf}</Text>
-                        </View>
-                    </View>
-                    <Ionicons name="chevron-forward" size={24} color="#cbd5e1" className='mr-3'/>
-                </View>
-                
-            </View>
-        </TouchableOpacity>
+      <TouchableOpacity className='w-[100%]'>
+        {renderContent()}
+      </TouchableOpacity>
     </Link>
-  )
+  );
 }
 
 export default AssignmentCard

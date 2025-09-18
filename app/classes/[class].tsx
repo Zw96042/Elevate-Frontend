@@ -37,7 +37,8 @@ import { ensureUniqueAssignmentIds } from "@/utils/uniqueId";
 import { Ionicons } from "@expo/vector-icons";
 import AssignmentCard from "@/components/AssignmentCard";
 import { useAddAssignmentSheet } from "@/context/AddAssignmentSheetContext";
-import { useBottomSheet } from "@/context/BottomSheetContext";
+// TEMPORARILY COMMENTED OUT - BottomSheet context due to reanimated issue
+// import { useBottomSheet } from "@/context/BottomSheetContext";
 import PieChart from "react-native-pie-chart";
 import { MotiView, AnimatePresence } from 'moti'
 import { fetchGradeInfo } from '@/lib/gradeInfoClient';
@@ -142,7 +143,11 @@ const ClassDetails = () => {
 
   const formattedName = formatClassName(className?.toString());
 
-  const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
+  // TEMPORARILY COMMENTED OUT - BottomSheet hooks due to reanimated issue
+  // const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
+  const [selectedCategory, setSelectedCategory] = useState<TermLabel>('Q1 Grades');
+  // TEMPORARILY COMMENTED OUT - BottomSheet ref
+  // const bottomSheetRef = useRef(null);
   const [filteredAssignments, setFilteredAssignments] = useState<Assignment[]>([]);
   const [courseSummary, setCourseSummary] = useState<{
     courseTotal: string;
@@ -714,7 +719,11 @@ const handleResetArtificialAssignments = async () => {
               <View className="mt-6 pr-5 justify-center">
                 
                   <TouchableOpacity
-                    onPress={() => bottomSheetRef.current?.snapToIndex(0)}
+                    onPress={() => {
+                      // TEMPORARILY COMMENTED OUT - BottomSheet functionality due to reanimated issue
+                      // bottomSheetRef.current?.snapToIndex(0)
+                      console.log('Term selection temporarily disabled');
+                    }}
                     className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
                   >
                     <Text className="text-base text-main">{selectedCategory}</Text>
@@ -794,8 +803,6 @@ const handleResetArtificialAssignments = async () => {
                   stiffness: 300,
                   mass: 0.4,
                   overshootClamping: true,
-                  restDisplacementThreshold: 0.01,
-                  restSpeedThreshold: 0.01
                 }}
                 style={{  marginHorizontal: 16 }}
                 pointerEvents={isEnabled ? "auto" : "none"}

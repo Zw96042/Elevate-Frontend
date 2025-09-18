@@ -26,14 +26,19 @@ export const fetchAcademicHistory = async (retryCount: number = 0): Promise<Acad
 
     const allSessionCodesExist = dwd && wfaacl && encses && sessionid;
 
+    
+
     if (!allSessionCodesExist) {
+      console.log('🔑 Session codes missing, attempting authentication...');
       const authResult = await authenticate();
       if (!authResult.success) {
-        console.error('Authentication failed:', authResult.error);
+        console.log('❌ Authentication failed:', authResult.error);
         return { success: false, error: authResult.error };
       }
+      console.log('✅ Authentication successful, retrying academic history fetch...');
       return await fetchAcademicHistory(retryCount + 1); // retry with new credentials
     }
+    console.log("TRYING ACADEMIC FETCH!");
 
     // Make the API call to the history endpoint
     const response = await fetch(`${config.BACKEND_IP}/history`, {
@@ -48,6 +53,10 @@ export const fetchAcademicHistory = async (retryCount: number = 0): Promise<Acad
         'User-Type': '2'
       }),
     });
+
+    console.log("DATAAA!!!", response.body);
+
+    console.log('📡 Academic history fetch response status ', response);
 
     if (!response.ok || response.status === 401 || response.status === 400) {
       if ((response.status === 401 || response.status === 400) && retryCount === 0) {

@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import {
-  View, Text, FlatList, ActivityIndicator, TouchableOpacity
+  View, Text, FlatList, ActivityIndicator, TouchableOpacity, DeviceEventEmitter
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,7 +8,8 @@ import he from 'he';
 
 import MessageCard from '@/components/MessageCard';
 import SkeletonMessage from '@/components/SkeletonMessage';
-import { useSettingSheet } from '@/context/SettingSheetContext';
+// TEMPORARILY COMMENTED OUT - SettingSheet context due to reanimated issue
+// import { useSettingSheet } from '@/context/SettingSheetContext';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { authenticate } from '@/lib/authHandler';
 import { loadMessages } from '@/lib/loadMessageHandler';
@@ -31,7 +32,13 @@ const Inbox = () => {
     handleLoadMoreMessages
   } = useInboxLogic();
 
-  const { settingSheetRef } = useSettingSheet();
+  // TEMPORARILY COMMENTED OUT - SettingSheet hooks due to reanimated issue
+  // const { settingSheetRef } = useSettingSheet();
+  
+  // Use DeviceEventEmitter to open settings modal instead
+  const openSettingsModal = () => {
+    DeviceEventEmitter.emit('openSettingsModal');
+  };
   const colorScheme = useColorScheme();
   const indicatorColor = colorScheme === 'dark' ? '#ffffff' : '#000000';
 
@@ -75,7 +82,7 @@ const Inbox = () => {
     <View className="bg-primary flex-1">
       <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
         <Text className="text-white text-3xl font-bold">Inbox</Text>
-        <TouchableOpacity onPress={() => settingSheetRef.current?.snapToIndex(0)}>
+        <TouchableOpacity onPress={() => openSettingsModal()}>
           <Ionicons name='cog-outline' color={'#fff'} size={26} />
         </TouchableOpacity>
       </View>
@@ -123,7 +130,7 @@ const Inbox = () => {
                   Your credentials are either invalid or not found.{' '}
                   <Text
                     className="text-blue-400 underline"
-                    onPress={() => settingSheetRef.current?.snapToIndex(0)}
+                    onPress={() => openSettingsModal()}
                   >
                     Update your settings
                   </Text>{' '}

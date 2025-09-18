@@ -1,15 +1,21 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, FlatList, useColorScheme, LayoutAnimation, RefreshControl } from 'react-native';
+import { View, Text, TouchableOpacity, FlatList, useColorScheme, LayoutAnimation, RefreshControl, DeviceEventEmitter } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ClassCard from '@/components/ClassCard';
 import SkeletonClassCard from '@/components/SkeletonClassCard';
+import ErrorDisplay from '@/components/ui/ErrorDisplay';
+import LoginPrompt from '@/components/ui/LoginPrompt';
 import { useFocusEffect } from 'expo-router';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
-import { useBottomSheet, BottomSheetProvider } from '@/context/BottomSheetContext'
-import { useSettingSheet } from '@/context/SettingSheetContext';
-import { UnifiedCourseData } from '@/lib/unifiedDataManager';
+// import { useBottomSheet, BottomSheetProvider } from '@/context/BottomSheetContext'
+// TEMPORARILY COMMENTED OUT - SettingSheet context due to reanimated issue
+// import { useSettingSheet } from '@/context/SettingSheetContext';
+import { UnifiedCourseData } from '@/interfaces/interfaces';
 import { useUnifiedData } from '@/context/UnifiedDataContext';
+import { createComponentLogger } from '@/lib/core/Logger';
 import * as Animatable from 'react-native-animatable';
+
+const logger = createComponentLogger('HomeScreen');
 
 
 // Default categories and weights (to be replaced by different API later)
@@ -131,12 +137,35 @@ const filterCoursesBySemester = (courses: any[], selectedTerm: string) => {
 };
 
 export default function Index() {
-  const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
-  const { settingSheetRef } = useSettingSheet();
-  const { coursesData, loading, error, refreshCourses } = useUnifiedData();
+  // TEMPORARILY COMMENTED OUT - BottomSheet hooks due to reanimated issue
+  // const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
+  // TEMPORARILY COMMENTED OUT - SettingSheet context due to reanimated issue
+  // const { settingSheetRef } = useSettingSheet();
+  
+  // Function to open settings modal using DeviceEventEmitter
+  const openSettingsModal = () => {
+    DeviceEventEmitter.emit('openSettingsModal');
+  };
+  const { coursesData, loading, error, requiresLogin, refreshCourses } = useUnifiedData();
   const { currentGradeLevel } = require('@/hooks/useGradeLevel').useGradeLevel();
   const [filteredCourses, setFilteredCourses] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+
+  // TEMPORARILY COMMENTED OUT - BottomSheet state for term selection
+  const [selectedCategory, setSelectedCategory] = useState<string>('Q1 Grades');
+
+  // Log state changes for debugging
+  useEffect(() => {
+    logger.debug('Component state changed', {
+      method: 'Index',
+      hasCoursesData: !!coursesData,
+      courseCount: coursesData?.length || 0,
+      loading,
+      hasError: !!error,
+      error: error || 'none',
+      requiresLogin
+    });
+  }, [coursesData, loading, error, requiresLogin]);
 
   // No need for local loadCourses, use refreshCourses from context
 
@@ -160,13 +189,29 @@ export default function Index() {
   }, [coursesData, selectedCategory]);
 
   const onRefresh = useCallback(() => {
+    logger.info('User initiated refresh', {
+      method: 'onRefresh'
+    });
     setRefreshing(true);
-    refreshCourses(true).finally(() => setRefreshing(false));
+    refreshCourses(true).finally(() => {
+      setRefreshing(false);
+      logger.debug('Refresh completed', {
+        method: 'onRefresh'
+      });
+    });
   }, [refreshCourses]);
 
   useEffect(() => {
     if (!coursesData) {
+      logger.info('No courses data found, initiating refresh', {
+        method: 'useEffect'
+      });
       refreshCourses();
+    } else {
+      logger.debug('Courses data already available', {
+        method: 'useEffect',
+        courseCount: coursesData.length
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -177,7 +222,7 @@ export default function Index() {
         <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
           <Text className="text-white text-3xl font-bold">Courses</Text>
           <TouchableOpacity
-            onPress={() => settingSheetRef.current?.snapToIndex(0)}
+            onPress={openSettingsModal}
           >
             <Ionicons name='cog-outline' color={'#fff'} size={26} />
           </TouchableOpacity>
@@ -194,7 +239,11 @@ export default function Index() {
               <Text className="text-slate-500 font-bold mt-3 text-sm px-5">Term</Text>
               <View className="my-2 px-5">
                 <TouchableOpacity
-                  onPress={() => bottomSheetRef.current?.expand()}
+                  onPress={() => {
+                    // TEMPORARILY COMMENTED OUT - Term selection bottom sheet due to reanimated issue
+                    // bottomSheetRef.current?.expand()
+                    console.log('Term selection pressed - temporarily disabled')
+                  }}
                   className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
                 >
                   <Text className="text-base text-main">{selectedCategory}</Text>
@@ -220,7 +269,7 @@ export default function Index() {
                   t3={item.t3}
                   t4={item.t4}
                   s2={item.s2}
-                  term={selectedCategory}
+                  term={selectedCategory as any}
                 />
               )}
             </View>
@@ -230,8 +279,16 @@ export default function Index() {
           ListEmptyComponent={
             <View className="mt-10 px-5">
               {!loading && (
-                error ? (
-                  <Text className="text-center text-red-500">Error: {error}</Text>
+                requiresLogin ? (
+                  <LoginPrompt 
+                    onLoginPress={openSettingsModal}
+                  />
+                ) : error ? (
+                  <ErrorDisplay 
+                    error={error}
+                    onRetry={() => refreshCourses(true)}
+                    title="Unable to load courses"
+                  />
                 ) : (
                   <Text className="text-center text-gray-500">No classes found.</Text>
                 )

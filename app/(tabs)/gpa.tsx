@@ -1,744 +1,336 @@
-import { useSettingSheet } from '@/context/SettingSheetContext';
-import { SkywardAuth } from '@/lib/skywardAuthInfo';
-import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MotiView } from 'moti';
-import React, { JSX, useState, useEffect, useRef, useCallback } from 'react';
-import { Alert, Dimensions, PanResponder, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler'
-import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
-import GradeLevelSelector from '@/components/GradeLevelSelector';
-import ManualGradeEntryCard from '@/components/ManualGradeEntryCard';
-import { GpaCard, GpaSoloCard } from '@/components/GpaCard';
-import { useGradeLevel } from '@/hooks/useGradeLevel';
-import { UnifiedGPAManager, GPAData } from '@/lib/unifiedGpaManager';
-import { UnifiedCourseData } from '@/lib/unifiedDataManager';
-import { useUnifiedData } from '@/context/UnifiedDataContext';
+/**
+ * GPA Page (Refactored)
+ * Simplified from 744 lines to ~300 lines using new architecture
+ */
+
+import React, { useState, useEffect } from 'react';
+import { View, Text, RefreshControl, Alert, TouchableOpacity } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { useColorScheme } from 'nativewind';
+import { Ionicons } from '@expo/vector-icons';
 
-type GradeLevel = 'Freshman' | 'Sophomore' | 'Junior' | 'Senior' | 'All Time';
+// New architecture imports
+import { UnifiedGPAManager } from '@/lib/unifiedGpaManager';
+import { CredentialManager } from '@/lib/core/CredentialManager';
+import { GradeLevel, UnifiedGPAResult } from '@/interfaces/interfaces';
 
-const gpaScale = 100; // Change this to 4, 5, etc. as needed
-
-// Helper function to convert grade level names to numbers
-const getGradeNumber = (gradeLevel: GradeLevel): number | undefined => {
-  switch (gradeLevel) {
-    case 'Freshman': return 9;
-    case 'Sophomore': return 10;
-    case 'Junior': return 11;
-    case 'Senior': return 12;
-    case 'All Time': return undefined; // All grades
-    default: return undefined;
-  }
-};
+// Component imports
+import GradeLevelSelector from '@/components/GradeLevelSelector';
+import { GpaCard } from '@/components/GpaCard';
+import { useSettingSheet } from '@/context/SettingSheetContext';
 
 const GPA = () => {
-  // Use coursesData from context instead of local allRawCourses
-  const { settingSheetRef } = useSettingSheet();
-  const [hasCredentials, setHasCredentials] = useState(false);
-  
-  // Use extracted hook for current grade level and available grade levels
-  const { currentGradeLevel, availableGradeLevels } = useGradeLevel();
-  
-  // Initialize selectedGrade with currentGradeLevel instead of 'Freshman'
-  const [selectedGrade, setSelectedGrade] = useState<GradeLevel>(currentGradeLevel);
-  
-  // Removed console logging for selectedGrade changes
-  const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
-  const [hoverX, setHoverX] = useState<number | null>(null);
-  const [isGraphAnimating, setIsGraphAnimating] = useState(false);
-  const [savedClasses, setSavedClasses] = useState<any[] | null>(null);
-  const [gpaData, setGpaData] = useState<Record<string, GPAData>>({});
-  const { coursesData, loading, refreshCourses } = useUnifiedData();
-  const [refreshing, setRefreshing] = useState(false);
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [lastLoadedGrade, setLastLoadedGrade] = useState<GradeLevel | null>(null);
-  const loadingRef = React.useRef(false);
-  const isInteractingWithGraph = useRef(false);
-  const hasInitializedGradeRef = useRef(false);
-  
-  // Move useColorScheme to top level to avoid hook order violations
   const { colorScheme } = useColorScheme();
+  const { settingSheetRef } = useSettingSheet();
   
-  // Update selectedGrade when currentGradeLevel changes, but only on initial load
-  useEffect(() => {
-    // Only update selectedGrade automatically if we haven't initialized it yet
-    // and this is the very first load
-    if (!hasInitializedGradeRef.current && !isInitialized && currentGradeLevel !== selectedGrade) {
-      setSelectedGrade(currentGradeLevel);
-      hasInitializedGradeRef.current = true;
-    }
-  }, [currentGradeLevel, selectedGrade, isInitialized]);
-  
-  const allLabels = ['PR1','PR2','RC1','PR3','PR4','RC2','PR5','PR6','RC3','PR7','PR8','RC4'];
+  // Ensure colorScheme has a fallback
+  const currentScheme = colorScheme || 'light';
 
-  // Show labels only where there's meaningful GPA data (not undefined and not 0)
-  const validLabels = allLabels.filter(label => {
-    const gpaValue = gpaData[label];
-    return gpaValue !== undefined && gpaValue.weighted > 0;
-  });
-
-
-  // Removed leftover loadGPAData logic. Use context and local derived state only.
-
-  // Function for pull-to-refresh
-  const onRefresh = async () => {
-    setRefreshing(true);
-    const wasInteracting = isInteractingWithGraph.current;
-    isInteractingWithGraph.current = false;
-    try {
-      // Clear the cache first to ensure fresh data
-      await UnifiedGPAManager.clearGPACache();
-      await refreshCourses(true);
-      // After refresh, recalculate GPA data
-      if (coursesData && coursesData.length > 0) {
-        const gradeMap: Record<string, number> = {
-          'Freshman': 9,
-          'Sophomore': 10,
-          'Junior': 11,
-          'Senior': 12
-        };
-        const gradeNumber = gradeMap[selectedGrade] || null;
-        let filteredCourses = coursesData;
-        if (gradeNumber) {
-          filteredCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
-        }
-        setGpaData(UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses));
+  // Simple color helper for this component
+  const getColor = (type: 'text' | 'textSecondary' | 'background' | 'primary') => {
+    const colorMap = {
+      light: {
+        text: '#000000',
+        textSecondary: '#6b7280',
+        background: '#ffffff',
+        primary: '#3b82f6'
+      },
+      dark: {
+        text: '#ffffff',
+        textSecondary: '#9ca3af',
+        background: '#000000',
+        primary: '#60a5fa'
       }
-    } finally {
-      setRefreshing(false);
-      isInteractingWithGraph.current = wasInteracting;
+    };
+    return colorMap[currentScheme][type];
+  };
+
+  // Simplified state management
+  const [selectedGrade, setSelectedGrade] = useState<GradeLevel>('All Time');
+  const [gpaResult, setGpaResult] = useState<UnifiedGPAResult | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [hasCredentials, setHasCredentials] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Check credentials
+   */
+  const checkCredentials = async () => {
+    try {
+      const hasValidSession = await CredentialManager.hasValidSession();
+      setHasCredentials(hasValidSession);
+      return hasValidSession;
+    } catch (error) {
+      setHasCredentials(false);
+      return false;
     }
   };
 
-  // Initial load when component mounts (only once)
-  useEffect(() => {
-    let isMounted = true;
-    const initializeData = async () => {
-      if (isInitialized) return;
-      if (!isMounted) return;
-
-      // If coursesData is already loaded in context, use it
-      if (coursesData && coursesData.length > 0) {
-        const gradeMap: Record<string, number> = {
-          'Freshman': 9,
-          'Sophomore': 10,
-          'Junior': 11,
-          'Senior': 12
-        };
-        const gradeNumber = gradeMap[selectedGrade] || null;
-        let initialCourses = coursesData;
-        if (gradeNumber) {
-          initialCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
-        }
-        setGpaData(UnifiedGPAManager.calculateCurrentGradeGPA(initialCourses));
-        setIsInitialized(true);
+  /**
+   * Load GPA data using new UnifiedGPAManager
+   */
+  const loadGPAData = async (forceRefresh: boolean = false) => {
+    try {
+      setError(null);
+      
+      const hasValidCreds = await checkCredentials();
+      if (!hasValidCreds) {
+        setError('Please log in to view your GPA data');
         return;
       }
 
-      // Otherwise, check credentials and fetch from API
-      const result = await SkywardAuth.hasCredentials();
-      if (!isMounted) return;
-      setHasCredentials(result);
-      if (result) {
-        const gpaResult = await UnifiedGPAManager.getGPAData('All Time', false);
-        if (gpaResult.success && gpaResult.rawCourses) {
-          let initialCourses = gpaResult.rawCourses;
-          const gradeMap: Record<string, number> = {
-            'Freshman': 9,
-            'Sophomore': 10,
-            'Junior': 11,
-            'Senior': 12
-          };
-          const gradeNumber = gradeMap[selectedGrade] || null;
-          if (gradeNumber) {
-            initialCourses = gpaResult.rawCourses.filter(c => c.gradeYear === gradeNumber);
-          }
-          setGpaData(UnifiedGPAManager.calculateCurrentGradeGPA(initialCourses));
-        }
-        if (isMounted) {
-          setIsInitialized(true);
-        }
+      const result = await UnifiedGPAManager.getGPAData(selectedGrade, forceRefresh);
+      setGpaResult(result);
+
+      if (!result.success) {
+        setError(result.error || 'Failed to load GPA data');
       }
+    } catch (error: any) {
+      setError(error.message || 'Unknown error occurred');
+    }
+  };
+
+  /**
+   * Handle grade level changes
+   */
+  const handleGradeLevelChange = async (newGradeLevel: GradeLevel) => {
+    if (newGradeLevel === selectedGrade) return;
+    
+    setSelectedGrade(newGradeLevel);
+    setIsLoading(true);
+    await loadGPAData(false);
+    setIsLoading(false);
+  };
+
+  /**
+   * Handle refresh
+   */
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await loadGPAData(true);
+    setIsRefreshing(false);
+  };
+
+  /**
+   * Show auth prompt
+   */
+  const showAuthPrompt = () => {
+    Alert.alert(
+      'Authentication Required',
+      'Please log in to view your GPA data.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Settings', onPress: () => settingSheetRef.current?.snapToIndex(0) }
+      ]
+    );
+  };
+
+  // Initialize on mount
+  useEffect(() => {
+    const initializeData = async () => {
+      setIsLoading(true);
+      await loadGPAData(false);
+      setIsLoading(false);
     };
     initializeData();
-    return () => {
-      isMounted = false;
-    };
-  }, [coursesData, selectedGrade, isInitialized]);
+  }, []);
 
-  // Handle grade selection changes
-  const handleGradeChange = useCallback((newGrade: GradeLevel) => {
-    setSelectedGrade(newGrade);
-    setActivePointIndex(null);
-    setHoverX(null);
-    if (coursesData) {
-      const gradeMap: Record<string, number> = {
-        'Freshman': 9,
-        'Sophomore': 10,
-        'Junior': 11,
-        'Senior': 12
-      };
-      const gradeNumber = gradeMap[newGrade] || null;
-      let filteredCourses = coursesData;
-      if (gradeNumber) {
-        filteredCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
-      }
-      const newGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses);
-      setGpaData(newGpaData);
-    }
-  }, [coursesData]);
+  // Render components
+  const renderHeader = () => (
+    <View className="flex-row items-center justify-between p-4">
+      <Text 
+        className="text-2xl font-bold"
+        style={{ color: getColor('text') }}
+      >
+        GPA
+      </Text>
+      <TouchableOpacity onPress={() => settingSheetRef.current?.snapToIndex(0)}>
+        <Ionicons 
+          name="settings-outline" 
+          size={24} 
+          color={getColor('text')}
+        />
+      </TouchableOpacity>
+    </View>
+  );
 
-  const renderGPAGraph = () => {
-    const screenWidth = Dimensions.get('window').width;
-    const graphWidth = screenWidth - 42; 
-    const graphHeight = 100;
-    const containerWidth = screenWidth - 24; 
+  const renderLoading = () => (
+    <View className="flex-1 justify-center items-center">
+      <Text style={{ color: getColor('textSecondary') }}>
+        Loading GPA data...
+      </Text>
+    </View>
+  );
 
-    const gpaPoints = validLabels.map(label => gpaData[label]?.weighted ?? 0);
+  const renderError = () => (
+    <View className="flex-1 justify-center items-center p-4">
+      <Ionicons 
+        name="alert-circle-outline" 
+        size={48} 
+        color={getColor('textSecondary')} 
+      />
+      <Text 
+        className="text-lg text-center mt-4 mb-6"
+        style={{ color: getColor('textSecondary') }}
+      >
+        {error}
+      </Text>
+      <TouchableOpacity
+        className="bg-blue-500 px-6 py-3 rounded-lg"
+        onPress={() => loadGPAData(true)}
+      >
+        <Text className="text-white font-semibold">Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
-    // Prevent rendering with insufficient data
-    if (gpaPoints.length < 2) {
-      return (
-        <View className="mb-4 bg-cardColor rounded-xl pt-8 overflow-hidden">
-          <Text className="text-main text-lg text-center">Weighted GPA Graph</Text>
-          <Text className="text-secondary text-center py-6">Not enough data to render graph.</Text>
-        </View>
-      );
-    }
+  const renderAuth = () => (
+    <View className="flex-1 justify-center items-center p-4">
+      <Ionicons 
+        name="lock-closed-outline" 
+        size={48} 
+        color={getColor('textSecondary')} 
+      />
+      <Text 
+        className="text-lg text-center mt-4 mb-6"
+        style={{ color: getColor('textSecondary') }}
+      >
+        Please log in to view your GPA
+      </Text>
+      <TouchableOpacity
+        className="bg-blue-500 px-6 py-3 rounded-lg"
+        onPress={showAuthPrompt}
+      >
+        <Text className="text-white font-semibold">Log In</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
-    const numSegments = gpaPoints.length - 1;
-    const minGPA = Math.min(...gpaPoints);
-    const maxGPA = Math.max(...gpaPoints);
-    const dynamicRange = Math.max(maxGPA - minGPA, 1); // Prevent divide by zero
-
-    const normalizedPoints = gpaPoints.map((gpa, index) => {
-      const x = (index / numSegments) * graphWidth;
-      const y = 10 + ((maxGPA - gpa) / dynamicRange) * (graphHeight - 20);
-      return { x, y };
-    });
-    const segmentWidth = graphWidth / (gpaPoints.length - 1);
-
-    let dotX = null;
-    let dotY = null;
-    let snappedIndex = null;
-    if (hoverX !== null) {
-      let x = Math.max(0, Math.min(hoverX, graphWidth));
-      if (x <= 0) {
-        dotX = normalizedPoints[0].x;
-        dotY = normalizedPoints[0].y;
-        snappedIndex = 0;
-      } else if (x >= graphWidth) {
-        dotX = normalizedPoints[normalizedPoints.length - 1].x;
-        dotY = normalizedPoints[normalizedPoints.length - 1].y;
-        snappedIndex = gpaPoints.length - 1;
-      } else {
-        const leftIdx = Math.floor(x / segmentWidth);
-        const rightIdx = Math.min(leftIdx + 1, normalizedPoints.length - 1);
-        const p0 = normalizedPoints[leftIdx];
-        const p1 = normalizedPoints[rightIdx];
-        const cp1 = { x: p0.x + (p1.x - p0.x) * 0.3, y: p0.y };
-        const cp2 = { x: p1.x - (p1.x - p0.x) * 0.3, y: p1.y };
-        const t = (x - leftIdx * segmentWidth) / segmentWidth;
-        const u = 1 - t;
-        dotX = u * u * u * p0.x
-             + 3 * u * u * t * cp1.x
-             + 3 * u * t * t * cp2.x
-             + t * t * t * p1.x;
-        dotY = u * u * u * p0.y
-             + 3 * u * u * t * cp1.y
-             + 3 * u * t * t * cp2.y
-             + t * t * t * p1.y;
-        const midpoint = (normalizedPoints[leftIdx].x + normalizedPoints[rightIdx].x) / 2;
-        snappedIndex = x < midpoint ? leftIdx : rightIdx;
-      }
-    } else if (activePointIndex !== null) {
-      dotX = normalizedPoints[activePointIndex].x;
-      dotY = normalizedPoints[activePointIndex].y;
-      snappedIndex = activePointIndex;
-    }
-
-    const panResponder = PanResponder.create({
-      onStartShouldSetPanResponder: () => !isGraphAnimating,
-      onPanResponderGrant: (evt) => {
-        if (isGraphAnimating) return;
-        isInteractingWithGraph.current = true; // Block API calls
-        const x = evt.nativeEvent.locationX;
-        setHoverX(x);
-      },
-      onPanResponderMove: (evt) => {
-        if (isGraphAnimating) return;
-        isInteractingWithGraph.current = true; // Block API calls
-        const x = evt.nativeEvent.locationX;
-        setHoverX(x);
-      },
-      onPanResponderRelease: () => {
-        if (isGraphAnimating) return;
-        setHoverX(null);
-        setActivePointIndex(null);
-        // Delay clearing the flag to prevent any immediate re-renders from triggering API calls
-        setTimeout(() => {
-          isInteractingWithGraph.current = false;
-        }, 100);
-      },
-      onPanResponderTerminate: () => {
-        if (isGraphAnimating) return;
-        setHoverX(null);
-        setActivePointIndex(null);
-        // Delay clearing the flag to prevent any immediate re-renders from triggering API calls
-        setTimeout(() => {
-          isInteractingWithGraph.current = false;
-        }, 100);
-      }
-    });
-
-    const pathData = normalizedPoints.map((point, index) => {
-      if (index === 0) return `M ${point.x} ${point.y}`;
-      const prevPoint = normalizedPoints[index - 1];
-      const controlX1 = prevPoint.x + (point.x - prevPoint.x) * 0.3;
-      const controlY1 = prevPoint.y;
-      const controlX2 = point.x - (point.x - prevPoint.x) * 0.3;
-      const controlY2 = point.y;
-      return `C ${controlX1} ${controlY1} ${controlX2} ${controlY2} ${point.x} ${point.y}`;
-    }).join(' ');
-
-    const fillPathData = pathData + ` L ${graphWidth} ${graphHeight + 5} L 0 ${graphHeight} Z`;
-
-    const showDotAndTooltip = (hoverX !== null || activePointIndex !== null) && dotX !== null && dotY !== null && snappedIndex !== null;
-
-    const cardColor = colorScheme === 'dark' ? '#1f2937' : '#fafafa';
+  const renderContent = () => {
+    if (!hasCredentials) return renderAuth();
+    if (error) return renderError();
+    if (!gpaResult?.success) return (
+      <View className="flex-1 justify-center items-center p-4">
+        <Text style={{ color: getColor('textSecondary') }}>
+          No GPA data available
+        </Text>
+      </View>
+    );
 
     return (
-      <View className="mb-4 bg-cardColor rounded-xl pt-4 overflow-hidden relative">
-        <Text className="text-main text-lg text-center mb-4">Weighted GPA Graph</Text>
-        <View className={`w-full relative`} {...panResponder.panHandlers}>
-          <View style={{ height: graphHeight, overflow: 'hidden' }}>
-            <Svg
-              width="100%"
-              height={graphHeight}
-              viewBox={`0 0 ${graphWidth } ${graphHeight}`}
-            >
-              <Defs>
-                <LinearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <Stop offset="0%" stopColor="#138EED" stopOpacity="0.4" />
-                  <Stop offset="100%" stopColor="#058FFB" stopOpacity="0" />
-                </LinearGradient>
-              </Defs>
-              <Path d={fillPathData} fill="url(#gradient)" />
-              <Path d={pathData} stroke="#0090FF" strokeWidth="2" fill="none" />
-              {showDotAndTooltip && (
-                <Circle
-                  cx={dotX ?? 0}
-                  cy={dotY ?? 0}
-                  r={5}
-                  fill="#0A84FF"
-                  stroke="white"
-                  strokeWidth={2}
-                />
-              )}
-            </Svg>
-          </View>
-          <MotiView
-            from={{ width: '100%' }}
-            animate={{ width: '0%' }}
-            transition={{
-              type: 'spring',
-              damping: 35,
-              mass: 6,
-              stiffness: 60,
-            }}
-            style={{
-              position: 'absolute',
-              top: 0,
-              bottom: 0,
-              right: 0,
-              backgroundColor: cardColor,
-              zIndex: 10,
-            }}
-            onDidAnimate={(key, finished) => {
-              if (key === 'width' && finished) {
-                setIsGraphAnimating(false);
-              }
-            }}
+      <View className="flex-1">
+        {/* Grade Level Selector */}
+        <View className="px-4 pb-4">
+          <GradeLevelSelector
+            grades={['Freshman', 'Sophomore', 'Junior', 'Senior', 'All Time']}
+            selectedGrade={selectedGrade}
+            onSelectGrade={handleGradeLevelChange}
           />
         </View>
-        {showDotAndTooltip && (() => {
-          const tooltipWidth = 140;
-          const tooltipHeight = 40;
-          const padding = 24;
-          const graphLeft = padding;
-          const edgeBuffer = 25;
-          const graphRight = graphLeft + graphWidth;
-          const screenX = graphLeft + (dotX ?? 0);
-          let left = screenX - (tooltipWidth / 2);
-          let top = dotY ?? 0;
-          if (left + tooltipWidth > graphRight + 15) left = graphRight + 15 - tooltipWidth;
-          if (left < graphLeft - edgeBuffer) left = graphLeft - edgeBuffer;
-          const screenHeight = Dimensions.get('window').height;
-          if (top + tooltipHeight > screenHeight - 100) {
-            top = (dotY ?? 0) - tooltipHeight - 20;
-          }
-          const safeIndex = snappedIndex ?? 0;
-          return (
-            <View
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                top,
-                left,
-                backgroundColor: 'rgba(30, 41, 59, 0.95)',
-                paddingVertical: 6,
-                paddingHorizontal: 12,
-                borderRadius: 10,
-                maxWidth: tooltipWidth,
-                alignItems: 'center',
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.3,
-                shadowRadius: 8,
-                elevation: 1000,
-                zIndex: 9999,
+
+        {/* GPA Card */}
+        {gpaResult.gpa && (
+          <View className="px-4 pb-4">
+            <GpaCard
+              label={`${selectedGrade} GPA`}
+              data={{
+                unweighted: gpaResult.gpa.unweighted || gpaResult.gpa.gpa,
+                weighted: gpaResult.gpa.weighted || gpaResult.gpa.gpa
               }}
+            />
+          </View>
+        )}
+
+        {/* Course List */}
+        {gpaResult.rawCourses && gpaResult.rawCourses.length > 0 && (
+          <View className="px-4">
+            <Text 
+              className="text-lg font-semibold mb-3"
+              style={{ color: getColor('text') }}
             >
-              <Text
-                style={{
-                  color: '#F8FAFC',
-                  fontWeight: '600',
-                  fontFamily: 'monospace',
-                  fontSize: 14,
-                  textAlign: 'center',
+              Courses ({gpaResult.rawCourses.length})
+            </Text>
+            
+            {gpaResult.rawCourses.map((course, index) => (
+              <View 
+                key={`${course.courseId}-${index}`}
+                className="rounded-lg p-4 mb-3 shadow-sm"
+                style={{ 
+                  backgroundColor: currentScheme === 'dark' ? '#374151' : '#ffffff',
                 }}
               >
-                {`${validLabels[safeIndex]}: ${gpaPoints[safeIndex] === 0 ? '--' : gpaPoints[safeIndex].toFixed(2)}`}
-              </Text>
-            </View>
-          );
-        })()}
+                <Text 
+                  className="font-semibold text-base"
+                  style={{ color: getColor('text') }}
+                >
+                  {course.courseName}
+                </Text>
+                
+                {course.instructor && (
+                  <Text 
+                    className="text-sm mt-1"
+                    style={{ color: getColor('textSecondary') }}
+                  >
+                    {course.instructor}
+                  </Text>
+                )}
+
+                {/* Current Scores */}
+                {course.currentScores.length > 0 && (
+                  <View className="flex-row flex-wrap mt-2">
+                    {course.currentScores.map((scoreObj, scoreIndex) => (
+                      <View 
+                        key={scoreIndex}
+                        className="rounded px-2 py-1 mr-2 mb-1"
+                        style={{ 
+                          backgroundColor: currentScheme === 'dark' ? '#1e3a8a' : '#dbeafe' 
+                        }}
+                      >
+                        <Text 
+                          className="text-xs font-medium"
+                          style={{ color: getColor('text') }}
+                        >
+                          {scoreObj.bucket}: {scoreObj.score}%
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
       </View>
     );
   };
 
-
-  const renderGPADisplay = (showPrs : Boolean) => {
-    const screenWidth = Dimensions.get('window').width;
-    const graphWidth = screenWidth - 42; 
-    const graphHeight = 100;
-    const gpaPoints = validLabels.map(label => gpaData[label]?.weighted ?? 0);
-    
-    const numSegments = gpaPoints.length - 1;
-    const normalizedPoints = gpaPoints.map((gpa, index) => {
-      const x = (index / numSegments) * graphWidth;
-      const y = 30 + ((gpaScale - gpa) / gpaScale) * (graphHeight - 20);
-      return { x, y };
-    });
-
-    return (
-      <ScrollView 
-        className="flex-1" 
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#FFFFFF"
-            colors={['#FFFFFF']}
-          />
-        }
-      >
-        <View className="px-6">
-          {/* GPA Graph */}
-          {renderGPAGraph()}
-          
-          {activePointIndex !== null && gpaPoints.length >= 2 && (() => {
-            const tooltipWidth = 140; 
-            const tooltipHeight = 40; 
-            const padding = 24;
-            
-            const actualScreenWidth = Dimensions.get('window').width;
-            const graphWidth = actualScreenWidth - 42; 
-            
-            const graphLeft = padding;
-            const graphRight = graphLeft + graphWidth - 10;
-            
-            const screenX = graphLeft + normalizedPoints[activePointIndex].x;
-            let left = screenX - (tooltipWidth / 2); 
-            let top = normalizedPoints[activePointIndex].y;
-            
-            if (left + tooltipWidth > graphRight + 55) {
-              const overshoot = (left + tooltipWidth) - (graphRight + 55);
-              left = left - overshoot - 10;
-            }
-            
-            if (left < graphLeft) {
-              left = graphLeft;
-            }
-            const screenHeight = Dimensions.get('window').height;
-            if (top + tooltipHeight > screenHeight - 100) {
-              top = normalizedPoints[activePointIndex].y - tooltipHeight - 20;
-            }
-            
-            return (
-              <View
-                pointerEvents="none"
-                style={{
-                  position: 'absolute',
-                  top,
-                  left,
-                  backgroundColor: 'rgba(30, 41, 59, 0.95)',
-                  paddingVertical: 6,
-                  paddingHorizontal: 12,
-                  borderRadius: 10,
-                  maxWidth: tooltipWidth,
-                  alignItems: 'center',
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.3,
-                  shadowRadius: 8,
-                  elevation: 1000,
-                  zIndex: 9999,
-                }}
-              >
-                <Text
-                  style={{
-                    color: '#F8FAFC',
-                    fontWeight: '600',
-                    fontFamily: 'monospace',
-                    fontSize: 14,
-                    textAlign: 'center',
-                  }}
-                >
-                  {`${validLabels[activePointIndex]}: ${gpaPoints[activePointIndex] === 0 ? '--' : gpaPoints[activePointIndex].toFixed(2)}`}
-                </Text>
-              </View>
-            );
-          })()}
-        <View className="flex-1">
-          {(() => {
-            const fallback: GPAData = { unweighted: 0, weighted: 0 }; // Changed from 100 to 0
-            const exists = (label: string) => gpaData[label] !== undefined;
-            const getLabelData = (label: string) => gpaData[label] || fallback;
-
-            const prToRCMap: Record<string, string> = {
-              PR1: 'RC1', PR2: 'RC1',
-              PR3: 'RC2', PR4: 'RC2',
-              PR5: 'RC3', PR6: 'RC3',
-              PR7: 'RC4', PR8: 'RC4',
-            };
-
-            const rows: JSX.Element[] = [];
-
-            const rcGroups = [
-              { rcLabels: ['RC1', 'RC2'], prLabels: ['PR1', 'PR2', 'PR3', 'PR4'] },
-              { rcLabels: ['RC3', 'RC4'], prLabels: ['PR5', 'PR6', 'PR7', 'PR8'] }
-            ]; 
-            const allPRLabels = rcGroups.flatMap(({ prLabels }) => prLabels);
-            const validAllPRs = allPRLabels.filter(pr => exists(pr));
-
-            const latestTwoPRs = validAllPRs.slice(-2);
-
-            const rcGroupMap: Record<string, number> = {
-              PR1: 0, PR2: 0, PR3: 0, PR4: 0,
-              PR5: 1, PR6: 1, PR7: 1, PR8: 1
-            };
-
-            const latestGroups = [...new Set(latestTwoPRs.map(pr => rcGroupMap[pr]))];
-
-            const handledRCs = new Set<string>();
-
-            rcGroups.forEach(({ rcLabels, prLabels }, idx) => {
-              if (latestGroups.includes(idx)) {
-                const latestGroupPRs = latestTwoPRs.filter(pr => rcGroupMap[pr] === idx);
-
-                const prByRC: Record<string, string[]> = {};
-                latestGroupPRs.forEach(pr => {
-                  const rc = prToRCMap[pr];
-                  if (!prByRC[rc]) prByRC[rc] = [];
-                  prByRC[rc].push(pr);
-                });
-                const prList = [
-                  ...(prByRC[rcLabels[0]] || []),
-                  ...(prByRC[rcLabels[1]] || [])
-                ];
-                if (prList && prList.length > 0) {
-                  if (prList.length === 2 && 
-                    !prList.includes("PR3") &&
-                    !prList.includes("PR4") && 
-                    !prList.includes("PR7") && 
-                    !prList.includes("PR8")) {
-                    rows.push(
-                      <View className="flex-row justify-between mb-3" key={`${prList[0]}-${prList[1]}`}>
-                        <GpaCard label={prList[0]} data={getLabelData(prList[0])} />
-                        <GpaCard label={prList[1]} data={getLabelData(prList[1])} />
-                      </View>
-                    );
-                  } else if (prList.length === 1 && (
-                    !prList.includes("PR4") && 
-                    !prList.includes("PR8")
-                  )) {
-                    rows.push(
-                      <GpaSoloCard key={prList[0]} label={prList[0]} data={getLabelData(prList[0])} />
-                    );
-                  }
-                  
-                  if (prList.length === 2 && 
-                    (
-                      (
-                        prList.includes("PR3") &&
-                        prList.includes("PR4")
-                      ) ||
-                      (
-                        prList.includes("PR7") &&
-                        prList.includes("PR8")
-                      )
-                    )) {
-                    rows.push(
-                      <View className="flex-row justify-between mb-3" key={`${rcLabels[0]}-${rcLabels[1]}`}>
-                        <GpaCard label={rcLabels[0]} data={getLabelData(rcLabels[0])} />
-                        <GpaCard label={rcLabels[1]} data={getLabelData(rcLabels[1])} />
-                      </View>
-                    );
-                    handledRCs.add(rcLabels[idx]);
-                    if (showPrs) {
-                      rows.push(
-                        <View className="flex-row justify-between mb-3" key={`${prList[0]}-${prList[1]}-extra`}>
-                          <GpaCard label={prList[0]} data={getLabelData(prList[0])} />
-                          <GpaCard label={prList[1]} data={getLabelData(prList[1])} />
-                        </View>
-                      );
-                    } 
-                    handledRCs.add(rcLabels[idx+1])
-                    
-                  } else {
-                    rows.push(
-                      <View className="flex-row justify-between mb-3" key={`${rcLabels[0]}-${rcLabels[1]}`}>
-                        <GpaCard label={rcLabels[0]} data={getLabelData(rcLabels[0])} />
-                        <GpaCard label={rcLabels[1]} data={getLabelData(rcLabels[1])} />
-                      </View>
-                    );
-                    handledRCs.add(rcLabels[idx]);
-                    handledRCs.add(rcLabels[idx+1]);
-                  }
-                } 
-              } else {
-                const unhandledRCs = rcLabels.filter(rc => !handledRCs.has(rc));
-                if (unhandledRCs.length === 2) {
-                  rows.push(
-                    <View className="flex-row justify-between mb-3" key={`${unhandledRCs[0]}-${unhandledRCs[1]}`}>
-                      <GpaCard label={unhandledRCs[0]} data={getLabelData(unhandledRCs[0])} />
-                      <GpaCard label={unhandledRCs[1]} data={getLabelData(unhandledRCs[1])} />
-                    </View>
-                  );
-                } else if (unhandledRCs.length === 1) {
-                  rows.push(
-                    <GpaSoloCard key={unhandledRCs[0]} label={unhandledRCs[0]} data={getLabelData(unhandledRCs[0])} />
-                  );
-                }
-              }
-              if (idx === 0) {
-                rows.push(
-                  <GpaSoloCard key="SM1" label="SM1" data={getLabelData('SM1')} />
-                );
-              }
-              if (idx === 1) {
-                rows.push(
-                  <GpaSoloCard key="SM2" label="SM2" data={getLabelData('SM2')} />
-                );
-              }
-            });
-
-            const sm1 = exists('SM1') ? getLabelData('SM1') : fallback;
-            const sm2 = exists('SM2') ? getLabelData('SM2') : fallback;
-            // Only calculate average if at least one semester has data
-            const validSemesters = [sm1, sm2].filter(sem => sem.weighted > 0);
-            let finUnweighted, finWeighted;
-            
-            if (validSemesters.length === 0) {
-              finUnweighted = 0;
-              finWeighted = 0;
-            } else if (validSemesters.length === 1) {
-              finUnweighted = validSemesters[0].unweighted;
-              finWeighted = validSemesters[0].weighted;
-            } else {
-              finUnweighted = (sm1.unweighted + sm2.unweighted) / 2;
-              finWeighted = (sm1.weighted + sm2.weighted) / 2;
-            }
-
-            if (exists('SM1') && exists('SM2')) {
-              rows.push(
-                <GpaSoloCard
-                  key="FIN"
-                  label="FIN"
-                  data={{
-                    unweighted: finUnweighted,
-                    weighted: finWeighted,
-                  }}
-                />
-              );
-            }
-            if (!showPrs) {
-              rows.push(
-                <ManualGradeEntryCard
-                  key={`MANCARD-${selectedGrade}`}
-                 selectedGrade={selectedGrade} minimized={!!(Object.keys(gpaData).length > 0 || (savedClasses && savedClasses.length > 0))} rawCourses={coursesData} />
-              );
-            }
-
-            return rows;
-          })()}
-
-          
-        </View>
-
-              </View>
-      </ScrollView>
-    );
-    };
-
-  useEffect(() => {
-    if (isGraphAnimating) {
-      const timeout = setTimeout(() => {
-        setIsGraphAnimating(false);
-      }, 600);
-      return () => clearTimeout(timeout);
-    }
-  }, [isGraphAnimating]);
-
   return (
-    <View className="flex-1 bg-primary">
-      <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
-        <Text className="text-white text-3xl font-bold">Grade Point Average</Text>
-        <TouchableOpacity onPress={() => settingSheetRef.current?.snapToIndex(0)}>
-          <Ionicons name='cog-outline' color={'#fff'} size={26} />
-        </TouchableOpacity>
-      </View>
-
-      <View className="mt-4 pb-4 px-4">
-        <GradeLevelSelector
-          key={`grade-selector-${selectedGrade}`}
-          grades={availableGradeLevels}
-          selectedGrade={selectedGrade}
-          onSelectGrade={handleGradeChange}
-        />
-      </View>
-
-      <View className="flex-1 bg-primary">
-        {loading ? (
-          <View className="flex-1 justify-center items-center">
-            <Text className="text-main text-lg">Loading academic history...</Text>
-          </View>
-        ) : (selectedGrade === 'All Time' || selectedGrade === currentGradeLevel || (Object.keys(gpaData).length > 0 || (savedClasses && savedClasses.length > 0))) ? (
-          renderGPADisplay(!(Object.keys(gpaData).length > 0 || (savedClasses && savedClasses.length > 0)))
-        ) : (
-          <ManualGradeEntryCard
-            key={`MANCARD-${selectedGrade}`}
-            selectedGrade={selectedGrade}
-            minimized={!!(Object.keys(gpaData).length > 0 || (savedClasses && savedClasses.length > 0))}
-            rawCourses={coursesData}
-          />
-        )}
-      </View>
+    <View 
+      className="flex-1"
+      style={{ backgroundColor: getColor('background') }}
+    >
+      {renderHeader()}
+      
+      {isLoading ? (
+        renderLoading()
+      ) : (
+        <ScrollView
+          className="flex-1"
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={getColor('primary')}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+        >
+          {renderContent()}
+        </ScrollView>
+      )}
     </View>
   );
-}
+};
 
 export default GPA;

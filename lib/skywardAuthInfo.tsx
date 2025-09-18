@@ -1,3 +1,4 @@
+import { SkywardAuthInfo } from '@/interfaces/interfaces';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export class SkywardAuth {

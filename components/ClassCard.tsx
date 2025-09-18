@@ -16,6 +16,7 @@ import Animated, {
   runOnJS,
   Easing
 } from 'react-native-reanimated';
+import { Assignment, Class } from '@/interfaces/interfaces';
 
 type TermLabel =
   | "Q1 Grades"

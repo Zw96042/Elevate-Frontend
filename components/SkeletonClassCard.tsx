@@ -79,8 +79,35 @@ const SkeletonPlaceholder = ({ children }: { children: React.ReactNode }) => {
 };
 
 const SkeletonClassCard = () => {
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 0.5,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ]),
+      { iterations: -1 }
+    );
+
+    pulse.start();
+
+    return () => pulse.stop();
+  }, [pulseAnim]);
+
   return (
-    <View className="w-full h-[5.3rem] rounded-3xl bg-cardColor flex-row items-center justify-between px-5 animate-pulse">
+    <Animated.View 
+      className="w-full h-[5.3rem] rounded-3xl bg-cardColor flex-row items-center justify-between px-5"
+      style={{ opacity: pulseAnim }}
+    >
       <SkeletonPlaceholder>
         <View className='flex-1 justify-center'>
           <View className="w-40 h-6 bg-gray-300 rounded-md mb-2" />
@@ -95,7 +122,7 @@ const SkeletonClassCard = () => {
           </View>
         </SkeletonPlaceholder>
       </View>
-    </View>
+    </Animated.View>
   );
 };
 

@@ -1,85 +1,93 @@
 import { useColorScheme, TouchableOpacity, Text, LayoutAnimation, View, TextInput, ScrollView, Keyboard } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
-import { BottomSheetProvider, useBottomSheet, TermLabel } from "@/context/BottomSheetContext";
-import { AddSheetProvider, useAddAssignmentSheet } from "@/context/AddAssignmentSheetContext";
-import BottomSheet, { BottomSheetModalProvider, BottomSheetBackdrop, BottomSheetFlatList, BottomSheetView, TouchableWithoutFeedback } from "@gorhom/bottom-sheet";
+// TEMPORARILY COMMENTED OUT - BottomSheet imports due to reanimated issue
+// import { BottomSheetProvider, useBottomSheet, TermLabel } from "@/context/BottomSheetContext";
+// import { AddSheetProvider, useAddAssignmentSheet } from "@/context/AddAssignmentSheetContext";
+// import BottomSheet, { BottomSheetModalProvider, BottomSheetBackdrop, BottomSheetFlatList, BottomSheetView, TouchableWithoutFeedback } from "@gorhom/bottom-sheet";
 import { colors } from "@/utils/colorTheme";
 import { Stack } from "expo-router";
 import './globals.css';
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useEffect, useState, useRef } from "react";
-import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+// TEMPORARILY COMMENTED OUT - Reanimated imports due to compatibility issue
+// import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import * as Burnt from "burnt";
-import 'react-native-reanimated'
+// import 'react-native-reanimated'
 import 'react-native-gesture-handler'
-import { AddClassSheetProvider } from "@/context/AddClassSheetContext";
+// import { AddClassSheetProvider } from "@/context/AddClassSheetContext";
 import { UnifiedDataProvider } from '@/context/UnifiedDataContext';
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 
 
-const terms: TermLabel[] = ['Q1 Grades', 'Q2 Grades', 'SM1 Grade', 'Q3 Grades', 'Q4 Grades', 'SM2 Grades'];
+// TEMPORARILY COMMENTED OUT - BottomSheet related code due to reanimated issue
+// const terms: TermLabel[] = ['Q1 Grades', 'Q2 Grades', 'SM1 Grade', 'Q3 Grades', 'Q4 Grades', 'SM2 Grades'];
 
 function InnerLayout() {
-  const { selectedCategory, setSelectedCategory, bottomSheetRef } = useBottomSheet();
+  // TEMPORARILY COMMENTED OUT - BottomSheet hooks due to reanimated issue  
+  // const { selectedCategory, setSelectedCategory, bottomSheetRef } = useBottomSheet();
   const colorScheme = useColorScheme();
   const cardColor = colorScheme === 'dark' ? colors.cardColor.dark : colors.cardColor.light;
 
-  // Fix missing refs and state
-  // Use addSheetRef from context so openModal can trigger modal open from anywhere
-  const { categories, setCategory, category, addSheetRef, name, setName, grade, setGrade, outOf, setOutOf, onSubmit } = useAddAssignmentSheet();
-  const [currentSnapPosition, setCurrentSnapPosition] = useState('hidden');
-  const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
+  // TEMPORARILY COMMENTED OUT - BottomSheet refs and state due to reanimated issue
+  // TEMPORARILY COMMENTED OUT - BottomSheet related code due to reanimated issue
+  // const { categories, setCategory, category, addSheetRef, name, setName, grade, setGrade, outOf, setOutOf, onSubmit } = useAddAssignmentSheet();
+  // const [currentSnapPosition, setCurrentSnapPosition] = useState('hidden');
+  // const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
   // Remove local name state, use context
   // category and setCategory now come from context
   // grade and outOf now come from context
   // ...removed duplicate destructuring...
 
+  // TEMPORARILY COMMENTED OUT - BottomSheet handlers due to reanimated issue
   // Handler for sheet changes
-  const handleSheetChanges = (index: number) => {
-    if (index === -1) {
-      setCurrentSnapPosition('hidden');
-      setModalClosedByOutsideTap(true);
-    } else {
-      setCurrentSnapPosition('54%');
-      setModalClosedByOutsideTap(false);
-    }
-  };
+  // const handleSheetChanges = (index: number) => {
+  //   if (index === -1) {
+  //     setCurrentSnapPosition('hidden');
+  //     setModalClosedByOutsideTap(true);
+  //   } else {
+  //     setCurrentSnapPosition('54%');
+  //     setModalClosedByOutsideTap(false);
+  //   }
+  // };
 
-  // Keyboard handling for modal snap position
-  useEffect(() => {
-    const showSub = Keyboard.addListener('keyboardDidShow', () => {
-      if (
-        !modalClosedByOutsideTap &&
-        currentSnapPosition !== '90%' &&
-        currentSnapPosition !== 'hidden'
-      ) {
-        addSheetRef.current?.snapToPosition('90%', { duration: 150 });
-        setCurrentSnapPosition('90%');
-      }
-    });
+  // TEMPORARILY COMMENTED OUT - Keyboard handling for modal snap position due to reanimated issue
+  // useEffect(() => {
+  //   const showSub = Keyboard.addListener('keyboardDidShow', () => {
+  //     if (
+  //       !modalClosedByOutsideTap &&
+  //       currentSnapPosition !== '90%' &&
+  //       currentSnapPosition !== 'hidden'
+  //     ) {
+  //       addSheetRef.current?.snapToPosition('90%', { duration: 150 });
+  //       setCurrentSnapPosition('90%');
+  //     }
+  //   });
 
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
-      if (modalClosedByOutsideTap) {
-        setModalClosedByOutsideTap(false);
-        return;
-      }
-      if (currentSnapPosition === '90%') {
-        addSheetRef.current?.snapToPosition('54%', { duration: 150 });
-        setCurrentSnapPosition('54%');
-      }
-    });
+  //   const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+  //     if (modalClosedByOutsideTap) {
+  //       setModalClosedByOutsideTap(false);
+  //       return;
+  //     }
+  //     if (currentSnapPosition === '90%') {
+  //       addSheetRef.current?.snapToPosition('54%', { duration: 150 });
+  //       setCurrentSnapPosition('54%');
+  //     }
+  //   });
 
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, [currentSnapPosition, modalClosedByOutsideTap]);
+  //   return () => {
+  //     showSub.remove();
+  //     hideSub.remove();
+  //   };
+  // }, [currentSnapPosition, modalClosedByOutsideTap]);
+
   return (
     <UnifiedDataProvider>
-      <TouchableWithoutFeedback onPress={() => {
+      {/* TEMPORARILY COMMENTED OUT - TouchableWithoutFeedback wrapper due to reanimated issue */}
+      {/* <TouchableWithoutFeedback onPress={() => {
                 Keyboard.dismiss();
                 addSheetRef.current?.close();
                 setCurrentSnapPosition('hidden');
-              }} accessible={false}>
+              }} accessible={false}> */}
         <View className="flex-1">
           <Stack
             screenOptions={{
@@ -117,6 +125,8 @@ function InnerLayout() {
               },
             }} />
           </Stack>
+          
+          {/* TEMPORARILY COMMENTED OUT - All BottomSheets due to reanimated issue 
           <BottomSheet
             ref={bottomSheetRef}
             index={-1}
@@ -139,8 +149,8 @@ function InnerLayout() {
               <View className='my-4 border-slate-600 border-[0.5px]'></View>
               <BottomSheetFlatList
                 data={terms}
-                keyExtractor={(item) => item}
-                renderItem={({ item }) => {
+                keyExtractor={(item: any) => item}
+                renderItem={({ item } : { item: any }) => {
                   const isSelected = item === selectedCategory;
 
                   return (
@@ -272,8 +282,10 @@ function InnerLayout() {
               </BottomSheetView>
             </TouchableWithoutFeedback>
           </BottomSheet>
+          */}
         </View>
-      </TouchableWithoutFeedback>
+      {/* TEMPORARILY COMMENTED OUT - Closing TouchableWithoutFeedback due to reanimated issue */}
+      {/* </TouchableWithoutFeedback> */}
     </UnifiedDataProvider>
   );
 // ...existing code ends here...
@@ -281,19 +293,25 @@ function InnerLayout() {
 
 export default function RootLayout() {
   return (
-      <AddClassSheetProvider>
-        <AddSheetProvider>
-          <BottomSheetProvider>
-            <BottomSheetModalProvider>
+      <>
+        {/* TEMPORARILY COMMENTED OUT - BottomSheet providers due to reanimated issue
+        <AddClassSheetProvider>
+          <AddSheetProvider>
+            <BottomSheetProvider>
               
+        */}
+        <BottomSheetModalProvider>
                 <GestureHandlerRootView style={{ flex: 1 }}>
                   
                     <InnerLayout />
                 </GestureHandlerRootView>
-              
-            </BottomSheetModalProvider>
-          </BottomSheetProvider>
+        </BottomSheetModalProvider>
+        {/*       
+              </BottomSheetModalProvider>
+            </BottomSheetProvider>
           </AddSheetProvider>
-      </AddClassSheetProvider>
+        </AddClassSheetProvider>
+        */}
+      </>
     )
 }

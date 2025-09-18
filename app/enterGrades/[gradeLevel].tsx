@@ -5,7 +5,8 @@ import { useColorScheme } from 'nativewind';
 import { colors } from '@/utils/colorTheme';
 import { ScrollView } from 'react-native-gesture-handler';
 import ClassCard2Sem from '@/components/ClassCard2Sem';
-import { UnifiedDataManager, UnifiedCourseData } from '@/lib/unifiedDataManager';
+import { UnifiedDataManager } from '@/lib/unifiedDataManager';
+import { UnifiedCourseData } from '@/interfaces/interfaces';
 import { UnifiedGPAManager } from '@/lib/unifiedGpaManager';
 import { ensureUniqueCourseIds } from '@/utils/uniqueId';
 
