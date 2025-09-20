@@ -202,7 +202,10 @@ const ClassDetails = () => {
   };
 
   const fetchApiAssignments = async (forceRefresh = false) => {
+    console.log('🚀 fetchApiAssignments called:', { forceRefresh, loading, waitingForRetry });
+    
     if (!className || !stuId || !corNumId || !section || !gbId || !selectedCategory) {
+      console.log('❌ Missing required params, setting loading=false');
       setLoading(false);
       setWaitingForRetry(false);
       return;
@@ -224,7 +227,7 @@ const ClassDetails = () => {
           
           // Use cache if it's less than CACHE_DURATION old
           if (cacheAge < CACHE_DURATION) {
-            // console.log('Using cached assignments data, age:', Math.round(cacheAge / 1000), 'seconds');
+            console.log('✅ Using cached data, setting loading=false');
             setApiAssignments(parsed.assignments || []);
             setApiCategories(parsed.categories || { names: [], weights: [] });
             setLastFetchTime(now); // Update last fetch time even when using cache
@@ -232,7 +235,7 @@ const ClassDetails = () => {
             setWaitingForRetry(false);
             return;
           } else {
-            // console.log('Cache expired, age:', Math.round(cacheAge / 1000), 'seconds');
+            console.log('⏰ Cache expired, will fetch fresh data');
           }
         }
       } catch (error) {
@@ -240,7 +243,7 @@ const ClassDetails = () => {
       }
     }
 
-    // console.log('Fetching fresh assignments data from API');
+    console.log('🌐 Starting API fetch, setting loading=true');
     setLoading(true);
     setWaitingForRetry(true);
     if (forceRefresh) {
@@ -248,28 +251,34 @@ const ClassDetails = () => {
     }
     const bucket = bucketMap[selectedCategory as TermLabel];
     try {
+      console.log('📡 Calling fetchGradeInfo...');
       const result = await fetchGradeInfo({ stuId, corNumId, section, gbId, bucket });
+      console.log('📡 fetchGradeInfo result:', { success: result.success, retryCount: result.retryCount, wasAuthError: result.wasAuthError });
       
       // Only stop loading if retries are complete or there was no auth error
       if (result.success) {
         // Success - stop loading immediately
+        console.log('✅ API success, setting loading=false');
         setLoading(false);
         setWaitingForRetry(false);
       } else if (result.retryCount !== undefined && result.retryCount >= 1) {
         // Retries exhausted - stop loading
+        console.log('🔄 Retries exhausted, setting loading=false');
         setLoading(false);
         setWaitingForRetry(false);
       } else if (!result.wasAuthError) {
         // No auth error - stop loading
+        console.log('❌ No auth error, setting loading=false');
         setLoading(false);
         setWaitingForRetry(false);
       } else {
         // Auth error with retries pending - keep loading
+        console.log('🔐 Auth error with retries pending, keeping loading=true');
         setWaitingForRetry(true);
       }
       
       if (!result.success) {
-        // console.log('Fetch failed, result:', result);
+        console.log('❌ API fetch failed, handling fallback');
         // Only set to empty if we don't have existing data
         if (apiAssignments.length === 0) {
           // Try to use stale cache if available
@@ -294,7 +303,7 @@ const ClassDetails = () => {
       }
       
       const backendData = result?.data?.data;
-      // console.log('backendData.gradebook length:', backendData?.gradebook?.length);
+      console.log('📊 Processing backend data, assignments count:', backendData?.gradebook?.length || 0);
       const assignments = backendData?.gradebook?.flatMap((cat: any) =>
         (cat.assignments ?? []).map((a: any, index: number) => ({
           id: `${cat.category}-${index}-${a.name}`,
@@ -309,7 +318,7 @@ const ClassDetails = () => {
           meta: a.meta ?? [],
         }))
       ) ?? [];
-      // console.log('Fetched assignments count:', assignments.length);
+      console.log('📋 Processed assignments count:', assignments.length);
       setApiAssignments(assignments);
       const categories = {
         names: backendData?.gradebook?.map((cat: any) => cat.category) ?? [],
@@ -327,6 +336,7 @@ const ClassDetails = () => {
       setLastFetchTime(now);
       
       // Stop loading since we have successful data
+      console.log('💾 Data cached, setting loading=false');
       setLoading(false);
       setWaitingForRetry(false);
     } catch (err) {
@@ -353,28 +363,31 @@ const ClassDetails = () => {
       }
     } finally {
       // Stop loading if we're not waiting for retry or if there was an error
+      console.log('🏁 fetchApiAssignments finally block, setting loading=false');
       setLoading(false);
       setWaitingForRetry(false);
       setRefreshing(false);
     }
   };
 
-  const meshAssignments = async () => {
-    // console.log('meshAssignments called:', {
-    //   apiAssignmentsLength: apiAssignments.length,
-    //   filteredAssignmentsLength: filteredAssignments.length,
-    //   isEnabled,
-    //   selectedCategory
-    // });
+  const meshAssignments = useCallback(async () => {
+    console.log('🔄 meshAssignments called:', {
+      apiAssignmentsLength: apiAssignments.length,
+      filteredAssignmentsLength: filteredAssignments.length,
+      isEnabled,
+      selectedCategory,
+      loading
+    });
     
     const data = await AsyncStorage.getItem("artificialAssignments");
     if (!data) {
       // If apiAssignments is empty and we don't have artificial assignments data, don't clear everything
       if (apiAssignments.length === 0 && filteredAssignments.length > 0) {
-        console.log('No artificial data and no API data, keeping existing assignments');
+        console.log('⚠️ No artificial data and no API data, keeping existing assignments');
         return;
       }
       
+      console.log('📝 Setting filtered assignments from API data');
       const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
       setArtificialAssignments([]);
       setFilteredAssignments(realWithIds);
@@ -394,6 +407,9 @@ const ClassDetails = () => {
         adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
       );
       setCourseSummary(calculateGradeSummary(all, normalizedWeights));
+      
+      // Only stop loading if we have actual data OR if we're certain the API call is complete and there's really no data
+      console.log('✅ meshAssignments (no artificial data): assignments count:', realWithIds.length);
       return;
     }
     const parsed = JSON.parse(data);
@@ -427,21 +443,21 @@ const ClassDetails = () => {
     }));
 
     const artificialNames = new Set(fixedArtificial.map((a: any) => a.name));
-    // console.log('Processing assignments:', {
-    //   artificialCount: fixedArtificial.length,
-    //   artificialNames: Array.from(artificialNames),
-    //   apiAssignmentsCount: apiAssignments.length
-    // });
+    console.log('🧮 Processing assignments:', {
+      artificialCount: fixedArtificial.length,
+      artificialNames: Array.from(artificialNames),
+      apiAssignmentsCount: apiAssignments.length
+    });
     
     // If we have artificial assignments but no API assignments, use only artificial ones
     let filteredReal: Assignment[];
     if (apiAssignments.length === 0 && fixedArtificial.length > 0) {
-      // console.log('No API assignments but have artificial, using only artificial assignments');
+      console.log('🔄 No API assignments but have artificial, using only artificial assignments');
       filteredReal = [];
     } else if (apiAssignments.length === 0 && fixedArtificial.length === 0) {
       // If both are empty, preserve existing assignments if they exist
       if (filteredAssignments.length > 0) {
-        // console.log('Both API and artificial are empty, preserving existing assignments');
+        console.log('⚠️ Both API and artificial are empty, preserving existing assignments');
         return;
       }
       filteredReal = [];
@@ -449,7 +465,7 @@ const ClassDetails = () => {
       filteredReal = apiAssignments.filter((r) => !artificialNames.has(r.name));
     }
     
-    // console.log('filteredReal count:', filteredReal.length);
+    console.log('📊 filteredReal count:', filteredReal.length);
     const allAssignments = [...fixedArtificial, ...filteredReal].sort((a, b) => {
       const parseDate = (date: string) => {
         const [month, day, year] = date.split('/').map(Number);
@@ -459,6 +475,13 @@ const ClassDetails = () => {
     });
     const assignmentsWithIds = ensureUniqueAssignmentIds(allAssignments);
     const artificialWithIds = assignmentsWithIds.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
+    
+    console.log('📋 Final assignments:', {
+      totalCount: assignmentsWithIds.length,
+      artificialCount: artificialWithIds.length,
+      realCount: assignmentsWithIds.length - artificialWithIds.length
+    });
+    
     setArtificialAssignments(artificialWithIds);
     setFilteredAssignments(assignmentsWithIds);
 
@@ -478,7 +501,10 @@ const ClassDetails = () => {
       adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
     );
     setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-  };
+    
+    // Only log final assignments count
+    console.log('✅ meshAssignments (with artificial data): final assignments count:', assignmentsWithIds.length);
+  }, [apiAssignments, apiCategories, isEnabled, selectedCategory]);
 
 
   useEffect(() => {
@@ -520,30 +546,107 @@ const ClassDetails = () => {
   useEffect(() => {
     // Only fetch if we don't have data or if this is the initial load
     if (apiAssignments.length === 0 && apiCategories.names.length === 0) {
-      // console.log('Initial load - fetching assignments');
+      console.log('🚀 Initial load - fetching assignments');
       fetchApiAssignments();
     }
   }, [className, stuId, corNumId, section, gbId, selectedCategory]);
 
   useEffect(() => {
+    console.log('🔄 Running meshAssignments useEffect, current loading state:', loading);
     const runMeshAssignments = async () => {
       await meshAssignments();
     };
     runMeshAssignments();
   }, [apiAssignments, apiCategories, isEnabled, selectedCategory]);
 
+  // Separate function for refreshing only artificial assignments on focus
+  const refreshArtificialAssignmentsOnFocus = useCallback(async () => {
+    console.log('🔄 Screen focused - refreshing artificial assignments only');
+    
+    // Only process artificial assignments without triggering API calls
+    // This ensures updates made in assignment detail view are reflected
+    const data = await AsyncStorage.getItem("artificialAssignments");
+    if (!data) {
+      // If no artificial data exists, just ensure filtered assignments match API assignments
+      if (apiAssignments.length > 0) {
+        const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
+        setFilteredAssignments(realWithIds);
+        setArtificialAssignments([]);
+      }
+      return;
+    }
+
+    const parsed = JSON.parse(data);
+    const relevantTerms = getRelevantTerms(selectedCategory);
+    
+    let allArtificialAssignments: Assignment[] = [];
+    
+    const termsToCheck = [...relevantTerms];
+    if (selectedCategory === "SM1 Grade" || selectedCategory === "SM2 Grades") {
+      termsToCheck.push(selectedCategory.split(" ")[0]);
+    }
+    
+    termsToCheck.forEach(term => {
+      const storageKey = `${className}_${corNumId}_${section}_${gbId}_${term}`;
+      const classAssignments = parsed[storageKey] ?? [];
+      allArtificialAssignments = [...allArtificialAssignments, ...classAssignments];
+      
+      if (term === selectedCategory.split(" ")[0]) {
+        const oldStorageKey = `${className}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
+        const oldAssignments = parsed[oldStorageKey] ?? [];
+        allArtificialAssignments = [...allArtificialAssignments, ...oldAssignments];
+      }
+    });
+    
+    const artificial = isEnabled ? allArtificialAssignments : [];
+    const fixedArtificial = artificial.map((a: Assignment) => ({
+      ...a,
+      grade: a.grade !== undefined && a.grade !== null ? a.grade : "*",
+      outOf: a.outOf !== undefined && a.outOf !== null ? a.outOf : 100,
+    }));
+
+    const artificialNames = new Set(fixedArtificial.map((a: any) => a.name));
+    const filteredReal = apiAssignments.filter((r) => !artificialNames.has(r.name));
+    
+    const allAssignments = [...fixedArtificial, ...filteredReal].sort((a, b) => {
+      const parseDate = (date: string) => {
+        const [month, day, year] = date.split('/').map(Number);
+        return new Date(year < 100 ? 2000 + year : year, month - 1, day);
+      };
+      return parseDate(b.dueDate).getTime() - parseDate(a.dueDate).getTime();
+    });
+    
+    const assignmentsWithIds = ensureUniqueAssignmentIds(allAssignments);
+    const artificialWithIds = assignmentsWithIds.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
+    
+    setArtificialAssignments(artificialWithIds);
+    setFilteredAssignments(assignmentsWithIds);
+
+    // Recalculate course summary with updated assignments
+    const all = assignmentsWithIds.filter(a => a.grade !== '*');
+    const weightsMap = Object.fromEntries(
+      (apiCategories.names || []).map((name, i) => [name, apiCategories.weights[i]])
+    );
+    const nonEmptyCategories = all.reduce((set, a) => {
+      if (!set.has(a.category)) set.add(a.category);
+      return set;
+    }, new Set<string>());
+    const adjustedWeights = Object.entries(weightsMap).filter(([name]) =>
+      nonEmptyCategories.has(name)
+    );
+    const totalAdjustedWeight = adjustedWeights.reduce((sum, [, w]) => sum + w, 0);
+    const normalizedWeights = Object.fromEntries(
+      adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
+    );
+    setCourseSummary(calculateGradeSummary(all, normalizedWeights));
+    
+    console.log('✅ Artificial assignments refreshed on focus, total assignments:', assignmentsWithIds.length);
+  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, className, corNumId, section, gbId]);
+
   useFocusEffect(
     React.useCallback(() => {
-      const refreshArtificialAssignments = async () => {
-        // console.log('Screen focused - refreshing artificial assignments only');
-        
-        // Only refresh artificial assignments when screen is focused
-        // This ensures updates made in assignment detail view are reflected
-        // without triggering a full API reload
-        await meshAssignments();
-      };
-      refreshArtificialAssignments();
-    }, [meshAssignments])
+      refreshArtificialAssignmentsOnFocus();
+    }, [refreshArtificialAssignmentsOnFocus])
   );
 
   const { openModal } = useAddAssignmentSheet();
@@ -609,7 +712,7 @@ const ClassDetails = () => {
       }
     };
     loadShowCalculated();
-  }, [showCalculatedKey, meshAssignments]);
+  }, [showCalculatedKey]);
 
 const handleToggle = async () => {
   if (isEnabled === null) return;
@@ -817,9 +920,19 @@ const handleResetArtificialAssignments = async () => {
             )}
           </AnimatePresence>
           <FlatList
-                        data={loading || waitingForRetry ? Array.from({ length: 8 }) : filteredAssignments}
-            renderItem={({ item, index }) => (
-              loading || waitingForRetry ? (
+            data={loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0) ? Array.from({ length: 8 }) : filteredAssignments}
+            renderItem={({ item, index }) => {
+              const shouldShowSkeleton = loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0);
+              console.log('🎨 Rendering item:', { 
+                index, 
+                loading, 
+                waitingForRetry, 
+                apiAssignmentsLength: apiAssignments.length,
+                filteredAssignmentsLength: filteredAssignments.length,
+                shouldShowSkeleton,
+                hasItem: !!item 
+              });
+              return shouldShowSkeleton ? (
                 <SkeletonAssignment key={`skeleton-${index}`} />
               ) : (
                 <AnimatePresence key={(item as Assignment).id || `${(item as Assignment).className}-${(item as Assignment).name}-${(item as Assignment).term}-${(item as Assignment).dueDate}`}>
@@ -837,14 +950,14 @@ const handleResetArtificialAssignments = async () => {
                     />
                   </MotiView>
                 </AnimatePresence>
-              )
-            )}
-            keyExtractor={(item, index) => loading || waitingForRetry ? `skeleton-${index}` : ((item as Assignment).id || `${(item as Assignment).className}-${(item as Assignment).name}-${(item as Assignment).term}-${(item as Assignment).dueDate}`)}
+              );
+            }}
+            keyExtractor={(item, index) => loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0) ? `skeleton-${index}` : ((item as Assignment).id || `${(item as Assignment).className}-${(item as Assignment).name}-${(item as Assignment).term}-${(item as Assignment).dueDate}`)}
             className="mt-6 pb-8 px-3"
             scrollEnabled={false}
             ItemSeparatorComponent={() => <View className="h-4" />}
             ListEmptyComponent={
-              loading || waitingForRetry ? null : (
+              loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0) ? null : (
                 <View className="mt-10 px-5">
                   <Text className="text-center text-gray-500">No assignments found</Text>
                 </View>
