@@ -8,6 +8,7 @@ import { Alert, Dimensions, PanResponder, Text, TouchableOpacity, View, RefreshC
 import { ScrollView } from 'react-native-gesture-handler'
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 import GradeLevelSelector from '@/components/GradeLevelSelector';
+import SkeletonGradeLevelSelector from '@/components/SkeletonGradeLevelSelector';
 import ManualGradeEntryCard from '@/components/ManualGradeEntryCard';
 import { GpaCard, GpaSoloCard } from '@/components/GpaCard';
 import ErrorDisplay from '@/components/ErrorDisplay';
@@ -40,7 +41,7 @@ const GPA = () => {
   const [hasCredentials, setHasCredentials] = useState(false);
   
   // Use extracted hook for current grade level and available grade levels
-  const { currentGradeLevel, availableGradeLevels } = useGradeLevel();
+  const { currentGradeLevel, availableGradeLevels, isLoading: gradeLevelLoading, refreshGradeLevelData } = useGradeLevel();
   
   // Initialize selectedGrade with currentGradeLevel instead of 'Freshman'
   const [selectedGrade, setSelectedGrade] = useState<GradeLevel>(currentGradeLevel);
@@ -804,12 +805,16 @@ const GPA = () => {
       </View>
 
       <View className="mt-4 pb-4 px-4">
-        <GradeLevelSelector
-          key={`grade-selector-${selectedGrade}`}
-          grades={availableGradeLevels}
-          selectedGrade={selectedGrade}
-          onSelectGrade={handleGradeChange}
-        />
+        {gradeLevelLoading ? (
+          <SkeletonGradeLevelSelector />
+        ) : (
+          <GradeLevelSelector
+            key={`grade-selector-${selectedGrade}`}
+            grades={availableGradeLevels}
+            selectedGrade={selectedGrade}
+            onSelectGrade={handleGradeChange}
+          />
+        )}
       </View>
 
       <View className="flex-1 bg-primary">

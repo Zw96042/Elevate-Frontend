@@ -11,6 +11,7 @@ import { useBottomSheet, BottomSheetProvider } from '@/context/BottomSheetContex
 import { useSettingSheet } from '@/context/SettingSheetContext';
 import { UnifiedCourseData } from '@/lib/unifiedDataManager';
 import { useUnifiedData } from '@/context/UnifiedDataContext';
+import { useGradeLevel } from '@/hooks/useGradeLevel';
 import * as Animatable from 'react-native-animatable';
 
 
@@ -136,7 +137,7 @@ export default function Index() {
   const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
   const { settingSheetRef } = useSettingSheet();
   const { coursesData, loading, error, refreshCourses } = useUnifiedData();
-  const { currentGradeLevel } = require('@/hooks/useGradeLevel').useGradeLevel();
+  const { currentGradeLevel } = useGradeLevel();
   const [filteredCourses, setFilteredCourses] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [hasCredentials, setHasCredentials] = useState(false);
