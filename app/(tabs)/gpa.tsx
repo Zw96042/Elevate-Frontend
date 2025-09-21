@@ -4,12 +4,14 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MotiView } from 'moti';
 import React, { JSX, useState, useEffect, useRef, useCallback } from 'react';
-import { Alert, Dimensions, PanResponder, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
+import { Alert, Dimensions, PanResponder, Text, TouchableOpacity, View, RefreshControl, DeviceEventEmitter } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler'
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 import GradeLevelSelector from '@/components/GradeLevelSelector';
 import ManualGradeEntryCard from '@/components/ManualGradeEntryCard';
 import { GpaCard, GpaSoloCard } from '@/components/GpaCard';
+import ErrorDisplay from '@/components/ErrorDisplay';
+import LoginPrompt from '@/components/LoginPrompt';
 import { useGradeLevel } from '@/hooks/useGradeLevel';
 import { UnifiedGPAManager, GPAData } from '@/lib/unifiedGpaManager';
 import { UnifiedCourseData } from '@/lib/unifiedDataManager';
@@ -49,16 +51,37 @@ const GPA = () => {
   const [isGraphAnimating, setIsGraphAnimating] = useState(false);
   const [savedClasses, setSavedClasses] = useState<any[] | null>(null);
   const [gpaData, setGpaData] = useState<Record<string, GPAData>>({});
-  const { coursesData, loading, refreshCourses } = useUnifiedData();
+  const { coursesData, loading, refreshCourses, clearCache } = useUnifiedData();
   const [refreshing, setRefreshing] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [lastLoadedGrade, setLastLoadedGrade] = useState<GradeLevel | null>(null);
   const loadingRef = React.useRef(false);
   const isInteractingWithGraph = useRef(false);
   const hasInitializedGradeRef = useRef(false);
+  const [error, setError] = useState<string | null>(null);
   
   // Move useColorScheme to top level to avoid hook order violations
   const { colorScheme } = useColorScheme();
+
+  // Listen for credential updates
+  useEffect(() => {
+    const credentialsListener = DeviceEventEmitter.addListener('credentialsAdded', async () => {
+      // Auto-refresh when credentials are verified
+      setError(null);
+      setIsInitialized(false);
+      // Trigger a fresh load
+      try {
+        await refreshCourses(true);
+      } catch (error) {
+        console.error('Error refreshing after credentials update:', error);
+        setError('Unable to load GPA data. Please try again.');
+      }
+    });
+
+    return () => {
+      credentialsListener.remove();
+    };
+  }, [refreshCourses]);
   
   // Update selectedGrade when currentGradeLevel changes, but only on initial load
   useEffect(() => {
@@ -84,11 +107,15 @@ const GPA = () => {
   // Function for pull-to-refresh
   const onRefresh = async () => {
     setRefreshing(true);
+    setError(null); // Clear any existing errors
     const wasInteracting = isInteractingWithGraph.current;
     isInteractingWithGraph.current = false;
     try {
-      // Clear the cache first to ensure fresh data
+      // Clear the shared cache to ensure fresh data
+      await clearCache();
+      // Clear GPA-specific cache as well
       await UnifiedGPAManager.clearGPACache();
+      // Refresh courses data with force=true
       await refreshCourses(true);
       // After refresh, recalculate GPA data
       if (coursesData && coursesData.length > 0) {
@@ -105,6 +132,9 @@ const GPA = () => {
         }
         setGpaData(UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses));
       }
+    } catch (error) {
+      console.error('❌ Error during refresh:', error);
+      setError('Unable to refresh GPA data. Please check your connection and try again.');
     } finally {
       setRefreshing(false);
       isInteractingWithGraph.current = wasInteracting;
@@ -118,32 +148,11 @@ const GPA = () => {
       if (isInitialized) return;
       if (!isMounted) return;
 
-      // If coursesData is already loaded in context, use it
-      if (coursesData && coursesData.length > 0) {
-        const gradeMap: Record<string, number> = {
-          'Freshman': 9,
-          'Sophomore': 10,
-          'Junior': 11,
-          'Senior': 12
-        };
-        const gradeNumber = gradeMap[selectedGrade] || null;
-        let initialCourses = coursesData;
-        if (gradeNumber) {
-          initialCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
-        }
-        setGpaData(UnifiedGPAManager.calculateCurrentGradeGPA(initialCourses));
-        setIsInitialized(true);
-        return;
-      }
+      try {
+        setError(null);
 
-      // Otherwise, check credentials and fetch from API
-      const result = await SkywardAuth.hasCredentials();
-      if (!isMounted) return;
-      setHasCredentials(result);
-      if (result) {
-        const gpaResult = await UnifiedGPAManager.getGPAData('All Time', false);
-        if (gpaResult.success && gpaResult.rawCourses) {
-          let initialCourses = gpaResult.rawCourses;
+        // If coursesData is already loaded in context, use it
+        if (coursesData && coursesData.length > 0) {
           const gradeMap: Record<string, number> = {
             'Freshman': 9,
             'Sophomore': 10,
@@ -151,13 +160,46 @@ const GPA = () => {
             'Senior': 12
           };
           const gradeNumber = gradeMap[selectedGrade] || null;
+          let initialCourses = coursesData;
           if (gradeNumber) {
-            initialCourses = gpaResult.rawCourses.filter(c => c.gradeYear === gradeNumber);
+            initialCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
           }
           setGpaData(UnifiedGPAManager.calculateCurrentGradeGPA(initialCourses));
-        }
-        if (isMounted) {
           setIsInitialized(true);
+          return;
+        }
+
+        // Otherwise, check credentials and fetch from API
+        const result = await SkywardAuth.hasCredentials();
+        if (!isMounted) return;
+        setHasCredentials(result);
+        
+        if (result) {
+          const gpaResult = await UnifiedGPAManager.getGPAData('All Time', false);
+          if (gpaResult.success && gpaResult.rawCourses) {
+            let initialCourses = gpaResult.rawCourses;
+            const gradeMap: Record<string, number> = {
+              'Freshman': 9,
+              'Sophomore': 10,
+              'Junior': 11,
+              'Senior': 12
+            };
+            const gradeNumber = gradeMap[selectedGrade] || null;
+            if (gradeNumber) {
+              initialCourses = gpaResult.rawCourses.filter(c => c.gradeYear === gradeNumber);
+            }
+            setGpaData(UnifiedGPAManager.calculateCurrentGradeGPA(initialCourses));
+          } else {
+            throw new Error('Failed to load GPA data');
+          }
+          if (isMounted) {
+            setIsInitialized(true);
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing GPA data:', error);
+        if (isMounted) {
+          setError('Unable to load GPA data. Please check your connection and try again.');
         }
       }
     };
@@ -702,6 +744,55 @@ const GPA = () => {
       return () => clearTimeout(timeout);
     }
   }, [isGraphAnimating]);
+
+  // Show error display if there's an error
+  if (error) {
+    return (
+      <View className="flex-1 bg-primary">
+        <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
+          <Text className="text-white text-3xl font-bold">Grade Point Average</Text>
+          <TouchableOpacity onPress={() => settingSheetRef.current?.snapToIndex(0)}>
+            <Ionicons name='cog-outline' color={'#fff'} size={26} />
+          </TouchableOpacity>
+        </View>
+        <View className="flex-1 mt-24">
+          <ErrorDisplay
+            error={error}
+            onRetry={async () => {
+              setError(null);
+              setIsInitialized(false);
+              try {
+                await refreshCourses(true);
+              } catch (error) {
+                setError('Unable to load GPA data. Please try again.');
+              }
+            }}
+            title="Couldn't load GPA data"
+          />
+        </View>
+      </View>
+    );
+  }
+
+  // Show login prompt if credentials are not set
+  if (!hasCredentials && !loading && !isInitialized) {
+    return (
+      <View className="flex-1 bg-primary">
+        <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
+          <Text className="text-white text-3xl font-bold">Grade Point Average</Text>
+          <TouchableOpacity onPress={() => settingSheetRef.current?.snapToIndex(0)}>
+            <Ionicons name='cog-outline' color={'#fff'} size={26} />
+          </TouchableOpacity>
+        </View>
+        <View className="flex-1 mt-20">
+          <LoginPrompt
+            message="Please log in with your Skyward credentials to view your GPA."
+            onLoginPress={() => settingSheetRef.current?.snapToIndex(0)}
+          />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1 bg-primary">

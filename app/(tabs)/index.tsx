@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, FlatList, useColorScheme, LayoutAnimation, RefreshControl } from 'react-native';
+import { View, Text, TouchableOpacity, FlatList, useColorScheme, LayoutAnimation, RefreshControl, DeviceEventEmitter } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ClassCard from '@/components/ClassCard';
 import SkeletonClassCard from '@/components/SkeletonClassCard';
+import ErrorDisplay from '@/components/ErrorDisplay';
+import LoginPrompt from '@/components/LoginPrompt';
 import { useFocusEffect } from 'expo-router';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { useBottomSheet, BottomSheetProvider } from '@/context/BottomSheetContext'
@@ -137,6 +139,31 @@ export default function Index() {
   const { currentGradeLevel } = require('@/hooks/useGradeLevel').useGradeLevel();
   const [filteredCourses, setFilteredCourses] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [hasCredentials, setHasCredentials] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  // Check credentials on mount
+  useEffect(() => {
+    const checkCredentials = async () => {
+      const hasCreds = await SkywardAuth.hasCredentials();
+      setHasCredentials(hasCreds);
+    };
+    checkCredentials();
+  }, []);
+
+  // Listen for credential updates
+  useEffect(() => {
+    const credentialsListener = DeviceEventEmitter.addListener('credentialsAdded', async () => {
+      // Auto-refresh when credentials are verified
+      setLocalError(null);
+      setHasCredentials(true);
+      await refreshCourses(true);
+    });
+
+    return () => {
+      credentialsListener.remove();
+    };
+  }, [refreshCourses]);
 
   // No need for local loadCourses, use refreshCourses from context
 
@@ -159,9 +186,15 @@ export default function Index() {
     setFilteredCourses(filtered);
   }, [coursesData, selectedCategory]);
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    refreshCourses(true).finally(() => setRefreshing(false));
+    setLocalError(null);
+    try {
+      await refreshCourses(true);
+    } catch (error) {
+      setLocalError('Unable to refresh courses. Please check your connection and try again.');
+    }
+    setRefreshing(false);
   }, [refreshCourses]);
 
   useEffect(() => {
@@ -170,6 +203,77 @@ export default function Index() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Show login prompt if credentials are not set OR if error is credential-related
+  if (!hasCredentials || (error && error.includes('credentials')) || !loading) {
+    // If we have an error that's not credential-related, show error display
+    if (error && !error.includes('credentials') && !error.includes('Missing credentials')) {
+      return (
+        <View className="flex-1 bg-primary">
+          <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
+            <Text className="text-white text-3xl font-bold">Courses</Text>
+            <TouchableOpacity onPress={() => settingSheetRef.current?.snapToIndex(0)}>
+              <Ionicons name='cog-outline' color={'#fff'} size={26} />
+            </TouchableOpacity>
+          </View>
+          <View className="flex-1 mt-24">
+            <ErrorDisplay
+              error={localError || error || 'Unable to load courses'}
+              onRetry={async () => {
+                setLocalError(null);
+                await onRefresh();
+              }}
+              title="Couldn't load courses"
+            />
+          </View>
+        </View>
+      );
+    }
+
+    // Show login prompt for missing credentials or when not loading
+    if (!hasCredentials || (error && (error.includes('credentials') || error.includes('Missing credentials')))) {
+      return (
+        <View className="flex-1 bg-primary">
+          <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
+            <Text className="text-white text-3xl font-bold">Courses</Text>
+            <TouchableOpacity onPress={() => settingSheetRef.current?.snapToIndex(0)}>
+              <Ionicons name='cog-outline' color={'#fff'} size={26} />
+            </TouchableOpacity>
+          </View>
+          <View className="flex-1 mt-20">
+            <LoginPrompt
+              message="Please log in with your Skyward credentials to view your courses."
+              onLoginPress={() => settingSheetRef.current?.snapToIndex(0)}
+            />
+          </View>
+        </View>
+      );
+    }
+  }
+
+  // Show error display for non-credential errors
+  if (localError) {
+    return (
+      <View className="flex-1 bg-primary">
+        <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
+          <Text className="text-white text-3xl font-bold">Courses</Text>
+          <TouchableOpacity onPress={() => settingSheetRef.current?.snapToIndex(0)}>
+            <Ionicons name='cog-outline' color={'#fff'} size={26} />
+          </TouchableOpacity>
+        </View>
+        <View className="flex-1 mt-24">
+          <ErrorDisplay
+            error={localError}
+            onRetry={async () => {
+              setLocalError(null);
+              await onRefresh();
+            }}
+            title="Couldn't load courses"
+          />
+        </View>
+      </View>
+    );
+  }
 
   return (
     
@@ -228,13 +332,17 @@ export default function Index() {
           keyExtractor={(item, index) => loading ? `skeleton-${index}` : `${item.name}-${index}`}
           ItemSeparatorComponent={() => <View className="h-[0.85rem]" />}
           ListEmptyComponent={
-            <View className="mt-10 px-5">
+            <View className="flex-1 justify-center items-center py-12">
               {!loading && (
-                error ? (
-                  <Text className="text-center text-red-500">Error: {error}</Text>
-                ) : (
-                  <Text className="text-center text-gray-500">No classes found.</Text>
-                )
+                <>
+                  <Ionicons name="school-outline" size={64} color="#9ca3af" />
+                  <Text className="text-center text-gray-500 mt-4 text-lg">
+                    No courses found
+                  </Text>
+                  <Text className="text-center text-gray-400 mt-2">
+                    Try selecting a different term
+                  </Text>
+                </>
               )}
             </View>
           }

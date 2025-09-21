@@ -314,11 +314,15 @@ export class UnifiedGPAManager extends UnifiedDataManager {
     }
   }
 
-  // Clear GPA cache (clears saved classes data used for fallback)
+  // Clear GPA cache (clears saved classes data used for fallback AND shared cache)
   public static async clearGPACache(): Promise<void> {
     try {
       console.log('🧹 Clearing GPA cache...');
-      // Clear saved classes for all grade levels
+      
+      // Clear the shared cache from UnifiedDataManager first
+      await this.clearCache();
+      
+      // Clear saved classes for all grade levels (fallback data)
       const gradeLevels: GradeLevel[] = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'All Time'];
       const clearPromises = gradeLevels.map(gradeLevel => {
         const key = `savedClasses-${gradeLevel}`;
@@ -327,7 +331,7 @@ export class UnifiedGPAManager extends UnifiedDataManager {
       });
 
       await Promise.all(clearPromises);
-      console.log('✅ GPA cache cleared successfully');
+      console.log('✅ GPA cache cleared successfully (including shared cache)');
     } catch (error) {
       console.error('❌ Error clearing GPA cache:', error);
     }
