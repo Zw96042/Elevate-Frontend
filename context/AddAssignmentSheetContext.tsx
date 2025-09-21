@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useRef, useState, ReactNode } from 'react';
+import { Keyboard } from 'react-native';
 import AddSheet from '@gorhom/bottom-sheet';
 import formatClassName from '@/utils/formatClassName';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -156,7 +157,27 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
       };
       await AsyncStorage.setItem("artificialAssignments", JSON.stringify(updated));
     }
-    addSheetRef.current?.close();
+    
+    // Clear form data
+    setName('');
+    setGrade('');
+    setOutOf(100);
+    setCategory(categories[0] || 'Daily');
+    
+    // Dismiss keyboard before closing modal
+    Keyboard.dismiss();
+    
+    // Small delay to ensure keyboard is fully dismissed
+    setTimeout(() => {
+      Keyboard.dismiss();
+    }, 100);
+    
+    // Close the modal after a brief delay
+    setTimeout(() => {
+      addSheetRef.current?.close();
+      console.log('🔒 Modal closed from context');
+    }, 150);
+    
     // Run meshAssignments after adding artificial assignment
     if (modalData?.meshAssignments) {
       modalData.meshAssignments();
