@@ -164,6 +164,9 @@ const ClassDetails = () => {
   const [lastFetchTime, setLastFetchTime] = useState<number>(0);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+  
+  // Track category changes for refresh logic
+  const [previousSelectedCategory, setPreviousSelectedCategory] = useState<TermLabel | null>(null);
 
   // Debug function to check cache status
   const checkCacheStatus = async () => {
@@ -530,7 +533,7 @@ const ClassDetails = () => {
     } else {
       // Normal animation for smaller changes
       animatedGrade.value = withTiming(value, {
-        duration: 200,
+        duration: 0,
         easing: Easing.inOut(Easing.ease),
       });
     }
@@ -544,11 +547,17 @@ const ClassDetails = () => {
   );
 
   useEffect(() => {
-    // Only fetch if we don't have data or if this is the initial load
-    if (apiAssignments.length === 0 && apiCategories.names.length === 0) {
-      console.log('🚀 Initial load - fetching assignments');
+    // Fetch data on initial load OR when selectedCategory changes
+    const isInitialLoad = apiAssignments.length === 0 && apiCategories.names.length === 0;
+    const categoryChanged = previousSelectedCategory !== null && previousSelectedCategory !== selectedCategory;
+    
+    if (isInitialLoad || categoryChanged) {
+      console.log('🚀 Fetching assignments for selectedCategory:', selectedCategory, { isInitialLoad, categoryChanged });
       fetchApiAssignments();
     }
+    
+    // Update the previous category
+    setPreviousSelectedCategory(selectedCategory);
   }, [className, stuId, corNumId, section, gbId, selectedCategory]);
 
   useEffect(() => {
