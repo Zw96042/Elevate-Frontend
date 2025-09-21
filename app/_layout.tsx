@@ -29,7 +29,6 @@ function InnerLayout() {
   const [currentSnapPosition, setCurrentSnapPosition] = useState('hidden');
   const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isClosingModal, setIsClosingModal] = useState(false);
   const [keyboardListenersDisabled, setKeyboardListenersDisabled] = useState(false);
   const lastSubmitTime = useRef<number>(0);
   const submitButtonRef = useRef<any>(null);
@@ -47,13 +46,11 @@ function InnerLayout() {
       setCurrentSnapPosition('hidden');
       setModalClosedByOutsideTap(true);
       setIsSubmitting(false); // Reset submitting flag when modal closes
-      setIsClosingModal(false); // Reset closing flag when modal is closed
       // Re-enable keyboard listeners after modal is fully closed
       setTimeout(() => setKeyboardListenersDisabled(false), 500);
     } else {
       setCurrentSnapPosition('54%');
       setModalClosedByOutsideTap(false);
-      setIsClosingModal(false); // Reset closing flag when modal opens
       setKeyboardListenersDisabled(false); // Ensure listeners are enabled when modal opens
     }
   };
@@ -76,7 +73,6 @@ function InnerLayout() {
       
       if (
         !modalClosedByOutsideTap &&
-        !isClosingModal &&
         !isSubmitting &&
         currentSnapPosition !== '90%' &&
         currentSnapPosition !== 'hidden'
@@ -104,8 +100,8 @@ function InnerLayout() {
         setModalClosedByOutsideTap(false);
         return;
       }
-      if (isSubmitting || isClosingModal) {
-        // Don't adjust modal position if we're submitting or closing
+      if (isSubmitting) {
+        // Don't adjust modal position if we're submitting
         return;
       }
       if (currentSnapPosition === '90%') {
@@ -118,7 +114,7 @@ function InnerLayout() {
       showSub.remove();
       hideSub.remove();
     };
-  }, [currentSnapPosition, modalClosedByOutsideTap, isSubmitting, isClosingModal, keyboardListenersDisabled]);
+  }, [currentSnapPosition, modalClosedByOutsideTap, isSubmitting, keyboardListenersDisabled]);
   return (
     <UnifiedDataProvider>
       <TouchableWithoutFeedback onPress={() => {
@@ -316,48 +312,39 @@ function InnerLayout() {
                     ref={submitButtonRef}
                     className="bg-highlight py-3 rounded-md mt-2"
                     onPress={async () => {
-                      console.log('🔘 Submit button pressed - disabling keyboard listeners');
+                      // Prevent multiple taps
+                      if (isSubmitting) return;
                       
-                      // Record submit time for timestamp-based protection
+                      console.log('🔘 Submit button pressed');
+                      
+                      // Set submitting state
+                      setIsSubmitting(true);
+                      
+                      // Disable keyboard listeners and record submit time
+                      setKeyboardListenersDisabled(true);
                       lastSubmitTime.current = Date.now();
                       
-                      // FIRST: Disable keyboard listeners completely
-                      setKeyboardListenersDisabled(true);
+                      // Dismiss keyboard immediately
+                      Keyboard.dismiss();
                       
-                      // Set flags to prevent any remaining interference
-                      setIsSubmitting(true);
-                      setIsClosingModal(true);
-                      
-                      // Blur all text inputs to ensure they lose focus
+                      // Blur inputs
                       nameInputRef.current?.blur();
                       gradeInputRef.current?.blur();
                       outOfInputRef.current?.blur();
                       
-                      // Dismiss keyboard immediately and aggressively multiple times
-                      Keyboard.dismiss();
-                      
-                      // Multiple keyboard dismissals to ensure it works on real devices
-                      setTimeout(() => Keyboard.dismiss(), 50);
-                      setTimeout(() => Keyboard.dismiss(), 100);
-                      
-                      // Delay before submit to ensure keyboard is gone
-                      setTimeout(async () => {
-                        try {
-                          console.log('📤 Executing onSubmit');
-                          // Final keyboard dismissal before submit
-                          Keyboard.dismiss();
-                          await onSubmit();
-                          console.log('✅ Submit completed successfully');
-                        } catch (error) {
-                          console.error('❌ Error submitting assignment:', error);
-                        } finally {
-                          // Reset flags after submission is complete
+                      try {
+                        console.log('📤 Executing onSubmit');
+                        await onSubmit();
+                        console.log('✅ Submit completed successfully');
+                      } catch (error) {
+                        console.error('❌ Error submitting assignment:', error);
+                      } finally {
+                        // Reset state after a short delay
+                        setTimeout(() => {
                           setIsSubmitting(false);
-                          setIsClosingModal(false);
-                          // Keep listeners disabled for a bit longer to ensure modal closes
-                          console.log('🏁 Submit process finished');
-                        }
-                      }, 200);
+                          setKeyboardListenersDisabled(false);
+                        }, 1000);
+                      }
                     }}
                   >
                     <Text className="text-center text-highlightText font-bold text-lg">Add Assignment</Text>

@@ -238,10 +238,13 @@ export class UnifiedDataManager {
         sessionid: sessionid!, 
         baseUrl: baseUrl! 
       });
-      if (response.success && response.combined) {
-        return { success: true, data: response.combined };
+      
+      // Check if we have any useful data, not just success flag
+      if (response && (response.combined || response.success)) {
+        const combinedData = response.combined || response;
+        return { success: true, data: combinedData };
       } else {
-        return { success: false, error: 'Failed to fetch combined scrape report data' };
+        return { success: false, error: response?.error || 'No data returned from scrape report API' };
       }
     } catch (error: any) {
       return { success: false, error: error.message || 'Scrape report fetch error' };

@@ -63,6 +63,24 @@ export const fetchGradeInfo = async (
       }),
     });
 
+    // Always try to parse the response first
+    let responseData;
+    let responseText = '';
+    
+    try {
+      responseText = await response.text();
+      responseData = JSON.parse(responseText);
+    } catch (parseError) {
+      // If we can't parse JSON, treat as error
+      throw new Error(`Failed to parse grade info response: ${response.status} ${response.statusText} - ${responseText}`);
+    }
+
+    // Check if we have valid data regardless of status code
+    if (responseData && (responseData.success !== false)) {
+      return { success: true, data: responseData, retryCount, wasAuthError: false };
+    }
+
+    // Handle session expiry with retry logic
     if (!response.ok || response.status === 401 || response.status === 400 || response.status === 500) {
       if ((response.status === 401 || response.status === 400 || response.status === 500) && retryCount === 0) {
         console.log('Session expired, retrying auth...');
@@ -74,11 +92,14 @@ export const fetchGradeInfo = async (
           return { success: false, error: 'Re-authentication failed', retryCount: retryCount + 1, wasAuthError: true };
         }
       } else {
-        throw new Error(`Failed to fetch grade info: ${response.statusText}`);
+        throw new Error(`Failed to fetch grade info: ${response.status} ${response.statusText} - ${responseText}`);
       }
     }
 
-    const responseData = await response.json();
+    // If response is ok but data indicates failure
+    if (responseData && responseData.success === false) {
+      return { success: false, error: responseData.error || 'Grade info API returned failure status', retryCount, wasAuthError: false };
+    }
 
     return { success: true, data: responseData, retryCount, wasAuthError: false };
   } catch (error: any) {

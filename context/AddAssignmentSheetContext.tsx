@@ -158,25 +158,15 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
       await AsyncStorage.setItem("artificialAssignments", JSON.stringify(updated));
     }
     
-    // Clear form data
+    // Clear form data immediately
     setName('');
-    setGrade('');
+    setGrade('100');
     setOutOf(100);
     setCategory(categories[0] || 'Daily');
     
-    // Dismiss keyboard before closing modal
-    Keyboard.dismiss();
-    
-    // Small delay to ensure keyboard is fully dismissed
-    setTimeout(() => {
-      Keyboard.dismiss();
-    }, 100);
-    
-    // Close the modal after a brief delay
-    setTimeout(() => {
-      addSheetRef.current?.close();
-      console.log('🔒 Modal closed from context');
-    }, 150);
+    // Close modal immediately - no delays
+    addSheetRef.current?.close();
+    console.log('🔒 Modal closed from context');
     
     // Run meshAssignments after adding artificial assignment
     if (modalData?.meshAssignments) {

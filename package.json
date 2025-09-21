@@ -48,7 +48,7 @@
     "node-html-parser": "^7.0.1",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "react-native": "0.79.2",
+    "react-native": "0.79.6",
     "react-native-animatable": "^1.4.0",
     "react-native-async-storage": "^0.0.1",
     "react-native-circular-progress-indicator": "^4.4.2",

@@ -49,6 +49,24 @@ export const fetchAcademicHistory = async (retryCount: number = 0): Promise<Acad
       }),
     });
 
+    // Always try to parse the response first
+    let responseData;
+    let responseText = '';
+    
+    try {
+      responseText = await response.text();
+      responseData = JSON.parse(responseText);
+    } catch (parseError) {
+      // If we can't parse JSON, treat as error
+      throw new Error(`Failed to parse academic history response: ${response.status} ${response.statusText} - ${responseText}`);
+    }
+
+    // Check if we have valid data regardless of status code
+    if (responseData && (responseData.success !== false) && responseData.data) {
+      return { success: true, data: responseData.data };
+    }
+
+    // Handle session expiry with retry logic
     if (!response.ok || response.status === 401 || response.status === 400) {
       if ((response.status === 401 || response.status === 400) && retryCount === 0) {
         console.log('Session expired, attempting re-authentication...');
@@ -62,11 +80,14 @@ export const fetchAcademicHistory = async (retryCount: number = 0): Promise<Acad
           return { success: false, error: 'Re-authentication failed' };
         }
       } else {
-        throw new Error(`Failed to fetch academic history: ${response.statusText}`);
+        throw new Error(`Failed to fetch academic history: ${response.status} ${response.statusText} - ${responseText}`);
       }
     }
 
-    const responseData = await response.json();
+    // If response is ok but data indicates failure
+    if (responseData && responseData.success === false) {
+      return { success: false, error: responseData.error || 'Academic history API returned failure status' };
+    }
     
     // The backend returns the academic data directly (not wrapped in success/data structure)
     // Academic data format: { "2024-2025": { grade: 12, courses: {...} }, "alt": {...} }

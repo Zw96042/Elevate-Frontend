@@ -43,14 +43,32 @@ export async function getNewSessionCodes({ username, password, baseURL }: Skywar
     password: password,
     requestAction: 'eel',
   });
-  const response = await axios.post(authenticationURL, formData.toString(), {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  });
-  const parsed = parsePostResponse(response.data);
-  if (!parsed) {
-    throw new Error('Failed to parse Skyward session codes.');
+  
+  try {
+    const response = await axios.post(authenticationURL, formData.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+    console.log('Skyward login response status:', JSON.stringify(response.data, null, 2));
+    const parsed = parsePostResponse(response.data);
+    if (!parsed) {
+      throw new Error('Failed to parse Skyward session codes - the response format may have changed or the server may be experiencing issues.');
+    }
+    return parsed;
+  } catch (error: any) {
+    // If it's a network error but we have response data, try to parse it anyway
+    if (error.response && error.response.data) {
+      console.log('⚠️ Network error occurred but response data available, attempting to parse...');
+      console.log('Response data:', JSON.stringify(error.response.data, null, 2));
+      const parsed = parsePostResponse(error.response.data);
+      if (parsed) {
+        console.log('✅ Successfully recovered from network error with valid session codes');
+        return parsed;
+      }
+    }
+    
+    // If we truly can't get valid session codes, throw the error
+    throw error;
   }
-  return parsed;
 }
 
 /**
@@ -59,21 +77,62 @@ export async function getNewSessionCodes({ username, password, baseURL }: Skywar
  */
 export function parsePostResponse(postResponse: string): SkywardSessionCodes | null {
   if (!postResponse) return null;
-  const dissectedString = postResponse.substring(4, postResponse.length - 5);
-  const toks = dissectedString.split('^');
-  if (toks.length < 15) {
+  
+  // Handle responses wrapped in HTML tags (like <li>)
+  let cleanResponse = postResponse;
+  if (postResponse.includes('<li>') && postResponse.includes('</li>')) {
     const root = parse(postResponse);
-    const rootText = (root.text || postResponse || '').toLowerCase();
-    if (rootText.includes('invalid username or password') || rootText.includes('invalid user') || rootText.includes('invalid login')) {
-      throw new Error('Invalid user or pass, or locked account');
-    }
-    throw new Error(`Authentication parsing failed: ${rootText || 'Unknown error'}`);
+    cleanResponse = root.text || postResponse;
   }
-  return {
-    dwd: toks[0],
-    wfaacl: toks[3],
-    encses: toks[14],
-    'User-Type': toks[6],
-    sessionid: `${toks[1]}\x15${toks[2]}`,
-  };
+  
+  // Try to extract session codes from the clean response
+  const toks = cleanResponse.split('^');
+  
+  if (toks.length >= 15) {
+    // Valid session codes found
+    console.log('✅ Successfully parsed session codes from response');
+    return {
+      dwd: toks[0],
+      wfaacl: toks[3],
+      encses: toks[14],
+      'User-Type': toks[6],
+      sessionid: `${toks[1]}\x15${toks[2]}`,
+    };
+  }
+  
+  // If that fails, try the old format parsing
+  if (postResponse.length > 9) {
+    const dissectedString = postResponse.substring(4, postResponse.length - 5);
+    const oldToks = dissectedString.split('^');
+    
+    if (oldToks.length >= 15) {
+      console.log('✅ Successfully parsed session codes using legacy format');
+      return {
+        dwd: oldToks[0],
+        wfaacl: oldToks[3],
+        encses: oldToks[14],
+        'User-Type': oldToks[6],
+        sessionid: `${oldToks[1]}\x15${oldToks[2]}`,
+      };
+    }
+  }
+  
+  // If both parsing methods fail, check for specific error messages
+  const rootText = (cleanResponse || postResponse || '').toLowerCase();
+  
+  // Only throw for explicit authentication errors
+  if (rootText.includes('invalid username or password') || 
+      rootText.includes('invalid user') || 
+      rootText.includes('invalid login') ||
+      rootText.includes('locked account') ||
+      rootText.includes('login failed')) {
+    throw new Error('Invalid username or password, or account is locked');
+  }
+  
+  // For other parsing failures, log but don't necessarily throw
+  console.warn('⚠️ Session code parsing failed, response text:', rootText.substring(0, 200));
+  console.warn('⚠️ Response length:', postResponse.length, 'Token count:', toks.length);
+  
+  // Return null to indicate parsing failed, but let caller decide how to handle
+  return null;
 }

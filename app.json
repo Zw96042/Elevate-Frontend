@@ -4,7 +4,7 @@
     "slug": "elevate",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/logo.png",
+    "icon": "./assets/images/logo_themed.icon",
     "scheme": "elevate",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -51,6 +51,10 @@
     "runtimeVersion": "1.0.0",
     "updates": {
       "url": "https://u.expo.dev/2f8bf76b-e1cb-42e0-82af-08f39690b834"
+    },
+    "expo": {
+      "jsEngine": "hermes"
     }
+
   }
 }

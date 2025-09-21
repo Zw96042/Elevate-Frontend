@@ -15,31 +15,57 @@ export const fetchSkywardMessages = async ({
   }
 
   if (sessionid != "dev" || encses != "dev" || dwd != "dev" || wfaacl != "dev") {
-    const res = await fetch(`${config.BACKEND_IP}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-        sessionid,
-        encses,
-        dwd,
-        wfaacl,
-        baseUrl,
-        'User-Type': userType,
-        }),
-    });
+    try {
+      const res = await fetch(`${config.BACKEND_IP}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+          sessionid,
+          encses,
+          dwd,
+          wfaacl,
+          baseUrl,
+          'User-Type': userType,
+          }),
+      });
 
-    if (!res.ok) {
-      if (res.status === 401) {
-          throw new Error(`Session Expired`);
-      } else {
-          throw new Error(`Failed to fetch messages: ${res}`);
+      // Always try to parse the response first
+      let data;
+      let responseText = '';
+      
+      try {
+        responseText = await res.text();
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        // If we can't parse JSON, treat as error
+        throw new Error(`Failed to parse messages response: ${res.status} ${res.statusText} - ${responseText}`);
       }
+
+      // Check if we got valid data regardless of status code
+      if (data && (data.success !== false) && Array.isArray(data)) {
+        return data;
+      }
+
+      // Only throw errors if we don't have valid data
+      if (!res.ok) {
+        if (res.status === 401) {
+            throw new Error(`Session Expired`);
+        } else {
+            throw new Error(`Failed to fetch messages: ${res.status} ${res.statusText} - ${responseText}`);
+        }
+      }
+
+      // If response is ok but data indicates failure
+      if (data && data.success === false) {
+        throw new Error(data.error || 'Messages API returned failure status');
+      }
+
+      return data;
+    } catch (networkError: any) {
+      // If it's a fetch network error, check if we can still get data
+      console.error('❌ Network error fetching messages:', networkError.message);
+      throw networkError;
     }
-
-    const data = await res.json();
-    // console.log("data:", data);
-
-    return data;
   } else {
     return EMAILS;
   }
@@ -67,12 +93,38 @@ export const fetchMoreSkywardMessages = async (
         }),
     });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Failed to fetch messages: ${text}`);
-  } 
+  // Always try to parse the response first
+  let data;
+  let responseText = '';
+  
+  try {
+    responseText = await response.text();
+    data = JSON.parse(responseText);
+  } catch (parseError) {
+    // If we can't parse JSON, treat as error
+    throw new Error(`Failed to parse next messages response: ${response.status} ${response.statusText} - ${responseText}`);
+  }
 
-  return await response.json();
+  // Check if we got valid data regardless of status code
+  if (data && (data.success !== false) && Array.isArray(data)) {
+    return data;
+  }
+
+  // Only throw errors if we don't have valid data
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error(`Session Expired`);
+    } else {
+      throw new Error(`Failed to fetch next messages: ${response.status} ${response.statusText} - ${responseText}`);
+    }
+  }
+
+  // If response is ok but data indicates failure
+  if (data && data.success === false) {
+    throw new Error(data.error || 'Next messages API returned failure status');
+  }
+
+  return data;
 };
 
 const EMAILS = [
@@ -176,17 +228,37 @@ export const fetchSkywardReportCard = async ({
       body: JSON.stringify(requestBody),
     });
 
+    // Always try to parse the response first
+    let data;
+    let responseText = '';
+    
+    try {
+      responseText = await res.text();
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      // If we can't parse JSON, treat as error
+      throw new Error(`Failed to parse response: ${res.status} ${res.statusText} - ${responseText}`);
+    }
+
+    // Check if we got valid data regardless of status code
+    if (data && (data.success !== false)) {
+      return data;
+    }
+
+    // Only throw errors if we don't have valid data
     if (!res.ok) {
-      const errorText = await res.text();
-      
       if (res.status === 401) {
         throw new Error(`Session Expired`);
       } else {
-        throw new Error(`Failed to fetch report card: ${res.status} ${res.statusText} - ${errorText}`);
+        throw new Error(`Failed to fetch report card: ${res.status} ${res.statusText} - ${responseText}`);
       }
     }
 
-    const data = await res.json();
+    // If response is ok but data indicates failure
+    if (data && data.success === false) {
+      throw new Error(data.error || 'API returned failure status');
+    }
+
     return data;
   } catch (error: any) {
     throw error;
