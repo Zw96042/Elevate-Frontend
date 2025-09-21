@@ -27,6 +27,7 @@ import React, {
   useCallback,
   useLayoutEffect,
   useRef,
+  useMemo,
 } from "react";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -113,7 +114,7 @@ const ClassDetails = () => {
 
 
 
-  const parseTermData = (param: string | string[] | undefined): TermData => {
+  const parseTermData = useCallback((param: string | string[] | undefined): TermData => {
     if (typeof param === "string") {
       try {
         return JSON.parse(param);
@@ -122,25 +123,27 @@ const ClassDetails = () => {
       }
     }
     return { categories: { names: [], weights: [] }, total: "--" };
-  };
+  }, []);
 
-  const t1 = parseTermData(searchParams.t1);
-  const t2 = parseTermData(searchParams.t2);
-  const s1 = parseTermData(searchParams.s1);
-  const t3 = parseTermData(searchParams.t3);
-  const t4 = parseTermData(searchParams.t4);
-  const s2 = parseTermData(searchParams.s2);
+  const termMap: Record<TermLabel, TermData> = useMemo(() => {
+    const t1 = parseTermData(searchParams.t1);
+    const t2 = parseTermData(searchParams.t2);
+    const s1 = parseTermData(searchParams.s1);
+    const t3 = parseTermData(searchParams.t3);
+    const t4 = parseTermData(searchParams.t4);
+    const s2 = parseTermData(searchParams.s2);
 
-  const termMap: Record<TermLabel, TermData> = {
-    "Q1 Grades": t1,
-    "Q2 Grades": t2,
-    "SM1 Grade": s1,
-    "Q3 Grades": t3,
-    "Q4 Grades": t4,
-    "SM2 Grades": s2,
-  };
+    return {
+      "Q1 Grades": t1,
+      "Q2 Grades": t2,
+      "SM1 Grade": s1,
+      "Q3 Grades": t3,
+      "Q4 Grades": t4,
+      "SM2 Grades": s2,
+    };
+  }, [searchParams.t1, searchParams.t2, searchParams.s1, searchParams.t3, searchParams.t4, searchParams.s2, parseTermData]);
 
-  const formattedName = formatClassName(className?.toString());
+  const formattedName = useMemo(() => formatClassName(className?.toString()), [className]);
 
   const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
   const [filteredAssignments, setFilteredAssignments] = useState<Assignment[]>([]);
@@ -531,10 +534,10 @@ const ClassDetails = () => {
       // Skip animation for large jumps
       animatedGrade.value = value;
     } else {
-      // Normal animation for smaller changes
+      // Normal animation for smaller changes - use proper timing
       animatedGrade.value = withTiming(value, {
-        duration: 0,
-        easing: Easing.inOut(Easing.ease),
+        duration: 800,
+        easing: Easing.out(Easing.cubic),
       });
     }
   }, [courseSummary.courseTotal, currTerm.total]);
@@ -768,6 +771,34 @@ const handleResetArtificialAssignments = async () => {
   meshAssignments();
 };
 
+  // Memoize the separator component
+  const ItemSeparatorComponent = useCallback(() => <View className="h-4" />, []);
+
+  // Memoize the renderItem function for better FlatList performance
+  const renderAssignmentItem = useCallback(({ item, index }: { item: any; index: number }) => {
+    const shouldShowSkeleton = loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0);
+    
+    return shouldShowSkeleton ? (
+      <SkeletonAssignment key={`skeleton-${index}`} />
+    ) : (
+      <AssignmentCard
+        {...(item as Assignment)}
+        editing={!!isEnabled}
+        classId={classId}
+        corNumId={corNumId}
+        section={section}
+        gbId={gbId}
+      />
+    );
+  }, [loading, waitingForRetry, apiAssignments.length, filteredAssignments.length, isEnabled, classId, corNumId, section, gbId]);
+
+  // Memoize the key extractor
+  const keyExtractor = useCallback((item: any, index: number) => {
+    return loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0) 
+      ? `skeleton-${index}` 
+      : ((item as Assignment).id || `${(item as Assignment).className}-${(item as Assignment).name}-${(item as Assignment).term}-${(item as Assignment).dueDate}`);
+  }, [loading, waitingForRetry, apiAssignments.length, filteredAssignments.length]);
+
   const theme = useColorScheme();
   const highlightColor = theme === 'dark' ? '#3b5795' : "#a4bfed";
   const backgroundColor = theme === 'dark' ? '#030014' : "#ffffff";
@@ -904,67 +935,42 @@ const handleResetArtificialAssignments = async () => {
             {isEnabled && apiCategories.names.length > 0 && (
               <MotiView
                 key={`reset-${isEnabled}`}
-                from={{ opacity: 0, height: 0, marginTop: 0 }}
-                animate={{ opacity: 1, height: 56, marginTop: 16 }}
-                exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                from={{ opacity: 0, scale: 0.95, translateY: -10, height: 0, marginTop: 0 }}
+                animate={{ opacity: 1, scale: 1, translateY: 0, height: 56, marginTop: 16 }}
+                exit={{ opacity: 0, scale: 0.95, translateY: -10, height: 0, marginTop: 0 }}
                 transition={{
-                  type: "spring",
-                  damping: 20,
-                  stiffness: 300,
-                  mass: 0.4,
-                  overshootClamping: true,
-                  restDisplacementThreshold: 0.01,
-                  restSpeedThreshold: 0.01
+                  type: "timing",
+                  duration: 200,
+                  easing: Easing.out(Easing.cubic),
                 }}
-                style={{  marginHorizontal: 16 }}
+                style={{ marginHorizontal: 16 }}
                 pointerEvents={isEnabled ? "auto" : "none"}
               >
                 <TouchableOpacity
                   onPress={handleResetArtificialAssignments}
-                  className="bg-cardColor items-center rounded-lg"
+                  className="bg-cardColor items-center rounded-lg py-3"
                 >
-                  <Text className="text-highlightText font-medium py-3 text-lg">Reset Assignments</Text>
+                  <Text className="text-highlightText font-medium text-lg">Reset Assignments</Text>
                 </TouchableOpacity>
               </MotiView>
             )}
           </AnimatePresence>
           <FlatList
             data={loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0) ? Array.from({ length: 8 }) : filteredAssignments}
-            renderItem={({ item, index }) => {
-              const shouldShowSkeleton = loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0);
-              console.log('🎨 Rendering item:', { 
-                index, 
-                loading, 
-                waitingForRetry, 
-                apiAssignmentsLength: apiAssignments.length,
-                filteredAssignmentsLength: filteredAssignments.length,
-                shouldShowSkeleton,
-                hasItem: !!item 
-              });
-              return shouldShowSkeleton ? (
-                <SkeletonAssignment key={`skeleton-${index}`} />
-              ) : (
-                <AnimatePresence key={(item as Assignment).id || `${(item as Assignment).className}-${(item as Assignment).name}-${(item as Assignment).term}-${(item as Assignment).dueDate}`}>
-                  <MotiView
-                    from={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                  >
-                    <AssignmentCard
-                      {...(item as Assignment)}
-                      editing={!!isEnabled}
-                      classId={classId}
-                      corNumId={corNumId}
-                      section={section}
-                      gbId={gbId}
-                    />
-                  </MotiView>
-                </AnimatePresence>
-              );
-            }}
-            keyExtractor={(item, index) => loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0) ? `skeleton-${index}` : ((item as Assignment).id || `${(item as Assignment).className}-${(item as Assignment).name}-${(item as Assignment).term}-${(item as Assignment).dueDate}`)}
+            renderItem={renderAssignmentItem}
+            keyExtractor={keyExtractor}
             className="mt-6 pb-8 px-3"
             scrollEnabled={false}
-            ItemSeparatorComponent={() => <View className="h-4" />}
+            ItemSeparatorComponent={ItemSeparatorComponent}
+            removeClippedSubviews={true}
+            maxToRenderPerBatch={10}
+            windowSize={10}
+            initialNumToRender={8}
+            getItemLayout={(data, index) => ({
+              length: 120, // Approximate height of AssignmentCard + separator
+              offset: 124 * index, // height + separator
+              index,
+            })}
             ListEmptyComponent={
               loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0) ? null : (
                 <View className="mt-10 px-5">
@@ -979,4 +985,4 @@ const handleResetArtificialAssignments = async () => {
   );
 };
 
-export default ClassDetails;
+export default React.memo(ClassDetails);
