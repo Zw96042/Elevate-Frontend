@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import {
-  View, Text, FlatList, ActivityIndicator, TouchableOpacity, DeviceEventEmitter
+  View, Text, FlatList, ActivityIndicator, TouchableOpacity, DeviceEventEmitter, RefreshControl
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,38 +12,33 @@ import ErrorDisplay from '@/components/ErrorDisplay';
 import LoginPrompt from '@/components/LoginPrompt';
 import { useSettingSheet } from '@/context/SettingSheetContext';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
-import { authenticate } from '@/lib/authHandler';
-import { loadMessages } from '@/lib/loadMessageHandler';
-import Burnt from 'burnt';
 import { useColorScheme } from 'react-native';
-import { useInboxLogic } from '@/hooks/useInboxLogic';
+import { useInboxCache } from '@/hooks/useInboxCache';
 
 const Inbox = () => {
   const {
     messages,
-    setMessages,
     loading,
-    setLoading,
     refreshing,
-    setRefreshing,
     credentialsSet,
-    setCredentialsSet,
     loadingMore,
-    handleLoadMessages,
-    handleLoadMoreMessages
-  } = useInboxLogic();
+    loadMessagesWithCache,
+    handleLoadMoreMessages,
+    forceRefresh
+  } = useInboxCache();
 
   const { settingSheetRef } = useSettingSheet();
   const colorScheme = useColorScheme();
   const indicatorColor = colorScheme === 'dark' ? '#ffffff' : '#000000';
   const [error, setError] = React.useState<string | null>(null);
+  const isInitialLoad = useRef(true);
 
   // Listen for credential updates
   useEffect(() => {
     const credentialsListener = DeviceEventEmitter.addListener('credentialsAdded', async () => {
       // Auto-refresh when credentials are verified
       setError(null);
-      await fetchMessages();
+      await loadMessagesWithCache(false);
     });
 
     return () => {
@@ -52,45 +47,23 @@ const Inbox = () => {
   }, []);
 
   const fetchMessages = async () => {
-    setLoading(true);
     setError(null);
     
-    const hasCreds = await SkywardAuth.hasCredentials();
-    setCredentialsSet(hasCreds);
-    
-    if (!hasCreds) {
-      setLoading(false);
-      return;
-    }
-
     try {
-      const result = await loadMessages();
-      if (result.messages.length === 0) throw new Error('Session Expired');
-      setMessages(result.messages);
+      await loadMessagesWithCache(false);
     } catch (error: any) {
       console.error('Error loading messages:', error);
-      
-      if (error.message === 'Session Expired') {
-        try {
-          await authenticate();
-          const retryResult = await loadMessages();
-          if (retryResult.success === false) throw new Error(retryResult.error);
-          setMessages(retryResult.messages);
-          Burnt.toast({ title: "Re-authenticated", preset: "done", duration: 2 });
-        } catch (retryError) {
-          setError('Unable to authenticate with Skyward. Please check your credentials.');
-        }
-      } else {
-        setError('Unable to load messages. Please check your connection and try again.');
-      }
-    } finally {
-      setLoading(false);
+      setError(error.message || 'Unable to load messages. Please check your connection and try again.');
     }
   };
 
+  // Only load messages on initial mount, not every focus
   useFocusEffect(
     useCallback(() => {
-      fetchMessages();
+      if (isInitialLoad.current) {
+        fetchMessages();
+        isInitialLoad.current = false;
+      }
     }, [])
   );
 
@@ -172,10 +145,8 @@ const Inbox = () => {
           ItemSeparatorComponent={() => <View className="h-4" />}
           refreshing={refreshing}
           onRefresh={async () => {
-            setRefreshing(true);
             setError(null);
-            await handleLoadMessages();
-            setRefreshing(false);
+            await forceRefresh();
           }}
           onEndReached={messages.length > 8 ? handleLoadMoreMessages : undefined}
           onEndReachedThreshold={0.1}
