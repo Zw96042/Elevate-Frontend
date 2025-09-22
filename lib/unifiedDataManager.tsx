@@ -154,13 +154,31 @@ export class UnifiedDataManager {
       ) {
         console.warn('🔄 Session expired detected, attempting re-authentication...');
         const authResult = await authenticate();
+        console.log(JSON.stringify(authResult, null, 2))
         if (authResult.success) {
           scrapeResult = await this.fetchScrapeReportData();
         } else {
-          return {
-            success: false,
-            error: 'Session expired and re-authentication failed: ' + (authResult.error || '')
-          };
+          // Don't treat concurrent auth failures as fatal if they mention empty responses
+          if (authResult.error && authResult.error.includes('Empty authentication response')) {
+            console.warn('⚠️ Concurrent authentication detected, retrying once more...');
+            // Wait a bit and try one more time
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            const secondAuthResult = await authenticate();
+            console.log(JSON.stringify(secondAuthResult, null, 2))
+            if (secondAuthResult.success) {
+              scrapeResult = await this.fetchScrapeReportData();
+            } else {
+              return {
+                success: false,
+                error: 'Session expired and re-authentication failed: ' + (secondAuthResult.error || '')
+              };
+            }
+          } else {
+            return {
+              success: false,
+              error: 'Session expired and re-authentication failed: ' + (authResult.error || '')
+            };
+          }
         }
       }
       

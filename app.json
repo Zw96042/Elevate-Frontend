@@ -4,7 +4,7 @@
     "slug": "elevate",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/logo_themed.icon",
+    "icon": "./assets/images/logo.png",
     "scheme": "elevate",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,

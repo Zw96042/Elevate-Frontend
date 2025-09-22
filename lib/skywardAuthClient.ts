@@ -51,6 +51,10 @@ export async function getNewSessionCodes({ username, password, baseURL }: Skywar
     console.log('Skyward login response status:', JSON.stringify(response.data, null, 2));
     const parsed = parsePostResponse(response.data);
     if (!parsed) {
+      // Check if this might be an empty response due to concurrent auth requests
+      if (!response.data || response.data.trim() === '') {
+        throw new Error('Empty authentication response - this may be due to concurrent login attempts. Please try again.');
+      }
       throw new Error('Failed to parse Skyward session codes - the response format may have changed or the server may be experiencing issues.');
     }
     return parsed;
@@ -76,7 +80,10 @@ export async function getNewSessionCodes({ username, password, baseURL }: Skywar
  * @param postResponse The raw response string from login.
  */
 export function parsePostResponse(postResponse: string): SkywardSessionCodes | null {
-  if (!postResponse) return null;
+  if (!postResponse || postResponse.trim() === '') {
+    console.warn('⚠️ Empty authentication response received');
+    return null;
+  }
   
   // Handle responses wrapped in HTML tags (like <li>)
   let cleanResponse = postResponse;
@@ -129,9 +136,14 @@ export function parsePostResponse(postResponse: string): SkywardSessionCodes | n
     throw new Error('Invalid username or password, or account is locked');
   }
   
-  // For other parsing failures, log but don't necessarily throw
-  console.warn('⚠️ Session code parsing failed, response text:', rootText.substring(0, 200));
-  console.warn('⚠️ Response length:', postResponse.length, 'Token count:', toks.length);
+  // For empty responses, don't log as much (might be concurrent auth requests)
+  if (!postResponse || postResponse.trim() === '') {
+    console.warn('⚠️ Empty response - may be due to concurrent authentication requests');
+  } else {
+    // For other parsing failures, log but don't necessarily throw
+    console.warn('⚠️ Session code parsing failed, response text:', rootText.substring(0, 200));
+    console.warn('⚠️ Response length:', postResponse.length, 'Token count:', toks.length);
+  }
   
   // Return null to indicate parsing failed, but let caller decide how to handle
   return null;
