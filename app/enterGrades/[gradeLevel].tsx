@@ -679,27 +679,8 @@ const AcademicHistoryView = () => {
               <Text className="text-accent">
                 Total Courses: {courses.length}
               </Text>
-              {!isCurrent && (
-                <Text className="text-xs text-accent opacity-75">
-                  Historical Data
-                </Text>
-              )}
-              {isCurrent && (
-                <Text className="text-xs text-accent opacity-75">
-                  Live Current Grades
-                </Text>
-              )}
             </View>
-            
-            {/* Debug info for grade source */}
-            <Text className="text-xs text-accent opacity-50 mt-2">
-              Data source: {
-                passedUnifiedCourses ? 'Passed from GPA Page' : 
-                unifiedCourses ? 'Current Scores + Historical Structure' : 
-                preloadedCourses ? 'Saved Local Data' :
-                'Pure Academic History'
-              }
-            </Text>
+          
           </View>
         </View>
         {/* Course List */}
