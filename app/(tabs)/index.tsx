@@ -23,7 +23,33 @@ const DEFAULT_CATEGORIES = {
 
 // Transform unified course data to component format
 const transformCourseData = (unifiedCourses: UnifiedCourseData[]) => {
-  return unifiedCourses.map(course => {
+  return unifiedCourses.filter(course => {
+    // Only include courses that have the required parameters for API calls
+    const hasRequiredParams = !!(course.courseName && course.stuId && course.corNumId && course.section && course.gbId);
+    if (!hasRequiredParams) {
+      console.log('🔍 Filtering out course with missing params:', {
+        courseName: course.courseName,
+        stuId: course.stuId,
+        corNumId: course.corNumId,
+        section: course.section,
+        gbId: course.gbId,
+        courseId: course.courseId
+      });
+    }
+    return hasRequiredParams;
+  }).map(course => {
+    // Debug: log course IDs
+    console.log('🔍 Course transform debug:', {
+      courseName: course.courseName,
+      stuId: course.stuId,
+      corNumId: course.corNumId,
+      section: course.section,
+      gbId: course.gbId,
+      courseId: course.courseId,
+      hasCurrentScores: !!course.currentScores,
+      currentScoresLength: course.currentScores?.length || 0
+    });
+    
     // Create score map from current scores
     const scoreMap: { [key: string]: number } = {};
     course.currentScores?.forEach((score: any) => {
@@ -53,10 +79,11 @@ const transformCourseData = (unifiedCourses: UnifiedCourseData[]) => {
     return {
       name: course.courseName?.toUpperCase().replace(/\s+/g, '_') || 'UNKNOWN_COURSE',
       teacher: course.instructor?.toUpperCase().replace(/\s+/g, '_') || 'UNKNOWN_INSTRUCTOR',
-      corNumId: course.courseId || '',
-      stuId: course.stuId || '',
-      section: course.section || '',
-      gbId: course.gbId || '',
+      /* Use corNumId if available, otherwise fall back to courseId, but both should be populated at this point due to filtering */
+      corNumId: course.corNumId || course.courseId || '',
+      stuId: course.stuId,
+      section: course.section,
+      gbId: course.gbId,
       period: course.period,
       semester: course.semester,
       t1: {
@@ -199,11 +226,12 @@ export default function Index() {
   }, [refreshCourses]);
 
   useEffect(() => {
-    if (!coursesData) {
+    // Only trigger refresh if we have no data AND context is not already loading
+    if (!coursesData && !loading) {
       refreshCourses();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [coursesData, loading]);
 
   // Show login prompt if credentials are not set OR if error is credential-related
   if (!hasCredentials || (error && error.includes('credentials')) || !loading) {

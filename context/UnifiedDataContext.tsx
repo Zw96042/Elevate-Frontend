@@ -20,6 +20,12 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 	const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
 	const refreshCourses = useCallback(async (force = false) => {
+		// Prevent multiple simultaneous refresh calls
+		if (loading && !force) {
+			console.log('⏸️ Courses refresh already in progress, skipping...');
+			return;
+		}
+
 		console.log('🔄 UnifiedDataContext.refreshCourses called with force:', force);
 		setLoading(true);
 		setError(null);
@@ -42,7 +48,7 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 		} finally {
 			setLoading(false);
 		}
-	}, []);
+	}, [loading]);
 
 	const clearCache = useCallback(async () => {
 		console.log('🗑️ UnifiedDataContext.clearCache called');
@@ -59,10 +65,12 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 		}
 	}, []);
 
-	// Load initial data on mount
+	// Load initial data on mount (only if no data exists)
 	useEffect(() => {
-		refreshCourses(false); // Use cache if available
-	}, [refreshCourses]);
+		if (!coursesData && !loading) {
+			refreshCourses(false); // Use cache if available
+		}
+	}, [refreshCourses, coursesData, loading]);
 
 	return (
 		<UnifiedDataContext.Provider value={{ 

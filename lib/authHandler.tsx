@@ -13,8 +13,18 @@ interface AuthResult {
 // Global authentication state to prevent concurrent auth requests
 let isAuthenticating = false;
 let authPromise: Promise<AuthResult> | null = null;
+let lastAuthTime = 0;
+const MIN_AUTH_INTERVAL = 2000; // Minimum 2 seconds between auth attempts
 
 export async function authenticate(): Promise<AuthResult> {
+  const now = Date.now();
+  
+  // If we just authenticated recently, don't try again immediately
+  if (now - lastAuthTime < MIN_AUTH_INTERVAL) {
+    console.log('⏱️ Authentication attempted too recently, using cached result');
+    return { success: true }; // Assume recent auth was successful
+  }
+
   // If already authenticating, return the existing promise
   if (isAuthenticating && authPromise) {
     console.log('🔄 Authentication already in progress, waiting for existing request...');
@@ -23,17 +33,23 @@ export async function authenticate(): Promise<AuthResult> {
 
   // Set authentication in progress
   isAuthenticating = true;
+  lastAuthTime = now;
   
   // Create the authentication promise
   authPromise = performAuthentication();
   
   try {
     const result = await authPromise;
+    if (result.success) {
+      lastAuthTime = Date.now(); // Update timestamp on success
+    }
     return result;
   } finally {
-    // Reset authentication state
-    isAuthenticating = false;
-    authPromise = null;
+    // Reset authentication state after a delay to prevent immediate retries
+    setTimeout(() => {
+      isAuthenticating = false;
+      authPromise = null;
+    }, 1000);
   }
 }
 
@@ -56,7 +72,7 @@ async function performAuthentication(): Promise<AuthResult> {
         await AsyncStorage.setItem('encses', "");
         await AsyncStorage.setItem('User-Type', "");
         await AsyncStorage.setItem('sessionid', "");
-        await AsyncStorage.setItem('baseUrl', authInfo.link);
+        await AsyncStorage.setItem('skywardBaseURL', authInfo.link);
         DeviceEventEmitter.emit('credentialsInvalid');
         return { success: false, error: err.message || 'Authentication failed' };
       }
@@ -70,7 +86,7 @@ async function performAuthentication(): Promise<AuthResult> {
       await AsyncStorage.setItem('encses', sessionCodes.encses);
       await AsyncStorage.setItem('User-Type', sessionCodes['User-Type']);
       await AsyncStorage.setItem('sessionid', sessionCodes.sessionid);
-      await AsyncStorage.setItem('baseUrl', authInfo.link);
+      await AsyncStorage.setItem('skywardBaseURL', authInfo.link);
     } else {
       // Special Creds
       console.log('🔧 Using development credentials...');
@@ -79,7 +95,7 @@ async function performAuthentication(): Promise<AuthResult> {
       await AsyncStorage.setItem('encses', "dev");
       await AsyncStorage.setItem('User-Type', "dev");
       await AsyncStorage.setItem('sessionid', "dev");
-      await AsyncStorage.setItem('baseUrl', authInfo.link);
+      await AsyncStorage.setItem('skywardBaseURL', authInfo.link);
     }
     return { success: true };
   } catch (err: any) {

@@ -210,8 +210,27 @@ const ClassDetails = () => {
   const fetchApiAssignments = async (forceRefresh = false) => {
     console.log('🚀 fetchApiAssignments called:', { forceRefresh, loading, waitingForRetry });
     
+    // Log all parameters for debugging
+    console.log('📋 fetchApiAssignments parameters:', {
+      className: className,
+      stuId: stuId,
+      corNumId: corNumId,
+      section: section,
+      gbId: gbId,
+      selectedCategory: selectedCategory,
+      hasAllParams: !!(className && stuId && corNumId && section && gbId && selectedCategory)
+    });
+    
     if (!className || !stuId || !corNumId || !section || !gbId || !selectedCategory) {
       console.log('❌ Missing required params, setting loading=false');
+      console.log('❌ Missing parameters details:', {
+        className: !!className,
+        stuId: !!stuId,
+        corNumId: !!corNumId,
+        section: !!section,
+        gbId: !!gbId,
+        selectedCategory: !!selectedCategory
+      });
       setLoading(false);
       setWaitingForRetry(false);
       return;

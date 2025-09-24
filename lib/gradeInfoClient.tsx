@@ -1,6 +1,7 @@
 // lib/gradeInfoClient.tsx
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authenticate } from './authHandler';
+import { fetchGradeInfoDirect, GradeInfoParams as DirectGradeInfoParams } from './skywardGradeInfoClient';
 
 const config = require('./development.config.js');
 
@@ -30,80 +31,101 @@ export const fetchGradeInfo = async (
       return { success: false, error: 'Max retry attempts reached' };
     }
 
-    const dwd = await AsyncStorage.getItem('dwd');
-    const wfaacl = await AsyncStorage.getItem('wfaacl');
-    const encses = await AsyncStorage.getItem('encses');
-    const sessionid = await AsyncStorage.getItem('sessionid');
+    console.log('📋 Fetching grade info directly from Skyward...');
+    console.log('📋 Grade info parameters:', {
+      stuId: params.stuId,
+      corNumId: params.corNumId,
+      section: params.section,
+      gbId: params.gbId,
+      bucket: params.bucket,
+      hasRequiredParams: !!(params.stuId && params.corNumId && params.section && params.gbId)
+    });
 
-    const allSessionCodesExist = dwd && wfaacl && encses && sessionid;
+    // Validate required parameters
+    if (!params.stuId || !params.corNumId || !params.section || !params.gbId || !params.bucket) {
+      console.log('❌ Missing required parameters for fetchGradeInfo:', {
+        stuId: !!params.stuId,
+        corNumId: !!params.corNumId,
+        section: !!params.section,
+        gbId: !!params.gbId,
+        bucket: !!params.bucket
+      });
+      return { success: false, error: 'Missing required parameters' };
+    }
 
-    if (!allSessionCodesExist) {
+    // Convert params to match the direct client interface
+    const directParams: DirectGradeInfoParams = {
+      stuId: params.stuId,
+      corNumId: params.corNumId,
+      section: params.section,
+      gbId: params.gbId,
+      bucket: params.bucket,
+      customUrl: params.customUrl,
+      entityId: '',
+      track: '',
+      dialogLevel: '',
+      subjectId: '',
+      isEoc: 'no',
+    };
+
+    // Get base URL
+    const baseUrl = await AsyncStorage.getItem('skywardBaseURL');
+    console.log('📋 Base URL from storage:', baseUrl);
+    if (!baseUrl) {
+      console.log('📋 No base URL found, attempting authentication...');
+      // Try to authenticate first
       const authResult = await authenticate();
       if (!authResult.success) {
-        return { success: false, error: authResult.error };
+        console.log('❌ Authentication failed:', authResult);
+        return { success: false, error: 'Authentication required and failed' };
       }
+      console.log('✅ Authentication successful, retrying grade info fetch...');
       return await fetchGradeInfo(params, retryCount + 1);
     }
 
-    const response = await fetch(`${config.BACKEND_IP}/grade-info`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionTokens: {
-          dwd,
-          wfaacl,
-          encses,
-          'User-Type': '2',
-          sessionid
-        },
-        params: {
-          ...params,
-          customUrl: "https://skyward-eisdprod.iscorp.com/scripts/wsisa.dll/WService=wsedueanesisdtx/",
-        },
-      }),
-    });
-
-    // Always try to parse the response first
-    let responseData;
-    let responseText = '';
+    // Call direct client
+    console.log('📋 Calling fetchGradeInfoDirect with params:', directParams);
+    const result = await fetchGradeInfoDirect(directParams, baseUrl);
     
-    try {
-      responseText = await response.text();
-      responseData = JSON.parse(responseText);
-    } catch (parseError) {
-      // If we can't parse JSON, treat as error
-      throw new Error(`Failed to parse grade info response: ${response.status} ${response.statusText} - ${responseText}`);
-    }
+    console.log('✅ Direct grade info fetch successful');
+    // Match the expected backend response structure
+    return { 
+      success: true, 
+      data: {
+        success: true,
+        data: result
+      }, 
+      retryCount, 
+      wasAuthError: false 
+    };
 
-    // Check if we have valid data regardless of status code
-    if (responseData && (responseData.success !== false)) {
-      return { success: true, data: responseData, retryCount, wasAuthError: false };
-    }
-
+  } catch (error: any) {
+    console.error('❌ Error fetching grade info directly:', error.message);
+    console.error('❌ Full error object:', error);
+    console.error('❌ Error stack:', error.stack);
+    
     // Handle session expiry with retry logic
-    if (!response.ok || response.status === 401 || response.status === 400 || response.status === 500) {
-      if ((response.status === 401 || response.status === 400 || response.status === 500) && retryCount === 0) {
-        console.log('Session expired, retrying auth...');
-        await AsyncStorage.multiRemove(['dwd', 'wfaacl', 'encses', 'sessionid']);
-        const authResult = await authenticate();
-        if (authResult.success) {
-          return await fetchGradeInfo(params, retryCount + 1);
-        } else {
-          return { success: false, error: 'Re-authentication failed', retryCount: retryCount + 1, wasAuthError: true };
-        }
+    if (error.code === 'SESSION_EXPIRED' && retryCount === 0) {
+      console.log('🔄 Session expired, retrying with fresh authentication...');
+      await AsyncStorage.multiRemove(['dwd', 'wfaacl', 'encses', 'sessionid']);
+      const authResult = await authenticate();
+      if (authResult.success) {
+        return await fetchGradeInfo(params, retryCount + 1);
       } else {
-        throw new Error(`Failed to fetch grade info: ${response.status} ${response.statusText} - ${responseText}`);
+        return { 
+          success: false, 
+          error: 'Re-authentication failed', 
+          retryCount: retryCount + 1, 
+          wasAuthError: true 
+        };
       }
     }
 
-    // If response is ok but data indicates failure
-    if (responseData && responseData.success === false) {
-      return { success: false, error: responseData.error || 'Grade info API returned failure status', retryCount, wasAuthError: false };
-    }
-
-    return { success: true, data: responseData, retryCount, wasAuthError: false };
-  } catch (error: any) {
-    console.error('Error fetching grade info:', error);
-    return { success: false, error: error.message || 'Unknown error', retryCount, wasAuthError: false };
+    return { 
+      success: false, 
+      error: error.message || 'Unknown error', 
+      retryCount, 
+      wasAuthError: false 
+    };
   }
 };

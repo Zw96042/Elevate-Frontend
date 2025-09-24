@@ -1,13 +1,13 @@
 // lib/unifiedDataManager.tsx
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authenticate } from './authHandler';
-import { fetchAcademicHistory } from './academicHistoryClient';
-import { fetchSkywardReportCard } from './skywardClient';
+import { getCombinedAcademicHistoryReport, SkywardSessionCodes } from './skywardAcademicClient';
 
 const config = require('./development.config.js');
 
 export interface UnifiedCourseData {
   courseId?: number;
+  corNumId?: string;
   stuId?: string;
   section?: string;
   gbId?: string;
@@ -143,7 +143,7 @@ export class UnifiedDataManager {
         }
       }
       
-      // Fetch fresh data from scrape report
+      // Fetch fresh data directly from Skyward
       let scrapeResult = await this.fetchScrapeReportData();
       
       // If session expired, try re-authenticating once
@@ -154,36 +154,21 @@ export class UnifiedDataManager {
       ) {
         console.warn('🔄 Session expired detected, attempting re-authentication...');
         const authResult = await authenticate();
-        console.log(JSON.stringify(authResult, null, 2))
         if (authResult.success) {
+
+          console.log('✅ Re-authentication successful, retrying fetch...');
           scrapeResult = await this.fetchScrapeReportData();
         } else {
-          // Don't treat concurrent auth failures as fatal if they mention empty responses
-          if (authResult.error && authResult.error.includes('Empty authentication response')) {
-            console.warn('⚠️ Concurrent authentication detected, retrying once more...');
-            // Wait a bit and try one more time
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            const secondAuthResult = await authenticate();
-            console.log(JSON.stringify(secondAuthResult, null, 2))
-            if (secondAuthResult.success) {
-              scrapeResult = await this.fetchScrapeReportData();
-            } else {
-              return {
-                success: false,
-                error: 'Session expired and re-authentication failed: ' + (secondAuthResult.error || '')
-              };
-            }
-          } else {
-            return {
-              success: false,
-              error: 'Session expired and re-authentication failed: ' + (authResult.error || '')
-            };
-          }
+          console.error('❌ Re-authentication failed:', authResult.error);
+          return {
+            success: false,
+            error: 'Session expired and re-authentication failed: ' + (authResult.error || '')
+          };
         }
       }
       
       if (!scrapeResult.success || !scrapeResult.data) {
-        const error = scrapeResult.error || 'Failed to fetch combined scrape report data';
+        const error = scrapeResult.error || 'Failed to fetch combined academic data directly from Skyward';
         console.error('💥', error);
         return {
           success: false,
@@ -214,21 +199,7 @@ export class UnifiedDataManager {
     }
   }
 
-  // Fetch academic history data
-  private static async fetchAcademicHistoryData(): Promise<{ success: boolean; data?: any; error?: string }> {
-    try {
-      const result = await fetchAcademicHistory();
-      if (result.success && result.data) {
-        return { success: true, data: result.data };
-      } else {
-        return { success: false, error: result.error || 'Failed to fetch academic history' };
-      }
-    } catch (error: any) {
-      return { success: false, error: error.message || 'Academic history fetch error' };
-    }
-  }
-
-  // Fetch scrape report data
+  // Fetch scrape report data using direct Skyward client
   private static async fetchScrapeReportData(): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
       const dwd = await AsyncStorage.getItem('dwd');
@@ -248,29 +219,36 @@ export class UnifiedDataManager {
         return await this.fetchScrapeReportData(); // Retry with new credentials
       }
 
-      const response = await fetchSkywardReportCard({ 
-        dwd: dwd!, 
-        wfaacl: wfaacl!, 
-        encses: encses!, 
-        userType: userType!, 
-        sessionid: sessionid!, 
-        baseUrl: baseUrl! 
-      });
+      // Use the direct Skyward client instead of backend API
+      const sessionCodes: SkywardSessionCodes = {
+        dwd: dwd!,
+        wfaacl: wfaacl!,
+        encses: encses!,
+        'User-Type': userType!,
+        sessionid: sessionid!,
+      };
+
+      const combinedData = await getCombinedAcademicHistoryReport(baseUrl!, sessionCodes);
       
-      // Check if we have any useful data, not just success flag
-      if (response && (response.combined || response.success)) {
-        const combinedData = response.combined || response;
-        return { success: true, data: combinedData };
-      } else {
-        return { success: false, error: response?.error || 'No data returned from scrape report API' };
-      }
+      return { success: true, data: combinedData };
     } catch (error: any) {
-      return { success: false, error: error.message || 'Scrape report fetch error' };
+      // Handle session expiry specifically
+      if (error.code === 'SESSION_EXPIRED' || error.message.includes('Session expired')) {
+        return { success: false, error: 'Session expired. Please re-authenticate.' };
+      }
+      return { success: false, error: error.message || 'Failed to fetch academic data directly from Skyward' };
     }
   }
 
   // Transform the backend combined data into frontend UnifiedCourseData[]
   public static transformCombinedData(combined: any): UnifiedCourseData[] {
+    console.log('🔄 UnifiedDataManager.transformCombinedData called');
+    console.log('📊 Combined data type:', typeof combined);
+    console.log('📊 Combined data is array:', Array.isArray(combined));
+    if (typeof combined === 'object' && !Array.isArray(combined)) {
+      console.log('📊 Combined data keys:', Object.keys(combined));
+    }
+    
     // Helper to infer semester from terms
     function inferSemester(terms: string): 'fall' | 'spring' | 'both' | 'unknown' {
       if (!terms) return 'unknown';
@@ -298,53 +276,75 @@ export class UnifiedDataManager {
 
     // Handle flat array format (legacy or fallback)
     if (Array.isArray(combined)) {
-      return combined.map((courseObj: any) => ({
-        courseId: courseObj.course || courseObj.courseId,
-        stuId: courseObj.stuId || "",
-        section: courseObj.section || "",
-        gbId: courseObj.gbID || "",
-        courseName: courseObj.courseName,
-        instructor: courseObj.instructor || null,
-        period: courseObj.period || null,
-        time: courseObj.time || null,
-        semester: inferSemester(courseObj.terms || courseObj.termLength || ''),
-        termLength: courseObj.terms || courseObj.termLength || '',
-  gradeYear: courseObj.gradeYear || courseObj.grade || undefined,
-        currentScores: buildCurrentScores(courseObj),
-        historicalGrades: {
-          pr1: courseObj.pr1,
-          pr2: courseObj.pr2,
-          rc1: courseObj.rc1,
-          pr3: courseObj.pr3,
-          pr4: courseObj.pr4,
-          rc2: courseObj.rc2,
-          pr5: courseObj.pr5,
-          pr6: courseObj.pr6,
-          rc3: courseObj.rc3,
-          pr7: courseObj.pr7,
-          pr8: courseObj.pr8,
-          rc4: courseObj.rc4,
-          sm1: courseObj.sm1,
-          sm2: courseObj.sm2,
-          finalGrade: courseObj.finalGrade,
-        }
-      }));
+      console.log('📊 Processing flat array format, courses count:', combined.length);
+      return combined.map((courseObj: any, index: number) => {
+        console.log(`📊 Array course ${index}:`, {
+          courseName: courseObj.courseName,
+          courseId: courseObj.course || courseObj.courseId,
+          corNumId: courseObj.corNumId,
+          stuId: courseObj.stuId,
+          section: courseObj.section,
+          gbId: courseObj.gbId || courseObj.gbID
+        });
+        return {
+          courseId: courseObj.course || courseObj.courseId,
+          corNumId: courseObj.corNumId || "",
+          stuId: courseObj.stuId || "",
+          section: courseObj.section || "",
+          gbId: courseObj.gbId || courseObj.gbID || "",
+          courseName: courseObj.courseName,
+          instructor: courseObj.instructor || null,
+          period: courseObj.period || null,
+          time: courseObj.time || null,
+          semester: inferSemester(courseObj.terms || courseObj.termLength || ''),
+          termLength: courseObj.terms || courseObj.termLength || '',
+          gradeYear: courseObj.gradeYear || courseObj.grade || undefined,
+          currentScores: buildCurrentScores(courseObj),
+          historicalGrades: {
+            pr1: courseObj.pr1,
+            pr2: courseObj.pr2,
+            rc1: courseObj.rc1,
+            pr3: courseObj.pr3,
+            pr4: courseObj.pr4,
+            rc2: courseObj.rc2,
+            pr5: courseObj.pr5,
+            pr6: courseObj.pr6,
+            rc3: courseObj.rc3,
+            pr7: courseObj.pr7,
+            pr8: courseObj.pr8,
+            rc4: courseObj.rc4,
+            sm1: courseObj.sm1,
+            sm2: courseObj.sm2,
+            finalGrade: courseObj.finalGrade,
+          }
+        };
+      });
     }
 
     // Handle nested object format (preferred)
     const courses: UnifiedCourseData[] = [];
     const yearKeys = Object.keys(combined).filter(k => k !== 'alt');
+    console.log('📊 Processing nested object format, year keys:', yearKeys);
     if (yearKeys.length === 0) return courses;
     for (const yearKey of yearKeys) {
       const yearData = combined[yearKey];
       if (!yearData || !yearData.courses) continue;
+      console.log(`📊 Processing year ${yearKey}, courses:`, Object.keys(yearData.courses));
       for (const [courseName, courseObjRaw] of Object.entries(yearData.courses)) {
         const courseObj = courseObjRaw as any;
+        console.log(`📊 Nested course ${yearKey}/${courseName}:`, {
+          courseId: courseObj.courseId,
+          corNumId: courseObj.corNumId,
+          stuId: courseObj.stuId,
+          section: courseObj.section,
+          gbId: courseObj.gbId || courseObj.gbID
+        });
         courses.push({
           courseId: courseObj.courseId,
+          corNumId: courseObj.corNumId || "",
           stuId: courseObj.stuId || "",
           section: courseObj.section || "",
-          gbId: courseObj.gbID || "",
+          gbId: courseObj.gbId || courseObj.gbID || "",
           courseName,
           instructor: courseObj.instructor || null,
           period: courseObj.period || null,
