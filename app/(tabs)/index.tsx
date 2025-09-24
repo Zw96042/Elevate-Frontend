@@ -185,7 +185,10 @@ export default function Index() {
       // Auto-refresh when credentials are verified
       setLocalError(null);
       setHasCredentials(true);
-      await refreshCourses(true);
+      // Small delay to ensure AsyncStorage writes have completed
+      setTimeout(async () => {
+        await refreshCourses(true);
+      }, 100);
     });
 
     return () => {

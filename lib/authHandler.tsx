@@ -14,15 +14,16 @@ interface AuthResult {
 let isAuthenticating = false;
 let authPromise: Promise<AuthResult> | null = null;
 let lastAuthTime = 0;
+let lastAuthResult: AuthResult | null = null;
 const MIN_AUTH_INTERVAL = 2000; // Minimum 2 seconds between auth attempts
 
 export async function authenticate(): Promise<AuthResult> {
   const now = Date.now();
   
-  // If we just authenticated recently, don't try again immediately
-  if (now - lastAuthTime < MIN_AUTH_INTERVAL) {
+  // If we just authenticated recently AND it was successful, use cached result
+  if (now - lastAuthTime < MIN_AUTH_INTERVAL && lastAuthResult?.success) {
     console.log('⏱️ Authentication attempted too recently, using cached result');
-    return { success: true }; // Assume recent auth was successful
+    return lastAuthResult;
   }
 
   // If already authenticating, return the existing promise
@@ -40,6 +41,7 @@ export async function authenticate(): Promise<AuthResult> {
   
   try {
     const result = await authPromise;
+    lastAuthResult = result; // Cache the result
     if (result.success) {
       lastAuthTime = Date.now(); // Update timestamp on success
     }
@@ -87,6 +89,7 @@ async function performAuthentication(): Promise<AuthResult> {
       await AsyncStorage.setItem('User-Type', sessionCodes['User-Type']);
       await AsyncStorage.setItem('sessionid', sessionCodes.sessionid);
       await AsyncStorage.setItem('skywardBaseURL', authInfo.link);
+      console.log('✅ Session codes saved to AsyncStorage');
     } else {
       // Special Creds
       console.log('🔧 Using development credentials...');

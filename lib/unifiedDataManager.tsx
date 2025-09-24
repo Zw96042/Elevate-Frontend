@@ -207,15 +207,22 @@ export class UnifiedDataManager {
       const encses = await AsyncStorage.getItem('encses');
       const userType = await AsyncStorage.getItem('User-Type');
       const sessionid = await AsyncStorage.getItem('sessionid');
-      const baseUrl = await AsyncStorage.getItem('baseUrl');
+      const baseUrl = await AsyncStorage.getItem('skywardBaseURL');
+
+      console.log('📋 Checking session tokens:', { 
+        hasDwd: !!dwd, hasWfaacl: !!wfaacl, hasEncses: !!encses, 
+        hasUserType: !!userType, hasSessionid: !!sessionid, hasBaseUrl: !!baseUrl 
+      });
 
       const allSessionCodesExist = dwd && wfaacl && encses && userType && sessionid && baseUrl;
 
       if (!allSessionCodesExist) {
+        console.log('❌ Missing session codes, calling authenticate...');
         const authResult = await authenticate();
         if (!authResult.success) {
           return { success: false, error: authResult.error };
         }
+        console.log('✅ Authentication successful, retrying fetchScrapeReportData...');
         return await this.fetchScrapeReportData(); // Retry with new credentials
       }
 

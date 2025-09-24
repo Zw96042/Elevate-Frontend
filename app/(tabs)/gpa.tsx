@@ -70,13 +70,15 @@ const GPA = () => {
       // Auto-refresh when credentials are verified
       setError(null);
       setIsInitialized(false);
-      // Trigger a fresh load
-      try {
-        await refreshCourses(true);
-      } catch (error) {
-        console.error('Error refreshing after credentials update:', error);
-        setError('Unable to load GPA data. Please try again.');
-      }
+      // Small delay to ensure AsyncStorage writes have completed
+      setTimeout(async () => {
+        try {
+          await refreshCourses(true);
+        } catch (error) {
+          console.error('Error refreshing after credentials update:', error);
+          setError('Unable to load GPA data. Please try again.');
+        }
+      }, 100);
     });
 
     return () => {
