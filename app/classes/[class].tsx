@@ -171,6 +171,77 @@ const ClassDetails = () => {
   // Track category changes for refresh logic
   const [previousSelectedCategory, setPreviousSelectedCategory] = useState<TermLabel | null>(null);
 
+  // Filter state
+  const [sortOption, setSortOption] = useState<'category' | 'date' | 'grade'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc'); // desc = recent to oldest for dates
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const filterMenuOpacity = useSharedValue(0);
+  const filterMenuScale = useSharedValue(0.8);
+
+  // Sort assignments function
+  const sortAssignments = useCallback((assignments: Assignment[], sortBy: 'category' | 'date' | 'grade', order: 'asc' | 'desc') => {
+    return [...assignments].sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortBy) {
+        case 'category':
+          comparison = a.category.localeCompare(b.category);
+          break;
+        case 'date':
+          const parseDate = (date: string) => {
+            const [month, day, year] = date.split('/').map(Number);
+            return new Date(year < 100 ? 2000 + year : year, month - 1, day);
+          };
+          comparison = parseDate(a.dueDate).getTime() - parseDate(b.dueDate).getTime(); // asc = oldest first, desc = recent first
+          break;
+        case 'grade':
+          const gradeA = a.grade === '*' ? -1 : parseFloat(a.grade) || 0;
+          const gradeB = b.grade === '*' ? -1 : parseFloat(b.grade) || 0;
+          comparison = gradeA - gradeB;
+          break;
+      }
+      
+      return order === 'asc' ? comparison : -comparison;
+    });
+  }, []);
+
+  // Filter menu animation functions
+  const toggleFilterMenu = useCallback(() => {
+    if (showFilterMenu) {
+      filterMenuOpacity.value = withTiming(0, { duration: 200 });
+      filterMenuScale.value = withTiming(0.8, { duration: 200 });
+      setTimeout(() => setShowFilterMenu(false), 200);
+    } else {
+      setShowFilterMenu(true);
+      filterMenuOpacity.value = withTiming(1, { duration: 200 });
+      filterMenuScale.value = withTiming(1, { duration: 200 });
+    }
+  }, [showFilterMenu, filterMenuOpacity, filterMenuScale]);
+
+  const animatedFilterMenuStyle = useAnimatedStyle(() => ({
+    opacity: filterMenuOpacity.value,
+    transform: [{ scale: filterMenuScale.value }],
+  }));
+
+  // Handle sort option change
+  const handleSortChange = useCallback((newSortOption: 'category' | 'date' | 'grade') => {
+    if (sortOption === newSortOption) {
+      // If same option, toggle order
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      // New option, set default order
+      setSortOption(newSortOption);
+      if (newSortOption === 'grade') {
+        setSortOrder('desc'); // Grades default to highest first
+      } else if (newSortOption === 'date') {
+        setSortOrder('desc'); // Dates default to recent first (newest to oldest)
+      } else {
+        setSortOrder('asc'); // Categories default to A-Z
+      }
+    }
+    toggleFilterMenu();
+  }, [sortOption, sortOrder, toggleFilterMenu]);
+
   // Debug function to check cache status
   const checkCacheStatus = async () => {
     const cacheKey = `assignments_${className}_${stuId}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
@@ -414,8 +485,9 @@ const ClassDetails = () => {
       
       console.log('📝 Setting filtered assignments from API data');
       const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
+      const sortedAssignments = sortAssignments(realWithIds, sortOption, sortOrder);
       setArtificialAssignments([]);
-      setFilteredAssignments(realWithIds);
+      setFilteredAssignments(sortedAssignments);
       const all = realWithIds.filter(a => a.grade !== '*');
       const weightsMap = Object.fromEntries(
         (apiCategories.names || []).map((name, i) => [name, apiCategories.weights[i]])
@@ -491,24 +563,19 @@ const ClassDetails = () => {
     }
     
     console.log('📊 filteredReal count:', filteredReal.length);
-    const allAssignments = [...fixedArtificial, ...filteredReal].sort((a, b) => {
-      const parseDate = (date: string) => {
-        const [month, day, year] = date.split('/').map(Number);
-        return new Date(year < 100 ? 2000 + year : year, month - 1, day);
-      };
-      return parseDate(b.dueDate).getTime() - parseDate(a.dueDate).getTime();
-    });
+    const allAssignments = [...fixedArtificial, ...filteredReal];
     const assignmentsWithIds = ensureUniqueAssignmentIds(allAssignments);
-    const artificialWithIds = assignmentsWithIds.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
+    const sortedAssignments = sortAssignments(assignmentsWithIds, sortOption, sortOrder);
+    const artificialWithIds = sortedAssignments.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
     
     console.log('📋 Final assignments:', {
-      totalCount: assignmentsWithIds.length,
+      totalCount: sortedAssignments.length,
       artificialCount: artificialWithIds.length,
-      realCount: assignmentsWithIds.length - artificialWithIds.length
+      realCount: sortedAssignments.length - artificialWithIds.length
     });
     
     setArtificialAssignments(artificialWithIds);
-    setFilteredAssignments(assignmentsWithIds);
+    setFilteredAssignments(sortedAssignments);
 
     const all = assignmentsWithIds.filter(a => a.grade !== '*');
     const weightsMap = Object.fromEntries(
@@ -588,7 +655,7 @@ const ClassDetails = () => {
       await meshAssignments();
     };
     runMeshAssignments();
-  }, [apiAssignments, apiCategories, isEnabled, selectedCategory]);
+  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, sortOption, sortOrder]);
 
   // Separate function for refreshing only artificial assignments on focus
   const refreshArtificialAssignmentsOnFocus = useCallback(async () => {
@@ -601,7 +668,8 @@ const ClassDetails = () => {
       // If no artificial data exists, just ensure filtered assignments match API assignments
       if (apiAssignments.length > 0) {
         const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
-        setFilteredAssignments(realWithIds);
+        const sortedAssignments = sortAssignments(realWithIds, sortOption, sortOrder);
+        setFilteredAssignments(sortedAssignments);
         setArtificialAssignments([]);
       }
       return;
@@ -639,19 +707,13 @@ const ClassDetails = () => {
     const artificialNames = new Set(fixedArtificial.map((a: any) => a.name));
     const filteredReal = apiAssignments.filter((r) => !artificialNames.has(r.name));
     
-    const allAssignments = [...fixedArtificial, ...filteredReal].sort((a, b) => {
-      const parseDate = (date: string) => {
-        const [month, day, year] = date.split('/').map(Number);
-        return new Date(year < 100 ? 2000 + year : year, month - 1, day);
-      };
-      return parseDate(b.dueDate).getTime() - parseDate(a.dueDate).getTime();
-    });
-    
+    const allAssignments = [...fixedArtificial, ...filteredReal];
     const assignmentsWithIds = ensureUniqueAssignmentIds(allAssignments);
-    const artificialWithIds = assignmentsWithIds.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
+    const sortedAssignments = sortAssignments(assignmentsWithIds, sortOption, sortOrder);
+    const artificialWithIds = sortedAssignments.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
     
     setArtificialAssignments(artificialWithIds);
-    setFilteredAssignments(assignmentsWithIds);
+    setFilteredAssignments(sortedAssignments);
 
     // Recalculate course summary with updated assignments
     const all = assignmentsWithIds.filter(a => a.grade !== '*');
@@ -672,7 +734,7 @@ const ClassDetails = () => {
     setCourseSummary(calculateGradeSummary(all, normalizedWeights));
     
     console.log('✅ Artificial assignments refreshed on focus, total assignments:', assignmentsWithIds.length);
-  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, className, corNumId, section, gbId]);
+  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, className, corNumId, section, gbId, sortAssignments, sortOption, sortOrder]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -850,6 +912,12 @@ const handleResetArtificialAssignments = async () => {
             />
           }
         >
+          <TouchableWithoutFeedback onPress={() => {
+            if (showFilterMenu) {
+              toggleFilterMenu();
+            }
+          }}>
+            <View>
           <View className="flex-row items-center">
             <View className="px-5">
                 <View className="relative w-[50px] h-[50px] mt-6 flex items-center justify-center">
@@ -974,6 +1042,102 @@ const handleResetArtificialAssignments = async () => {
               </MotiView>
             )}
           </AnimatePresence>
+          
+          {/* Filter Button */}
+          <View className="px-5 mt-4 mb-2">
+            <View className="flex-row items-center justify-between">
+              <Text className="text-highlightText font-bold text-lg">Assignments</Text>
+              <View className="relative">
+                <TouchableOpacity
+                  onPress={toggleFilterMenu}
+                  className="bg-cardColor px-4 py-2 rounded-full flex-row items-center"
+                >
+                  <Ionicons 
+                    name="filter-outline" 
+                    size={16} 
+                    color={theme === 'dark' ? '#ffffff' : '#000000'} 
+                  />
+                  <Text className="text-main text-sm font-medium ml-2 capitalize">
+                    {sortOption} {sortOrder === 'asc' ? '↑' : '↓'}
+                  </Text>
+                </TouchableOpacity>
+                
+                {/* Filter Menu Popup */}
+                {showFilterMenu && (
+                  <AnimatedReanimated.View 
+                    style={[
+                      {
+                        position: 'absolute',
+                        top: 45,
+                        right: 0,
+                        backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
+                        borderRadius: 12,
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.15,
+                        shadowRadius: 12,
+                        elevation: 8,
+                        zIndex: 1000,
+                        minWidth: 160,
+                        borderWidth: 1,
+                        borderColor: theme === 'dark' ? '#374151' : '#e5e7eb',
+                      },
+                      animatedFilterMenuStyle
+                    ]}
+                  >
+                    <TouchableOpacity
+                      onPress={() => handleSortChange('category')}
+                      className="px-4 py-3 border-b border-gray-200 dark:border-gray-600"
+                    >
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-main text-sm font-medium">Category A-Z</Text>
+                        {sortOption === 'category' && (
+                          <Ionicons 
+                            name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} 
+                            size={14} 
+                            color={theme === 'dark' ? '#60a5fa' : '#2563eb'} 
+                          />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      onPress={() => handleSortChange('date')}
+                      className="px-4 py-3 border-b border-gray-200 dark:border-gray-600"
+                    >
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-main text-sm font-medium">Date</Text>
+                        {sortOption === 'date' && (
+                          <Ionicons 
+                            name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} 
+                            size={14} 
+                            color={theme === 'dark' ? '#60a5fa' : '#2563eb'} 
+                          />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      onPress={() => handleSortChange('grade')}
+                      className="px-4 py-3"
+                    >
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-main text-sm font-medium">Highest Grade</Text>
+                        {sortOption === 'grade' && (
+                          <Ionicons 
+                            name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} 
+                            size={14} 
+                            color={theme === 'dark' ? '#60a5fa' : '#2563eb'} 
+                          />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  </AnimatedReanimated.View>
+                )}
+              </View>
+            </View>
+          </View>
+
           <FlatList
             data={loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0) ? Array.from({ length: 8 }) : filteredAssignments}
             renderItem={renderAssignmentItem}
@@ -998,6 +1162,8 @@ const handleResetArtificialAssignments = async () => {
               )
             }
           />
+            </View>
+          </TouchableWithoutFeedback>
         </ScrollView>
       </View>
     </TouchableWithoutFeedback>

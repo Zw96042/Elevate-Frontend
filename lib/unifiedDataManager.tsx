@@ -47,15 +47,23 @@ export interface UnifiedDataResult {
   lastUpdated?: string;
 }
 
-// Cache keys
+// Cache keys and durations
 const CACHE_KEY = 'unifiedCourseData';
 const CACHE_TIMESTAMP_KEY = 'unifiedCourseDataTimestamp';
 const ACADEMIC_HISTORY_CACHE_KEY = 'rawAcademicHistoryData';
 const ACADEMIC_HISTORY_TIMESTAMP_KEY = 'rawAcademicHistoryTimestamp';
-const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+const GRADEBOOK_CACHE_KEY = 'rawGradebookData';
+const GRADEBOOK_TIMESTAMP_KEY = 'rawGradebookTimestamp';
+
+// Cache durations - Academic history changes less frequently than gradebook
+const UNIFIED_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes for combined data
+const ACADEMIC_HISTORY_CACHE_DURATION = 6 * 60 * 60 * 1000; // 6 hours for academic history
+const GRADEBOOK_CACHE_DURATION = 15 * 60 * 1000; // 15 minutes for gradebook data
 
 export class UnifiedDataManager {
   private static currentYear: string | null = null;
+  private static pendingRequest: Promise<UnifiedDataResult> | null = null;
+  private static requestCounter = 0;
 
   // Clear all caches
   public static async clearCache(): Promise<void> {
@@ -64,29 +72,33 @@ export class UnifiedDataManager {
         CACHE_KEY,
         CACHE_TIMESTAMP_KEY,
         ACADEMIC_HISTORY_CACHE_KEY,
-        ACADEMIC_HISTORY_TIMESTAMP_KEY
+        ACADEMIC_HISTORY_TIMESTAMP_KEY,
+        GRADEBOOK_CACHE_KEY,
+        GRADEBOOK_TIMESTAMP_KEY
       ]);
-      console.log('🗑️ UnifiedDataManager cache cleared');
+      // Clear any pending requests since cache is cleared
+      this.pendingRequest = null;
+      console.log('🗑️ UnifiedDataManager cache cleared and pending requests reset');
     } catch (error) {
       console.error('❌ Failed to clear cache:', error);
     }
   }
 
   // Check if cache is valid
-  private static async isCacheValid(timestampKey: string): Promise<boolean> {
+  private static async isCacheValid(timestampKey: string, cacheDuration: number = UNIFIED_CACHE_DURATION): Promise<boolean> {
     try {
       const timestampStr = await AsyncStorage.getItem(timestampKey);
       if (!timestampStr) return false;
       
       const timestamp = parseInt(timestampStr, 10);
       const now = Date.now();
-      const isValid = (now - timestamp) < CACHE_DURATION;
+      const isValid = (now - timestamp) < cacheDuration;
       
       console.log('📅 Cache validity check:', {
         timestampKey,
         age: Math.round((now - timestamp) / 1000),
         isValid,
-        maxAge: CACHE_DURATION / 1000
+        maxAge: cacheDuration / 1000
       });
       
       return isValid;
@@ -128,23 +140,71 @@ export class UnifiedDataManager {
 
   // Main method to get combined data
   public static async getCombinedData(forceRefresh: boolean = false): Promise<UnifiedDataResult> {
+    const totalStartTime = Date.now();
     try {
-      console.log('🔄 UnifiedDataManager.getCombinedData called with forceRefresh:', forceRefresh);
+      console.log(`� UnifiedDataManager: Starting getCombinedData (forceRefresh: ${forceRefresh})`);
       
       // Check cache first unless force refresh is requested
       if (!forceRefresh) {
+        console.log('📋 UnifiedDataManager: Checking cache...');
+        const cacheStartTime = Date.now();
         const cachedData = await this.getCachedData(CACHE_KEY, CACHE_TIMESTAMP_KEY);
+        const cacheTime = Date.now() - cacheStartTime;
+        
         if (cachedData) {
+          console.log(`⚡ UnifiedDataManager: Using cached data (${cacheTime}ms) - ${cachedData.courses?.length || 0} courses`);
           return {
             success: true,
             courses: cachedData.courses,
             lastUpdated: cachedData.lastUpdated
           };
+        } else {
+          console.log(`📊 UnifiedDataManager: No valid unified cache found (${cacheTime}ms)`);
         }
+      } else {
+        console.log('🔄 UnifiedDataManager: Force refresh requested, skipping all caches');
       }
       
-      // Fetch fresh data directly from Skyward
-      let scrapeResult = await this.fetchScrapeReportData();
+      // CRITICAL: Use request deduplication for expired cache scenarios
+      if (this.pendingRequest) {
+        console.log('⏳ UnifiedDataManager: Request already in progress, waiting for existing...');
+        const waitStartTime = Date.now();
+        const result = await this.pendingRequest;
+        const waitTime = Date.now() - waitStartTime;
+        console.log(`⚡ UnifiedDataManager: Used deduplicated result (waited ${waitTime}ms)`);
+        return result;
+      }
+
+      // Create the actual fetch promise and store it for deduplication
+      this.pendingRequest = this.performOptimalFetch(forceRefresh, totalStartTime);
+      
+      try {
+        const result = await this.pendingRequest;
+        return result;
+      } finally {
+        // Clear pending request when done
+        this.pendingRequest = null;
+      }
+    } catch (error: any) {
+      this.pendingRequest = null; // Clear on error too
+      const totalTime = Date.now() - totalStartTime;
+      console.error(`💥 UnifiedDataManager: Error after ${totalTime}ms:`, error.message);
+      return {
+        success: false,
+        error: error.message || 'Unknown error occurred'
+      };
+    }
+  }
+
+  // Perform the actual optimal fetch with parallel operations
+  private static async performOptimalFetch(forceRefresh: boolean, totalStartTime: number): Promise<UnifiedDataResult> {
+    try {
+      // Try smart caching with separate component caches
+      console.log('🧠 UnifiedDataManager: Trying smart separate caching...');
+      const smartStartTime = Date.now();
+      let scrapeResult = await this.fetchWithSmartCaching(forceRefresh);
+      const smartTime = Date.now() - smartStartTime;
+      console.log(`📡 UnifiedDataManager: Smart cache complete (${smartTime}ms) - Success: ${scrapeResult.success}`);
       
       // If session expired, try re-authenticating once
       if (
@@ -152,14 +212,19 @@ export class UnifiedDataManager {
         scrapeResult.error &&
         scrapeResult.error.toLowerCase().includes('session expired')
       ) {
-        console.warn('🔄 Session expired detected, attempting re-authentication...');
+        console.warn('🔄 UnifiedDataManager: Session expired detected, attempting re-authentication...');
+        const reAuthStartTime = Date.now();
         const authResult = await authenticate();
+        const reAuthTime = Date.now() - reAuthStartTime;
+        
         if (authResult.success) {
-
-          console.log('✅ Re-authentication successful, retrying fetch...');
+          console.log(`✅ UnifiedDataManager: Re-authentication successful (${reAuthTime}ms), retrying fetch...`);
+          const retryStartTime = Date.now();
           scrapeResult = await this.fetchScrapeReportData();
+          const retryTime = Date.now() - retryStartTime;
+          console.log(`🔄 UnifiedDataManager: Retry fetch complete (${retryTime}ms) - Success: ${scrapeResult.success}`);
         } else {
-          console.error('❌ Re-authentication failed:', authResult.error);
+          console.error(`❌ UnifiedDataManager: Re-authentication failed (${reAuthTime}ms):`, authResult.error);
           return {
             success: false,
             error: 'Session expired and re-authentication failed: ' + (authResult.error || '')
@@ -169,7 +234,8 @@ export class UnifiedDataManager {
       
       if (!scrapeResult.success || !scrapeResult.data) {
         const error = scrapeResult.error || 'Failed to fetch combined academic data directly from Skyward';
-        console.error('💥', error);
+        const totalTime = Date.now() - totalStartTime;
+        console.error(`💥 UnifiedDataManager: Failed after ${totalTime}ms -`, error);
         return {
           success: false,
           error
@@ -177,7 +243,12 @@ export class UnifiedDataManager {
       }
 
       // Transform data
+      console.log('🔄 UnifiedDataManager: Transforming raw data...');
+      const transformStartTime = Date.now();
       const transformedCourses = UnifiedDataManager.transformCombinedData(scrapeResult.data);
+      const transformTime = Date.now() - transformStartTime;
+      console.log(`⚙️ UnifiedDataManager: Data transformation complete (${transformTime}ms) - ${transformedCourses.length} courses`);
+      
       const result = {
         success: true,
         courses: transformedCourses,
@@ -185,13 +256,21 @@ export class UnifiedDataManager {
       };
 
       // Cache the result
+      console.log('💾 UnifiedDataManager: Caching transformed data...');
+      const cacheStartTime = Date.now();
       await this.setCachedData(CACHE_KEY, CACHE_TIMESTAMP_KEY, {
         courses: transformedCourses,
         lastUpdated: result.lastUpdated
       });
+      const cacheTime = Date.now() - cacheStartTime;
+      
+      const totalTime = Date.now() - totalStartTime;
+      console.log(`🎉 UnifiedDataManager: Complete success! Cache saved (${cacheTime}ms) - Total time: ${totalTime}ms`);
 
       return result;
     } catch (error: any) {
+      const totalTime = Date.now() - totalStartTime;
+      console.error(`💥 UnifiedDataManager: Error after ${totalTime}ms:`, error.message);
       return {
         success: false,
         error: error.message || 'Unknown error occurred'
@@ -199,17 +278,108 @@ export class UnifiedDataManager {
     }
   }
 
+  // Use parallel fetchScrapeReportData (smart caching can be added later)
+  private static async fetchWithSmartCaching(forceRefresh: boolean = false): Promise<{ success: boolean; data?: any; error?: string }> {
+    const smartStartTime = Date.now();
+    try {
+      console.log('🧠 fetchWithSmartCaching: Starting PARALLEL smart cache logic...');
+      
+      // Get session tokens once for potential API calls
+      const [dwd, wfaacl, encses, userType, sessionid, baseUrl] = await Promise.all([
+        AsyncStorage.getItem('dwd'),
+        AsyncStorage.getItem('wfaacl'),
+        AsyncStorage.getItem('encses'),
+        AsyncStorage.getItem('User-Type'),
+        AsyncStorage.getItem('sessionid'),
+        AsyncStorage.getItem('skywardBaseURL')
+      ]);
+
+      const allSessionCodesExist = dwd && wfaacl && encses && userType && sessionid && baseUrl;
+      if (!allSessionCodesExist) {
+        console.log('❌ fetchWithSmartCaching: Missing session codes, falling back to full fetch...');
+        return await this.fetchScrapeReportData();
+      }
+
+      const sessionCodes: SkywardSessionCodes = {
+        dwd: dwd!,
+        wfaacl: wfaacl!,
+        encses: encses!,
+        'User-Type': userType!,
+        sessionid: sessionid!,
+      };
+      
+      // Check what we need to fetch based on cache validity
+      const [isAcademicCacheValid, isGradebookCacheValid] = await Promise.all([
+        this.isCacheValid(ACADEMIC_HISTORY_TIMESTAMP_KEY, ACADEMIC_HISTORY_CACHE_DURATION),
+        this.isCacheValid(GRADEBOOK_TIMESTAMP_KEY, GRADEBOOK_CACHE_DURATION)
+      ]);
+      
+      const needAcademic = forceRefresh || !isAcademicCacheValid;
+      const needGradebook = forceRefresh || !isGradebookCacheValid;
+      
+      
+      
+      // Execute parallel operations: fetch what we need, get what we can from cache
+      const operations = [];
+      
+      if (needAcademic) {
+        console.log('📚 fetchWithSmartCaching: Will fetch fresh academic history...');
+        // TODO: Implement separate academic history caching
+      } else {
+        console.log('📚 fetchWithSmartCaching: Will use cached academic history...');
+        operations.push(this.getCachedData(ACADEMIC_HISTORY_CACHE_KEY, ACADEMIC_HISTORY_TIMESTAMP_KEY));
+      }
+      
+      if (needGradebook) {
+        console.log('� fetchWithSmartCaching: Will fetch fresh gradebook...');
+        // TODO: Implement separate gradebook caching
+      } else {
+        console.log('📊 fetchWithSmartCaching: Will use cached gradebook...');
+        operations.push(this.getCachedData(GRADEBOOK_CACHE_KEY, GRADEBOOK_TIMESTAMP_KEY));
+      }
+      
+      // Execute parallel operations
+      const parallelStartTime = Date.now();
+      const [academicHistory, gradebookData] = await Promise.all(operations);
+      const parallelTime = Date.now() - parallelStartTime;
+      
+      console.log(`⚡ fetchWithSmartCaching: Parallel operations complete (${parallelTime}ms)`);
+      
+
+      
+      // OPTIMIZATION: Always use the optimal parallel approach for maximum performance and simplicity
+      console.log('🚀 fetchWithSmartCaching: Using OPTIMAL PARALLEL getCombinedAcademicHistoryReport...');
+      const result = await getCombinedAcademicHistoryReport(baseUrl!, sessionCodes);
+      
+      // Ensure we return the correct format that UnifiedDataManager expects
+      return { success: true, data: result };
+      
+    } catch (error: any) {
+      console.error(`❌ fetchWithSmartCaching: Failed:`, error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // Note: Separate component caching can be implemented later by exporting 
+  // individual functions from skywardAcademicClient
+
   // Fetch scrape report data using direct Skyward client
   private static async fetchScrapeReportData(): Promise<{ success: boolean; data?: any; error?: string }> {
+    const fetchStartTime = Date.now();
     try {
-      const dwd = await AsyncStorage.getItem('dwd');
-      const wfaacl = await AsyncStorage.getItem('wfaacl');
-      const encses = await AsyncStorage.getItem('encses');
-      const userType = await AsyncStorage.getItem('User-Type');
-      const sessionid = await AsyncStorage.getItem('sessionid');
-      const baseUrl = await AsyncStorage.getItem('skywardBaseURL');
+      console.log('🔍 fetchScrapeReportData: Retrieving session tokens...');
+      const tokenStartTime = Date.now();
+      const [dwd, wfaacl, encses, userType, sessionid, baseUrl] = await Promise.all([
+        AsyncStorage.getItem('dwd'),
+        AsyncStorage.getItem('wfaacl'),
+        AsyncStorage.getItem('encses'),
+        AsyncStorage.getItem('User-Type'),
+        AsyncStorage.getItem('sessionid'),
+        AsyncStorage.getItem('skywardBaseURL')
+      ]);
+      const tokenTime = Date.now() - tokenStartTime;
 
-      console.log('📋 Checking session tokens:', { 
+      console.log(`📋 fetchScrapeReportData: Session tokens retrieved (${tokenTime}ms):`, { 
         hasDwd: !!dwd, hasWfaacl: !!wfaacl, hasEncses: !!encses, 
         hasUserType: !!userType, hasSessionid: !!sessionid, hasBaseUrl: !!baseUrl 
       });
@@ -217,16 +387,22 @@ export class UnifiedDataManager {
       const allSessionCodesExist = dwd && wfaacl && encses && userType && sessionid && baseUrl;
 
       if (!allSessionCodesExist) {
-        console.log('❌ Missing session codes, calling authenticate...');
+        console.log('❌ fetchScrapeReportData: Missing session codes, calling authenticate...');
+        const missingAuthStartTime = Date.now();
         const authResult = await authenticate();
+        const missingAuthTime = Date.now() - missingAuthStartTime;
+        
         if (!authResult.success) {
+          console.log(`❌ fetchScrapeReportData: Authentication failed (${missingAuthTime}ms):`, authResult.error);
           return { success: false, error: authResult.error };
         }
-        console.log('✅ Authentication successful, retrying fetchScrapeReportData...');
+        console.log(`✅ fetchScrapeReportData: Authentication successful (${missingAuthTime}ms), retrying...`);
         return await this.fetchScrapeReportData(); // Retry with new credentials
       }
 
       // Use the direct Skyward client instead of backend API
+      console.log('🌐 fetchScrapeReportData: Making Skyward API call...');
+      const skywardStartTime = Date.now();
       const sessionCodes: SkywardSessionCodes = {
         dwd: dwd!,
         wfaacl: wfaacl!,
@@ -236,7 +412,10 @@ export class UnifiedDataManager {
       };
 
       const combinedData = await getCombinedAcademicHistoryReport(baseUrl!, sessionCodes);
+      const skywardTime = Date.now() - skywardStartTime;
+      const totalFetchTime = Date.now() - fetchStartTime;
       
+      console.log(`✅ fetchScrapeReportData: Success! Skyward call (${skywardTime}ms), total (${totalFetchTime}ms)`);
       return { success: true, data: combinedData };
     } catch (error: any) {
       // Handle session expiry specifically

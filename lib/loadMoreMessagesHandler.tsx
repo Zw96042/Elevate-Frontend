@@ -16,7 +16,7 @@ export const loadMoreMessages = async (
   const encses = await AsyncStorage.getItem('encses');
   const userType = await AsyncStorage.getItem('User-Type');
   const sessionid = await AsyncStorage.getItem('sessionid');
-  const baseUrl = await AsyncStorage.getItem('baseUrl');
+  const baseUrl = await AsyncStorage.getItem('skywardBaseURL');
 
   const allSessionCodesExist = dwd && wfaacl && encses && userType && sessionid && baseUrl;
 

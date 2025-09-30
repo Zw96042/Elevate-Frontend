@@ -18,20 +18,26 @@ let lastAuthResult: AuthResult | null = null;
 const MIN_AUTH_INTERVAL = 2000; // Minimum 2 seconds between auth attempts
 
 export async function authenticate(): Promise<AuthResult> {
+  const startTime = Date.now();
   const now = Date.now();
   
   // If we just authenticated recently AND it was successful, use cached result
   if (now - lastAuthTime < MIN_AUTH_INTERVAL && lastAuthResult?.success) {
-    console.log('⏱️ Authentication attempted too recently, using cached result');
+    console.log(`⚡ Authentication: Using cached result (${Date.now() - startTime}ms)`);
     return lastAuthResult;
   }
 
   // If already authenticating, return the existing promise
   if (isAuthenticating && authPromise) {
     console.log('🔄 Authentication already in progress, waiting for existing request...');
-    return authPromise;
+    const waitStartTime = Date.now();
+    const result = await authPromise;
+    console.log(`⏱️ Authentication: Waited for existing request (${Date.now() - waitStartTime}ms)`);
+    return result;
   }
 
+  console.log('🚀 Authentication: Starting new authentication process...');
+  
   // Set authentication in progress
   isAuthenticating = true;
   lastAuthTime = now;
@@ -45,6 +51,8 @@ export async function authenticate(): Promise<AuthResult> {
     if (result.success) {
       lastAuthTime = Date.now(); // Update timestamp on success
     }
+    const totalTime = Date.now() - startTime;
+    console.log(`✅ Authentication: Complete (${totalTime}ms) - Success: ${result.success}`);
     return result;
   } finally {
     // Reset authentication state after a delay to prevent immediate retries
@@ -56,17 +64,26 @@ export async function authenticate(): Promise<AuthResult> {
 }
 
 async function performAuthentication(): Promise<AuthResult> {
+  const authStartTime = Date.now();
   try {
-    console.log('🔐 Starting authentication process...');
+    console.log('🔐 Authentication: Getting stored credentials...');
+    const credStartTime = Date.now();
     const authInfo = await SkywardAuth.get();
+    console.log(`📋 Authentication: Credentials retrieved (${Date.now() - credStartTime}ms)`);
+    
     if (!authInfo?.link || !authInfo?.username || !authInfo?.password) {
+      console.log('❌ Authentication: Missing credentials');
       return { success: false, error: 'Missing credentials' };
     }
+    
     if (authInfo.username !== "dev-test" || authInfo.password !== "fgx") {
       // Use frontend Skyward login logic
+      console.log('🌐 Authentication: Making Skyward login request...');
       let sessionCodes;
+      const skywardStartTime = Date.now();
       try {
         sessionCodes = await getNewSessionCodes({ username: authInfo.username, password: authInfo.password, baseURL: authInfo.link });
+        console.log(`✅ Authentication: Skyward login successful (${Date.now() - skywardStartTime}ms)`);
       } catch (err: any) {
         console.log('❌ Authentication failed:', err.message);
         await AsyncStorage.setItem('dwd', "");
@@ -79,30 +96,42 @@ async function performAuthentication(): Promise<AuthResult> {
         return { success: false, error: err.message || 'Authentication failed' };
       }
       if (!sessionCodes || !sessionCodes.dwd || !sessionCodes.wfaacl || !sessionCodes.encses) {
-        console.error('❌ Invalid session codes received:', sessionCodes);
+        console.error('❌ Authentication: Invalid session codes received:', sessionCodes);
         return { success: false, error: 'Invalid session codes received from Skyward' };
       }
-      console.log('✅ Authentication successful, saving session codes...');
-      await AsyncStorage.setItem('dwd', sessionCodes.dwd);
-      await AsyncStorage.setItem('wfaacl', sessionCodes.wfaacl);
-      await AsyncStorage.setItem('encses', sessionCodes.encses);
-      await AsyncStorage.setItem('User-Type', sessionCodes['User-Type']);
-      await AsyncStorage.setItem('sessionid', sessionCodes.sessionid);
-      await AsyncStorage.setItem('skywardBaseURL', authInfo.link);
-      console.log('✅ Session codes saved to AsyncStorage');
+      
+      console.log('💾 Authentication: Saving session codes to AsyncStorage...');
+      const storageStartTime = Date.now();
+      await Promise.all([
+        AsyncStorage.setItem('dwd', sessionCodes.dwd),
+        AsyncStorage.setItem('wfaacl', sessionCodes.wfaacl),
+        AsyncStorage.setItem('encses', sessionCodes.encses),
+        AsyncStorage.setItem('User-Type', sessionCodes['User-Type']),
+        AsyncStorage.setItem('sessionid', sessionCodes.sessionid),
+        AsyncStorage.setItem('skywardBaseURL', authInfo.link)
+      ]);
+      console.log(`✅ Authentication: Session codes saved (${Date.now() - storageStartTime}ms)`);
     } else {
       // Special Creds
-      console.log('🔧 Using development credentials...');
-      await AsyncStorage.setItem('dwd', "dev");
-      await AsyncStorage.setItem('wfaacl', "dev");
-      await AsyncStorage.setItem('encses', "dev");
-      await AsyncStorage.setItem('User-Type', "dev");
-      await AsyncStorage.setItem('sessionid', "dev");
-      await AsyncStorage.setItem('skywardBaseURL', authInfo.link);
+      console.log('🔧 Authentication: Using development credentials...');
+      const devStorageStartTime = Date.now();
+      await Promise.all([
+        AsyncStorage.setItem('dwd', "dev"),
+        AsyncStorage.setItem('wfaacl', "dev"),
+        AsyncStorage.setItem('encses', "dev"),
+        AsyncStorage.setItem('User-Type', "dev"),
+        AsyncStorage.setItem('sessionid', "dev"),
+        AsyncStorage.setItem('skywardBaseURL', authInfo.link)
+      ]);
+      console.log(`✅ Authentication: Development credentials saved (${Date.now() - devStorageStartTime}ms)`);
     }
+    
+    const totalAuthTime = Date.now() - authStartTime;
+    console.log(`🎉 Authentication: Process complete (${totalAuthTime}ms)`);
     return { success: true };
   } catch (err: any) {
-    console.error('❌ Authentication error:', err.message);
+    const totalAuthTime = Date.now() - authStartTime;
+    console.error(`❌ Authentication: Error after ${totalAuthTime}ms:`, err.message);
     return { success: false, error: err.message || 'Unknown error' };
   }
 }
