@@ -24,72 +24,71 @@ const scrapeHistoryData = async (baseUrl: string, sessionCodes: SkywardSessionCo
       throw new Error('dwd, wfaacl, & encses are required');
     }
     
-    // Use URLSearchParams like auth client does
-    const formDataStartTime = Date.now();
-    const formData = new URLSearchParams({
-      dwd: sessionCodes.dwd,
-      wfaacl: sessionCodes.wfaacl,
-      encses: sessionCodes.encses,
-    });
-    const body = formData.toString();
-    const formDataTime = Date.now() - formDataStartTime;
-    console.log(`📦 scrapeHistoryData: Request body prepared (${formDataTime}ms), preview:`, body.substring(0, 100) + '...');
-    
-    // Use same URL construction as backend - no slash between baseUrl and endpoint
-    const fullUrl = baseUrl + 'sfacademichistory001.w';
-    console.log('🌐 scrapeHistoryData: Full URL being constructed:', fullUrl);
-    
-    const requestStartTime = Date.now();
-    const response = await axios({
-      url: fullUrl,
-      method: 'post',
-      data: body,
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-    });
-    const requestTime = Date.now() - requestStartTime;
-    const totalTime = Date.now() - startTime;
-    
-    console.log(`📡 scrapeHistoryData: Response received (${requestTime}ms), total: ${totalTime}ms, status: ${response.status}, data length: ${response.data?.length}`);
-    console.log('Response data preview:', response.data?.substring(0, 200));  try {
-    const response = await axios({
-      url: fullUrl,
-      method: 'post',
-      data: body,
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-    });
-    
-    console.log('📖 Academic history response status:', response.status);
-    console.log('📖 Academic history response length:', response.data?.length || 0);
-    console.log('📖 Response headers:', response.headers);
-    
-    // Log first 500 characters of response to debug
-    if (response.data && response.data.length < 1000) {
-      console.log('📖 Full response (short):', response.data);
-    } else {
-      console.log('📖 Response preview:', response.data?.substring(0, 500) + '...');
+    try {
+      // Use URLSearchParams like auth client does
+      const formDataStartTime = Date.now();
+      const formData = new URLSearchParams({
+        dwd: sessionCodes.dwd,
+        wfaacl: sessionCodes.wfaacl,
+        encses: sessionCodes.encses,
+      });
+      const body = formData.toString();
+      const formDataTime = Date.now() - formDataStartTime;
+      console.log(`📦 scrapeHistoryData: Request body prepared (${formDataTime}ms), preview:`, body.substring(0, 100) + '...');
+      
+      // Use same URL construction as backend - no slash between baseUrl and endpoint
+      const fullUrl = baseUrl + 'sfacademichistory001.w';
+      console.log('🌐 scrapeHistoryData: Full URL being constructed:', fullUrl);
+      
+      const requestStartTime = Date.now();
+      const response = await axios({
+        url: fullUrl,
+        method: 'post',
+        data: body,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept-Encoding': 'gzip, deflate',
+          'Connection': 'keep-alive',
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        },
+        timeout: 10000, // 10 second timeout instead of waiting forever
+        maxRedirects: 2,
+        validateStatus: (status) => status < 500, // Accept all responses except server errors
+      });
+      const requestTime = Date.now() - requestStartTime;
+      const totalTime = Date.now() - startTime;
+      
+      console.log(`📡 scrapeHistoryData: Response received (${requestTime}ms), total: ${totalTime}ms, status: ${response.status}, data length: ${response.data?.length}`);
+      console.log('Response data preview:', response.data?.substring(0, 200));
+      
+      console.log('📖 Academic history response status:', response.status);
+      console.log('📖 Academic history response length:', response.data?.length || 0);
+      console.log('📖 Response headers:', response.headers);
+      
+      // Log first 500 characters of response to debug
+      if (response.data && response.data.length < 1000) {
+        console.log('📖 Full response (short):', response.data);
+      } else {
+        console.log('📖 Response preview:', response.data?.substring(0, 500) + '...');
+      }
+      
+      // Check for session expiration like backend does
+      const html = response.data;
+      if (html.includes('Your session has expired') || 
+          html.includes('Your session has timed out') || 
+          html.includes('WebSpeed error from WebSpeed ISAPI Messenger(WSISA)') || 
+          html.includes('WebSpeed Agent Error: Agent did not return an HTML page')) {
+        const err = new Error('Session expired');
+        (err as any).code = 'SESSION_EXPIRED';
+        throw err;
+      }
+      
+      return response;
+    } catch (error: any) {
+      console.error('❌ Error scraping academic history:', error.message);
+      console.error('❌ Error details:', error.response?.data || error.response?.status);
+      throw error;
     }
-    
-    // Check for session expiration like backend does
-    const html = response.data;
-    if (html.includes('Your session has expired') || 
-        html.includes('Your session has timed out') || 
-        html.includes('WebSpeed error from WebSpeed ISAPI Messenger(WSISA)') || 
-        html.includes('WebSpeed Agent Error: Agent did not return an HTML page')) {
-      const err = new Error('Session expired');
-      (err as any).code = 'SESSION_EXPIRED';
-      throw err;
-    }
-    
-    return response;
-  } catch (error: any) {
-    console.error('❌ Error scraping academic history:', error.message);
-    console.error('❌ Error details:', error.response?.data || error.response?.status);
-    throw error;
-  }
 };
 
 const parseHistoryResponse = (responseData: string) => {
@@ -398,7 +397,15 @@ const scrapeGradebook = async (baseUrl: string, sessionCodes: SkywardSessionCode
   try {
     const requestStartTime = Date.now();
     const gradebookResponse = await axios.post(gradebookUrl, postData.toString(), {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: { 
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      },
+      timeout: 10000, // 10 second timeout
+      maxRedirects: 2,
+      validateStatus: (status) => status < 500,
     });
     const requestTime = Date.now() - requestStartTime;
     
@@ -771,39 +778,104 @@ const parseReportDataSimple = async (htmlData: string) => {
 // ===== MAIN COMBINED FUNCTION =====
 export const getCombinedAcademicHistoryReport = async (baseUrl: string, sessionCodes: SkywardSessionCodes) => {
   const totalStartTime = Date.now();
-  console.log('🚀 getCombinedAcademicHistoryReport: Starting PARALLEL combined academic history report...');
+  console.log('🚀 getCombinedAcademicHistoryReport: Starting OPTIMIZED combined academic history report...');
+  
+  // Validate session codes before making requests
+  if (!sessionCodes.dwd || !sessionCodes.wfaacl || !sessionCodes.encses || !sessionCodes.sessionid) {
+    throw new Error('Missing required session codes for parallel requests');
+  }
   
   try {
-    // Execute both API calls in parallel for maximum speed
-    console.log('⚡ getCombinedAcademicHistoryReport: Launching parallel requests...');
+    // OPTIMIZATION STRATEGY: Try parallel first with aggressive timeout, fallback to sequential if needed
+    console.log('⚡ getCombinedAcademicHistoryReport: Attempting PARALLEL with 8s timeout...');
     const parallelStartTime = Date.now();
     
-    const [academicHistory, gradebookHtml] = await Promise.all([
-      getAcademicHistory(baseUrl, sessionCodes),
-      scrapeGradebook(baseUrl, sessionCodes)
-    ]);
+    // Create parallel requests with aggressive timeout
+    const academicHistoryPromise = getAcademicHistory(baseUrl, sessionCodes);
     
-    const parallelTime = Date.now() - parallelStartTime;
-    console.log(`⚡ getCombinedAcademicHistoryReport: Parallel requests completed (${parallelTime}ms)`);
+    // Stagger gradebook request by 50ms to prevent session conflicts
+    const gradebookPromise = new Promise<string>((resolve, reject) => {
+      setTimeout(async () => {
+        try {
+          const result = await scrapeGradebook(baseUrl, sessionCodes);
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      }, 50);
+    });
     
-    // Parse gradebook data (academic history is already parsed)
-    const parseStartTime = Date.now();
-    const gradebookData = parseGradebookData(gradebookHtml);
-    const parseTime = Date.now() - parseStartTime;
+    // Race the parallel requests against a timeout
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('PARALLEL_TIMEOUT')), 8000); // 8 second timeout for parallel
+    });
     
-    // Combine the data
-    console.log(`🔗 getCombinedAcademicHistoryReport: Combining data (parse: ${parseTime}ms)...`);
-    const combineStartTime = Date.now();
-    const combinedData = combineAcademicHistoryWithGradebook(academicHistory, gradebookData);
-    const combineTime = Date.now() - combineStartTime;
-    
-    const totalTime = Date.now() - totalStartTime;
-    console.log(`✅ getCombinedAcademicHistoryReport: PARALLEL SUCCESS! Total: ${totalTime}ms (parallel: ${parallelTime}ms, parse: ${parseTime}ms, combine: ${combineTime}ms)`);
-    return combinedData;
+    try {
+      const [academicHistory, gradebookHtml] = await Promise.race([
+        Promise.all([academicHistoryPromise, gradebookPromise]),
+        timeoutPromise
+      ]);
+      
+      const parallelTime = Date.now() - parallelStartTime;
+      console.log(`✅ getCombinedAcademicHistoryReport: PARALLEL SUCCESS! (${parallelTime}ms)`);
+      
+      // Parse and combine data
+      const parseStartTime = Date.now();
+      const gradebookData = parseGradebookData(gradebookHtml);
+      const parseTime = Date.now() - parseStartTime;
+      
+      const combineStartTime = Date.now();
+      const combinedData = combineAcademicHistoryWithGradebook(academicHistory, gradebookData);
+      const combineTime = Date.now() - combineStartTime;
+      
+      const totalTime = Date.now() - totalStartTime;
+      console.log(`🎉 getCombinedAcademicHistoryReport: PARALLEL COMPLETE! Total: ${totalTime}ms (parallel: ${parallelTime}ms, parse: ${parseTime}ms, combine: ${combineTime}ms)`);
+      return combinedData;
+      
+    } catch (error: any) {
+      if (error.message === 'PARALLEL_TIMEOUT') {
+        console.log('⏰ getCombinedAcademicHistoryReport: Parallel timed out, falling back to SEQUENTIAL...');
+        
+        // FALLBACK: Sequential requests
+        const sequentialStartTime = Date.now();
+        
+        console.log('📚 getCombinedAcademicHistoryReport: Sequential - Getting academic history first...');
+        const academicHistory = await getAcademicHistory(baseUrl, sessionCodes);
+        
+        console.log('📊 getCombinedAcademicHistoryReport: Sequential - Getting gradebook second...');
+        const gradebookHtml = await scrapeGradebook(baseUrl, sessionCodes);
+        
+        const sequentialTime = Date.now() - sequentialStartTime;
+        console.log(`⚡ getCombinedAcademicHistoryReport: SEQUENTIAL completed (${sequentialTime}ms)`);
+        
+        // Parse and combine data
+        const parseStartTime = Date.now();
+        const gradebookData = parseGradebookData(gradebookHtml);
+        const parseTime = Date.now() - parseStartTime;
+        
+        const combineStartTime = Date.now();
+        const combinedData = combineAcademicHistoryWithGradebook(academicHistory, gradebookData);
+        const combineTime = Date.now() - combineStartTime;
+        
+        const totalTime = Date.now() - totalStartTime;
+        console.log(`🎉 getCombinedAcademicHistoryReport: SEQUENTIAL COMPLETE! Total: ${totalTime}ms (sequential: ${sequentialTime}ms, parse: ${parseTime}ms, combine: ${combineTime}ms)`);
+        return combinedData;
+        
+      } else {
+        // Other errors - re-throw
+        throw error;
+      }
+    }
     
   } catch (error: any) {
     const totalTime = Date.now() - totalStartTime;
-    console.error(`❌ getCombinedAcademicHistoryReport: PARALLEL FAILED after ${totalTime}ms:`, error.message);
+    console.error(`❌ getCombinedAcademicHistoryReport: FAILED after ${totalTime}ms:`, error.message);
+    
+    // If requests failed due to session issues, throw the error for re-authentication
+    if (error.message && error.message.toLowerCase().includes('session expired')) {
+      console.log('🔄 Session expired detected, triggering re-authentication...');
+    }
+    
     throw error;
   }
 };
