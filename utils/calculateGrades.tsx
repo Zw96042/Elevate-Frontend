@@ -7,6 +7,12 @@ type Assignment = {
   outOf: number;
   dueDate: string;
   artificial: boolean;
+  meta?: AssignmentMeta[];
+};
+
+type AssignmentMeta = {
+  type: 'missing' | 'noCount' | 'absent';
+  note: string;
 };
 
 type GradeSummary = {
@@ -31,8 +37,14 @@ export function calculateGradeSummary(
     weight: number;
   }> = {};
 
-  // Sum up points per category
-  for (const a of assignments) {
+  // Filter out "no count" assignments before calculations
+  const countableAssignments = assignments.filter(assignment => {
+    const isNoCount = assignment.meta?.some(m => m.type === 'noCount');
+    return !isNoCount;
+  });
+
+  // Sum up points per category for countable assignments only
+  for (const a of countableAssignments) {
     if (!categories[a.category]) {
       categories[a.category] = {
         rawPoints: 0,

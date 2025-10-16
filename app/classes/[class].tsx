@@ -73,18 +73,6 @@ type TermLabel =
   | "Q4 Grades"
   | "SM2 Grades";
 
-type Assignment = {
-  id?: string;
-  className: string;
-  name: string;
-  term: string;
-  category: string;
-  grade: string;
-  outOf: number;
-  dueDate: string;
-  artificial: boolean;
-};
-
 type TermData = {
   categories: {
     names: string[];
