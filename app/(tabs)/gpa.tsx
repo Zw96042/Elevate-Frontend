@@ -133,7 +133,14 @@ const GPA = () => {
         if (gradeNumber) {
           filteredCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
         }
-        setGpaData(UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses));
+        const newGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses);
+        console.log('🔄 Setting gpaData in handleRefresh:', {
+          selectedGrade,
+          filteredCoursesCount: filteredCourses.length,
+          newGpaDataKeys: Object.keys(newGpaData),
+          newGpaDataCount: Object.keys(newGpaData).length
+        });
+        setGpaData(newGpaData);
       }
     } catch (error) {
       console.error('❌ Error during refresh:', error);
@@ -167,7 +174,14 @@ const GPA = () => {
           if (gradeNumber) {
             initialCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
           }
-          setGpaData(UnifiedGPAManager.calculateCurrentGradeGPA(initialCourses));
+          const initialGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(initialCourses);
+          console.log('🚀 Initial gpaData setup:', {
+            selectedGrade,
+            initialCoursesCount: initialCourses.length,
+            initialGpaDataKeys: Object.keys(initialGpaData),
+            initialGpaDataCount: Object.keys(initialGpaData).length
+          });
+          setGpaData(initialGpaData);
           setIsInitialized(true);
           return;
         }
@@ -191,7 +205,14 @@ const GPA = () => {
             if (gradeNumber) {
               initialCourses = gpaResult.rawCourses.filter(c => c.gradeYear === gradeNumber);
             }
-            setGpaData(UnifiedGPAManager.calculateCurrentGradeGPA(initialCourses));
+            const fallbackGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(initialCourses);
+            console.log('💾 Fallback gpaData setup:', {
+              selectedGrade,
+              fallbackCoursesCount: initialCourses.length,
+              fallbackGpaDataKeys: Object.keys(fallbackGpaData),
+              fallbackGpaDataCount: Object.keys(fallbackGpaData).length
+            });
+            setGpaData(fallbackGpaData);
           } else {
             throw new Error('Failed to load GPA data');
           }
@@ -230,6 +251,12 @@ const GPA = () => {
         filteredCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
       }
       const newGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses);
+      console.log('📊 Grade change gpaData update:', {
+        newGrade,
+        filteredCoursesCount: filteredCourses.length,
+        newGpaDataKeys: Object.keys(newGpaData),
+        newGpaDataCount: Object.keys(newGpaData).length
+      });
       setGpaData(newGpaData);
     }
   }, [coursesData]);
@@ -465,6 +492,39 @@ const GPA = () => {
 
 
   const renderGPADisplay = (showPrs : Boolean) => {
+    console.log('📊 renderGPADisplay called with showPrs:', showPrs);
+    
+    // Function to determine if we should show specific PR pairs
+    const shouldShowPRPair = (prPair: string[]) => {
+      // Check if we have data for the PR pair
+      const hasPRData = prPair.every(pr => gpaData[pr]);
+      
+      if (!hasPRData) return false; // Don't show if we don't have PR data
+      
+      // Determine what comes after the RC/SM that follows this PR pair
+      let nextPeriods: string[] = [];
+      if (prPair.includes('PR3') && prPair.includes('PR4')) {
+        // After PR3/PR4 -> RC2/SM1 -> then PR5/PR6/RC3
+        nextPeriods = ['PR5', 'PR6', 'RC3']; 
+      } else if (prPair.includes('PR7') && prPair.includes('PR8')) {
+        // After PR7/PR8 -> RC4/SM2 -> then PR9/PR10/RC5 (if they exist)
+        nextPeriods = ['PR9', 'PR10', 'RC5']; 
+      }
+      
+      // Check if we DON'T have data for the periods that come after the RC/SM
+      const hasNextPeriodData = nextPeriods.some(period => gpaData[period]);
+      
+      console.log(`🔍 shouldShowPRPair for [${prPair.join(', ')}]:`, {
+        hasPRData,
+        nextPeriods,
+        hasNextPeriodData,
+        shouldShow: !hasNextPeriodData
+      });
+      
+      // Show PRs only if we have PR data but NO data for what comes after the RC/SM
+      return !hasNextPeriodData;
+    };
+    
     const screenWidth = Dimensions.get('window').width;
     const graphWidth = screenWidth - 42; 
     const graphHeight = 100;
@@ -624,7 +684,8 @@ const GPA = () => {
                       <GpaSoloCard key={prList[0]} label={prList[0]} data={getLabelData(prList[0])} />
                     );
                   }
-                  
+                  // console.log(prList.length);
+                  // console.log(prList)
                   if (prList.length === 2 && 
                     (
                       (
@@ -636,6 +697,7 @@ const GPA = () => {
                         prList.includes("PR8")
                       )
                     )) {
+                      console.log(rcLabels);
                     rows.push(
                       <View className="flex-row justify-between mb-3" key={`${rcLabels[0]}-${rcLabels[1]}`}>
                         <GpaCard label={rcLabels[0]} data={getLabelData(rcLabels[0])} />
@@ -643,7 +705,15 @@ const GPA = () => {
                       </View>
                     );
                     handledRCs.add(rcLabels[idx]);
-                    if (showPrs) {
+                    console.log(getLabelData(prList[0]));
+                    console.log(getLabelData(prList[1]));
+                    console.log('Legacy showPrs:', showPrs);
+                    
+                    // Use the new logic for this specific PR pair
+                    const shouldShowThisPRPair = shouldShowPRPair(prList);
+                    console.log('Should show this PR pair:', shouldShowThisPRPair);
+                    
+                    if (shouldShowThisPRPair) {
                       rows.push(
                         <View className="flex-row justify-between mb-3" key={`${prList[0]}-${prList[1]}-extra`}>
                           <GpaCard label={prList[0]} data={getLabelData(prList[0])} />
@@ -797,6 +867,12 @@ const GPA = () => {
     );
   }
 
+    // console.log(!(Object.keys(gpaData).length > 0 || (savedClasses && savedClasses.length > 0)));
+
+    // console.log("AA" + (Object.keys(gpaData).length > 0));
+
+    // console.log("BB" + !(savedClasses && savedClasses.length > 0));
+
   return (
     <View className="flex-1 bg-primary">
       <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
@@ -825,7 +901,24 @@ const GPA = () => {
             <Text className="text-main text-lg">Loading academic history...</Text>
           </View>
         ) : (selectedGrade === 'All Time' || selectedGrade === currentGradeLevel || (Object.keys(gpaData).length > 0 || (savedClasses && savedClasses.length > 0))) ? (
-          renderGPADisplay(!(Object.keys(gpaData).length > 0 || (savedClasses && savedClasses.length > 0)))
+          (() => {
+            const hasGpaData = Object.keys(gpaData).length > 0;
+            const hasSavedClasses = !!(savedClasses && savedClasses.length > 0);
+            const showPrsValue = !(hasGpaData || hasSavedClasses);
+            
+            console.log('🔍 showPrs Debug Info:');
+            console.log('  - gpaData keys count:', Object.keys(gpaData).length);
+            console.log('  - gpaData keys:', Object.keys(gpaData));
+            console.log('  - hasGpaData:', hasGpaData);
+            console.log('  - savedClasses:', savedClasses);
+            console.log('  - savedClasses length:', savedClasses?.length || 0);
+            console.log('  - hasSavedClasses:', hasSavedClasses);
+            console.log('  - showPrs calculated value:', showPrsValue);
+            console.log('  - selectedGrade:', selectedGrade);
+            console.log('  - currentGradeLevel:', currentGradeLevel);
+            
+            return renderGPADisplay(showPrsValue);
+          })()
         ) : (
           <ManualGradeEntryCard
             key={`MANCARD-${selectedGrade}`}
