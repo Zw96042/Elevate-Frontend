@@ -473,13 +473,75 @@ const parseGradeInfo = (html: string): GradeInfoResult => {
       if (pm) {
         points = { earned: parseFloat(pm[1]), total: parseFloat(pm[2]) };
       }
+      
       const meta: { type: string; note: string }[] = [];
+      
+      // Debug logging for metadata cells
+      console.log('🏷️ === METADATA EXTRACTION DEBUG ===');
+      console.log(`🏷️ Assignment: "${name}"`);
+      console.log(`🏷️ Total cells in row: ${cells.length}`);
+      
+      // Print the FULL HTML for this specific assignment if it matches the one you're interested in
+      if (name.includes("CANs #50&54") || name.includes("CAN")) {
+        console.log('🏷️ 🎯 FULL HTML FOR TARGET ASSIGNMENT:');
+        console.log('🏷️ Row HTML:', row.outerHTML);
+        console.log('🏷️ --- END FULL HTML ---');
+      }
+      
+      // Log all cell contents for debugging
+      cells.forEach((cell, cellIdx) => {
+        const cellText = clean(cell.textContent || "");
+        const tooltip = cell.getAttribute('tooltip');
+        const hasTooltip = !!tooltip;
+        const cellHTML = cell.outerHTML;
+        console.log(`🏷️ Cell ${cellIdx}: text="${cellText}" hasTooltip=${hasTooltip} tooltip="${tooltip || 'none'}"`);
+        
+        // For the target assignment, also print cell HTML
+        if (name.includes("CANs #50&54") || name.includes("CAN")) {
+          console.log(`🏷️ 🎯 Cell ${cellIdx} HTML:`, cellHTML);
+        }
+      });
+      
+      // Extract metadata from specific cells with detailed logging
       const missingTooltip = cells[5]?.getAttribute('tooltip');
-      if (missingTooltip) meta.push({ type: "missing", note: missingTooltip });
+      console.log('🏷️ Cell 5 (Missing) - tooltip:', missingTooltip || 'none');
+      if (missingTooltip) {
+        meta.push({ type: "missing", note: missingTooltip });
+        console.log('🏷️ ✓ Added MISSING metadata:', missingTooltip);
+      }
+      
       const noCountTooltip = cells[6]?.getAttribute('tooltip');
-      if (noCountTooltip) meta.push({ type: "noCount", note: noCountTooltip });
+      console.log('🏷️ Cell 6 (No Count) - tooltip:', noCountTooltip || 'none');
+      if (noCountTooltip) {
+        meta.push({ type: "noCount", note: noCountTooltip });
+        console.log('🏷️ ✓ Added NO COUNT metadata:', noCountTooltip);
+      }
+      
       const absentTooltip = cells[7]?.getAttribute('tooltip');
-      if (absentTooltip) meta.push({ type: "absent", note: absentTooltip });
+      const absentText = cells[7]?.textContent?.trim() || '';
+      console.log('🏷️ Cell 7 (Absent) - tooltip:', absentTooltip || 'none');
+      console.log('🏷️ Cell 7 (Absent) - text content:', absentText || 'none');
+      
+      if (absentTooltip) {
+        meta.push({ type: "absent", note: absentTooltip });
+        console.log('🏷️ ✓ Added ABSENT metadata from tooltip:', absentTooltip);
+      } else if (absentText && absentText !== '' && absentText !== '\u00A0' && !absentText.includes('out of')) {
+        // Cell 7 has meaningful text content that could be an absent message
+        meta.push({ type: "absent", note: absentText });
+        console.log('🏷️ ✓ Added ABSENT metadata from text content:', absentText);
+      }
+      
+      // Also check for any other cells that might have tooltips
+      console.log('🏷️ Checking ALL cells for any tooltips:');
+      cells.forEach((cell, cellIdx) => {
+        const tooltip = cell.getAttribute('tooltip');
+        if (tooltip && cellIdx !== 5 && cellIdx !== 6 && cellIdx !== 7) {
+          console.log(`🏷️ ⚠️ Unexpected tooltip found in cell ${cellIdx}: "${tooltip}"`);
+        }
+      });
+      
+      console.log('🏷️ Final metadata array:', meta);
+      console.log('🏷️ === END METADATA DEBUG ===');
       
       currentCategory.assignments.push({
         date,

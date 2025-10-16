@@ -87,6 +87,7 @@ export const fetchGradeInfo = async (
     console.log('📋 Calling fetchGradeInfoDirect with params:', directParams);
     const result = await fetchGradeInfoDirect(directParams, baseUrl);
     
+    console.log('📋 Raw result from fetchGradeInfoDirect:', JSON.stringify(result, null, 2));
     console.log('✅ Direct grade info fetch successful');
     // Match the expected backend response structure
     return { 
