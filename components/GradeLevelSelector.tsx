@@ -10,12 +10,17 @@ interface Props {
 }
 
 const GradeLevelSelector = memo(({ grades, selectedGrade, onSelectGrade }: Props) => {
-  console.log('🎨 GradeLevelSelector rendering with selectedGrade:', selectedGrade);
+  console.log('🎨 GradeLevelSelector rendering with:', {
+    grades,
+    selectedGrade,
+    gradesLength: grades.length
+  });
   
   return (
     <View className="flex-row">
       {grades.map((grade) => {
         const isSelected = selectedGrade === grade;
+        console.log(`🔘 Grade button "${grade}": isSelected=${isSelected} (selectedGrade="${selectedGrade}")`);
         return (
           <TouchableOpacity
             key={grade}

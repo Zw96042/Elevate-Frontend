@@ -41,10 +41,24 @@ const GPA = () => {
   const [hasCredentials, setHasCredentials] = useState(false);
   
   // Use extracted hook for current grade level and available grade levels
-  const { currentGradeLevel, availableGradeLevels, isLoading: gradeLevelLoading, refreshGradeLevelData } = useGradeLevel();
+  const { currentGradeLevel, availableGradeLevels, isLoading: gradeLevelLoading, refreshGradeLevelData, debugCacheState, clearGradeLevelCache, loadGradeFromCourseData } = useGradeLevel();
+  
+  console.log('🎨 GPA Component - Grade level data:', {
+    currentGradeLevel,
+    availableGradeLevels,
+    gradeLevelLoading
+  });
   
   // Initialize selectedGrade with currentGradeLevel instead of 'Freshman'
   const [selectedGrade, setSelectedGrade] = useState<GradeLevel>(currentGradeLevel);
+  
+  console.log('🎨 GPA Component - selectedGrade state:', selectedGrade);
+  
+  // Debug cache state on mount
+  useEffect(() => {
+    console.log('🔍 GPA Component mounted, debugging cache state...');
+    debugCacheState();
+  }, [debugCacheState]);
   
   // Removed console logging for selectedGrade changes
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
@@ -53,6 +67,17 @@ const GPA = () => {
   const [savedClasses, setSavedClasses] = useState<any[] | null>(null);
   const [gpaData, setGpaData] = useState<Record<string, GPAData>>({});
   const { coursesData, loading, refreshCourses, clearCache } = useUnifiedData();
+  
+  // Update grade levels when course data becomes available
+  useEffect(() => {
+    if (coursesData && coursesData.length > 0 && !gradeLevelLoading) {
+      console.log('📊 Course data available, updating grade levels...', {
+        coursesCount: coursesData.length,
+        gradeLevelLoading
+      });
+      loadGradeFromCourseData(coursesData);
+    }
+  }, [coursesData, loadGradeFromCourseData, gradeLevelLoading]);
   const [refreshing, setRefreshing] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [lastLoadedGrade, setLastLoadedGrade] = useState<GradeLevel | null>(null);
@@ -88,9 +113,17 @@ const GPA = () => {
   
   // Update selectedGrade when currentGradeLevel changes, but only on initial load
   useEffect(() => {
+    console.log('🔄 useEffect for grade sync - currentGradeLevel changed:', {
+      currentGradeLevel,
+      selectedGrade,
+      hasInitializedGradeRef: hasInitializedGradeRef.current,
+      isInitialized
+    });
+    
     // Only update selectedGrade automatically if we haven't initialized it yet
     // and this is the very first load
     if (!hasInitializedGradeRef.current && !isInitialized && currentGradeLevel !== selectedGrade) {
+      console.log('🔄 Updating selectedGrade to match currentGradeLevel:', currentGradeLevel);
       setSelectedGrade(currentGradeLevel);
       hasInitializedGradeRef.current = true;
     }
@@ -235,6 +268,10 @@ const GPA = () => {
 
   // Handle grade selection changes
   const handleGradeChange = useCallback((newGrade: GradeLevel) => {
+    console.log('👆 Grade selection changed:', {
+      from: selectedGrade,
+      to: newGrade
+    });
     setSelectedGrade(newGrade);
     setActivePointIndex(null);
     setHoverX(null);
