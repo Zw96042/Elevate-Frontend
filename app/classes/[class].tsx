@@ -41,7 +41,8 @@ import { useAddAssignmentSheet } from "@/context/AddAssignmentSheetContext";
 import { useBottomSheet } from "@/context/BottomSheetContext";
 import PieChart from "react-native-pie-chart";
 import { MotiView, AnimatePresence } from 'moti'
-import { fetchGradeInfo } from '@/lib/gradeInfoClient';
+import { DataService } from '@/lib/services';
+import { logger, Modules } from '@/lib/utils/logger';
 import { ScrollView } from "react-native-gesture-handler";
 import SkeletonAssignment from '@/components/SkeletonAssignment';
 
@@ -267,127 +268,39 @@ const ClassDetails = () => {
   };
 
   const fetchApiAssignments = async (forceRefresh = false) => {
-    console.log('🚀 fetchApiAssignments called:', { forceRefresh, loading, waitingForRetry });
-    
-    // Log all parameters for debugging
-    console.log('📋 fetchApiAssignments parameters:', {
-      className: className,
-      stuId: stuId,
-      corNumId: corNumId,
-      section: section,
-      gbId: gbId,
-      selectedCategory: selectedCategory,
-      hasAllParams: !!(className && stuId && corNumId && section && gbId && selectedCategory)
-    });
-    
     if (!className || !stuId || !corNumId || !section || !gbId || !selectedCategory) {
-      console.log('❌ Missing required params, setting loading=false');
-      console.log('❌ Missing parameters details:', {
-        className: !!className,
-        stuId: !!stuId,
-        corNumId: !!corNumId,
-        section: !!section,
-        gbId: !!gbId,
-        selectedCategory: !!selectedCategory
-      });
+      logger.warn(Modules.PAGE_CLASS, 'Missing required params');
       setLoading(false);
       setWaitingForRetry(false);
       return;
     }
 
-    const cacheKey = `assignments_${className}_${stuId}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
-    const now = Date.now();
-
-    // Debug: Check cache status
-    await checkCacheStatus();
-
-    // Check cache if not forcing refresh
-    if (!forceRefresh) {
-      try {
-        const cachedData = await AsyncStorage.getItem(cacheKey);
-        if (cachedData) {
-          const parsed = JSON.parse(cachedData);
-          const cacheAge = now - (parsed.timestamp || 0);
-          
-          // Use cache if it's less than CACHE_DURATION old
-          if (cacheAge < CACHE_DURATION) {
-            console.log('✅ Using cached data, setting loading=false');
-            setApiAssignments(parsed.assignments || []);
-            setApiCategories(parsed.categories || { names: [], weights: [] });
-            setLastFetchTime(now); // Update last fetch time even when using cache
-            setLoading(false);
-            setWaitingForRetry(false);
-            return;
-          } else {
-            console.log('⏰ Cache expired, will fetch fresh data');
-          }
-        }
-      } catch (error) {
-        console.log('Cache read error:', error);
-      }
-    }
-
-    console.log('🌐 Starting API fetch, setting loading=true');
-    setLoading(true);
-    setWaitingForRetry(true);
+    const bucket = bucketMap[selectedCategory as TermLabel];
+    
     if (forceRefresh) {
+      logger.info(Modules.PAGE_CLASS, `Force refresh: ${selectedCategory}`);
+      setLoading(true);
       setRefreshing(true);
     }
-    const bucket = bucketMap[selectedCategory as TermLabel];
+    
     try {
-      console.log('📡 Calling fetchGradeInfo...');
-      const result = await fetchGradeInfo({ stuId, corNumId, section, gbId, bucket });
-      console.log('📡 fetchGradeInfo result:', { success: result.success, retryCount: result.retryCount, wasAuthError: result.wasAuthError });
-      
-      // Only stop loading if retries are complete or there was no auth error
-      if (result.success) {
-        // Success - stop loading immediately
-        console.log('✅ API success, setting loading=false');
-        setLoading(false);
-        setWaitingForRetry(false);
-      } else if (result.retryCount !== undefined && result.retryCount >= 1) {
-        // Retries exhausted - stop loading
-        console.log('🔄 Retries exhausted, setting loading=false');
-        setLoading(false);
-        setWaitingForRetry(false);
-      } else if (!result.wasAuthError) {
-        // No auth error - stop loading
-        console.log('❌ No auth error, setting loading=false');
-        setLoading(false);
-        setWaitingForRetry(false);
-      } else {
-        // Auth error with retries pending - keep loading
-        console.log('🔐 Auth error with retries pending, keeping loading=true');
-        setWaitingForRetry(true);
-      }
+      const result = await DataService.getGradeInfo({ stuId, corNumId, section, gbId, bucket });
       
       if (!result.success) {
-        console.log('❌ API fetch failed, handling fallback');
-        // Only set to empty if we don't have existing data
+        logger.error(Modules.PAGE_CLASS, 'Failed to fetch assignments', result.error);
+        setLoading(false);
+        setWaitingForRetry(false);
+        setRefreshing(false);
+        
         if (apiAssignments.length === 0) {
-          // Try to use stale cache if available
-          try {
-            const staleCache = await AsyncStorage.getItem(cacheKey);
-            if (staleCache) {
-              const parsed = JSON.parse(staleCache);
-              setApiAssignments(parsed.assignments || []);
-              setApiCategories(parsed.categories || { names: [], weights: [] });
-              // console.log('Using stale cache because fetch failed');
-            } else {
-              setApiAssignments([]);
-              setApiCategories({ names: [], weights: [] });
-            }
-          } catch (error) {
-            // console.log('Stale cache read error:', error);
-            setApiAssignments([]);
-            setApiCategories({ names: [], weights: [] });
-          }
+          setApiAssignments([]);
+          setApiCategories({ names: [], weights: [] });
         }
         return;
       }
       
-      const backendData = result?.data?.data;
-      console.log('📊 Processing backend data, assignments count:', backendData?.gradebook?.length || 0);
+      const backendData = result?.data;
+      
       const assignments = backendData?.gradebook?.flatMap((cat: any) =>
         (cat.assignments ?? []).map((a: any, index: number) => ({
           id: `${cat.category}-${index}-${a.name}`,
@@ -402,52 +315,25 @@ const ClassDetails = () => {
           meta: a.meta ?? [],
         }))
       ) ?? [];
-      console.log('📋 Processed assignments count:', assignments.length);
+      
+      logger.success(Modules.PAGE_CLASS, `Loaded ${assignments.length} assignments`);
       setApiAssignments(assignments);
+      
       const categories = {
         names: backendData?.gradebook?.map((cat: any) => cat.category) ?? [],
         weights: backendData?.gradebook?.map((cat: any) => cat.weight) ?? []
       };
       setApiCategories(categories);
-
-      // Cache the data
-      const cacheData = {
-        assignments,
-        categories,
-        timestamp: now
-      };
-      await AsyncStorage.setItem(cacheKey, JSON.stringify(cacheData));
-      setLastFetchTime(now);
+      setLastFetchTime(Date.now());
       
-      // Stop loading since we have successful data
-      console.log('💾 Data cached, setting loading=false');
-      setLoading(false);
-      setWaitingForRetry(false);
     } catch (err) {
-      console.error('Error fetching assignments:', err);
-      // Only set to empty if we don't have existing data
+      logger.error(Modules.PAGE_CLASS, 'Error fetching assignments', err);
+      
       if (apiAssignments.length === 0) {
-        // Try to use stale cache if available
-        try {
-          const staleCache = await AsyncStorage.getItem(cacheKey);
-          if (staleCache) {
-            const parsed = JSON.parse(staleCache);
-            setApiAssignments(parsed.assignments || []);
-            setApiCategories(parsed.categories || { names: [], weights: [] });
-            // console.log('Using stale cache because fetch threw error');
-          } else {
-            setApiAssignments([]);
-            setApiCategories({ names: [], weights: [] });
-          }
-        } catch (error) {
-          // console.log('Stale cache read error:', error);
-          setApiAssignments([]);
-          setApiCategories({ names: [], weights: [] });
-        }
+        setApiAssignments([]);
+        setApiCategories({ names: [], weights: [] });
       }
     } finally {
-      // Stop loading if we're not waiting for retry or if there was an error
-      console.log('🏁 fetchApiAssignments finally block, setting loading=false');
       setLoading(false);
       setWaitingForRetry(false);
       setRefreshing(false);
@@ -455,23 +341,17 @@ const ClassDetails = () => {
   };
 
   const meshAssignments = useCallback(async () => {
-    console.log('🔄 meshAssignments called:', {
-      apiAssignmentsLength: apiAssignments.length,
-      filteredAssignmentsLength: filteredAssignments.length,
-      isEnabled,
-      selectedCategory,
-      loading
+    logger.debug(Modules.PAGE_CLASS, 'Meshing assignments', {
+      api: apiAssignments.length,
+      filtered: filteredAssignments.length,
+      enabled: isEnabled,
     });
     
     const data = await AsyncStorage.getItem("artificialAssignments");
     if (!data) {
-      // If apiAssignments is empty and we don't have artificial assignments data, don't clear everything
       if (apiAssignments.length === 0 && filteredAssignments.length > 0) {
-        console.log('⚠️ No artificial data and no API data, keeping existing assignments');
         return;
       }
-      
-      console.log('📝 Setting filtered assignments from API data');
       const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
       const sortedAssignments = sortAssignments(realWithIds, sortOption, sortOrder);
       setArtificialAssignments([]);
@@ -492,9 +372,6 @@ const ClassDetails = () => {
         adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
       );
       setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-      
-      // Only stop loading if we have actual data OR if we're certain the API call is complete and there's really no data
-      console.log('✅ meshAssignments (no artificial data): assignments count:', realWithIds.length);
       return;
     }
     const parsed = JSON.parse(data);
@@ -528,39 +405,24 @@ const ClassDetails = () => {
     }));
 
     const artificialNames = new Set(fixedArtificial.map((a: any) => a.name));
-    console.log('🧮 Processing assignments:', {
-      artificialCount: fixedArtificial.length,
-      artificialNames: Array.from(artificialNames),
-      apiAssignmentsCount: apiAssignments.length
-    });
     
-    // If we have artificial assignments but no API assignments, use only artificial ones
     let filteredReal: Assignment[];
     if (apiAssignments.length === 0 && fixedArtificial.length > 0) {
-      console.log('🔄 No API assignments but have artificial, using only artificial assignments');
       filteredReal = [];
     } else if (apiAssignments.length === 0 && fixedArtificial.length === 0) {
-      // If both are empty, preserve existing assignments if they exist
       if (filteredAssignments.length > 0) {
-        console.log('⚠️ Both API and artificial are empty, preserving existing assignments');
         return;
       }
       filteredReal = [];
     } else {
       filteredReal = apiAssignments.filter((r) => !artificialNames.has(r.name));
     }
-    
-    console.log('📊 filteredReal count:', filteredReal.length);
     const allAssignments = [...fixedArtificial, ...filteredReal];
     const assignmentsWithIds = ensureUniqueAssignmentIds(allAssignments);
     const sortedAssignments = sortAssignments(assignmentsWithIds, sortOption, sortOrder);
     const artificialWithIds = sortedAssignments.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
     
-    console.log('📋 Final assignments:', {
-      totalCount: sortedAssignments.length,
-      artificialCount: artificialWithIds.length,
-      realCount: sortedAssignments.length - artificialWithIds.length
-    });
+    logger.debug(Modules.PAGE_CLASS, `Meshed ${sortedAssignments.length} assignments (${artificialWithIds.length} artificial)`);
     
     setArtificialAssignments(artificialWithIds);
     setFilteredAssignments(sortedAssignments);
@@ -581,9 +443,6 @@ const ClassDetails = () => {
       adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
     );
     setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-    
-    // Only log final assignments count
-    console.log('✅ meshAssignments (with artificial data): final assignments count:', assignmentsWithIds.length);
   }, [apiAssignments, apiCategories, isEnabled, selectedCategory]);
 
 
@@ -624,21 +483,18 @@ const ClassDetails = () => {
   );
 
   useEffect(() => {
-    // Fetch data on initial load OR when selectedCategory changes
     const isInitialLoad = apiAssignments.length === 0 && apiCategories.names.length === 0;
     const categoryChanged = previousSelectedCategory !== null && previousSelectedCategory !== selectedCategory;
     
     if (isInitialLoad || categoryChanged) {
-      console.log('🚀 Fetching assignments for selectedCategory:', selectedCategory, { isInitialLoad, categoryChanged });
+      logger.info(Modules.PAGE_CLASS, `Loading ${selectedCategory}`);
       fetchApiAssignments();
     }
     
-    // Update the previous category
     setPreviousSelectedCategory(selectedCategory);
   }, [className, stuId, corNumId, section, gbId, selectedCategory]);
 
   useEffect(() => {
-    console.log('🔄 Running meshAssignments useEffect, current loading state:', loading);
     const runMeshAssignments = async () => {
       await meshAssignments();
     };
@@ -647,7 +503,7 @@ const ClassDetails = () => {
 
   // Separate function for refreshing only artificial assignments on focus
   const refreshArtificialAssignmentsOnFocus = useCallback(async () => {
-    console.log('🔄 Screen focused - refreshing artificial assignments only');
+    logger.debug(Modules.PAGE_CLASS, 'Screen focused - refreshing artificial assignments');
     
     // Only process artificial assignments without triggering API calls
     // This ensures updates made in assignment detail view are reflected
@@ -720,8 +576,6 @@ const ClassDetails = () => {
       adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
     );
     setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-    
-    console.log('✅ Artificial assignments refreshed on focus, total assignments:', assignmentsWithIds.length);
   }, [apiAssignments, apiCategories, isEnabled, selectedCategory, className, corNumId, section, gbId, sortAssignments, sortOption, sortOrder]);
 
   useFocusEffect(

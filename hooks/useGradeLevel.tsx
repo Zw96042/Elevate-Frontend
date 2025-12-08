@@ -64,9 +64,9 @@ const getCurrentAcademicYear = (): string => {
 };
 
 export const useGradeLevel = () => {
-  // Start with Sophomore (10th grade) as the current default instead of Freshman
-  const [currentGradeLevel, setCurrentGradeLevel] = useState<GradeLevel>('Sophomore');
-  const [availableGradeLevels, setAvailableGradeLevels] = useState<GradeLevel[]>(['Sophomore']);
+  // Start with Senior (12th grade) as the current default - most recent grade first
+  const [currentGradeLevel, setCurrentGradeLevel] = useState<GradeLevel>('Senior');
+  const [availableGradeLevels, setAvailableGradeLevels] = useState<GradeLevel[]>(['Senior']);
   const [isLoading, setIsLoading] = useState(true);
   const hasInitializedRef = useRef(false);
 
@@ -153,8 +153,46 @@ export const useGradeLevel = () => {
     setIsLoading(true);
     
     try {
-      // First, try to load from cache
-      console.log('📱 Trying to load from cache first...');
+      // If we have course data passed in, skip cache and extract directly from it
+      if (coursesData && coursesData.length > 0) {
+        console.log('� Extracting grade levels from provided course data (skipping cache)...');
+        console.log('� Sample course data:', coursesData.slice(0, 3).map(c => ({
+          courseName: c.courseName,
+          gradeYear: c.gradeYear,
+          academicYear: c.academicYear
+        })));
+        
+        const { currentGrade, availableGrades } = extractGradeLevelsFromCourseData(coursesData);
+        console.log('📊 Extracted grades:', { currentGrade, availableGrades });
+        
+        if (currentGrade && availableGrades.length > 0) {
+          const currentGradeName = getGradeLevelName(currentGrade);
+          const availableGradeNames = availableGrades.map(getGradeLevelName);
+          
+          // Add "All Time" if we have multiple grades
+          if (availableGradeNames.length > 1) {
+            availableGradeNames.push('All Time');
+          }
+          
+          console.log('✅ Successfully extracted grade levels from course data:', {
+            currentGradeName,
+            availableGradeNames
+          });
+          
+          setCurrentGradeLevel(currentGradeName);
+          setAvailableGradeLevels(availableGradeNames);
+
+          // Cache the data for future use
+          await saveCachedGradeLevelData(currentGradeName, availableGradeNames);
+          setIsLoading(false);
+          return;
+        } else {
+          console.log('⚠️ No valid grade levels extracted from course data');
+        }
+      }
+      
+      // No course data provided, try to load from cache
+      console.log('📱 No course data provided, trying to load from cache...');
       const cachedData = await loadCachedGradeLevelData();
       if (cachedData) {
         console.log('📱 Loading grade levels from cache:', cachedData);
@@ -169,53 +207,26 @@ export const useGradeLevel = () => {
       const hasCredentials = await SkywardAuth.hasCredentials();
       console.log('🔐 Has credentials:', hasCredentials);
       if (!hasCredentials) {
-        // Fallback to default values if no credentials
-        console.log('❌ No credentials found, using default fallback values');
+        // Fallback to default values if no credentials - default to Senior (most recent)
+        console.log('❌ No credentials found, using default fallback values with Senior selected');
         const fallbackGrades: GradeLevel[] = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'All Time'];
+        setCurrentGradeLevel('Senior');
         setAvailableGradeLevels(fallbackGrades);
         setIsLoading(false);
         return;
       }
 
-      // Try to extract grade levels from course data if available
-      if (coursesData && coursesData.length > 0) {
-        console.log('� Extracting grade levels from course data...');
-        const { currentGrade, availableGrades } = extractGradeLevelsFromCourseData(coursesData);
-        console.log('📊 Extracted grades:', { currentGrade, availableGrades });
-        
-        if (currentGrade && availableGrades.length > 0) {
-          const currentGradeName = getGradeLevelName(currentGrade);
-          const availableGradeNames = availableGrades.map(getGradeLevelName);
-          
-          // Add "All Time" if we have multiple grades
-          if (availableGradeNames.length > 1) {
-            availableGradeNames.push('All Time');
-          }
-          
-          console.log('✅ Successfully extracted grade levels:', {
-            currentGradeName,
-            availableGradeNames
-          });
-          
-          setCurrentGradeLevel(currentGradeName);
-          setAvailableGradeLevels(availableGradeNames);
-
-          // Cache the data for future use
-          await saveCachedGradeLevelData(currentGradeName, availableGradeNames);
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      // Final fallback - provide all grade levels
-      console.log('📊 Using fallback: providing all grade levels');
+      // Final fallback - provide all grade levels with Senior selected
+      console.log('📊 Using fallback: providing all grade levels with Senior selected');
       const fallbackGrades: GradeLevel[] = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'All Time'];
+      setCurrentGradeLevel('Senior');
       setAvailableGradeLevels(fallbackGrades);
       
     } catch (error) {
       console.error('❌ Error in loadGradeFromCourseData:', error);
-      // Error fallback - provide all grade levels
+      // Error fallback - provide all grade levels with Senior selected
       const fallbackGrades: GradeLevel[] = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'All Time'];
+      setCurrentGradeLevel('Senior');
       setAvailableGradeLevels(fallbackGrades);
     } finally {
       console.log('🏁 Setting isLoading to false');
@@ -247,14 +258,29 @@ export const useGradeLevel = () => {
   // Listen for credential updates to refresh grade level data
   useEffect(() => {
     const credentialsListener = DeviceEventEmitter.addListener('credentialsAdded', async () => {
-      console.log('🔄 Credentials updated, refreshing grade level data');
-      await refreshGradeLevelData();
+      console.log('🔄 Credentials updated, clearing cache and resetting grade level state');
+      // Clear the cache
+      await AsyncStorage.removeItem(GRADE_LEVEL_CACHE_KEY);
+      console.log('🗑️ Grade level cache cleared');
+      
+      // Reset to default state to prevent showing old user's grade level - default to Senior (most recent)
+      console.log('🔄 Resetting to default Senior state');
+      setCurrentGradeLevel('Senior'); // Reset to default (most recent grade)
+      setAvailableGradeLevels(['Freshman', 'Sophomore', 'Junior', 'Senior', 'All Time']); // Provide all options
+      setIsLoading(true); // Set loading while we wait for new data
+      
+      // Wait a bit for new course data to be fetched, then reload grade level
+      console.log('⏳ Waiting for new course data...');
+      setTimeout(async () => {
+        console.log('🔄 Attempting to load grade level from new course data');
+        await loadGradeFromCourseData();
+      }, 500); // Give time for course data to refresh
     });
 
     return () => {
       credentialsListener.remove();
     };
-  }, [refreshGradeLevelData]);
+  }, [loadGradeFromCourseData]);
 
   // Static method to clear grade level cache (useful for debugging)
   const clearGradeLevelCache = useCallback(async () => {

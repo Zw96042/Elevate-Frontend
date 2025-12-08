@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import {
-  View, Text, FlatList, ActivityIndicator, TouchableOpacity, DeviceEventEmitter, RefreshControl
+  View, Text, FlatList, ActivityIndicator, TouchableOpacity, DeviceEventEmitter
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,9 +11,9 @@ import SkeletonMessage from '@/components/SkeletonMessage';
 import ErrorDisplay from '@/components/ErrorDisplay';
 import LoginPrompt from '@/components/LoginPrompt';
 import { useSettingSheet } from '@/context/SettingSheetContext';
-import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { useColorScheme } from 'react-native';
 import { useInboxCache } from '@/hooks/useInboxCache';
+import { logger, Modules } from '@/lib/utils/logger';
 
 const Inbox = () => {
   const {
@@ -36,7 +36,7 @@ const Inbox = () => {
   // Listen for credential updates
   useEffect(() => {
     const credentialsListener = DeviceEventEmitter.addListener('credentialsAdded', async () => {
-      // Auto-refresh when credentials are verified
+      logger.info(Modules.PAGE_INBOX, 'Credentials added, refreshing messages');
       setError(null);
       await loadMessagesWithCache(false);
     });
@@ -48,11 +48,13 @@ const Inbox = () => {
 
   const fetchMessages = async () => {
     setError(null);
+    logger.debug(Modules.PAGE_INBOX, 'Fetching messages');
     
     try {
       await loadMessagesWithCache(false);
+      logger.success(Modules.PAGE_INBOX, 'Messages loaded successfully');
     } catch (error: any) {
-      console.error('Error loading messages:', error);
+      logger.error(Modules.PAGE_INBOX, 'Failed to load messages', error);
       setError(error.message || 'Unable to load messages. Please check your connection and try again.');
     }
   };
@@ -61,6 +63,7 @@ const Inbox = () => {
   useFocusEffect(
     useCallback(() => {
       if (isInitialLoad.current) {
+        logger.info(Modules.PAGE_INBOX, 'Initial load on focus');
         fetchMessages();
         isInitialLoad.current = false;
       }
@@ -145,10 +148,14 @@ const Inbox = () => {
           ItemSeparatorComponent={() => <View className="h-4" />}
           refreshing={refreshing}
           onRefresh={async () => {
+            logger.info(Modules.PAGE_INBOX, 'Pull-to-refresh triggered');
             setError(null);
             await forceRefresh();
           }}
-          onEndReached={messages.length > 8 ? handleLoadMoreMessages : undefined}
+          onEndReached={messages.length > 8 ? () => {
+            logger.debug(Modules.PAGE_INBOX, 'End reached, loading more messages');
+            handleLoadMoreMessages();
+          } : undefined}
           onEndReachedThreshold={0.1}
           ListEmptyComponent={
             <View className="flex-1 justify-center items-center py-12">

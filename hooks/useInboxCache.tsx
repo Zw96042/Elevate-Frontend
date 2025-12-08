@@ -2,9 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DeviceEventEmitter } from 'react-native';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
-import { authenticate } from '@/lib/authHandler';
-import { loadMessages } from '@/lib/loadMessageHandler';
-import { loadMoreMessages } from '@/lib/loadMoreMessagesHandler';
+import { MessageService } from '@/lib/services';
 import Burnt from 'burnt';
 
 // Cache configuration
@@ -136,9 +134,16 @@ export function useInboxCache() {
         }
       }
 
-      // Load fresh messages
-      const result = await loadMessages();
-      if (result.messages.length === 0) throw new Error('Session Expired');
+      // Load fresh messages using MessageService
+      const result = await MessageService.loadMessages();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to load messages');
+      }
+      
+      if (result.messages.length === 0) {
+        throw new Error('No messages found');
+      }
       
       setMessages(result.messages);
       await cacheMessages(result.messages);
@@ -146,22 +151,7 @@ export function useInboxCache() {
       
     } catch (error: any) {
       console.error('Error loading messages:', error);
-      
-      if (error.message === 'Session Expired') {
-        try {
-          await authenticate();
-          const retryResult = await loadMessages();
-          if (retryResult.success === false) throw new Error(retryResult.error);
-          
-          setMessages(retryResult.messages);
-          await cacheMessages(retryResult.messages);
-          Burnt.toast({ title: "Re-authenticated", preset: "done", duration: 2 });
-        } catch (retryError) {
-          throw new Error('Unable to authenticate with Skyward. Please check your credentials.');
-        }
-      } else {
-        throw new Error('Unable to load messages. Please check your connection and try again.');
-      }
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -171,9 +161,9 @@ export function useInboxCache() {
   const loadNewMessagesInBackground = async (existingMessages: Message[]): Promise<void> => {
     try {
       console.log('🔄 Checking for new messages in background...');
-      const result = await loadMessages();
+      const result = await MessageService.loadMessages();
       
-      if (result.messages.length > existingMessages.length) {
+      if (result.success && result.messages.length > existingMessages.length) {
         console.log('📧 Found new messages, updating cache...');
         const mergedMessages = mergeMessages(existingMessages, result.messages);
         setMessages(mergedMessages);
@@ -192,10 +182,13 @@ export function useInboxCache() {
     const lastMessage = messages[messages.length - 1];
     
     try {
-      const result = await loadMoreMessages(lastMessage.messageRowId, 10);
-      const updatedMessages = [...messages, ...result.messages];
-      setMessages(updatedMessages);
-      await cacheMessages(updatedMessages);
+      const result = await MessageService.loadMoreMessages(lastMessage.messageRowId, 10);
+      
+      if (result.success && result.messages.length > 0) {
+        const updatedMessages = [...messages, ...result.messages];
+        setMessages(updatedMessages);
+        await cacheMessages(updatedMessages);
+      }
     } catch (err) {
       console.error("Failed to fetch more messages", err);
     } finally {

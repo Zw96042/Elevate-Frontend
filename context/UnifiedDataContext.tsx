@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { UnifiedDataManager, UnifiedCourseData } from '@/lib/unifiedDataManager';
+import { DataService, UnifiedCourseData } from '@/lib/services';
 
 interface UnifiedDataContextType {
 	coursesData: UnifiedCourseData[] | null;
@@ -31,7 +31,7 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 		setError(null);
 		
 		try {
-			const result = await UnifiedDataManager.getCombinedData(force);
+			const result = await DataService.getCombinedData(force);
 			if (result.success && result.courses) {
 				setCoursesData(result.courses);
 				setLastUpdated(result.lastUpdated || new Date().toISOString());
@@ -53,7 +53,7 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 	const clearCache = useCallback(async () => {
 		console.log('🗑️ UnifiedDataContext.clearCache called');
 		try {
-			await UnifiedDataManager.clearCache();
+			await DataService.clearCache();
 			// Reset local state
 			setCoursesData(null);
 			setLastUpdated(null);

@@ -261,10 +261,10 @@ const InnerLayout = () => {
                       placeholder="Username"
                       placeholderTextColor="#888"
                       autoCapitalize="none"
-                      autoComplete='off'
+                      autoComplete="username"
                       autoCorrect={false}
                       spellCheck={false}
-                      textContentType="none"
+                      textContentType="username"
                     />
                   </View>
                 </View>
@@ -283,8 +283,8 @@ const InnerLayout = () => {
                       autoCapitalize="none"
                       autoCorrect={false}
                       spellCheck={false}
-                      textContentType="none"
-                      autoComplete="off"
+                      textContentType="password"
+                      autoComplete="password"
                     />
                     <TouchableOpacity onPress={() => setShowPassword(prev => !prev)}>
                       <Ionicons

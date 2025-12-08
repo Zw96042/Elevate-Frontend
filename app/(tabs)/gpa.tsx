@@ -84,6 +84,7 @@ const GPA = () => {
   const loadingRef = React.useRef(false);
   const isInteractingWithGraph = useRef(false);
   const hasInitializedGradeRef = useRef(false);
+  const userHasManuallySelectedGradeRef = useRef(false); // Track if user manually selected a grade
   const [error, setError] = useState<string | null>(null);
   
   // Move useColorScheme to top level to avoid hook order violations
@@ -95,6 +96,8 @@ const GPA = () => {
       // Auto-refresh when credentials are verified
       setError(null);
       setIsInitialized(false);
+      userHasManuallySelectedGradeRef.current = false; // Reset manual selection flag
+      hasInitializedGradeRef.current = false; // Reset initialization flag
       // Small delay to ensure AsyncStorage writes have completed
       setTimeout(async () => {
         try {
@@ -117,17 +120,18 @@ const GPA = () => {
       currentGradeLevel,
       selectedGrade,
       hasInitializedGradeRef: hasInitializedGradeRef.current,
-      isInitialized
+      userHasManuallySelectedGrade: userHasManuallySelectedGradeRef.current,
+      gradeLevelLoading
     });
     
-    // Only update selectedGrade automatically if we haven't initialized it yet
-    // and this is the very first load
-    if (!hasInitializedGradeRef.current && !isInitialized && currentGradeLevel !== selectedGrade) {
-      console.log('🔄 Updating selectedGrade to match currentGradeLevel:', currentGradeLevel);
+    // Only auto-update selectedGrade if user hasn't manually selected a grade
+    // and the grade level data has finished loading
+    if (!userHasManuallySelectedGradeRef.current && !gradeLevelLoading && currentGradeLevel !== selectedGrade) {
+      console.log('🔄 Auto-updating selectedGrade to match currentGradeLevel:', currentGradeLevel);
       setSelectedGrade(currentGradeLevel);
       hasInitializedGradeRef.current = true;
     }
-  }, [currentGradeLevel, selectedGrade, isInitialized]);
+  }, [currentGradeLevel, selectedGrade, gradeLevelLoading]);
   
   const allLabels = ['PR1','PR2','RC1','PR3','PR4','RC2','PR5','PR6','RC3','PR7','PR8','RC4'];
 
@@ -190,6 +194,12 @@ const GPA = () => {
     const initializeData = async () => {
       if (isInitialized) return;
       if (!isMounted) return;
+      
+      // Wait for grade level to finish loading before initializing GPA data
+      if (gradeLevelLoading) {
+        console.log('⏳ Waiting for grade level to load before initializing GPA data...');
+        return;
+      }
 
       try {
         setError(null);
@@ -264,7 +274,34 @@ const GPA = () => {
     return () => {
       isMounted = false;
     };
-  }, [coursesData, selectedGrade, isInitialized]);
+  }, [coursesData, isInitialized, gradeLevelLoading]);
+
+  // Recalculate GPA data when selectedGrade changes (after initialization)
+  useEffect(() => {
+    if (!isInitialized || !coursesData || coursesData.length === 0 || gradeLevelLoading) {
+      return;
+    }
+
+    const gradeMap: Record<string, number> = {
+      'Freshman': 9,
+      'Sophomore': 10,
+      'Junior': 11,
+      'Senior': 12
+    };
+    const gradeNumber = gradeMap[selectedGrade] || null;
+    let filteredCourses = coursesData;
+    if (gradeNumber) {
+      filteredCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
+    }
+    const newGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses);
+    console.log('🔄 Recalculating GPA data for grade change:', {
+      selectedGrade,
+      filteredCoursesCount: filteredCourses.length,
+      newGpaDataKeys: Object.keys(newGpaData),
+      newGpaDataCount: Object.keys(newGpaData).length
+    });
+    setGpaData(newGpaData);
+  }, [selectedGrade, isInitialized, coursesData, gradeLevelLoading]);
 
   // Handle grade selection changes
   const handleGradeChange = useCallback((newGrade: GradeLevel) => {
@@ -272,6 +309,7 @@ const GPA = () => {
       from: selectedGrade,
       to: newGrade
     });
+    userHasManuallySelectedGradeRef.current = true; // Mark that user manually selected
     setSelectedGrade(newGrade);
     setActivePointIndex(null);
     setHoverX(null);

@@ -13,6 +13,7 @@ import { UnifiedCourseData } from '@/lib/unifiedDataManager';
 import { useUnifiedData } from '@/context/UnifiedDataContext';
 import { useGradeLevel } from '@/hooks/useGradeLevel';
 import * as Animatable from 'react-native-animatable';
+import { logger, Modules } from '@/lib/utils/logger';
 
 
 // Default categories and weights (to be replaced by different API later)
@@ -27,7 +28,7 @@ const transformCourseData = (unifiedCourses: UnifiedCourseData[]) => {
     // Only include courses that have the required parameters for API calls
     const hasRequiredParams = !!(course.courseName && course.stuId && course.corNumId && course.section && course.gbId);
     if (!hasRequiredParams) {
-      console.log('🔍 Filtering out course with missing params:', {
+      logger.debug(Modules.PAGE_HOME, 'Filtering out course with missing params', {
         courseName: course.courseName,
         stuId: course.stuId,
         corNumId: course.corNumId,
@@ -38,14 +39,8 @@ const transformCourseData = (unifiedCourses: UnifiedCourseData[]) => {
     }
     return hasRequiredParams;
   }).map(course => {
-    // Debug: log course IDs
-    console.log('🔍 Course transform debug:', {
+    logger.debug(Modules.PAGE_HOME, 'Transforming course', {
       courseName: course.courseName,
-      stuId: course.stuId,
-      corNumId: course.corNumId,
-      section: course.section,
-      gbId: course.gbId,
-      courseId: course.courseId,
       hasCurrentScores: !!course.currentScores,
       currentScoresLength: course.currentScores?.length || 0
     });
@@ -164,7 +159,7 @@ export default function Index() {
   const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
   const { settingSheetRef } = useSettingSheet();
   const { coursesData, loading, error, refreshCourses } = useUnifiedData();
-  const { currentGradeLevel } = useGradeLevel();
+  const { currentGradeLevel, loadGradeFromCourseData } = useGradeLevel();
   const [filteredCourses, setFilteredCourses] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [hasCredentials, setHasCredentials] = useState(false);
@@ -179,10 +174,18 @@ export default function Index() {
     checkCredentials();
   }, []);
 
+  // Update grade level when course data changes
+  useEffect(() => {
+    if (coursesData && coursesData.length > 0) {
+      logger.info(Modules.PAGE_HOME, `Course data changed, updating grade level (${coursesData.length} courses)`);
+      loadGradeFromCourseData(coursesData);
+    }
+  }, [coursesData, loadGradeFromCourseData]);
+
   // Listen for credential updates
   useEffect(() => {
     const credentialsListener = DeviceEventEmitter.addListener('credentialsAdded', async () => {
-      // Auto-refresh when credentials are verified
+      logger.info(Modules.PAGE_HOME, 'Credentials added, refreshing courses');
       setLocalError(null);
       setHasCredentials(true);
       // Small delay to ensure AsyncStorage writes have completed
@@ -198,8 +201,14 @@ export default function Index() {
 
   // No need for local loadCourses, use refreshCourses from context
 
-  // Effect to filter courses when selectedCategory changes
+  // Effect to filter courses when selectedCategory or currentGradeLevel changes
   useEffect(() => {
+    logger.debug(Modules.PAGE_HOME, 'Filtering courses', {
+      grade: currentGradeLevel,
+      term: selectedCategory,
+      totalCourses: coursesData?.length || 0
+    });
+    
     // Filter by current grade level first, then by selected term
     let filteredRawCourses = coursesData || [];
     if (coursesData && currentGradeLevel && currentGradeLevel !== 'All Time') {
@@ -211,18 +220,24 @@ export default function Index() {
         'Senior': 12
       };
       const gradeYear = gradeMap[currentGradeLevel as keyof typeof gradeMap];
+      
       filteredRawCourses = coursesData.filter((c: any) => c.gradeYear === gradeYear);
+      logger.debug(Modules.PAGE_HOME, `Filtered to ${filteredRawCourses.length} courses for grade ${gradeYear}`);
     }
     const filtered = filterCoursesBySemester(transformCourseData(filteredRawCourses), selectedCategory);
+    logger.debug(Modules.PAGE_HOME, `After semester filter: ${filtered.length} courses`);
     setFilteredCourses(filtered);
-  }, [coursesData, selectedCategory]);
+  }, [coursesData, selectedCategory, currentGradeLevel]);
 
   const onRefresh = useCallback(async () => {
+    logger.info(Modules.PAGE_HOME, 'Pull-to-refresh triggered');
     setRefreshing(true);
     setLocalError(null);
     try {
       await refreshCourses(true);
+      logger.success(Modules.PAGE_HOME, 'Courses refreshed successfully');
     } catch (error) {
+      logger.error(Modules.PAGE_HOME, 'Failed to refresh courses', error);
       setLocalError('Unable to refresh courses. Please check your connection and try again.');
     }
     setRefreshing(false);
