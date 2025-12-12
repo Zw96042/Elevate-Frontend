@@ -74,7 +74,7 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
   return (
     <Link
       href={{
-        pathname: '/assignments/[assignment]',
+        pathname: '/assignments/[assignment]' as any,
         params: {
           assignment: id || name, // Use ID if available, fallback to name
           assignmentId: id, // Always pass the ID separately

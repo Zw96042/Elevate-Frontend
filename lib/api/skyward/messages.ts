@@ -182,7 +182,7 @@ function extractLastMessageId(rawResponse: string): string | null {
 
   const lastMsg = messages[messages.length - 1];
   const msgWrap = lastMsg.querySelector('.messageWrap');
-  return msgWrap ? msgWrap.getAttribute('data-wall-id') : null;
+  return msgWrap ? msgWrap.getAttribute('data-wall-id') ?? null : null;
 }
 
 function parseMessages(html: string): Message[] {

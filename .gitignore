@@ -1,7 +1,5 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
-lib/development.config.js
-
 # dependencies
 node_modules/
 
@@ -10,9 +8,6 @@ node_modules/
 dist/
 web-build/
 expo-env.d.ts
-
-ios/
-android/
 
 # Native
 .kotlin/
@@ -42,3 +37,7 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+
+# generated native folders
+/ios
+/android

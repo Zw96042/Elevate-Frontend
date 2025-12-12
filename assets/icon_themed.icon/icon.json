@@ -1,19 +1,19 @@
 {
   "fill" : {
     "linear-gradient" : [
-      "display-p3:0.10148,0.14520,0.21385,1.00000",
-      "display-p3:0.08998,0.34445,0.48682,1.00000"
+      "display-p3:0.32549,0.60392,0.78824,1.00000",
+      "display-p3:0.32549,0.46667,0.68627,1.00000"
     ]
   },
   "groups" : [
     {
       "layers" : [
         {
-          "fill" : "none",
-          "image-name" : "logo-removebg-preview 2.png",
-          "name" : "logo-removebg-preview 2",
+          "hidden" : false,
+          "image-name" : "image-2.png",
+          "name" : "image-2",
           "position" : {
-            "scale" : 2.2,
+            "scale" : 1.77,
             "translation-in-points" : [
               0,
               0

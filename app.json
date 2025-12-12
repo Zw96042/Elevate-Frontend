@@ -4,36 +4,28 @@
     "slug": "elevate",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/logo.png",
+    "icon": "./assets/images/ElevateOrganicLight.png",
     "scheme": "elevate",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.elevate"
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/images/logo.png",
-        "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true,
-      "package": "com.anonymous.elevate"
-    },
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/logo.png"
+      "bundleIdentifier": "com.anonymous.elevate",
+      "icon": "./assets/icon_themed.icon"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/logo.png",
-          "imageWidth": 200,
+          "image": "./assets/images/ElevateOrganicLight.png",
+          "imageWidth": 350,
           "resizeMode": "contain",
-          "backgroundColor": "#030014"
+          "backgroundColor": "#FFFFFF",
+          "dark": {
+            "image": "./assets/images/ElevateOrganic.png",
+            "backgroundColor": "#030014"
+          }
         }
       ],
       "expo-secure-store",
@@ -54,7 +46,9 @@
     },
     "expo": {
       "jsEngine": "hermes"
+    },
+    "android": {
+      "package": "com.anonymous.elevate"
     }
-
   }
 }

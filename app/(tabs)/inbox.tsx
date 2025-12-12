@@ -5,7 +5,6 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import he from 'he';
-
 import MessageCard from '@/components/MessageCard';
 import SkeletonMessage from '@/components/SkeletonMessage';
 import ErrorDisplay from '@/components/ErrorDisplay';
@@ -121,7 +120,7 @@ const Inbox = () => {
       </View>
       {loading ? (
         <FlatList
-          className="mt-4 px-5 mb-[5rem]"
+          className="mt-4 px-5"
           contentContainerStyle={{ flexGrow: 1 }}
           data={Array.from({ length: 8 })}
           keyExtractor={(_, i) => `skeleton-${i}`}
@@ -130,7 +129,7 @@ const Inbox = () => {
         />
       ) : (
         <FlatList
-          className="mt-4 px-5 mb-[5rem]"
+          className="mt-4 px-5"
           contentContainerStyle={{ flexGrow: 1 }}
           data={messages}
           renderItem={({ item }) => (

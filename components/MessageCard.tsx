@@ -9,7 +9,7 @@ const MessageCard = ({ subject, className, from, date, content, administrator }:
   return (
     <Link
       href={{
-        pathname: '/inbox/[message]',
+        pathname: '/inbox/[message]' as any,
         params: {
           message: subject,
           className,

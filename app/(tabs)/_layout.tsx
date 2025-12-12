@@ -1,6 +1,6 @@
 import { View, Text, useColorScheme, TextInput, TouchableWithoutFeedback, Platform, Keyboard, TouchableOpacity, Linking, DeviceEventEmitter } from 'react-native'
 import React, { useEffect, useState, useRef, useMemo } from 'react'
-import { Tabs } from 'expo-router'
+import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs'
 import { Ionicons } from '@expo/vector-icons'
 import { SettingSheetProvider, useSettingSheet } from '@/context/SettingSheetContext'
 import BottomSheet, { BottomSheetBackdrop, BottomSheetModalProvider, BottomSheetView } from '@gorhom/bottom-sheet'
@@ -138,25 +138,38 @@ const InnerLayout = () => {
         settingSheetRef.current?.close();
         setCurrentSnapPosition('hidden');
       }} accessible={false}>
-        <View className='flex-1'>
-          <Tabs
-            screenOptions={{
-              tabBarShowLabel: false,
-              tabBarItemStyle: {
-                flex: 1,
-              },
-              tabBarStyle: {
-                borderTopWidth: 0,
-                height: 70,
-                paddingBottom: 8,
-                position: 'absolute',
-              },
-              tabBarBackground: () => (
-                <View className="flex-1 bg-nav border-t border-gray-200 dark:border-transparent" />
-              ),
-            }}
+        <View className='flex-1 '>
+          <NativeTabs
+          
+            // screenOptions={{
+            //   tabBarShowLabel: false,
+            //   tabBarItemStyle: {
+            //     flex: 1,
+            //   },
+            //   tabBarStyle: {
+            //     borderTopWidth: 0,
+            //     height: 70,
+            //     paddingBottom: 8,
+            //     position: 'absolute',
+            //   },
+            //   tabBarBackground: () => (
+            //     <View className="flex-1 bg-nav border-t border-gray-200 dark:border-transparent" />
+            //   ),
+            // }}
           >
-            <Tabs.Screen 
+            <NativeTabs.Trigger name="index">
+              <Label>Courses</Label>
+              <Icon sf={"graduationcap"} />
+            </NativeTabs.Trigger>
+            <NativeTabs.Trigger name="gpa">
+              <Label>GPA</Label>
+              <Icon sf={"text.document"} />
+            </NativeTabs.Trigger>
+            <NativeTabs.Trigger name="inbox">
+              <Label>Inbox</Label>
+              <Icon sf={"envelope"} />
+            </NativeTabs.Trigger>
+            {/* <Tabs.Screen 
               name="index"
               options={{
                 title: "Courses",
@@ -168,8 +181,8 @@ const InnerLayout = () => {
                   </View>
                 )
               }}
-            />
-            <Tabs.Screen 
+            /> */}
+            {/* <Tabs.Screen 
               name="gpa"
               options={{
                 title: "GPA",
@@ -194,8 +207,8 @@ const InnerLayout = () => {
                   </View>
                 )
               }}
-            />
-          </Tabs>
+            /> */}
+          </NativeTabs>
 
           <BottomSheet
             ref={settingSheetRef}

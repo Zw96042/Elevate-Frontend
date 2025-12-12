@@ -616,7 +616,7 @@ const ClassDetails = () => {
               name="add-outline"
               size={24}
               color="white"
-              style={{ marginRight: 15 }}
+              style={{ marginLeft:5 }}
             />
           </TouchableOpacity>
         ) : null,

@@ -152,7 +152,7 @@ export class DataService {
       if (result.success) {
         logger.success(Modules.DATA, `Grade info fetched: ${params.bucket}`);
       } else {
-        logger.error(Modules.DATA, `Grade info fetch failed: ${params.bucket}`, result.error);
+        logger.error(Modules.DATA, `Grade info fetch failed: ${params.bucket}`, result);
       }
       
       return result;

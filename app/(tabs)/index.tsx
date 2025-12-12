@@ -334,7 +334,7 @@ export default function Index() {
           </TouchableOpacity>
         </View>
         <FlatList
-          className='mb-[4rem]'
+          className=''
           data={loading ? Array.from({ length: 7 }) : filteredCourses}
           showsVerticalScrollIndicator={false}
           refreshControl={

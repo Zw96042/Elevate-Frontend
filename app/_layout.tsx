@@ -14,6 +14,12 @@ import 'react-native-reanimated'
 import 'react-native-gesture-handler'
 import { AddClassSheetProvider } from "@/context/AddClassSheetContext";
 import { UnifiedDataProvider } from '@/context/UnifiedDataContext';
+import * as SplashScreen from 'expo-splash-screen';
+
+SplashScreen.setOptions({
+  duration: 200,
+  fade: true,
+});
 
 
 const terms: TermLabel[] = ['Q1 Grades', 'Q2 Grades', 'SM1 Grade', 'Q3 Grades', 'Q4 Grades', 'SM2 Grades'];
@@ -181,8 +187,8 @@ function InnerLayout() {
               <View className='my-4 border-slate-600 border-[0.5px]'></View>
               <BottomSheetFlatList
                 data={terms}
-                keyExtractor={(item) => item}
-                renderItem={({ item }) => {
+                keyExtractor={(item : TermLabel) => item}
+                renderItem={({ item }: { item: TermLabel }) => {
                   const isSelected = item === selectedCategory;
 
                   return (
