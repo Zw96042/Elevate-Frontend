@@ -83,7 +83,8 @@ type TermData = {
 };
 
 const ClassDetails = () => {
-  const [isEnabled, setIsEnabled] = useState<boolean | null>(null);
+  const [isEnabled, setIsEnabled] = useState<boolean>(false);
+  const [isToggling, setIsToggling] = useState<boolean>(false);
   const [displayGrade, setDisplayGrade] = useState(0);
   const [loading, setLoading] = useState(true);
   const [waitingForRetry, setWaitingForRetry] = useState(false);
@@ -442,11 +443,16 @@ const ClassDetails = () => {
     const normalizedWeights = Object.fromEntries(
       adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
     );
-    setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-  }, [apiAssignments, apiCategories, isEnabled, selectedCategory]);
+    const newCourseSummary = calculateGradeSummary(all, normalizedWeights);
+    logger.debug(Modules.PAGE_CLASS, `Setting course summary: ${newCourseSummary.courseTotal} (isEnabled: ${isEnabled}, assignments: ${all.length})`);
+    setCourseSummary(newCourseSummary);
+  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, sortOption, sortOrder]);
 
 
   useEffect(() => {
+    // Don't update grade during toggle to prevent jittery animation
+    if (isToggling) return;
+    
     let value: number;
     
     if (courseSummary.courseTotal === '*') {
@@ -459,6 +465,8 @@ const ClassDetails = () => {
       value = Number(courseSummary.courseTotal);
     }
     
+    logger.debug(Modules.PAGE_CLASS, `Grade calculation: courseSummary.courseTotal=${courseSummary.courseTotal}, currTerm.total=${currTerm.total}, finalValue=${value}, isEnabled=${isEnabled}`);
+    
     // Check if the jump is too large (50+ points) to skip animation
     const currentValue = animatedGrade.value;
     const difference = Math.abs(value - currentValue);
@@ -469,11 +477,11 @@ const ClassDetails = () => {
     } else {
       // Normal animation for smaller changes - use proper timing
       animatedGrade.value = withTiming(value, {
-        duration: 800,
-        easing: Easing.out(Easing.cubic),
+        duration: 600,
+        easing: Easing.out(Easing.quad),
       });
     }
-  }, [courseSummary.courseTotal, currTerm.total]);
+  }, [courseSummary.courseTotal, currTerm.total, isEnabled, isToggling]);
 
   useAnimatedReaction(
     () => animatedGrade.value,
@@ -639,24 +647,45 @@ const ClassDetails = () => {
 
   useEffect(() => {
     const loadShowCalculated = async () => {
-      const value = await AsyncStorage.getItem(showCalculatedKey);
-      if (value !== null) {
+      try {
+        const value = await AsyncStorage.getItem(showCalculatedKey);
         setIsEnabled(value === 'true');
-      } else {
+      } catch (error) {
+        console.error('Failed to load toggle state:', error);
         setIsEnabled(false);
       }
     };
     loadShowCalculated();
   }, [showCalculatedKey]);
 
-const handleToggle = async () => {
-  if (isEnabled === null) return;
+const handleToggle = useCallback(async () => {
+  if (isToggling) return; // Prevent multiple toggles
+  
   const newValue = !isEnabled;
-  await AsyncStorage.setItem(showCalculatedKey, newValue.toString());
-  setIsEnabled(newValue);
-  // Immediately refresh assignments after toggling
-  await meshAssignments();
-};
+  
+  logger.debug(Modules.PAGE_CLASS, `Toggle switch: ${isEnabled} -> ${newValue}`);
+  
+  setIsToggling(true);
+  
+  try {
+    // Update UI state immediately for smooth animation
+    setIsEnabled(newValue);
+    
+    // Save to storage in background
+    await AsyncStorage.setItem(showCalculatedKey, newValue.toString());
+    
+    // Small delay to ensure smooth animation completion
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    logger.debug(Modules.PAGE_CLASS, 'Toggle completed successfully');
+  } catch (error) {
+    // If storage fails, revert the state
+    console.error('Failed to toggle switch:', error);
+    setIsEnabled(!newValue);
+  } finally {
+    setIsToggling(false);
+  }
+}, [isEnabled, isToggling, showCalculatedKey]);
 
 const handleResetArtificialAssignments = async () => {
   const data = await AsyncStorage.getItem("artificialAssignments");
@@ -807,7 +836,11 @@ const handleResetArtificialAssignments = async () => {
             <>
               <View className="flex-row mt-4 items-center px-5 justify-between">
                 <Text className="text-accent text-base font-medium">Show Calculated</Text>
-                <Switch value={!!isEnabled} onValueChange={handleToggle} />
+                <Switch 
+                  value={isEnabled} 
+                  onValueChange={handleToggle}
+                  disabled={isToggling}
+                />
               </View>
               <View className="px-5 mt-4 space-y-2">
                 <View className="flex-row justify-between mb-2">

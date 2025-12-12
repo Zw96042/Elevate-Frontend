@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.elevate",
+      "bundleIdentifier": "com.zachwilson.elevate",
       "icon": "./assets/icon_themed.icon"
     },
     "plugins": [

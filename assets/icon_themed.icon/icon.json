@@ -9,6 +9,30 @@
     {
       "layers" : [
         {
+          "blend-mode-specializations" : [
+            {
+              "value" : "normal"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "normal"
+            }
+          ],
+          "fill-specializations" : [
+            {
+              "value" : "none"
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "automatic-gradient" : "display-p3:0.32549,0.60392,0.78824,1.00000"
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "none"
+            }
+          ],
           "hidden" : false,
           "image-name" : "image-2.png",
           "name" : "image-2",

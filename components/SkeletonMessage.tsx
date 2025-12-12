@@ -3,7 +3,6 @@ import { Animated, Text, TouchableOpacity, View, Easing, StyleSheet } from 'reac
 import MaskedView from '@react-native-masked-view/masked-view';
 import LinearGradient from 'react-native-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import Skeleton from "react-native-reanimated-skeleton";
 
 const SkeletonPlaceholder = ({ children }: { children: React.ReactNode }) => {
   const animatedValue1 = useRef(new Animated.Value(0)).current;
