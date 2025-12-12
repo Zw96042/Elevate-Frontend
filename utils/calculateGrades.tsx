@@ -1,0 +1,85 @@
+type Assignment = {
+  className: string;
+  name: string;
+  term: string;
+  category: string;
+  grade: string;
+  outOf: number;
+  dueDate: string;
+  artificial: boolean;
+  meta?: AssignmentMeta[];
+};
+
+type AssignmentMeta = {
+  type: 'missing' | 'noCount' | 'absent';
+  note: string;
+};
+
+type GradeSummary = {
+  courseTotal: string;
+  categories: {
+    [category: string]: {
+      average: number;
+      weight: number;
+      rawPoints: number;
+      rawTotal: number;
+    };
+  };
+};
+
+export function calculateGradeSummary(
+  assignments: Assignment[],
+  categoryWeights: Record<string, number>
+): GradeSummary {
+  const categories: Record<string, {
+    rawPoints: number;
+    rawTotal: number;
+    weight: number;
+  }> = {};
+
+  // Filter out "no count" assignments before calculations
+  const countableAssignments = assignments.filter(assignment => {
+    const isNoCount = assignment.meta?.some(m => m.type === 'noCount');
+    return !isNoCount;
+  });
+
+  // Sum up points per category for countable assignments only
+  for (const a of countableAssignments) {
+    if (!categories[a.category]) {
+      categories[a.category] = {
+        rawPoints: 0,
+        rawTotal: 0,
+        weight: categoryWeights[a.category] ?? 0,
+      };
+    }
+    categories[a.category].rawPoints += Number(a.grade);
+    categories[a.category].rawTotal += a.outOf;
+  }
+
+  // Compute average for each and weighted total
+  let weightedSum = 0;
+  let totalWeight = 0;
+
+  const categoryResult: GradeSummary['categories'] = {};
+
+  for (const [cat, data] of Object.entries(categories)) {
+    const average = data.rawTotal > 0 ? (data.rawPoints / data.rawTotal) * 100 : 0;
+    weightedSum += average * data.weight;
+    totalWeight += data.weight;
+
+    categoryResult[cat] = {
+      average: parseFloat(average.toFixed(2)),
+      weight: data.weight,
+      rawPoints: data.rawPoints,
+      rawTotal: data.rawTotal,
+    };
+  }
+
+  const courseTotal = (totalWeight > 0 ? weightedSum / totalWeight : 0) === Number(0)
+    ? '*'
+    : parseFloat((totalWeight > 0 ? weightedSum / totalWeight : 0).toFixed(2)).toString();
+  return {
+    courseTotal: courseTotal,
+    categories: categoryResult,
+  };
+}

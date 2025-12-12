@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "Elevate",
+    "slug": "elevate",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/ElevateOrganicLight.png",
+    "scheme": "elevate",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.elevate",
+      "icon": "./assets/icon_themed.icon"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/ElevateOrganicLight.png",
+          "imageWidth": 350,
+          "resizeMode": "contain",
+          "backgroundColor": "#FFFFFF",
+          "dark": {
+            "image": "./assets/images/ElevateOrganic.png",
+            "backgroundColor": "#030014"
+          }
+        }
+      ],
+      "expo-secure-store",
+      "expo-build-properties"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2f8bf76b-e1cb-42e0-82af-08f39690b834"
+      }
+    },
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/2f8bf76b-e1cb-42e0-82af-08f39690b834"
+    },
+    "expo": {
+      "jsEngine": "hermes"
+    },
+    "android": {
+      "package": "com.anonymous.elevate"
+    }
+  }
+}
