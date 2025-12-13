@@ -72,3 +72,7 @@ export interface Message {
   messageRowId: string;
   subject: string;
 }
+
+export interface AppState {
+  contextMenuStates: Record<string, boolean>;
+}

@@ -45,6 +45,7 @@ import { DataService } from '@/lib/services';
 import { logger, Modules } from '@/lib/utils/logger';
 import { ScrollView } from "react-native-gesture-handler";
 import SkeletonAssignment from '@/components/SkeletonAssignment';
+import { Button, ContextMenu, Host } from "@expo/ui/swift-ui";
 
 const bucketMap: Record<TermLabel, string> = {
   "Q1 Grades": "TERM 3",
@@ -162,29 +163,26 @@ const ClassDetails = () => {
   const [previousSelectedCategory, setPreviousSelectedCategory] = useState<TermLabel | null>(null);
 
   // Filter state
-  const [sortOption, setSortOption] = useState<'category' | 'date' | 'grade'>('date');
+  const [sortOption, setSortOption] = useState<'Category' | 'Date' | 'Grade'>('Date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc'); // desc = recent to oldest for dates
-  const [showFilterMenu, setShowFilterMenu] = useState(false);
-  const filterMenuOpacity = useSharedValue(0);
-  const filterMenuScale = useSharedValue(0.8);
 
   // Sort assignments function
-  const sortAssignments = useCallback((assignments: Assignment[], sortBy: 'category' | 'date' | 'grade', order: 'asc' | 'desc') => {
+  const sortAssignments = useCallback((assignments: Assignment[], sortBy: 'Category' | 'Date' | 'Grade', order: 'asc' | 'desc') => {
     return [...assignments].sort((a, b) => {
       let comparison = 0;
       
       switch (sortBy) {
-        case 'category':
+        case 'Category':
           comparison = a.category.localeCompare(b.category);
           break;
-        case 'date':
+        case 'Date':
           const parseDate = (date: string) => {
             const [month, day, year] = date.split('/').map(Number);
             return new Date(year < 100 ? 2000 + year : year, month - 1, day);
           };
           comparison = parseDate(a.dueDate).getTime() - parseDate(b.dueDate).getTime(); // asc = oldest first, desc = recent first
           break;
-        case 'grade':
+        case 'Grade':
           const gradeA = a.grade === '*' ? -1 : parseFloat(a.grade) || 0;
           const gradeB = b.grade === '*' ? -1 : parseFloat(b.grade) || 0;
           comparison = gradeA - gradeB;
@@ -195,42 +193,25 @@ const ClassDetails = () => {
     });
   }, []);
 
-  // Filter menu animation functions
-  const toggleFilterMenu = useCallback(() => {
-    if (showFilterMenu) {
-      filterMenuOpacity.value = withTiming(0, { duration: 200 });
-      filterMenuScale.value = withTiming(0.8, { duration: 200 });
-      setTimeout(() => setShowFilterMenu(false), 200);
-    } else {
-      setShowFilterMenu(true);
-      filterMenuOpacity.value = withTiming(1, { duration: 200 });
-      filterMenuScale.value = withTiming(1, { duration: 200 });
-    }
-  }, [showFilterMenu, filterMenuOpacity, filterMenuScale]);
 
-  const animatedFilterMenuStyle = useAnimatedStyle(() => ({
-    opacity: filterMenuOpacity.value,
-    transform: [{ scale: filterMenuScale.value }],
-  }));
 
   // Handle sort option change
-  const handleSortChange = useCallback((newSortOption: 'category' | 'date' | 'grade') => {
+  const handleSortChange = useCallback((newSortOption: 'Category' | 'Date' | 'Grade') => {
     if (sortOption === newSortOption) {
       // If same option, toggle order
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
       // New option, set default order
       setSortOption(newSortOption);
-      if (newSortOption === 'grade') {
+      if (newSortOption === 'Grade') {
         setSortOrder('desc'); // Grades default to highest first
-      } else if (newSortOption === 'date') {
+      } else if (newSortOption === 'Date') {
         setSortOrder('desc'); // Dates default to recent first (newest to oldest)
       } else {
         setSortOrder('asc'); // Categories default to A-Z
       }
     }
-    toggleFilterMenu();
-  }, [sortOption, sortOrder, toggleFilterMenu]);
+  }, [sortOption, sortOrder]);
 
   // Debug function to check cache status
   const checkCacheStatus = async () => {
@@ -759,7 +740,7 @@ const handleResetArtificialAssignments = async () => {
   // console.log(filteredAssignments);
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <View className="bg-primary flex-1">
+      <View className="bg-primary flex-1" style={{ overflow: 'visible' }}>
         <Stack.Screen
           options={{
             title: decodeURIComponent(formattedName || "Class"),
@@ -782,12 +763,9 @@ const handleResetArtificialAssignments = async () => {
               colors={[indicatorColor]}
             />
           }
+          style={{ overflow: 'visible' }}
+          contentContainerStyle={{ overflow: 'visible' }}
         >
-          <TouchableWithoutFeedback onPress={() => {
-            if (showFilterMenu) {
-              toggleFilterMenu();
-            }
-          }}>
             <View>
           <View className="flex-row items-center">
             <View className="px-5">
@@ -918,97 +896,51 @@ const handleResetArtificialAssignments = async () => {
             )}
           </AnimatePresence>
           
-          {/* Filter Button */}
-          <View className="px-5 mt-4 mb-2">
+          {/* Filter Button with Swift UI Context Menu */}
+          <View className="px-5 mt-4 mb-2" style={{ zIndex: 1000 }}>
             <View className="flex-row items-center justify-between">
               <Text className="text-highlightText font-bold text-lg">Assignments</Text>
-              <View className="relative">
-                <TouchableOpacity
-                  onPress={toggleFilterMenu}
-                  className="bg-cardColor px-4 py-2 rounded-full flex-row items-center"
-                >
-                  <Ionicons 
-                    name="filter-outline" 
-                    size={16} 
-                    color={theme === 'dark' ? '#ffffff' : '#000000'} 
-                  />
-                  <Text className="text-main text-sm font-medium ml-2 capitalize">
-                    {sortOption} {sortOrder === 'asc' ? '↑' : '↓'}
-                  </Text>
-                </TouchableOpacity>
-                
-                {/* Filter Menu Popup */}
-                {showFilterMenu && (
-                  <AnimatedReanimated.View 
-                    style={[
-                      {
-                        position: 'absolute',
-                        top: 45,
-                        right: 0,
-                        backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
-                        borderRadius: 12,
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 4 },
-                        shadowOpacity: 0.15,
-                        shadowRadius: 12,
-                        elevation: 8,
-                        zIndex: 1000,
-                        minWidth: 160,
-                        borderWidth: 1,
-                        borderColor: theme === 'dark' ? '#374151' : '#e5e7eb',
-                      },
-                      animatedFilterMenuStyle
-                    ]}
-                  >
-                    <TouchableOpacity
-                      onPress={() => handleSortChange('category')}
-                      className="px-4 py-3 border-b border-gray-200 dark:border-gray-600"
-                    >
-                      <View className="flex-row items-center justify-between">
-                        <Text className="text-main text-sm font-medium">Category A-Z</Text>
-                        {sortOption === 'category' && (
-                          <Ionicons 
-                            name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} 
-                            size={14} 
-                            color={theme === 'dark' ? '#60a5fa' : '#2563eb'} 
-                          />
-                        )}
+              <View className="flex-row items-center" style={{ overflow: 'visible' }}>
+                <Host style={{ 
+                  alignSelf: 'flex-end', 
+                  minWidth: 90, 
+                  maxWidth: 150,
+                  overflow: 'visible',
+                  zIndex: 1001
+                }}>
+                  <ContextMenu>
+                    <ContextMenu.Items>
+                      <Button
+                        systemImage={sortOption === 'Category' ? "checkmark" : "textformat"}
+                        onPress={() => handleSortChange('Category')}
+                      >
+                        Category {sortOption === 'Category' && (sortOrder === 'asc' ? '(A-Z)' : '(Z-A)')}
+                      </Button>
+                      <Button
+                        systemImage={sortOption === 'Date' ? "checkmark" : "calendar"}
+                        onPress={() => handleSortChange('Date')}
+                      >
+                        Date {sortOption === 'Date' && (sortOrder === 'asc' ? '(Oldest)' : '(Newest)')}
+                      </Button>
+                      <Button
+                        systemImage={sortOption === 'Grade' ? "checkmark" : "number"}
+                        onPress={() => handleSortChange('Grade')}
+                      >
+                        Grade {sortOption === 'Grade' && (sortOrder === 'asc' ? '(Lowest)' : '(Highest)')}
+                      </Button>
+                    </ContextMenu.Items>
+                    <ContextMenu.Trigger>
+                      <View className="bg-cardColor px-3 py-2 rounded-full flex-row items-center justify-center" style={{ minWidth: 90 }}>
+                        <Text className="text-main text-sm font-medium mr-1 capitalize" style={{ color: theme === 'dark' ? '#ffffff' : '#000000' }}>
+                          {sortOption}
+                        </Text>
+                        <Text className="text-main text-xs" style={{ color: theme === 'dark' ? '#ffffff' : '#000000' }}>
+                          {sortOrder === 'asc' ? '↑' : '↓'}
+                        </Text>
                       </View>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity
-                      onPress={() => handleSortChange('date')}
-                      className="px-4 py-3 border-b border-gray-200 dark:border-gray-600"
-                    >
-                      <View className="flex-row items-center justify-between">
-                        <Text className="text-main text-sm font-medium">Date</Text>
-                        {sortOption === 'date' && (
-                          <Ionicons 
-                            name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} 
-                            size={14} 
-                            color={theme === 'dark' ? '#60a5fa' : '#2563eb'} 
-                          />
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity
-                      onPress={() => handleSortChange('grade')}
-                      className="px-4 py-3"
-                    >
-                      <View className="flex-row items-center justify-between">
-                        <Text className="text-main text-sm font-medium">Highest Grade</Text>
-                        {sortOption === 'grade' && (
-                          <Ionicons 
-                            name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} 
-                            size={14} 
-                            color={theme === 'dark' ? '#60a5fa' : '#2563eb'} 
-                          />
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  </AnimatedReanimated.View>
-                )}
+                    </ContextMenu.Trigger>
+                  </ContextMenu>
+                </Host>
               </View>
             </View>
           </View>
@@ -1038,7 +970,6 @@ const handleResetArtificialAssignments = async () => {
             }
           />
             </View>
-          </TouchableWithoutFeedback>
         </ScrollView>
       </View>
     </TouchableWithoutFeedback>
