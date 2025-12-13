@@ -1,8 +1,7 @@
-# Elevate Frontend
+# Elevate Gradebook
 
 **Elevate** is a modern mobile app designed to reimagine the Skyward gradebook experience. Built with **React Native** and styled with **NativeWind**, it empowers students to track grades, manage assignments, and plan ahead with calendar sync and GPA insights.
 
-🔗 **Backend Repo**: [Elevate-Backend](https://github.com/Zw96042/Elevate-Backend)  
 📋 **Project Board**: [GitHub Project Tracker](https://github.com/users/Zw96042/projects/2)
 
 ---
@@ -44,7 +43,7 @@ Elevate provides a cleaner, more useful, and student-focused alternative to Skyw
 
 ## 📂 File Structure
 ```
-Elevate-Frontend/
+Elevate/
 ├── app/
 │   ├── (tabs)/              # Tab layout and views (Assignments, Inbox, Profile)
 │   ├── assignments/         # Assignment-specific pages
