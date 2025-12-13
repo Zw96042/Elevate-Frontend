@@ -46,6 +46,7 @@ import { logger, Modules } from '@/lib/utils/logger';
 import { ScrollView } from "react-native-gesture-handler";
 import SkeletonAssignment from '@/components/SkeletonAssignment';
 import { Button, ContextMenu, Host } from "@expo/ui/swift-ui";
+import { SymbolView } from "expo-symbols";
 
 const bucketMap: Record<TermLabel, string> = {
   "Q1 Grades": "TERM 3",
@@ -137,6 +138,9 @@ const ClassDetails = () => {
   const formattedName = useMemo(() => formatClassName(className?.toString()), [className]);
 
   const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
+  
+  // Memoize current term to prevent unnecessary recalculations
+  const currTerm = useMemo(() => termMap[selectedCategory], [termMap, selectedCategory]);
   const [filteredAssignments, setFilteredAssignments] = useState<Assignment[]>([]);
   const [courseSummary, setCourseSummary] = useState<{
     courseTotal: string;
@@ -151,8 +155,6 @@ const ClassDetails = () => {
     >;
   }>({ courseTotal: "*", categories: {} });
   const [artificialAssignments, setArtificialAssignments] = useState<Assignment[]>([]);
-
-  const currTerm = termMap[selectedCategory];
   const [apiCategories, setApiCategories] = useState<{ names: string[]; weights: number[] }>({ names: [], weights: [] });
   const [apiAssignments, setApiAssignments] = useState<Assignment[]>([]);
   const [lastFetchTime, setLastFetchTime] = useState<number>(0);
@@ -322,6 +324,7 @@ const ClassDetails = () => {
     }
   };
 
+  // Memoize the mesh assignments function to prevent unnecessary recalculations
   const meshAssignments = useCallback(async () => {
     logger.debug(Modules.PAGE_CLASS, 'Meshing assignments', {
       api: apiAssignments.length,
@@ -427,42 +430,43 @@ const ClassDetails = () => {
     const newCourseSummary = calculateGradeSummary(all, normalizedWeights);
     logger.debug(Modules.PAGE_CLASS, `Setting course summary: ${newCourseSummary.courseTotal} (isEnabled: ${isEnabled}, assignments: ${all.length})`);
     setCourseSummary(newCourseSummary);
-  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, sortOption, sortOrder]);
+  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, sortOption, sortOrder, className, corNumId, section, gbId, sortAssignments]);
 
+
+  // Memoize the grade value calculation to prevent unnecessary recalculations
+  const gradeValue = useMemo(() => {
+    if (courseSummary.courseTotal === '*') {
+      if (currTerm.total === "--" || currTerm.total === undefined || currTerm.total === null) {
+        return 100;
+      } else {
+        return Number(currTerm.total);
+      }
+    } else {
+      return Number(courseSummary.courseTotal);
+    }
+  }, [courseSummary.courseTotal, currTerm.total]);
 
   useEffect(() => {
     // Don't update grade during toggle to prevent jittery animation
     if (isToggling) return;
     
-    let value: number;
-    
-    if (courseSummary.courseTotal === '*') {
-      if (currTerm.total === "--" || currTerm.total === undefined || currTerm.total === null) {
-        value = 100;
-      } else {
-        value = Number(currTerm.total);
-      }
-    } else {
-      value = Number(courseSummary.courseTotal);
-    }
-    
-    logger.debug(Modules.PAGE_CLASS, `Grade calculation: courseSummary.courseTotal=${courseSummary.courseTotal}, currTerm.total=${currTerm.total}, finalValue=${value}, isEnabled=${isEnabled}`);
+    logger.debug(Modules.PAGE_CLASS, `Grade calculation: courseSummary.courseTotal=${courseSummary.courseTotal}, currTerm.total=${currTerm.total}, finalValue=${gradeValue}, isEnabled=${isEnabled}`);
     
     // Check if the jump is too large (50+ points) to skip animation
     const currentValue = animatedGrade.value;
-    const difference = Math.abs(value - currentValue);
+    const difference = Math.abs(gradeValue - currentValue);
     
     if (difference >= 50) {
       // Skip animation for large jumps
-      animatedGrade.value = value;
+      animatedGrade.value = gradeValue;
     } else {
       // Normal animation for smaller changes - use proper timing
-      animatedGrade.value = withTiming(value, {
+      animatedGrade.value = withTiming(gradeValue, {
         duration: 600,
         easing: Easing.out(Easing.quad),
       });
     }
-  }, [courseSummary.courseTotal, currTerm.total, isEnabled, isToggling]);
+  }, [gradeValue, isEnabled, isToggling, animatedGrade]);
 
   useAnimatedReaction(
     () => animatedGrade.value,
@@ -580,6 +584,7 @@ const ClassDetails = () => {
       headerRight: () =>
         isEnabled ? (
           <TouchableOpacity
+          className="flex-row items-center justify-center w-10"
             onPress={async () => {
               openModal({
                 className: className || "",
@@ -601,11 +606,9 @@ const ClassDetails = () => {
               });
             }}
           >
-            <Ionicons
-              name="add-outline"
+            <SymbolView 
               size={24}
-              color="white"
-              style={{ marginLeft:5 }}
+              name="plus" 
             />
           </TouchableOpacity>
         ) : null,
@@ -732,10 +735,215 @@ const handleResetArtificialAssignments = async () => {
       : ((item as Assignment).id || `${(item as Assignment).className}-${(item as Assignment).name}-${(item as Assignment).term}-${(item as Assignment).dueDate}`);
   }, [loading, waitingForRetry, apiAssignments.length, filteredAssignments.length]);
 
+  // Memoize the FlatList data to prevent unnecessary re-renders
+  const flatListData = useMemo(() => {
+    return loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0) 
+      ? Array.from({ length: 8 }) 
+      : filteredAssignments;
+  }, [loading, waitingForRetry, apiAssignments.length, filteredAssignments]);
+
+  // Get theme and memoize theme colors
   const theme = useColorScheme();
-  const highlightColor = theme === 'dark' ? '#3b5795' : "#a4bfed";
-  const backgroundColor = theme === 'dark' ? '#030014' : "#ffffff";
-  const indicatorColor = theme === 'dark' ? '#ffffff' : '#000000';
+  const themeColors = useMemo(() => ({
+    highlightColor: theme === 'dark' ? '#3b5795' : "#a4bfed",
+    backgroundColor: theme === 'dark' ? '#030014' : "#ffffff",
+    indicatorColor: theme === 'dark' ? '#ffffff' : '#000000'
+  }), [theme]);
+
+  const { highlightColor, backgroundColor, indicatorColor } = themeColors;
+
+  // Memoize the grade display section (doesn't depend on isEnabled)
+  const GradeDisplaySection = useMemo(() => (
+    <View className="flex-row items-center">
+      <View className="px-5">
+        <View className="relative w-[50px] h-[50px] mt-6 flex items-center justify-center">
+          <PieChart
+            widthAndHeight={55}
+            series={[
+              { value: Math.min(displayGrade, 100), color: highlightColor },
+              { value: 100 - Math.min(displayGrade, 100), color: backgroundColor },
+            ]}
+          />
+          <View className="absolute inset-0 flex items-center justify-center">
+            <Text className="text-highlightText font-bold text-sm text-center leading-[20px] w-[50px] h-[20px]">
+              {(() => {
+                const grade = courseSummary.courseTotal === '*'
+                  ? currTerm.total
+                  : Number(courseSummary.courseTotal);
+                if (grade === "--" || grade === undefined || grade === null) {
+                  return '--';
+                }
+                const numGrade = typeof grade === 'string' ? parseFloat(grade) : grade;
+                if (isNaN(numGrade)) {
+                  return '--';
+                }
+                return `${numGrade.toFixed(2)}`;
+              })()}
+            </Text>
+          </View>
+        </View>
+      </View>
+      <View className="w-[80%]">
+        <View className="mt-6 pr-5 justify-center">
+          <TouchableOpacity
+            onPress={() => bottomSheetRef.current?.snapToIndex(0)}
+            className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
+          >
+            <Text className="text-base text-main">{selectedCategory}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  ), [displayGrade, highlightColor, backgroundColor, courseSummary.courseTotal, currTerm.total, selectedCategory, bottomSheetRef]);
+
+  // Memoize the categories section (depends on isEnabled but only for visibility)
+  const CategoriesSection = useMemo(() => {
+    if (loading || apiCategories.names.length === 0) return null;
+    
+    return (
+      <>
+        <View className="flex-row mt-4 items-center px-5 justify-between">
+          <Text className="text-accent text-base font-medium">Show Calculated</Text>
+          <Switch 
+            value={isEnabled} 
+            onValueChange={handleToggle}
+            disabled={isToggling}
+          />
+        </View>
+        <View className="px-5 mt-4 space-y-2">
+          <View className="flex-row justify-between mb-2">
+            <Text className="text-highlightText font-bold text-base">Category</Text>
+            <Text className="text-highlightText font-bold text-base">Weight</Text>
+          </View>
+          <View className="h-[1px] bg-accent opacity-30 my-1" />
+          {apiCategories.names.map((name, index) => (
+            <View key={`row-${index}`}>
+              <View className="py-1">
+                <View className="flex-row justify-between items-center">
+                  <View className="rounded-md bg-highlight px-2">
+                    <Text className="text-sm text-highlightText font-bold">{
+                      (() => {
+                        const weight = apiCategories.weights[index] ?? 0;
+                        const weightString = `Weight: ${weight.toFixed(1)}%`;
+                        const avgString = `Avg: ${(courseSummary?.categories[name]?.average?.toFixed(1) ?? "--")}% • `;
+                        const fullWeightText = avgString + weightString;
+
+                        const maxRowLength = 38;
+                        const availableForCategory = Math.max(8, maxRowLength - fullWeightText.length);
+
+                        return name.length > availableForCategory
+                          ? name.substring(0, availableForCategory - 3) + '...'
+                          : name;
+                      })()
+                    }</Text>
+                  </View>
+                  <Text className="text-sm text-slate-400 font-bold">
+                    Avg: {(courseSummary?.categories[name]?.average?.toFixed(1) ?? "--")}%
+                    {" • "}
+                    Weight: {(apiCategories.weights[index] ?? 0).toFixed(1)}%
+                    {courseSummary.categories[name]
+                      ? courseSummary.categories[name].weight.toFixed(1) !==
+                        (apiCategories.weights[index] ?? 0).toFixed(1)
+                        ? ` → ${courseSummary.categories[name].weight.toFixed(1)}%`
+                        : ""
+                      : " → 0%"}
+                  </Text>
+                </View>
+              </View>
+
+              {index !== apiCategories.names.length - 1 && (
+                <View className="h-[1px] bg-accent opacity-30 my-1" />
+              )}
+            </View>
+          ))}
+          <View className="h-[1px] bg-accent opacity-30 my-1" />
+        </View>
+      </>
+    );
+  }, [loading, apiCategories.names, apiCategories.weights, courseSummary.categories, isEnabled, handleToggle, isToggling]);
+
+  // Memoize the reset button section (only depends on isEnabled for visibility)
+  const ResetButtonSection = useMemo(() => (
+    <AnimatePresence>
+      {isEnabled && apiCategories.names.length > 0 && (
+        <MotiView
+          key={`reset-${isEnabled}`}
+          from={{ opacity: 0, scale: 0.95, translateY: -10, height: 0, marginTop: 0 }}
+          animate={{ opacity: 1, scale: 1, translateY: 0, height: 56, marginTop: 16 }}
+          exit={{ opacity: 0, scale: 0.95, translateY: -10, height: 0, marginTop: 0 }}
+          transition={{
+            type: "timing",
+            duration: 200,
+            easing: Easing.out(Easing.cubic),
+          }}
+          style={{ marginHorizontal: 16 }}
+          pointerEvents={isEnabled ? "auto" : "none"}
+        >
+          <TouchableOpacity
+            onPress={handleResetArtificialAssignments}
+            className="bg-cardColor items-center rounded-lg py-3"
+          >
+            <Text className="text-highlightText font-medium text-lg">Reset Assignments</Text>
+          </TouchableOpacity>
+        </MotiView>
+      )}
+    </AnimatePresence>
+  ), [isEnabled, apiCategories.names.length, handleResetArtificialAssignments]);
+
+  // Memoize the filter section (doesn't depend on isEnabled)
+  const FilterSection = useMemo(() => (
+    <View className="px-5 mt-4 mb-2" style={{ zIndex: 1000 }}>
+      <View className="flex-row items-center justify-between">
+        <Text className="text-highlightText font-bold text-lg">Assignments</Text>
+        <View className="flex-row items-center" style={{ overflow: 'visible' }}>
+          <Host style={{ 
+            alignSelf: 'flex-end', 
+            minWidth: 90, 
+            maxWidth: 150,
+            overflow: 'visible',
+            zIndex: 1001
+          }}>
+            <ContextMenu>
+              <ContextMenu.Items>
+                <Button
+                  systemImage={sortOption === 'Category' ? "checkmark" : "textformat"}
+                  onPress={() => handleSortChange('Category')}
+                >
+                  Category {sortOption === 'Category' && (sortOrder === 'asc' ? '(A-Z)' : '(Z-A)')}
+                </Button>
+                <Button
+                  systemImage={sortOption === 'Date' ? "checkmark" : "calendar"}
+                  onPress={() => handleSortChange('Date')}
+                >
+                  Date {sortOption === 'Date' && (sortOrder === 'asc' ? '(Oldest)' : '(Newest)')}
+                </Button>
+                <Button
+                  systemImage={sortOption === 'Grade' ? "checkmark" : "number"}
+                  onPress={() => handleSortChange('Grade')}
+                >
+                  Grade {sortOption === 'Grade' && (sortOrder === 'asc' ? '(Lowest)' : '(Highest)')}
+                </Button>
+              </ContextMenu.Items>
+              <ContextMenu.Trigger>
+                <View className="bg-cardColor px-3 py-2 rounded-full flex-row items-center justify-center" style={{ minWidth: 90 }}>
+                  <Text className="text-main text-sm font-medium mr-1 capitalize" style={{ color: theme === 'dark' ? '#ffffff' : '#000000' }}>
+                    {sortOption}
+                  </Text>
+                  <Text className="text-main text-xs" style={{ color: theme === 'dark' ? '#ffffff' : '#000000' }}>
+                    {sortOrder === 'asc' ? '↑' : '↓'}
+                  </Text>
+                </View>
+              </ContextMenu.Trigger>
+            </ContextMenu>
+          </Host>
+        </View>
+      </View>
+    </View>
+  ), [sortOption, sortOrder, handleSortChange, theme]);
+
+
+
+
 
   // console.log(filteredAssignments);
   return (
@@ -767,186 +975,13 @@ const handleResetArtificialAssignments = async () => {
           contentContainerStyle={{ overflow: 'visible' }}
         >
             <View>
-          <View className="flex-row items-center">
-            <View className="px-5">
-                <View className="relative w-[50px] h-[50px] mt-6 flex items-center justify-center">
-                  <PieChart
-                    widthAndHeight={55}
-                    series={[
-                      { value: Math.min(displayGrade, 100), color: highlightColor },
-                      { value: 100 - Math.min(displayGrade, 100), color: backgroundColor },
-                    ]}
-                  />
-                  <View className="absolute inset-0 flex items-center justify-center">
-                    <Text className="text-highlightText font-bold text-sm text-center leading-[20px] w-[50px] h-[20px]">
-                      {(() => {
-                        const grade = courseSummary.courseTotal === '*'
-                          ? currTerm.total
-                          : Number(courseSummary.courseTotal);
-                        if (grade === "--" || grade === undefined || grade === null) {
-                          return '--';
-                        }
-                        const numGrade = typeof grade === 'string' ? parseFloat(grade) : grade;
-                        if (isNaN(numGrade)) {
-                          return '--';
-                        }
-                        return `${numGrade.toFixed(2)}`;
-                      })()}
-                    </Text>
-                  </View>
-                </View>
-            </View>
-            <View className="w-[80%]">
-              <View className="mt-6 pr-5 justify-center">
-                
-                  <TouchableOpacity
-                    onPress={() => bottomSheetRef.current?.snapToIndex(0)}
-                    className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
-                  >
-                    <Text className="text-base text-main">{selectedCategory}</Text>
-                  </TouchableOpacity>
-                
-              </View>
-            </View>
-          </View>
-
-          {!loading && apiCategories.names.length > 0 && (
-            <>
-              <View className="flex-row mt-4 items-center px-5 justify-between">
-                <Text className="text-accent text-base font-medium">Show Calculated</Text>
-                <Switch 
-                  value={isEnabled} 
-                  onValueChange={handleToggle}
-                  disabled={isToggling}
-                />
-              </View>
-              <View className="px-5 mt-4 space-y-2">
-                <View className="flex-row justify-between mb-2">
-                  <Text className="text-highlightText font-bold text-base">Category</Text>
-                  <Text className="text-highlightText font-bold text-base">Weight</Text>
-                </View>
-                <View className="h-[1px] bg-accent opacity-30 my-1" />
-                {apiCategories.names.map((name, index) => (
-                  <View key={`row-${index}`}>
-                    <View className="py-1">
-                      <View className="flex-row justify-between items-center">
-                        <View className="rounded-md bg-highlight px-2">
-                          <Text className="text-sm text-highlightText font-bold">{
-                            (() => {
-                              const weight = apiCategories.weights[index] ?? 0;
-                              const weightString = `Weight: ${weight.toFixed(1)}%`;
-                              const avgString = `Avg: ${(courseSummary?.categories[name]?.average?.toFixed(1) ?? "--")}% • `;
-                              const fullWeightText = avgString + weightString;
-
-                              const maxRowLength = 38;
-                              const availableForCategory = Math.max(8, maxRowLength - fullWeightText.length);
-
-                              return name.length > availableForCategory
-                                ? name.substring(0, availableForCategory - 3) + '...'
-                                : name;
-                            })()
-                          }</Text>
-                        </View>
-                        <Text className="text-sm text-slate-400 font-bold">
-                          Avg: {(courseSummary?.categories[name]?.average?.toFixed(1) ?? "--")}%
-                          {" • "}
-                          Weight: {(apiCategories.weights[index] ?? 0).toFixed(1)}%
-                          {courseSummary.categories[name]
-                            ? courseSummary.categories[name].weight.toFixed(1) !==
-                              (apiCategories.weights[index] ?? 0).toFixed(1)
-                              ? ` → ${courseSummary.categories[name].weight.toFixed(1)}%`
-                              : ""
-                            : " → 0%"}
-                        </Text>
-                      </View>
-                    </View>
-
-                    {index !== apiCategories.names.length - 1 && (
-                      <View className="h-[1px] bg-accent opacity-30 my-1" />
-                    )}
-                  </View>
-                ))}
-                <View className="h-[1px] bg-accent opacity-30 my-1" />
-              </View>
-            </>
-          )}
-          
-          <AnimatePresence>
-            {isEnabled && apiCategories.names.length > 0 && (
-              <MotiView
-                key={`reset-${isEnabled}`}
-                from={{ opacity: 0, scale: 0.95, translateY: -10, height: 0, marginTop: 0 }}
-                animate={{ opacity: 1, scale: 1, translateY: 0, height: 56, marginTop: 16 }}
-                exit={{ opacity: 0, scale: 0.95, translateY: -10, height: 0, marginTop: 0 }}
-                transition={{
-                  type: "timing",
-                  duration: 200,
-                  easing: Easing.out(Easing.cubic),
-                }}
-                style={{ marginHorizontal: 16 }}
-                pointerEvents={isEnabled ? "auto" : "none"}
-              >
-                <TouchableOpacity
-                  onPress={handleResetArtificialAssignments}
-                  className="bg-cardColor items-center rounded-lg py-3"
-                >
-                  <Text className="text-highlightText font-medium text-lg">Reset Assignments</Text>
-                </TouchableOpacity>
-              </MotiView>
-            )}
-          </AnimatePresence>
-          
-          {/* Filter Button with Swift UI Context Menu */}
-          <View className="px-5 mt-4 mb-2" style={{ zIndex: 1000 }}>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-highlightText font-bold text-lg">Assignments</Text>
-              <View className="flex-row items-center" style={{ overflow: 'visible' }}>
-                <Host style={{ 
-                  alignSelf: 'flex-end', 
-                  minWidth: 90, 
-                  maxWidth: 150,
-                  overflow: 'visible',
-                  zIndex: 1001
-                }}>
-                  <ContextMenu>
-                    <ContextMenu.Items>
-                      <Button
-                        systemImage={sortOption === 'Category' ? "checkmark" : "textformat"}
-                        onPress={() => handleSortChange('Category')}
-                      >
-                        Category {sortOption === 'Category' && (sortOrder === 'asc' ? '(A-Z)' : '(Z-A)')}
-                      </Button>
-                      <Button
-                        systemImage={sortOption === 'Date' ? "checkmark" : "calendar"}
-                        onPress={() => handleSortChange('Date')}
-                      >
-                        Date {sortOption === 'Date' && (sortOrder === 'asc' ? '(Oldest)' : '(Newest)')}
-                      </Button>
-                      <Button
-                        systemImage={sortOption === 'Grade' ? "checkmark" : "number"}
-                        onPress={() => handleSortChange('Grade')}
-                      >
-                        Grade {sortOption === 'Grade' && (sortOrder === 'asc' ? '(Lowest)' : '(Highest)')}
-                      </Button>
-                    </ContextMenu.Items>
-                    <ContextMenu.Trigger>
-                      <View className="bg-cardColor px-3 py-2 rounded-full flex-row items-center justify-center" style={{ minWidth: 90 }}>
-                        <Text className="text-main text-sm font-medium mr-1 capitalize" style={{ color: theme === 'dark' ? '#ffffff' : '#000000' }}>
-                          {sortOption}
-                        </Text>
-                        <Text className="text-main text-xs" style={{ color: theme === 'dark' ? '#ffffff' : '#000000' }}>
-                          {sortOrder === 'asc' ? '↑' : '↓'}
-                        </Text>
-                      </View>
-                    </ContextMenu.Trigger>
-                  </ContextMenu>
-                </Host>
-              </View>
-            </View>
-          </View>
+          {GradeDisplaySection}
+          {CategoriesSection}
+          {ResetButtonSection}
+          {FilterSection}
 
           <FlatList
-            data={loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0) ? Array.from({ length: 8 }) : filteredAssignments}
+            data={flatListData}
             renderItem={renderAssignmentItem}
             keyExtractor={keyExtractor}
             className="mt-6 pb-8 px-3"

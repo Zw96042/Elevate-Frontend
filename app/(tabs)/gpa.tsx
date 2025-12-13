@@ -3,7 +3,7 @@ import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MotiView } from 'moti';
-import React, { JSX, useState, useEffect, useRef, useCallback } from 'react';
+import React, { JSX, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Alert, Dimensions, PanResponder, Text, TouchableOpacity, View, RefreshControl, DeviceEventEmitter } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler'
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
@@ -23,7 +23,7 @@ type GradeLevel = 'Freshman' | 'Sophomore' | 'Junior' | 'Senior' | 'All Time';
 
 const gpaScale = 100; // Change this to 4, 5, etc. as needed
 
-// Helper function to convert grade level names to numbers
+// Helper function to convert grade level names to numbers - memoized
 const getGradeNumber = (gradeLevel: GradeLevel): number | undefined => {
   switch (gradeLevel) {
     case 'Freshman': return 9;
@@ -35,6 +35,14 @@ const getGradeNumber = (gradeLevel: GradeLevel): number | undefined => {
   }
 };
 
+// Memoized grade map to prevent recreation
+const GRADE_MAP: Record<string, number> = {
+  'Freshman': 9,
+  'Sophomore': 10,
+  'Junior': 11,
+  'Senior': 12
+};
+
 const GPA = () => {
   // Use coursesData from context instead of local allRawCourses
   const { settingSheetRef } = useSettingSheet();
@@ -42,6 +50,9 @@ const GPA = () => {
   
   // Use extracted hook for current grade level and available grade levels
   const { currentGradeLevel, availableGradeLevels, isLoading: gradeLevelLoading, refreshGradeLevelData, debugCacheState, clearGradeLevelCache, loadGradeFromCourseData } = useGradeLevel();
+
+  // Move useColorScheme to top level to avoid hook order violations
+  const { colorScheme } = useColorScheme();
   
   console.log('🎨 GPA Component - Grade level data:', {
     currentGradeLevel,
@@ -68,7 +79,7 @@ const GPA = () => {
   const [gpaData, setGpaData] = useState<Record<string, GPAData>>({});
   const { coursesData, loading, refreshCourses, clearCache } = useUnifiedData();
   
-  // Update grade levels when course data becomes available
+  // Update grade levels when course data becomes available (only once per data change)
   useEffect(() => {
     if (coursesData && coursesData.length > 0 && !gradeLevelLoading) {
       console.log('📊 Course data available, updating grade levels...', {
@@ -77,7 +88,7 @@ const GPA = () => {
       });
       loadGradeFromCourseData(coursesData);
     }
-  }, [coursesData, loadGradeFromCourseData, gradeLevelLoading]);
+  }, [coursesData?.length, gradeLevelLoading]); // Remove loadGradeFromCourseData dependency to prevent infinite loop
   const [refreshing, setRefreshing] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [lastLoadedGrade, setLastLoadedGrade] = useState<GradeLevel | null>(null);
@@ -86,9 +97,6 @@ const GPA = () => {
   const hasInitializedGradeRef = useRef(false);
   const userHasManuallySelectedGradeRef = useRef(false); // Track if user manually selected a grade
   const [error, setError] = useState<string | null>(null);
-  
-  // Move useColorScheme to top level to avoid hook order violations
-  const { colorScheme } = useColorScheme();
 
   // Listen for credential updates
   useEffect(() => {
@@ -133,13 +141,15 @@ const GPA = () => {
     }
   }, [currentGradeLevel, selectedGrade, gradeLevelLoading]);
   
-  const allLabels = ['PR1','PR2','RC1','PR3','PR4','RC2','PR5','PR6','RC3','PR7','PR8','RC4'];
+  const allLabels = useMemo(() => ['PR1','PR2','RC1','PR3','PR4','RC2','PR5','PR6','RC3','PR7','PR8','RC4'], []);
 
-  // Show labels only where there's meaningful GPA data (not undefined and not 0)
-  const validLabels = allLabels.filter(label => {
-    const gpaValue = gpaData[label];
-    return gpaValue !== undefined && gpaValue.weighted > 0;
-  });
+  // Memoize valid labels calculation
+  const validLabels = useMemo(() => {
+    return allLabels.filter(label => {
+      const gpaValue = gpaData[label];
+      return gpaValue !== undefined && gpaValue.weighted > 0;
+    });
+  }, [allLabels, gpaData]);
 
 
   // Removed leftover loadGPAData logic. Use context and local derived state only.
@@ -159,13 +169,7 @@ const GPA = () => {
       await refreshCourses(true);
       // After refresh, recalculate GPA data
       if (coursesData && coursesData.length > 0) {
-        const gradeMap: Record<string, number> = {
-          'Freshman': 9,
-          'Sophomore': 10,
-          'Junior': 11,
-          'Senior': 12
-        };
-        const gradeNumber = gradeMap[selectedGrade] || null;
+        const gradeNumber = GRADE_MAP[selectedGrade] || null;
         let filteredCourses = coursesData;
         if (gradeNumber) {
           filteredCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
@@ -206,13 +210,7 @@ const GPA = () => {
 
         // If coursesData is already loaded in context, use it
         if (coursesData && coursesData.length > 0) {
-          const gradeMap: Record<string, number> = {
-            'Freshman': 9,
-            'Sophomore': 10,
-            'Junior': 11,
-            'Senior': 12
-          };
-          const gradeNumber = gradeMap[selectedGrade] || null;
+          const gradeNumber = GRADE_MAP[selectedGrade] || null;
           let initialCourses = coursesData;
           if (gradeNumber) {
             initialCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
@@ -238,13 +236,7 @@ const GPA = () => {
           const gpaResult = await UnifiedGPAManager.getGPAData('All Time', false);
           if (gpaResult.success && gpaResult.rawCourses) {
             let initialCourses = gpaResult.rawCourses;
-            const gradeMap: Record<string, number> = {
-              'Freshman': 9,
-              'Sophomore': 10,
-              'Junior': 11,
-              'Senior': 12
-            };
-            const gradeNumber = gradeMap[selectedGrade] || null;
+            const gradeNumber = GRADE_MAP[selectedGrade] || null;
             if (gradeNumber) {
               initialCourses = gpaResult.rawCourses.filter(c => c.gradeYear === gradeNumber);
             }
@@ -282,13 +274,7 @@ const GPA = () => {
       return;
     }
 
-    const gradeMap: Record<string, number> = {
-      'Freshman': 9,
-      'Sophomore': 10,
-      'Junior': 11,
-      'Senior': 12
-    };
-    const gradeNumber = gradeMap[selectedGrade] || null;
+    const gradeNumber = GRADE_MAP[selectedGrade] || null;
     let filteredCourses = coursesData;
     if (gradeNumber) {
       filteredCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
@@ -314,13 +300,7 @@ const GPA = () => {
     setActivePointIndex(null);
     setHoverX(null);
     if (coursesData) {
-      const gradeMap: Record<string, number> = {
-        'Freshman': 9,
-        'Sophomore': 10,
-        'Junior': 11,
-        'Senior': 12
-      };
-      const gradeNumber = gradeMap[newGrade] || null;
+      const gradeNumber = GRADE_MAP[newGrade] || null;
       let filteredCourses = coursesData;
       if (gradeNumber) {
         filteredCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
@@ -336,7 +316,7 @@ const GPA = () => {
     }
   }, [coursesData]);
 
-  const renderGPAGraph = () => {
+  const renderGPAGraph = useCallback(() => {
     const screenWidth = Dimensions.get('window').width;
     const graphWidth = screenWidth - 42; 
     const graphHeight = 100;
@@ -563,7 +543,7 @@ const GPA = () => {
         })()}
       </View>
     );
-  };
+  }, [validLabels, gpaData, hoverX, activePointIndex, isGraphAnimating, colorScheme]);
 
 
   const renderGPADisplay = (showPrs : Boolean) => {
@@ -1006,4 +986,4 @@ const GPA = () => {
   );
 }
 
-export default GPA;
+export default React.memo(GPA);

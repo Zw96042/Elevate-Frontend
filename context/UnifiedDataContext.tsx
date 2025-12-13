@@ -48,7 +48,7 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 		} finally {
 			setLoading(false);
 		}
-	}, [loading]);
+	}, []);
 
 	const clearCache = useCallback(async () => {
 		console.log('🗑️ UnifiedDataContext.clearCache called');
@@ -65,12 +65,12 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 		}
 	}, []);
 
-	// Load initial data on mount (only if no data exists)
+	// Load initial data on mount (only once)
 	useEffect(() => {
 		if (!coursesData && !loading) {
 			refreshCourses(false); // Use cache if available
 		}
-	}, [refreshCourses, coursesData, loading]);
+	}, []); // Remove dependencies to prevent infinite loop
 
 	return (
 		<UnifiedDataContext.Provider value={{ 

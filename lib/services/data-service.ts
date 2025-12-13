@@ -243,18 +243,33 @@ export class DataService {
   private static async getCachedData(): Promise<UnifiedDataResult | null> {
     try {
       const timestampStr = await AsyncStorage.getItem(CACHE_TIMESTAMP_KEY);
-      if (!timestampStr) return null;
+      if (!timestampStr) {
+        console.log('📅 DataService: No cache timestamp found');
+        return null;
+      }
 
       const timestamp = parseInt(timestampStr, 10);
       const now = Date.now();
+      const age = now - timestamp;
+      const ageMinutes = Math.round(age / (60 * 1000));
 
-      if (now - timestamp >= CACHE_DURATION) {
+      console.log('📅 DataService: Cache check', {
+        timestamp,
+        now,
+        age,
+        ageMinutes,
+        maxAgeMinutes: CACHE_DURATION / (60 * 1000),
+        isExpired: age >= CACHE_DURATION
+      });
+
+      if (age >= CACHE_DURATION) {
         console.log('📅 DataService: Cache expired');
         return null;
       }
 
       const cachedData = await AsyncStorage.getItem(CACHE_KEY);
       if (cachedData) {
+        console.log('✅ DataService: Using valid cached data');
         return JSON.parse(cachedData);
       }
     } catch (error) {
@@ -277,16 +292,26 @@ export class DataService {
 
   private static async fetchAndCacheData(): Promise<UnifiedDataResult> {
     try {
-      // Check session first
+      // Check session first and authenticate if needed
       const hasSession = await AuthService.hasValidSession();
       if (!hasSession) {
+        console.log('🔐 DataService: No valid session, authenticating...');
         const authResult = await AuthService.authenticate();
         if (!authResult.success) {
-          return { success: false, error: authResult.error };
+          console.error('❌ DataService: Authentication failed:', authResult.error);
+          return { success: false, error: authResult.error || 'Authentication failed' };
         }
+        console.log('✅ DataService: Authentication successful');
       }
 
       const { sessionCodes, baseUrl } = await getRequiredSessionData();
+      
+      // Validate we have all required session data
+      if (!sessionCodes || !baseUrl) {
+        console.error('❌ DataService: Missing session credentials after authentication');
+        return { success: false, error: 'Missing session credentials' };
+      }
+
       const combinedData = await fetchCombinedAcademicData(baseUrl, sessionCodes);
 
       // Transform data
@@ -303,13 +328,34 @@ export class DataService {
 
       return result;
     } catch (error: any) {
-      // Handle session expiration
-      if (error.code === 'SESSION_EXPIRED') {
+      console.error('❌ DataService: fetchAndCacheData error:', error);
+      
+      // Handle session expiration with retry limit
+      if (error.code === 'SESSION_EXPIRED' || error.message?.includes('session')) {
+        console.log('🔄 DataService: Session expired, attempting re-authentication...');
         const authResult = await AuthService.authenticate();
         if (!authResult.success) {
-          return { success: false, error: authResult.error };
+          return { success: false, error: `Session expired and re-authentication failed: ${authResult.error}` };
         }
-        return this.fetchAndCacheData();
+        
+        // Retry once after re-authentication
+        try {
+          const { sessionCodes, baseUrl } = await getRequiredSessionData();
+          const combinedData = await fetchCombinedAcademicData(baseUrl, sessionCodes);
+          const transformedCourses = this.transformCombinedData(combinedData);
+          
+          const result: UnifiedDataResult = {
+            success: true,
+            courses: transformedCourses,
+            lastUpdated: new Date().toISOString(),
+          };
+          
+          await this.setCachedData(result);
+          return result;
+        } catch (retryError: any) {
+          console.error('❌ DataService: Retry after re-authentication failed:', retryError);
+          return { success: false, error: retryError.message || 'Failed after re-authentication' };
+        }
       }
 
       return {

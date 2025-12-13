@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, FlatList, useColorScheme, LayoutAnimation, RefreshControl, DeviceEventEmitter } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ClassCard from '@/components/ClassCard';
@@ -14,6 +14,7 @@ import { useUnifiedData } from '@/context/UnifiedDataContext';
 import { useGradeLevel } from '@/hooks/useGradeLevel';
 import * as Animatable from 'react-native-animatable';
 import { logger, Modules } from '@/lib/utils/logger';
+import AsyncStorage from '@react-native-async-storage/async-storage/lib/typescript/AsyncStorage';
 
 
 // Default categories and weights (to be replaced by different API later)
@@ -22,8 +23,8 @@ const DEFAULT_CATEGORIES = {
   weights: [10, 30, 60],
 };
 
-// Transform unified course data to component format
-const transformCourseData = (unifiedCourses: UnifiedCourseData[]) => {
+// Transform unified course data to component format - memoized
+const transformCourseData = useMemo(() => (unifiedCourses: UnifiedCourseData[]) => {
   return unifiedCourses.filter(course => {
     // Only include courses that have the required parameters for API calls
     const hasRequiredParams = !!(course.courseName && course.stuId && course.corNumId && course.section && course.gbId);
@@ -107,9 +108,10 @@ const transformCourseData = (unifiedCourses: UnifiedCourseData[]) => {
       },
     };
   });
-};
+}, []);
 
-const filterCoursesBySemester = (courses: any[], selectedTerm: string) => {
+// Memoized semester filtering function
+const filterCoursesBySemester = useMemo(() => (courses: any[], selectedTerm: string) => {
   // Map display terms to semester filtering terms
   const termMapping: Record<string, string> = {
     'Q1 Grades': 'RC1',
@@ -153,14 +155,13 @@ const filterCoursesBySemester = (courses: any[], selectedTerm: string) => {
     
     return targetSemesters.includes(course.semester);
   });
-};
+}, []);
 
-export default function Index() {
+function Index() {
   const { bottomSheetRef, selectedCategory, setSelectedCategory } = useBottomSheet();
   const { settingSheetRef } = useSettingSheet();
   const { coursesData, loading, error, refreshCourses } = useUnifiedData();
   const { currentGradeLevel, loadGradeFromCourseData } = useGradeLevel();
-  const [filteredCourses, setFilteredCourses] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [hasCredentials, setHasCredentials] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -174,13 +175,13 @@ export default function Index() {
     checkCredentials();
   }, []);
 
-  // Update grade level when course data changes
+  // Update grade level when course data changes (only once per data change)
   useEffect(() => {
     if (coursesData && coursesData.length > 0) {
       logger.info(Modules.PAGE_HOME, `Course data changed, updating grade level (${coursesData.length} courses)`);
       loadGradeFromCourseData(coursesData);
     }
-  }, [coursesData, loadGradeFromCourseData]);
+  }, [coursesData?.length]); // Remove loadGradeFromCourseData dependency to prevent infinite loop
 
   // Listen for credential updates
   useEffect(() => {
@@ -201,8 +202,8 @@ export default function Index() {
 
   // No need for local loadCourses, use refreshCourses from context
 
-  // Effect to filter courses when selectedCategory or currentGradeLevel changes
-  useEffect(() => {
+  // Memoized filtered courses calculation
+  const filteredCourses = useMemo(() => {
     logger.debug(Modules.PAGE_HOME, 'Filtering courses', {
       grade: currentGradeLevel,
       term: selectedCategory,
@@ -226,8 +227,8 @@ export default function Index() {
     }
     const filtered = filterCoursesBySemester(transformCourseData(filteredRawCourses), selectedCategory);
     logger.debug(Modules.PAGE_HOME, `After semester filter: ${filtered.length} courses`);
-    setFilteredCourses(filtered);
-  }, [coursesData, selectedCategory, currentGradeLevel]);
+    return filtered;
+  }, [coursesData, selectedCategory, currentGradeLevel, transformCourseData, filterCoursesBySemester]);
 
   const onRefresh = useCallback(async () => {
     logger.info(Modules.PAGE_HOME, 'Pull-to-refresh triggered');
@@ -250,6 +251,66 @@ export default function Index() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coursesData, loading]);
+
+  // Memoized render functions for better performance
+  const renderClassItem = useCallback(({ item, index }: { item: any; index: number }) => (
+    <View className="px-5">
+      {loading ? (
+        <SkeletonClassCard />
+      ) : (
+        <ClassCard
+          name={item.name}
+          teacher={item.teacher}
+          corNumId={item.corNumId}
+          stuId={item.stuId}
+          section={item.section}
+          gbId={item.gbId}
+          t1={item.t1}
+          t2={item.t2}
+          s1={item.s1}
+          t3={item.t3}
+          t4={item.t4}
+          s2={item.s2}
+          term={selectedCategory}
+        />
+      )}
+    </View>
+  ), [loading, selectedCategory]);
+
+  const keyExtractor = useCallback((item: any, index: number) => 
+    loading ? `skeleton-${index}` : `${item.name}-${index}`, [loading]);
+
+  const ItemSeparatorComponent = useCallback(() => <View className="h-[0.85rem]" />, []);
+
+  const ListHeaderComponent = useMemo(() => (
+    <>
+      <Text className="text-slate-500 font-bold mt-3 text-sm px-5">Term</Text>
+      <View className="my-2 px-5">
+        <TouchableOpacity
+          onPress={() => bottomSheetRef.current?.expand()}
+          className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
+        >
+          <Text className="text-base text-main">{selectedCategory}</Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  ), [selectedCategory, bottomSheetRef]);
+
+  const ListEmptyComponent = useMemo(() => (
+    <View className="flex-1 justify-center items-center py-12">
+      {!loading && (
+        <>
+          <Ionicons name="school-outline" size={64} color="#9ca3af" />
+          <Text className="text-center text-gray-500 mt-4 text-lg">
+            No courses found
+          </Text>
+          <Text className="text-center text-gray-400 mt-2">
+            Try selecting a different term
+          </Text>
+        </>
+      )}
+    </View>
+  ), [loading]);
 
   // Show login prompt if credentials are not set OR if error is credential-related
   if (!hasCredentials || (error && error.includes('credentials')) || !loading) {
@@ -322,6 +383,7 @@ export default function Index() {
     );
   }
 
+
   return (
     
       <View className="flex-1 bg-primary">
@@ -340,61 +402,24 @@ export default function Index() {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
-          ListHeaderComponent={
-            <>
-              <Text className="text-slate-500 font-bold mt-3 text-sm px-5">Term</Text>
-              <View className="my-2 px-5">
-                <TouchableOpacity
-                  onPress={() => bottomSheetRef.current?.expand()}
-                  className="flex-row items-center justify-between bg-cardColor px-4 py-3 rounded-full"
-                >
-                  <Text className="text-base text-main">{selectedCategory}</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          }
-          renderItem={({ item, index }) => (
-            <View className="px-5">
-              {loading ? (
-                <SkeletonClassCard />
-              ) : (
-                <ClassCard
-                  name={item.name}
-                  teacher={item.teacher}
-                  corNumId={item.corNumId}
-                  stuId={item.stuId}
-                  section={item.section}
-                  gbId={item.gbId}
-                  t1={item.t1}
-                  t2={item.t2}
-                  s1={item.s1}
-                  t3={item.t3}
-                  t4={item.t4}
-                  s2={item.s2}
-                  term={selectedCategory}
-                />
-              )}
-            </View>
-          )}
-          keyExtractor={(item, index) => loading ? `skeleton-${index}` : `${item.name}-${index}`}
-          ItemSeparatorComponent={() => <View className="h-[0.85rem]" />}
-          ListEmptyComponent={
-            <View className="flex-1 justify-center items-center py-12">
-              {!loading && (
-                <>
-                  <Ionicons name="school-outline" size={64} color="#9ca3af" />
-                  <Text className="text-center text-gray-500 mt-4 text-lg">
-                    No courses found
-                  </Text>
-                  <Text className="text-center text-gray-400 mt-2">
-                    Try selecting a different term
-                  </Text>
-                </>
-              )}
-            </View>
-          }
+          ListHeaderComponent={ListHeaderComponent}
+          renderItem={renderClassItem}
+          keyExtractor={keyExtractor}
+          ItemSeparatorComponent={ItemSeparatorComponent}
+          ListEmptyComponent={ListEmptyComponent}
           contentContainerStyle={{ paddingBottom: 32 }}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+          initialNumToRender={7}
+          getItemLayout={(data, index) => ({
+            length: 87 + 14, // ClassCard height + separator
+            offset: (87 + 14) * index,
+            index,
+          })}
         />
       </View>
   );
 }
+
+export default React.memo(Index);

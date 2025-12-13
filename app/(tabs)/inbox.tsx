@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, FlatList, ActivityIndicator, TouchableOpacity, DeviceEventEmitter
 } from 'react-native';
@@ -28,9 +28,12 @@ const Inbox = () => {
 
   const { settingSheetRef } = useSettingSheet();
   const colorScheme = useColorScheme();
-  const indicatorColor = colorScheme === 'dark' ? '#ffffff' : '#000000';
   const [error, setError] = React.useState<string | null>(null);
   const isInitialLoad = useRef(true);
+
+  // Memoize theme-dependent values
+  const indicatorColor = useMemo(() => 
+    colorScheme === 'dark' ? '#ffffff' : '#000000', [colorScheme]);
 
   // Listen for credential updates
   useEffect(() => {
@@ -45,7 +48,7 @@ const Inbox = () => {
     };
   }, []);
 
-  const fetchMessages = async () => {
+  const fetchMessages = useCallback(async () => {
     setError(null);
     logger.debug(Modules.PAGE_INBOX, 'Fetching messages');
     
@@ -56,7 +59,7 @@ const Inbox = () => {
       logger.error(Modules.PAGE_INBOX, 'Failed to load messages', error);
       setError(error.message || 'Unable to load messages. Please check your connection and try again.');
     }
-  };
+  }, [loadMessagesWithCache]);
 
   // Only load messages on initial mount, not every focus
   useFocusEffect(
@@ -66,8 +69,57 @@ const Inbox = () => {
         fetchMessages();
         isInitialLoad.current = false;
       }
-    }, [])
+    }, [fetchMessages])
   );
+
+  // Memoized render functions for better FlatList performance
+  const renderMessageItem = useCallback(({ item }: { item: any }) => (
+    <MessageCard
+      subject={item.subject}
+      messageRowId={item.messageRowId}
+      className={item.className}
+      from={item.from}
+      date={item.date}
+      content={he.decode(item.content)}
+      administrator={item.subject === "Administrator Message"}
+    />
+  ), []);
+
+  const keyExtractor = useCallback((item: any, i: number) => `${item.subject}-${i}`, []);
+
+  const ItemSeparatorComponent = useCallback(() => <View className="h-4" />, []);
+
+  const ListEmptyComponent = useMemo(() => (
+    <View className="flex-1 justify-center items-center py-12">
+      <Ionicons name="mail-outline" size={64} color="#9ca3af" />
+      <Text className="text-center text-gray-500 mt-4 text-lg">
+        No messages found
+      </Text>
+      <Text className="text-center text-gray-400 mt-2">
+        Check back later for new messages
+      </Text>
+    </View>
+  ), []);
+
+  const ListFooterComponent = useMemo(() => 
+    loadingMore ? (
+      <View className="py-4">
+        <ActivityIndicator size="small" color={indicatorColor} />
+      </View>
+    ) : null, [loadingMore, indicatorColor]);
+
+  const onRefreshHandler = useCallback(async () => {
+    logger.info(Modules.PAGE_INBOX, 'Pull-to-refresh triggered');
+    setError(null);
+    await forceRefresh();
+  }, [forceRefresh]);
+
+  const onEndReachedHandler = useCallback(() => {
+    if (messages.length > 8) {
+      logger.debug(Modules.PAGE_INBOX, 'End reached, loading more messages');
+      handleLoadMoreMessages();
+    }
+  }, [messages.length, handleLoadMoreMessages]);
 
   // Show error display if there's an error
   if (error) {
@@ -132,52 +184,28 @@ const Inbox = () => {
           className="mt-4 px-5"
           contentContainerStyle={{ flexGrow: 1 }}
           data={messages}
-          renderItem={({ item }) => (
-            <MessageCard
-              subject={item.subject}
-              messageRowId={item.messageRowId}
-              className={item.className}
-              from={item.from}
-              date={item.date}
-              content={he.decode(item.content)}
-              administrator={item.subject === "Administrator Message"}
-            />
-          )}
-          keyExtractor={(item, i) => `${item.subject}-${i}`}
-          ItemSeparatorComponent={() => <View className="h-4" />}
+          renderItem={renderMessageItem}
+          keyExtractor={keyExtractor}
+          ItemSeparatorComponent={ItemSeparatorComponent}
           refreshing={refreshing}
-          onRefresh={async () => {
-            logger.info(Modules.PAGE_INBOX, 'Pull-to-refresh triggered');
-            setError(null);
-            await forceRefresh();
-          }}
-          onEndReached={messages.length > 8 ? () => {
-            logger.debug(Modules.PAGE_INBOX, 'End reached, loading more messages');
-            handleLoadMoreMessages();
-          } : undefined}
+          onRefresh={onRefreshHandler}
+          onEndReached={onEndReachedHandler}
           onEndReachedThreshold={0.1}
-          ListEmptyComponent={
-            <View className="flex-1 justify-center items-center py-12">
-              <Ionicons name="mail-outline" size={64} color="#9ca3af" />
-              <Text className="text-center text-gray-500 mt-4 text-lg">
-                No messages found
-              </Text>
-              <Text className="text-center text-gray-400 mt-2">
-                Check back later for new messages
-              </Text>
-            </View>
-          }
-          ListFooterComponent={
-            loadingMore ? (
-              <View className="py-4">
-                <ActivityIndicator size="small" color={indicatorColor} />
-              </View>
-            ) : null
-          }
+          ListEmptyComponent={ListEmptyComponent}
+          ListFooterComponent={ListFooterComponent}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+          initialNumToRender={8}
+          getItemLayout={(data, index) => ({
+            length: 80 + 16, // MessageCard height + separator
+            offset: (80 + 16) * index,
+            index,
+          })}
         />
       )}
     </View>
   );
 };
 
-export default Inbox;
+export default React.memo(Inbox);

@@ -1,5 +1,5 @@
 import { View, Text, TouchableOpacity, TextInput, Keyboard, TouchableWithoutFeedback, Pressable, useColorScheme, Platform } from 'react-native'
-import React, { useRef, useState } from 'react'
+import React, { useRef, useState, useMemo, useCallback } from 'react'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import formatClassName from '@/utils/formatClassName';
@@ -10,10 +10,12 @@ const AssignmentDetails = () => {
   const router = useRouter();
   const theme = useColorScheme();
   const { class: classParam, classId, name, category, grade, outOf, dueDate, artificial, editing, term, assignmentId, corNumId, section, gbId, meta } = useLocalSearchParams();
-  const formattedClass = formatClassName(classParam?.toString() || '');
+  
+  // Memoize formatted class name
+  const formattedClass = useMemo(() => formatClassName(classParam?.toString() || ''), [classParam]);
 
-  // Parse meta data
-  const parsedMeta = React.useMemo(() => {
+  // Memoize parsed meta data
+  const parsedMeta = useMemo(() => {
     try {
       const metaData = meta ? JSON.parse(meta.toString()) : [];
       
@@ -31,35 +33,45 @@ const AssignmentDetails = () => {
     }
   }, [meta, name, grade]);
 
-  const [gradeValue, setGradeValue] = React.useState(() =>
-    grade === '*' ? '*' : !isNaN(Number(grade)) ? Number(grade).toFixed(2) : ''
-  );
-  const [outOfValue, setOutOfValue] = React.useState(() =>
-    !isNaN(Number(outOf)) ? Number(outOf).toFixed(2) : ''
-  );
+  // Memoize initial values to prevent unnecessary recalculations
+  const initialGradeValue = useMemo(() => 
+    grade === '*' ? '*' : !isNaN(Number(grade)) ? Number(grade).toFixed(2) : '', [grade]);
+  const initialOutOfValue = useMemo(() => 
+    !isNaN(Number(outOf)) ? Number(outOf).toFixed(2) : '', [outOf]);
+
+  const [gradeValue, setGradeValue] = useState(initialGradeValue);
+  const [outOfValue, setOutOfValue] = useState(initialOutOfValue);
 
   const gradeInputRef = useRef<TextInput>(null);
   const outOfInputRef = useRef<TextInput>(null);
 
-  const [percentage, setPercentage] = useState(() => {
+  // Memoize initial percentage calculation
+  const initialPercentage = useMemo(() => {
     if (!isNaN(Number(grade)) && !isNaN(Number(outOf)) && Number(outOf) !== 0) {
       return ((Number(grade) / Number(outOf)) * 100).toFixed(2);
     }
     if (grade === '*') return '*';
     return '0.00';
-  });
+  }, [grade, outOf]);
 
-  React.useEffect(() => {
+  const [percentage, setPercentage] = useState(initialPercentage);
+
+  // Memoize percentage calculation to prevent unnecessary recalculations
+  const calculatedPercentage = useMemo(() => {
     if (gradeValue === '*') {
-      setPercentage('*');
+      return '*';
     } else if (!isNaN(Number(gradeValue)) && !isNaN(Number(outOfValue)) && Number(outOfValue) !== 0) {
-      setPercentage(((Number(gradeValue) / Number(outOfValue)) * 100).toFixed(2));
+      return ((Number(gradeValue) / Number(outOfValue)) * 100).toFixed(2);
     } else {
-      setPercentage('0.00');
+      return '0.00';
     }
   }, [gradeValue, outOfValue]);
 
-  const handleSave = async () => {
+  React.useEffect(() => {
+    setPercentage(calculatedPercentage);
+  }, [calculatedPercentage]);
+
+  const handleSave = useCallback(async () => {
     const className = classParam?.toString() || '';
     const classIdParam = classId?.toString() || '';
     const corNumIdParam = corNumId?.toString() || '';
@@ -106,16 +118,16 @@ const AssignmentDetails = () => {
       updated[storageKey] = updatedClassList;
     }
     await AsyncStorage.setItem('artificialAssignments', JSON.stringify(updated));
-  };
+  }, [gradeValue, outOfValue, assignmentId, name, category, dueDate, parsedMeta, classParam, classId, corNumId, section, gbId, term]);
 
-  const saveAndUpdate = async () => {
+  const saveAndUpdate = useCallback(async () => {
     await handleSave();
     if (gradeValue === '*') {
       setPercentage('*');
     } else if (!isNaN(Number(gradeValue)) && !isNaN(Number(outOfValue)) && Number(outOfValue) !== 0) {
       setPercentage(((Number(gradeValue) / Number(outOfValue)) * 100).toFixed(2));
     }
-  };
+  }, [handleSave, gradeValue, outOfValue]);
 
   return (
     <>
@@ -307,4 +319,4 @@ const AssignmentDetails = () => {
   )
 }
 
-export default AssignmentDetails
+export default React.memo(AssignmentDetails)

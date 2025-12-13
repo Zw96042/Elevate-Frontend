@@ -8,8 +8,6 @@ import { Stack } from "expo-router";
 import './globals.css';
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useEffect, useState, useRef } from "react";
-import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
-import * as Burnt from "burnt";
 import 'react-native-reanimated'
 import 'react-native-gesture-handler'
 import { AddClassSheetProvider } from "@/context/AddClassSheetContext";

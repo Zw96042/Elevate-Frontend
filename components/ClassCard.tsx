@@ -1,5 +1,5 @@
 import { View, Text, TouchableOpacity, useColorScheme } from 'react-native'
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState, useMemo } from 'react'
 import { Link, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons';
 import formatClassName from '@/utils/formatClassName';
@@ -29,18 +29,18 @@ type TermLabel =
 // Course Name, Teacher Name, Numerical Grade
 const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, t3, t4, s2, term }: Class & { term: TermLabel }) => {
     // Generate a truly unique identifier for this class instance
-    const classId = React.useMemo(() => {
+    const classId = useMemo(() => {
         return generateUniqueId();
     }, []); // Empty dependency array ensures this is truly unique per component instance
 
-    const termMap: Record<TermLabel, TermData> = {
+    const termMap: Record<TermLabel, TermData> = useMemo(() => ({
         "Q1 Grades": t1,
         "Q2 Grades": t2,
         "SM1 Grade": s1,
         "Q3 Grades": t3,
         "Q4 Grades": t4,
         "SM2 Grades": s2,
-    };
+    }), [t1, t2, s1, t3, t4, s2]);
 
     type TermData = {
         categories: {
@@ -49,15 +49,14 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
         };
         total: number;
     };
-    const currTerm = termMap[term];
+    const currTerm = useMemo(() => termMap[term], [termMap, term]);
 
-    // const { class: classParam, teacher, t1, t2, s1, t3, t4, s2, term } = useLocalSearchParams();
-    
-    const percentage = currTerm.total;
-    const letter = percentage >= 90 ? "A" : percentage >= 80 ? "B" : percentage >= 70 ? "C" : "D";
-    let bgColor = "bg-highlight";
-    // if (letter === "B") bgColor = "bg-yellow-400";
-    // else if (letter === "C" || letter === "D") bgColor = "bg-red-300";
+    // Memoize calculated values
+    const percentage = useMemo(() => currTerm.total, [currTerm.total]);
+    const letter = useMemo(() => 
+      percentage >= 90 ? "A" : percentage >= 80 ? "B" : percentage >= 70 ? "C" : "D", 
+      [percentage]);
+    const bgColor = useMemo(() => "bg-highlight", []);
 
     const [isEnabled, setIsEnabled] = useState(false);
 
@@ -165,8 +164,14 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
   );
 
   const theme = useColorScheme();
-  const highlightColor = theme === 'dark' ? '#3b5795' : "#a4bfed";
-  const cardColor = theme === 'dark' ? '#1e293b' : "#fafafa";
+  
+  // Memoize theme colors
+  const themeColors = useMemo(() => ({
+    highlightColor: theme === 'dark' ? '#3b5795' : "#a4bfed",
+    cardColor: theme === 'dark' ? '#1e293b' : "#fafafa"
+  }), [theme]);
+
+  const { highlightColor, cardColor } = themeColors;
 
   useAnimatedReaction(
     () => animatedGrade.value,
@@ -240,4 +245,4 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
   )
 }
 
-export default ClassCard
+export default React.memo(ClassCard)
