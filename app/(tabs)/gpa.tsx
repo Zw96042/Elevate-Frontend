@@ -962,7 +962,6 @@ const GPA = () => {
           <SkeletonGradeLevelSelector />
         ) : (
           <GradeLevelSelector
-            key={`grade-selector-${selectedGrade}`}
             grades={availableGradeLevels}
             selectedGrade={selectedGrade}
             onSelectGrade={handleGradeChange}
