@@ -1,50 +1,85 @@
-# Welcome to your Expo app 👋
+# Elevate Frontend
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**Elevate** is a modern mobile app designed to reimagine the Skyward gradebook experience. Built with **React Native** and styled with **NativeWind**, it empowers students to track grades, manage assignments, and plan ahead with calendar sync and GPA insights.
 
-## Get started
+🔗 **Backend Repo**: [Elevate-Backend](https://github.com/Zw96042/Elevate-Backend)  
+📋 **Project Board**: [GitHub Project Tracker](https://github.com/users/Zw96042/projects/2)
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
+## 🚀 Project Vision
 
-2. Start the app
+Elevate provides a cleaner, more useful, and student-focused alternative to Skyward. Core features include:
 
-   ```bash
-   npx expo start
-   ```
+- GPA calculator
+- Calendar integration (Google/Apple)
+- Class and assignment tracking
+- Inbox and message views
+- Secure authentication flow
 
-In the output, you'll find options to open the app in a
+---
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## 🎯 Project Takeaways
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+-  Build a performant mobile app with **React Native**
+-  Use **Expo Router** and navigation for modern routing
+-  Style consistently with **NativeWind (Tailwind for RN)**
+-  Connect securely to Elevate’s backend services
+-  Organize UI components and logic in a scalable file structure
+-  Track development with a public project board
 
-## Get a fresh project
+---
 
-When you're ready, run:
+## 🛠️ Tech Stack
 
-```bash
-npm run reset-project
+- **React Native** (v0.79.2)
+- **Expo** (with custom dev client)
+- **Expo Router** for navigation
+- **NativeWind** for Tailwind-style styling
+- **Axios** for API requests
+- **React Navigation** suite
+- Calendar and biometric support via **expo modules**
+
+---
+
+## 📂 File Structure
 ```
+Elevate-Frontend/
+├── app/
+│   ├── (tabs)/              # Tab layout and views (Assignments, Inbox, Profile)
+│   ├── assignments/         # Assignment-specific pages
+│   ├── classes/             # Class-specific pages
+│   ├── inbox/               # Inbox-specific message pages
+│   └── globals.css          # Global styles
+├── assets/                  # Fonts, images, icons
+├── components/              # UI components (Cards, etc.)
+├── constants/               # Static values/config
+├── interfaces/              # Shared TypeScript types
+├── lib/                     # API handlers and auth logic
+├── types/                   # Type helpers
+├── utils/                   # Utility functions (e.g., formatClassName)
+└── app.config.js / package.json
+```
+---
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## ✅ Current Development
 
-## Learn more
+Check out features currently in progress, planned, or completed here:  
+🔗 [Elevate Project Board](https://github.com/users/Zw96042/projects/2)
 
-To learn more about developing your project with Expo, look at the following resources:
+---
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## 🐛 Bug Reports & Suggestions
 
-## Join the community
+If you encounter any issues, have feedback, or want to suggest improvements:
 
-Join our community of developers creating universal apps.
+Please open an issue on [this repository](https://github.com/Zw96042/Elevate-Frontend/issues)
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Currently this app only supports a very limited amount of school districts. To make a request to add a school district, please filll out [this](https://docs.google.com/forms/d/e/1FAIpQLSdqtqDEwLQY03KHS_LZDpjOjTcP_j8MCIizaMRMHTS6T5tOzQ/viewform?usp=dialog) form.
+
+---
+
+## 📬 Contact
+
+Maintained by Zachary Wilson  
+📧 [zach.wilson.atx@gmail.com](mailto:zach.wilson.atx@gmail.com)
