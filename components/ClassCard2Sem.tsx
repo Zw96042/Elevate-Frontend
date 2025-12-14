@@ -1,7 +1,8 @@
 import { View, Text, TouchableOpacity, useColorScheme, DeviceEventEmitter } from 'react-native'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { Link } from 'expo-router'
 import formatClassName from '@/utils/formatClassName'
+import { useScreenDimensions } from '@/hooks/useScreenDimensions'
 import PieChart from 'react-native-pie-chart'
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -47,6 +48,15 @@ const ClassCard2Sem = ({
   showDeleteAction?: boolean,
   termLabels?: { s1: string, s2: string }
 }) => {
+  const { height: screenHeight } = useScreenDimensions();
+  
+  // Calculate responsive height (approximately 10% of screen height, with min/max bounds)
+  const cardHeight = useMemo(() => {
+    const responsiveHeight = Math.round(screenHeight * 0.10);
+    // Ensure minimum of 80px and maximum of 110px for usability
+    return Math.max(80, Math.min(110, responsiveHeight));
+  }, [screenHeight]);
+
   const [displaySM1, setDisplaySM1] = useState(0)
   const [displaySM2, setDisplaySM2] = useState(0)
 
@@ -88,7 +98,10 @@ const ClassCard2Sem = ({
 
   const cardContent = (
     <View className='bg-bgColor mx-6'>
-      <View className="w-full h-20 rounded-3xl bg-cardColor flex-row items-center justify-between px-5 mb-3">
+      <View 
+        className="w-full rounded-3xl bg-cardColor flex-row items-center justify-between px-5 mb-3"
+        style={{ height: cardHeight }}
+      >
         <View className="flex-1 mr-3">
           {courseLevel != "Regular" && (
             <View className={`self-start rounded-md bg-highlight px-2`}>
@@ -130,7 +143,8 @@ const ClassCard2Sem = ({
     <Swipeable
       renderRightActions={() => (
         <TouchableOpacity
-          className="bg-red-500 justify-center items-center px-4 mr-6 rounded-3xl h-20"
+          className="bg-red-500 justify-center items-center px-4 mr-6 rounded-3xl"
+          style={{ height: cardHeight }}
           onPress={async () => {
             const key = `savedClasses-${gradeLevel}`;
             const existingRaw = await AsyncStorage.getItem(key);

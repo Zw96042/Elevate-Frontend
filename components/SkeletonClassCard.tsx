@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { Animated, View, StyleSheet } from 'react-native';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'react-native-linear-gradient';
+import { useScreenDimensions } from '@/hooks/useScreenDimensions';
 
 const SkeletonPlaceholder = ({ children }: { children: React.ReactNode }) => {
   const animatedValue1 = useRef(new Animated.Value(0)).current;
@@ -79,8 +80,19 @@ const SkeletonPlaceholder = ({ children }: { children: React.ReactNode }) => {
 };
 
 const SkeletonClassCard = () => {
+  const { height: screenHeight } = useScreenDimensions();
+  
+  // Calculate responsive height to match ClassCard (approximately 11% of screen height)
+  const cardHeight = useMemo(() => {
+    const responsiveHeight = Math.round(screenHeight * 0.0855);
+    return Math.max(72, Math.min(120, responsiveHeight));
+  }, [screenHeight]);
+
   return (
-    <View className="w-full h-[5.6rem] rounded-3xl bg-cardColor flex-row items-center justify-between px-5 animate-pulse">
+    <View 
+      className="w-full rounded-3xl bg-cardColor flex-row items-center justify-between px-5 animate-pulse"
+      style={{ height: cardHeight }}
+    >
       <SkeletonPlaceholder>
         <View className='flex-1 justify-center'>
           <View className="w-40 h-6 bg-gray-300 rounded-md mb-2" />

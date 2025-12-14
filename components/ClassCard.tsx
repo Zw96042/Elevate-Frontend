@@ -6,6 +6,7 @@ import formatClassName from '@/utils/formatClassName';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { calculateGradeSummary } from '@/utils/calculateGrades';
 import { generateUniqueId } from '@/utils/uniqueId';
+import { useScreenDimensions } from '@/hooks/useScreenDimensions';
 import PieChart from 'react-native-pie-chart'
 import Animated, {
   useSharedValue,
@@ -28,6 +29,14 @@ type TermLabel =
 
 // Course Name, Teacher Name, Numerical Grade
 const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, t3, t4, s2, term }: Class & { term: TermLabel }) => {
+    const { height: screenHeight } = useScreenDimensions();
+    
+    const cardHeight = useMemo(() => {
+        const responsiveHeight = Math.round(screenHeight * 0.0855);
+        // Ensure minimum of 80px and maximum of 120px for usability
+        return Math.max(72, Math.min(120, responsiveHeight));
+    }, [screenHeight]);
+
     // Generate a truly unique identifier for this class instance
     const classId = useMemo(() => {
         return generateUniqueId();
@@ -205,7 +214,10 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
         asChild
     >
         <TouchableOpacity  className='w-[100%]'>
-            <View className='w-full h-[5.45rem] rounded-3xl bg-cardColor flex-row items-center justify-between'>
+            <View 
+                className='w-full rounded-3xl bg-cardColor flex-row items-center justify-between'
+                style={{ height: cardHeight }}
+            >
                 <View>
                     <Text className='text-lg text-main font-normal ml-5'>{formatClassName(name)}</Text>
                     <Text className='text-sm text-secondary ml-5'>{formatClassName(teacher) }</Text>
