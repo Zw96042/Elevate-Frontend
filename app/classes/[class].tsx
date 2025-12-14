@@ -579,53 +579,7 @@ const ClassDetails = () => {
 
   const { openModal } = useAddAssignmentSheet();
 
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerRight: () =>
-        isEnabled ? (
-          <TouchableOpacity
-          className="flex-row items-center justify-center w-10"
-            onPress={async () => {
-              openModal({
-                className: className || "",
-                classId: classId,
-                corNumId: corNumId,
-                section: section,
-                gbId: gbId,
-                selectedCategory,
-                currTerm: termMap[selectedCategory],
-                artificialAssignments,
-                setArtificialAssignments,
-                setFilteredAssignments,
-                filteredAssignments,
-                categories: apiCategories.names,
-                setCourseSummary,
-                calculateGradeSummary,
-                isEnabled,
-                meshAssignments,
-              });
-            }}
-          >
-            <SymbolView 
-              size={24}
-              name="plus" 
-            />
-          </TouchableOpacity>
-        ) : null,
-    });
-  }, [
-    isEnabled,
-    navigation,
-    openModal,
-    className,
-    classId,
-    selectedCategory,
-    artificialAssignments,
-    setArtificialAssignments,
-    setFilteredAssignments,
-    calculateGradeSummary,
-    meshAssignments,
-  ]);
+  
 
   const showCalculatedKey = classId ? `showCalculated_${className}_${classId}` : `showCalculated_${className}`;
 
@@ -671,41 +625,171 @@ const handleToggle = useCallback(async () => {
   }
 }, [isEnabled, isToggling, showCalculatedKey]);
 
-const handleResetArtificialAssignments = async () => {
-  const data = await AsyncStorage.getItem("artificialAssignments");
-  if (!data || !className) return;
+  const handleResetArtificialAssignments = async () => {
+    const data = await AsyncStorage.getItem("artificialAssignments");
+    if (!data || !className) return;
 
-  const parsed = JSON.parse(data);
+    const parsed = JSON.parse(data);
 
-  const relevantTerms = getRelevantTerms(selectedCategory);
-  
-  const termsToReset = [...relevantTerms];
-  if (selectedCategory === "SM1 Grade" || selectedCategory === "SM2 Grades") {
-    termsToReset.push(selectedCategory.split(" ")[0]);
+    const relevantTerms = getRelevantTerms(selectedCategory);
+    
+    const termsToReset = [...relevantTerms];
+    if (selectedCategory === "SM1 Grade" || selectedCategory === "SM2 Grades") {
+      termsToReset.push(selectedCategory.split(" ")[0]);
+    }
+
+    termsToReset.forEach(term => {
+      const storageKey = `${className}_${corNumId}_${section}_${gbId}_${term}`;
+      if (parsed[storageKey]) {
+        delete parsed[storageKey];
+      }
+      
+      if (term === selectedCategory.split(" ")[0]) {
+        const oldStorageKey = `${className}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
+        if (parsed[oldStorageKey]) {
+          delete parsed[oldStorageKey];
+        }
+      }
+    });
+
+    await AsyncStorage.setItem("artificialAssignments", JSON.stringify(parsed));
+
+    setArtificialAssignments(prev => prev.filter(assignment =>
+      !termsToReset.includes(assignment.term as TermLabel)
+    ));
+
+    meshAssignments();
+  };
+
+const HeaderActionCluster = () => {
+  if (!isEnabled) {
+    return (
+      <View
+        className="mr-2"
+        pointerEvents="none"
+        style={{ opacity: 0 }}
+      />
+    );
   }
 
-  termsToReset.forEach(term => {
-    const storageKey = `${className}_${corNumId}_${section}_${gbId}_${term}`;
-    if (parsed[storageKey]) {
-      delete parsed[storageKey];
-    }
-    
-    if (term === selectedCategory.split(" ")[0]) {
-      const oldStorageKey = `${className}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
-      if (parsed[oldStorageKey]) {
-        delete parsed[oldStorageKey];
-      }
-    }
-  });
+  return (
+    <View className="mr-2">
+      <View className="flex-row items-center rounded-full overflow-hidden">
+        <TouchableOpacity
+          className="px-3 py-2"
+          onPress={async () => {
+            openModal({
+              className: className || "",
+              classId,
+              corNumId,
+              section,
+              gbId,
+              selectedCategory,
+              currTerm: termMap[selectedCategory],
+              artificialAssignments,
+              setArtificialAssignments,
+              setFilteredAssignments,
+              filteredAssignments,
+              categories: apiCategories.names,
+              setCourseSummary,
+              calculateGradeSummary,
+              isEnabled,
+              meshAssignments,
+            });
+          }}
+          hitSlop={8}
+        >
+          <SymbolView size={22} name="plus" />
+        </TouchableOpacity>
 
-  await AsyncStorage.setItem("artificialAssignments", JSON.stringify(parsed));
-
-  setArtificialAssignments(prev => prev.filter(assignment =>
-    !termsToReset.includes(assignment.term as TermLabel)
-  ));
-
-  meshAssignments();
+        {apiCategories.names.length > 0 && (
+          <>
+            <View className="w-px h-5 bg-white/30" />
+            <TouchableOpacity
+              className="px-3 py-2"
+              onPress={handleResetArtificialAssignments}
+              hitSlop={8}
+            >
+              <SymbolView size={20} name="arrow.counterclockwise" />
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+    </View>
+  );
 };
+
+useLayoutEffect(() => {
+  navigation.setOptions({
+    headerRight: () =>
+      isEnabled ? (
+        <View className="flex-row items-center">
+          <View className="flex-row items-center rounded-full overflow-hidden">
+
+            {/* Add */}
+            <TouchableOpacity
+              className="px-3 py-2"
+              onPress={async () => {
+                openModal({
+                  className: className || "",
+                  classId,
+                  corNumId,
+                  section,
+                  gbId,
+                  selectedCategory,
+                  currTerm: termMap[selectedCategory],
+                  artificialAssignments,
+                  setArtificialAssignments,
+                  setFilteredAssignments,
+                  filteredAssignments,
+                  categories: apiCategories.names,
+                  setCourseSummary,
+                  calculateGradeSummary,
+                  isEnabled,
+                  meshAssignments,
+                });
+              }}
+              hitSlop={8}
+            >
+              <SymbolView size={22} name="plus" />
+            </TouchableOpacity>
+
+            {/* Divider + Reset */}
+            {apiCategories.names.length > 0 && (
+              <>
+                <View className="w-px h-5" />
+                <TouchableOpacity
+                  className="px-3 py-2"
+                  onPress={handleResetArtificialAssignments}
+                  hitSlop={8}
+                >
+                  <SymbolView
+                    size={20}
+                    name="arrow.counterclockwise"
+                  />
+                </TouchableOpacity>
+              </>
+            )}
+
+          </View>
+        </View>
+      ) : null,
+  });
+}, [
+  navigation,
+  isEnabled,
+  apiCategories.names.length,
+  openModal,
+  handleResetArtificialAssignments,
+  className,
+  classId,
+  selectedCategory,
+  artificialAssignments,
+  setArtificialAssignments,
+  setFilteredAssignments,
+  calculateGradeSummary,
+  meshAssignments,
+]);
 
   // Memoize the separator component
   const ItemSeparatorComponent = useCallback(() => <View className="h-4" />, []);
@@ -898,7 +982,7 @@ const handleResetArtificialAssignments = async () => {
         <View className="flex-row items-center" style={{ overflow: 'visible' }}>
           <Host style={{ 
             alignSelf: 'flex-end', 
-            minWidth: 90, 
+            minWidth: 95, 
             maxWidth: 150,
             overflow: 'visible',
             zIndex: 1001
@@ -948,7 +1032,7 @@ const handleResetArtificialAssignments = async () => {
   // console.log(filteredAssignments);
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <View className="bg-primary flex-1" style={{ overflow: 'visible' }}>
+      <View className="bg-primary flex-1 overflow-visible">
         <Stack.Screen
           options={{
             title: decodeURIComponent(formattedName || "Class"),
@@ -977,14 +1061,14 @@ const handleResetArtificialAssignments = async () => {
             <View>
           {GradeDisplaySection}
           {CategoriesSection}
-          {ResetButtonSection}
+          {/* {ResetButtonSection} */}
           {FilterSection}
 
           <FlatList
             data={flatListData}
             renderItem={renderAssignmentItem}
             keyExtractor={keyExtractor}
-            className="mt-6 pb-8 px-3"
+            className="mt-6 pb-10 px-3"
             scrollEnabled={false}
             ItemSeparatorComponent={ItemSeparatorComponent}
             removeClippedSubviews={true}
@@ -1006,6 +1090,20 @@ const handleResetArtificialAssignments = async () => {
           />
             </View>
         </ScrollView>
+        {/* {isEnabled && apiCategories.names.length > 0 && (
+  <View className="absolute bottom-0 left-0 right-0 px-4 pb-6">
+    <View className="bg-[#1e293b]/80 backdrop-blur-xl  rounded-2xl opacity-80">
+      <TouchableOpacity
+        onPress={handleResetArtificialAssignments}
+        className="py-4 items-center"
+      >
+        <Text className="text-highlightText font-semibold text-lg">
+          Reset Assignments
+        </Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+)} */}
       </View>
     </TouchableWithoutFeedback>
   );
