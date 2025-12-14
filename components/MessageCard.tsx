@@ -1,10 +1,22 @@
 import { View, Text, TouchableOpacity } from 'react-native'
-import React from 'react'
+import React, { useMemo } from 'react'
 import { Link } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons';
 
 // Course Name, Teacher Name, Numerical Grade
 const MessageCard = ({ subject, className, from, date, content, administrator }: Message & { administrator: boolean }) => {
+  // Memoize truncated subject to prevent recalculation
+  const truncatedSubject = useMemo(() => {
+    return subject.length > 35
+      ? subject.slice(0, 35).replace(/\s+\S*$/, '') + '...'
+      : subject;
+  }, [subject]);
+
+  // Memoize date display text
+  const dateDisplayText = useMemo(() => {
+    return administrator ? date : `${from} • ${date}`;
+  }, [administrator, date, from]);
+
   return (
     <Link
       href={{
@@ -27,13 +39,8 @@ const MessageCard = ({ subject, className, from, date, content, administrator }:
                         <Text className="text-sm text-highlightText font-bold">{className}</Text>
                       </View>
                     )}
-                    <Text className='text-lg text-main font-medium ml-5'>{subject.length > 35
-                      ? subject.slice(0, 35).replace(/\s+\S*$/, '') + '...'
-                      : subject}
-                    </Text>
-                    <Text className='text-xs text-secondary ml-5'>
-                      {administrator ? date : `${from} • ${date}`}
-                    </Text>
+                    <Text className='text-lg text-main font-medium ml-5'>{truncatedSubject}</Text>
+                    <Text className='text-xs text-secondary ml-5'>{dateDisplayText}</Text>
                 </View>
                 <View className='flex-row items-center'>
                     <Ionicons name="chevron-forward" size={24} color="#cbd5e1" className='mr-3'/>
@@ -45,4 +52,4 @@ const MessageCard = ({ subject, className, from, date, content, administrator }:
   )
 }
 
-export default MessageCard
+export default React.memo(MessageCard)

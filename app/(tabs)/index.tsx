@@ -245,11 +245,12 @@ export default function Index() {
 
   useEffect(() => {
     // Only trigger refresh if we have no data AND context is not already loading
-    if (!coursesData && !loading) {
+    // AND there's no error at all (to prevent infinite loops on auth failures)
+    if (!coursesData && !loading && !error) {
       refreshCourses();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [coursesData, loading]);
+  }, [coursesData, loading]); // Remove error from dependencies to prevent infinite loop
 
   // Show login prompt if credentials are not set OR if error is credential-related
   if (!hasCredentials || (error && error.includes('credentials')) || !loading) {

@@ -253,7 +253,7 @@ export const useGradeLevel = () => {
     } else {
       console.log('🚫 useGradeLevel useEffect triggered but already initialized, skipping');
     }
-  }, [loadGradeFromCourseData]);
+  }, []); // Remove dependency to prevent infinite loop
 
   // Listen for credential updates to refresh grade level data
   useEffect(() => {
@@ -280,7 +280,7 @@ export const useGradeLevel = () => {
     return () => {
       credentialsListener.remove();
     };
-  }, [loadGradeFromCourseData]);
+  }, []); // Remove dependency to prevent infinite loop
 
   // Static method to clear grade level cache (useful for debugging)
   const clearGradeLevelCache = useCallback(async () => {

@@ -13,9 +13,11 @@ export interface AuthResult {
 
 const AUTH_REQUEST_KEY = 'skyward_auth';
 const MIN_AUTH_INTERVAL = 2000; // 2 seconds
+const FAILED_AUTH_COOLDOWN = 10000; // 10 seconds cooldown after failed auth
 
 let lastAuthTime = 0;
 let lastAuthResult: AuthResult | null = null;
+let lastFailedAuthTime = 0;
 
 export class AuthService {
   /**
@@ -31,6 +33,13 @@ export class AuthService {
       return lastAuthResult;
     }
 
+    // Prevent rapid retry attempts after failed authentication
+    if (lastFailedAuthTime > 0 && now - lastFailedAuthTime < FAILED_AUTH_COOLDOWN) {
+      const remainingCooldown = Math.ceil((FAILED_AUTH_COOLDOWN - (now - lastFailedAuthTime)) / 1000);
+      logger.warn(Modules.AUTH, `Authentication cooldown active. Retry in ${remainingCooldown}s`);
+      return { success: false, error: `Please wait ${remainingCooldown} seconds before retrying authentication` };
+    }
+
     const endTimer = logger.time(Modules.AUTH, 'authenticate');
 
     // Use request deduplication
@@ -40,9 +49,13 @@ export class AuthService {
         lastAuthResult = authResult;
         if (authResult.success) {
           lastAuthTime = Date.now();
+          lastFailedAuthTime = 0; // Reset failed auth timer on success
+        } else {
+          lastFailedAuthTime = Date.now(); // Set failed auth timer
         }
         return authResult;
       } catch (error: any) {
+        lastFailedAuthTime = Date.now(); // Set failed auth timer on exception
         return { success: false, error: error.message || 'Authentication failed' };
       }
     });
@@ -138,6 +151,7 @@ export class AuthService {
     await SessionManager.clearSessionCodes();
     lastAuthResult = null;
     lastAuthTime = 0;
+    lastFailedAuthTime = 0;
     RequestDeduplicator.clearKey(AUTH_REQUEST_KEY);
   }
 }

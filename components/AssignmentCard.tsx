@@ -1,5 +1,5 @@
 import { View, Text, TouchableOpacity, useColorScheme } from 'react-native'
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { Link } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons';
 import CircularProgress from 'react-native-circular-progress-indicator';
@@ -15,19 +15,27 @@ type AssignmentCardProps = Assignment & {
 // Course Name, Teacher Name, Numerical Grade
 const AssignmentCard = ({ id, className, name, term, category, grade, outOf, dueDate, artificial, editing, classId, corNumId, section, gbId, meta }: AssignmentCardProps) => {
    const theme = useColorScheme();
-   const highlight = theme === 'dark' ? "#3b5795" : "#a4bfed";
-   const highlightText = theme === 'dark' ? "#7398e6" : "#587bc5";
+   
+   // Memoize theme colors
+   const themeColors = useMemo(() => ({
+     highlight: theme === 'dark' ? "#3b5795" : "#a4bfed",
+     highlightText: theme === 'dark' ? "#7398e6" : "#587bc5"
+   }), [theme]);
+
+   const { highlight, highlightText } = themeColors;
   
-  // Check for metadata types
-  const isMissing = meta?.some(m => m.type === 'missing');
-  const isNoCount = meta?.some(m => m.type === 'noCount');
-  const isAbsent = meta?.some(m => m.type === 'absent');
+  // Memoize metadata checks
+  const metaChecks = useMemo(() => ({
+    isMissing: meta?.some(m => m.type === 'missing'),
+    isNoCount: meta?.some(m => m.type === 'noCount'),
+    isAbsent: meta?.some(m => m.type === 'absent'),
+    testIsMissing: name === 'PS 1A 1B' && grade === '*'
+  }), [meta, name, grade]);
+
+  const { isMissing, isNoCount, isAbsent, testIsMissing } = metaChecks;
   
-  // Temporary test: simulate the missing assignment from API example
-  const testIsMissing = name === 'PS 1A 1B' && grade === '*';
-  
-  // Get metadata configuration for display
-  const getMetaDisplay = () => {
+  // Memoize metadata display configuration
+  const metaDisplay = useMemo(() => {
     if (isMissing || testIsMissing) {
       return {
         label: 'Missing',
@@ -50,25 +58,22 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
       };
     }
     return null;
-  };
+  }, [isMissing, testIsMissing, isNoCount, isAbsent, theme]);
   
-  const metaDisplay = getMetaDisplay();
-  
-  // Determine card styling based on metadata
-  const getCardStyle = () => {
+  // Memoize styling functions
+  const cardStyle = useMemo(() => {
     if (isMissing || testIsMissing) {
       return 'w-full h-20 rounded-2xl bg-cardColor flex-row items-center justify-between border-[0.5px] border-red-500';
     }
     return 'w-full h-20 rounded-2xl bg-cardColor flex-row items-center justify-between';
-  };
+  }, [isMissing, testIsMissing]);
   
-  // Determine text styling for no count
-  const getTextStyle = () => {
+  const textStyle = useMemo(() => {
     if (isNoCount) {
       return 'text-lg text-main font-medium ml-5 line-through opacity-60';
     }
     return 'text-lg text-main font-medium ml-5';
-  };
+  }, [isNoCount]);
   
   // console.log(grade);
   return (
@@ -97,7 +102,7 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
       asChild
     >
         <TouchableOpacity  className='w-[100%]'>
-            <View className={getCardStyle()}>
+            <View className={cardStyle}>
                 <View className="flex-1">
                     <View className="self-start rounded-md bg-highlight px-2 ml-5 mt-2">
                         <Text className="text-sm text-highlightText font-bold">{category}</Text>
@@ -165,4 +170,4 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
   )
 }
 
-export default AssignmentCard
+export default React.memo(AssignmentCard)

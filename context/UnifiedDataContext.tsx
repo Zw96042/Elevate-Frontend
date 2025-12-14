@@ -38,12 +38,21 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 				console.log('✅ Courses data updated in context, count:', result.courses.length);
 			} else {
 				setCoursesData(null);
-				setError(result.error || 'Failed to load courses');
+				const errorMessage = result.error || 'Failed to load courses';
+				setError(errorMessage);
 				console.error('❌ Failed to load courses:', result.error);
+				
+				// If it's an authentication error, don't retry automatically
+				if (errorMessage.includes('Invalid username or password') || 
+				    errorMessage.includes('Authentication failed') ||
+				    errorMessage.includes('wait') && errorMessage.includes('seconds')) {
+					console.log('🚫 Authentication error detected, stopping automatic retries');
+				}
 			}
 		} catch (error: any) {
 			setCoursesData(null);
-			setError(error.message || 'Unknown error occurred');
+			const errorMessage = error.message || 'Unknown error occurred';
+			setError(errorMessage);
 			console.error('❌ Error in refreshCourses:', error);
 		} finally {
 			setLoading(false);
@@ -65,12 +74,12 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 		}
 	}, []);
 
-	// Load initial data on mount (only if no data exists)
+	// Load initial data on mount (only once)
 	useEffect(() => {
-		if (!coursesData && !loading) {
+		if (!coursesData && !loading && !error) {
 			refreshCourses(false); // Use cache if available
 		}
-	}, [refreshCourses, coursesData, loading]);
+	}, []); // Remove dependencies to prevent infinite loop
 
 	return (
 		<UnifiedDataContext.Provider value={{ 
