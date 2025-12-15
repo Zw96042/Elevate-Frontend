@@ -138,25 +138,8 @@ const InnerLayout = () => {
         settingSheetRef.current?.close();
         setCurrentSnapPosition('hidden');
       }} accessible={false}>
-        <View className='flex-1 '>
-          <NativeTabs
-          
-            // screenOptions={{
-            //   tabBarShowLabel: false,
-            //   tabBarItemStyle: {
-            //     flex: 1,
-            //   },
-            //   tabBarStyle: {
-            //     borderTopWidth: 0,
-            //     height: 70,
-            //     paddingBottom: 8,
-            //     position: 'absolute',
-            //   },
-            //   tabBarBackground: () => (
-            //     <View className="flex-1 bg-nav border-t border-gray-200 dark:border-transparent" />
-            //   ),
-            // }}
-          >
+        <View className='flex-1'>
+          <NativeTabs>
             <NativeTabs.Trigger name="index">
               <Label>Courses</Label>
               <Icon sf={"graduationcap"} />
@@ -169,45 +152,6 @@ const InnerLayout = () => {
               <Label>Inbox</Label>
               <Icon sf={"envelope"} />
             </NativeTabs.Trigger>
-            {/* <Tabs.Screen 
-              name="index"
-              options={{
-                title: "Courses",
-                headerShown: false,
-                tabBarIcon: ({ focused }) => (
-                  <View className="items-center justify-center w-[180%] mt-5 h-[80%]">
-                    <Ionicons name="school-outline" size={22} color={focused ? '#2A52BE' : '#A8B5DB'} />
-                    <Text style={{ color: focused ? '#2A52BE' : '#A8B5DB', fontSize: 12, marginTop: 5 }}>Courses</Text>
-                  </View>
-                )
-              }}
-            /> */}
-            {/* <Tabs.Screen 
-              name="gpa"
-              options={{
-                title: "GPA",
-                headerShown: false,
-                tabBarIcon: ({ focused }) => (
-                  <View className="items-center justify-center w-[240%] mt-5 h-[80%]">
-                    <Ionicons name="document-text-outline" size={22} color={focused ? '#2A52BE' : '#A8B5DB'} />
-                    <Text style={{ color: focused ? '#2A52BE' : '#A8B5DB', fontSize: 12, marginTop: 5 }}>GPA</Text>
-                  </View>
-                )
-              }}
-            />
-            <Tabs.Screen 
-              name="inbox"
-              options={{
-                title: "Inbox",
-                headerShown: false,
-                tabBarIcon: ({ focused }) => (
-                  <View className="items-center justify-center w-[180%] mt-5 h-[80%]">
-                    <Ionicons name="mail-outline" size={22} color={focused ? '#2A52BE' : '#A8B5DB'} />
-                    <Text style={{ color: focused ? '#2A52BE' : '#A8B5DB', fontSize: 12, marginTop: 5 }}>Inbox</Text>
-                  </View>
-                )
-              }}
-            /> */}
           </NativeTabs>
 
           <BottomSheet

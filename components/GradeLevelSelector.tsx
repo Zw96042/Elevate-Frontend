@@ -21,7 +21,7 @@ const GradeLevelSelector = memo(({ grades, selectedGrade, onSelectGrade }: Props
   const selectedIndex = grades.indexOf(selectedGrade);
   
   return (
-    <View className='bg-cardColor'>
+    <View className='bg-cardColor rounded-3xl opacity-80'>
       <Host matchContents>
         <Picker
           options={grades}

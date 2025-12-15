@@ -556,6 +556,13 @@ const GPA = () => {
       
       if (!hasPRData) return false; // Don't show if we don't have PR data
       
+      // Check if FIN card exists (both SM1 and SM2 have data)
+      const hasFINCard = gpaData['SM1'] !== undefined && gpaData['SM2'] !== undefined;
+      if (hasFINCard) {
+        console.log(`🔍 shouldShowPRPair for [${prPair.join(', ')}]: FIN card exists, hiding PR cards`);
+        return false; // Don't show PR cards if FIN card exists
+      }
+      
       // Determine what comes after the RC/SM that follows this PR pair
       let nextPeriods: string[] = [];
       if (prPair.includes('PR3') && prPair.includes('PR4')) {
@@ -720,11 +727,15 @@ const GPA = () => {
                   ...(prByRC[rcLabels[1]] || [])
                 ];
                 if (prList && prList.length > 0) {
+                  // Check if FIN card exists (both SM1 and SM2 have data)
+                  const hasFINCard = exists('SM1') && exists('SM2');
+                  
                   if (prList.length === 2 && 
                     !prList.includes("PR3") &&
                     !prList.includes("PR4") && 
                     !prList.includes("PR7") && 
-                    !prList.includes("PR8")) {
+                    !prList.includes("PR8") &&
+                    !hasFINCard) { // Don't show PR cards if FIN card exists
                     rows.push(
                       <View className="flex-row justify-between mb-3" key={`${prList[0]}-${prList[1]}`}>
                         <GpaCard label={prList[0]} data={getLabelData(prList[0])} />
@@ -734,7 +745,7 @@ const GPA = () => {
                   } else if (prList.length === 1 && (
                     !prList.includes("PR4") && 
                     !prList.includes("PR8")
-                  )) {
+                  ) && !hasFINCard) { // Don't show PR cards if FIN card exists
                     rows.push(
                       <GpaSoloCard key={prList[0]} label={prList[0]} data={getLabelData(prList[0])} />
                     );

@@ -47,6 +47,7 @@ import { ScrollView } from "react-native-gesture-handler";
 import SkeletonAssignment from '@/components/SkeletonAssignment';
 import { Button, ContextMenu, Host } from "@expo/ui/swift-ui";
 import { SymbolView } from "expo-symbols";
+import * as Burnt from "burnt";
 
 const bucketMap: Record<TermLabel, string> = {
   "Q1 Grades": "TERM 3",
@@ -653,71 +654,20 @@ const handleToggle = useCallback(async () => {
     });
 
     await AsyncStorage.setItem("artificialAssignments", JSON.stringify(parsed));
-
+    Burnt.toast({
+      title: "Reset the assignments",
+     
+      duration: 1,
+      preset: 'done',
+      haptic: 'success',
+    });
+    
     setArtificialAssignments(prev => prev.filter(assignment =>
       !termsToReset.includes(assignment.term as TermLabel)
     ));
 
     meshAssignments();
   };
-
-const HeaderActionCluster = () => {
-  if (!isEnabled) {
-    return (
-      <View
-        className="mr-2"
-        pointerEvents="none"
-        style={{ opacity: 0 }}
-      />
-    );
-  }
-
-  return (
-    <View className="mr-2">
-      <View className="flex-row items-center rounded-full overflow-hidden">
-        <TouchableOpacity
-          className="px-3 py-2"
-          onPress={async () => {
-            openModal({
-              className: className || "",
-              classId,
-              corNumId,
-              section,
-              gbId,
-              selectedCategory,
-              currTerm: termMap[selectedCategory],
-              artificialAssignments,
-              setArtificialAssignments,
-              setFilteredAssignments,
-              filteredAssignments,
-              categories: apiCategories.names,
-              setCourseSummary,
-              calculateGradeSummary,
-              isEnabled,
-              meshAssignments,
-            });
-          }}
-          hitSlop={8}
-        >
-          <SymbolView size={22} name="plus" />
-        </TouchableOpacity>
-
-        {apiCategories.names.length > 0 && (
-          <>
-            <View className="w-px h-5 bg-white/30" />
-            <TouchableOpacity
-              className="px-3 py-2"
-              onPress={handleResetArtificialAssignments}
-              hitSlop={8}
-            >
-              <SymbolView size={20} name="arrow.counterclockwise" />
-            </TouchableOpacity>
-          </>
-        )}
-      </View>
-    </View>
-  );
-};
 
 useLayoutEffect(() => {
   navigation.setOptions({
@@ -754,7 +704,6 @@ useLayoutEffect(() => {
               <SymbolView size={22} name="plus" />
             </TouchableOpacity>
 
-            {/* Divider + Reset */}
             {apiCategories.names.length > 0 && (
               <>
                 <View className="w-px h-5" />

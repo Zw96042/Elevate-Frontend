@@ -1,5 +1,8 @@
 const formatClassName = (raw: string) => {
   if (raw.endsWith("FF")) return "Invention & Innovation FF";
+  if (raw.endsWith("HONORS")) {
+    raw = raw.replace("HONORS", "H").trim();
+  }
 
   const acronyms = new Set(["AP", "IB", "GT", "ELA", "BC", "AB", "CSA", "CSP", "APUSH", "US", "UK", "EU", "PE", "IT", "CS", "AI", "ML", "CAD", "CTE", "STEM"]);
 
