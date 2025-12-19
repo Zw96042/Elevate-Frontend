@@ -45,9 +45,11 @@ import { DataService } from '@/lib/services';
 import { logger, Modules } from '@/lib/utils/logger';
 import { ScrollView } from "react-native-gesture-handler";
 import SkeletonAssignment from '@/components/SkeletonAssignment';
-import { Button, ContextMenu, Host } from "@expo/ui/swift-ui";
+import { Button, ContextMenu, Host, Text as SwiftText } from "@expo/ui/swift-ui";
 import { SymbolView } from "expo-symbols";
 import * as Burnt from "burnt";
+import FilterButton from '@/components/FilterButton';
+import { useFilter } from '@/context/FilterContext';
 
 const bucketMap: Record<TermLabel, string> = {
   "Q1 Grades": "TERM 3",
@@ -165,13 +167,25 @@ const ClassDetails = () => {
   // Track category changes for refresh logic
   const [previousSelectedCategory, setPreviousSelectedCategory] = useState<TermLabel | null>(null);
 
-  // Filter state
-  const [sortOption, setSortOption] = useState<'Category' | 'Date' | 'Grade'>('Date');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc'); // desc = recent to oldest for dates
+  // Use filter context instead of local state
+  const {
+    sortOption,
+    sortOrder,
+    selectedCategories,
+    setAvailableCategories,
+    handleSortChange: contextHandleSortChange
+  } = useFilter();
 
-  // Sort assignments function
-  const sortAssignments = useCallback((assignments: Assignment[], sortBy: 'Category' | 'Date' | 'Grade', order: 'asc' | 'desc') => {
-    return [...assignments].sort((a, b) => {
+  // Sort and filter assignments function
+  const sortAndFilterAssignments = useCallback((assignments: Assignment[], sortBy: 'Category' | 'Date' | 'Grade', order: 'asc' | 'desc', categoryFilters: string[]) => {
+    // First filter by categories if any are selected
+    let filtered = assignments;
+    if (categoryFilters.length > 0) {
+      filtered = assignments.filter(assignment => categoryFilters.includes(assignment.category));
+    }
+    
+    // Then sort the filtered results
+    return [...filtered].sort((a, b) => {
       let comparison = 0;
       
       switch (sortBy) {
@@ -198,23 +212,8 @@ const ClassDetails = () => {
 
 
 
-  // Handle sort option change
-  const handleSortChange = useCallback((newSortOption: 'Category' | 'Date' | 'Grade') => {
-    if (sortOption === newSortOption) {
-      // If same option, toggle order
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      // New option, set default order
-      setSortOption(newSortOption);
-      if (newSortOption === 'Grade') {
-        setSortOrder('desc'); // Grades default to highest first
-      } else if (newSortOption === 'Date') {
-        setSortOrder('desc'); // Dates default to recent first (newest to oldest)
-      } else {
-        setSortOrder('asc'); // Categories default to A-Z
-      }
-    }
-  }, [sortOption, sortOrder]);
+  // Use context handleSortChange
+  const handleSortChange = contextHandleSortChange;
 
   // Debug function to check cache status
   const checkCacheStatus = async () => {
@@ -339,7 +338,12 @@ const ClassDetails = () => {
         return;
       }
       const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
-      const sortedAssignments = sortAssignments(realWithIds, sortOption, sortOrder);
+      
+      // Update available categories for filtering
+      const categories = [...new Set(realWithIds.map(a => a.category))];
+      setAvailableCategories(categories);
+      
+      const sortedAssignments = sortAndFilterAssignments(realWithIds, sortOption, sortOrder, selectedCategories);
       setArtificialAssignments([]);
       setFilteredAssignments(sortedAssignments);
       const all = realWithIds.filter(a => a.grade !== '*');
@@ -405,7 +409,12 @@ const ClassDetails = () => {
     }
     const allAssignments = [...fixedArtificial, ...filteredReal];
     const assignmentsWithIds = ensureUniqueAssignmentIds(allAssignments);
-    const sortedAssignments = sortAssignments(assignmentsWithIds, sortOption, sortOrder);
+    
+    // Update available categories for filtering
+    const categories = [...new Set(assignmentsWithIds.map(a => a.category))];
+    setAvailableCategories(categories);
+    
+    const sortedAssignments = sortAndFilterAssignments(assignmentsWithIds, sortOption, sortOrder, selectedCategories);
     const artificialWithIds = sortedAssignments.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
     
     logger.debug(Modules.PAGE_CLASS, `Meshed ${sortedAssignments.length} assignments (${artificialWithIds.length} artificial)`);
@@ -431,7 +440,7 @@ const ClassDetails = () => {
     const newCourseSummary = calculateGradeSummary(all, normalizedWeights);
     logger.debug(Modules.PAGE_CLASS, `Setting course summary: ${newCourseSummary.courseTotal} (isEnabled: ${isEnabled}, assignments: ${all.length})`);
     setCourseSummary(newCourseSummary);
-  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, sortOption, sortOrder, className, corNumId, section, gbId, sortAssignments]);
+  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, sortOption, sortOrder, selectedCategories, className, corNumId, section, gbId, sortAndFilterAssignments, setAvailableCategories]);
 
 
   // Memoize the grade value calculation to prevent unnecessary recalculations
@@ -506,7 +515,12 @@ const ClassDetails = () => {
       // If no artificial data exists, just ensure filtered assignments match API assignments
       if (apiAssignments.length > 0) {
         const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
-        const sortedAssignments = sortAssignments(realWithIds, sortOption, sortOrder);
+        
+        // Update available categories for filtering
+        const categories = [...new Set(realWithIds.map(a => a.category))];
+        setAvailableCategories(categories);
+        
+        const sortedAssignments = sortAndFilterAssignments(realWithIds, sortOption, sortOrder, selectedCategories);
         setFilteredAssignments(sortedAssignments);
         setArtificialAssignments([]);
       }
@@ -547,7 +561,12 @@ const ClassDetails = () => {
     
     const allAssignments = [...fixedArtificial, ...filteredReal];
     const assignmentsWithIds = ensureUniqueAssignmentIds(allAssignments);
-    const sortedAssignments = sortAssignments(assignmentsWithIds, sortOption, sortOrder);
+    
+    // Update available categories for filtering
+    const categories = [...new Set(assignmentsWithIds.map(a => a.category))];
+    setAvailableCategories(categories);
+    
+    const sortedAssignments = sortAndFilterAssignments(assignmentsWithIds, sortOption, sortOrder, selectedCategories);
     const artificialWithIds = sortedAssignments.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
     
     setArtificialAssignments(artificialWithIds);
@@ -570,7 +589,7 @@ const ClassDetails = () => {
       adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
     );
     setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, className, corNumId, section, gbId, sortAssignments, sortOption, sortOrder]);
+  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, selectedCategories, className, corNumId, section, gbId, sortAndFilterAssignments, setAvailableCategories, sortOption, sortOrder]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -669,97 +688,80 @@ const handleToggle = useCallback(async () => {
     meshAssignments();
   };
 
-useLayoutEffect(() => {
-  navigation.setOptions({
-    headerRight: () =>
-      isEnabled ? (
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
         <View className="flex-row items-center">
-          <View className="flex-row items-center rounded-full overflow-hidden">
+          {/* Always show filter button */}
+          <FilterButton availableCategories={apiCategories.names} />
+          
+          {/* Show editing controls only when enabled */}
+          {isEnabled && (
+            <View className="flex-row items-center rounded-full overflow-hidden ml-2">
+              {/* Add */}
+              <TouchableOpacity
+                className="px-3 py-2"
+                onPress={async () => {
+                  openModal({
+                    className: className || "",
+                    classId,
+                    corNumId,
+                    section,
+                    gbId,
+                    selectedCategory,
+                    currTerm: termMap[selectedCategory],
+                    artificialAssignments,
+                    setArtificialAssignments,
+                    setFilteredAssignments,
+                    filteredAssignments,
+                    categories: apiCategories.names,
+                    setCourseSummary,
+                    calculateGradeSummary,
+                    isEnabled,
+                    meshAssignments,
+                  });
+                }}
+                hitSlop={8}
+              >
+                <SymbolView size={22} name="plus" />
+              </TouchableOpacity>
 
-            {/* Add */}
-            <TouchableOpacity
-              className="px-3 py-2"
-              onPress={async () => {
-                openModal({
-                  className: className || "",
-                  classId,
-                  corNumId,
-                  section,
-                  gbId,
-                  selectedCategory,
-                  currTerm: termMap[selectedCategory],
-                  artificialAssignments,
-                  setArtificialAssignments,
-                  setFilteredAssignments,
-                  filteredAssignments,
-                  categories: apiCategories.names,
-                  setCourseSummary,
-                  calculateGradeSummary,
-                  isEnabled,
-                  meshAssignments,
-                });
-              }}
-              hitSlop={8}
-            >
-              <SymbolView size={22} name="plus" />
-            </TouchableOpacity>
-
-            {apiCategories.names.length > 0 && (
-              <>
-                <View className="w-px h-5" />
-                <TouchableOpacity
-                  className="px-3 py-2"
-                  onPress={handleResetArtificialAssignments}
-                  hitSlop={8}
-                >
-                  <SymbolView
-                    size={20}
-                    name="arrow.counterclockwise"
-                  />
-                </TouchableOpacity>
-              </>
-            )}
-
-          </View>
+              {apiCategories.names.length > 0 && (
+                <>
+                  <View className="w-px h-5" />
+                  <TouchableOpacity
+                    className="px-3 py-2"
+                    onPress={handleResetArtificialAssignments}
+                    hitSlop={8}
+                  >
+                    <SymbolView
+                      size={20}
+                      name="arrow.counterclockwise"
+                    />
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          )}
         </View>
-      ) : null,
-  });
-}, [
-  navigation,
-  isEnabled,
-  apiCategories.names.length,
-  openModal,
-  handleResetArtificialAssignments,
-  className,
-  classId,
-  selectedCategory,
-  artificialAssignments,
-  setArtificialAssignments,
-  setFilteredAssignments,
-  calculateGradeSummary,
-  meshAssignments,
-]);
+      ),
+    });
+  }, [
+    navigation,
+    isEnabled,
+    apiCategories.names.length,
+    openModal,
+    handleResetArtificialAssignments,
+    className,
+    classId,
+    selectedCategory,
+    artificialAssignments,
+    setArtificialAssignments,
+    setFilteredAssignments,
+    calculateGradeSummary,
+    meshAssignments,
+  ]);
 
-  // Memoize the separator component
-  const ItemSeparatorComponent = useCallback(() => <View className="h-4" />, []);
-
-  // Memoize the renderItem function for better FlatList performance
-  const renderAssignmentItem = useCallback(({ item, index }: { item: any; index: number }) => {
-    const shouldShowSkeleton = loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0);
-    
-    return shouldShowSkeleton ? (
-      <SkeletonAssignment key={`skeleton-${index}`} />
-    ) : (
-      <AssignmentCard
-        {...(item as Assignment)}
-        editing={!!isEnabled}
-        classId={classId}
-        corNumId={corNumId}
-        section={section}
-        gbId={gbId}
-      />
-    );
-  }, [loading, waitingForRetry, apiAssignments.length, filteredAssignments.length, isEnabled, classId, corNumId, section, gbId]);
 
   // Memoize the key extractor
   const keyExtractor = useCallback((item: any, index: number) => {
@@ -896,83 +898,14 @@ useLayoutEffect(() => {
   }, [loading, apiCategories.names, apiCategories.weights, courseSummary.categories, isEnabled, handleToggle, isToggling]);
 
   // Memoize the reset button section (only depends on isEnabled for visibility)
-  const ResetButtonSection = useMemo(() => (
-    <AnimatePresence>
-      {isEnabled && apiCategories.names.length > 0 && (
-        <MotiView
-          key={`reset-${isEnabled}`}
-          from={{ opacity: 0, scale: 0.95, translateY: -10, height: 0, marginTop: 0 }}
-          animate={{ opacity: 1, scale: 1, translateY: 0, height: 56, marginTop: 16 }}
-          exit={{ opacity: 0, scale: 0.95, translateY: -10, height: 0, marginTop: 0 }}
-          transition={{
-            type: "timing",
-            duration: 200,
-            easing: Easing.out(Easing.cubic),
-          }}
-          style={{ marginHorizontal: 16 }}
-          pointerEvents={isEnabled ? "auto" : "none"}
-        >
-          <TouchableOpacity
-            onPress={handleResetArtificialAssignments}
-            className="bg-cardColor items-center rounded-lg py-3"
-          >
-            <Text className="text-highlightText font-medium text-lg">Reset Assignments</Text>
-          </TouchableOpacity>
-        </MotiView>
-      )}
-    </AnimatePresence>
-  ), [isEnabled, apiCategories.names.length, handleResetArtificialAssignments]);
+  
 
-  // Memoize the filter section (doesn't depend on isEnabled)
-  const FilterSection = useMemo(() => (
-    <View className="px-5 mt-4 mb-2" style={{ zIndex: 1000 }}>
-      <View className="flex-row items-center justify-between">
-        <Text className="text-highlightText font-bold text-lg">Assignments</Text>
-        <View className="flex-row items-center" style={{ overflow: 'visible' }}>
-          <Host style={{ 
-            alignSelf: 'flex-end', 
-            minWidth: 95, 
-            maxWidth: 150,
-            overflow: 'visible',
-            zIndex: 1001
-          }}>
-            <ContextMenu>
-              <ContextMenu.Items>
-                <Button
-                  systemImage={sortOption === 'Category' ? "checkmark" : "textformat"}
-                  onPress={() => handleSortChange('Category')}
-                >
-                  Category {sortOption === 'Category' && (sortOrder === 'asc' ? '(A-Z)' : '(Z-A)')}
-                </Button>
-                <Button
-                  systemImage={sortOption === 'Date' ? "checkmark" : "calendar"}
-                  onPress={() => handleSortChange('Date')}
-                >
-                  Date {sortOption === 'Date' && (sortOrder === 'asc' ? '(Oldest)' : '(Newest)')}
-                </Button>
-                <Button
-                  systemImage={sortOption === 'Grade' ? "checkmark" : "number"}
-                  onPress={() => handleSortChange('Grade')}
-                >
-                  Grade {sortOption === 'Grade' && (sortOrder === 'asc' ? '(Lowest)' : '(Highest)')}
-                </Button>
-              </ContextMenu.Items>
-              <ContextMenu.Trigger>
-                <View className="bg-cardColor px-3 py-2 rounded-full flex-row items-center justify-center" style={{ minWidth: 90 }}>
-                  <Text className="text-main text-sm font-medium mr-1 capitalize" style={{ color: theme === 'dark' ? '#ffffff' : '#000000' }}>
-                    {sortOption}
-                  </Text>
-                  <Text className="text-main text-xs" style={{ color: theme === 'dark' ? '#ffffff' : '#000000' }}>
-                    {sortOrder === 'asc' ? '↑' : '↓'}
-                  </Text>
-                </View>
-              </ContextMenu.Trigger>
-            </ContextMenu>
-          </Host>
-        </View>
-      </View>
+  // Simplified assignments section header
+  const AssignmentsSection = useMemo(() => (
+    <View className="px-5 mt-4 mb-2">
+      <Text className="text-highlightText font-bold text-lg">Assignments</Text>
     </View>
-  ), [sortOption, sortOrder, handleSortChange, theme]);
+  ), []);
 
 
 
@@ -1004,40 +937,46 @@ useLayoutEffect(() => {
               colors={[indicatorColor]}
             />
           }
-          style={{ overflow: 'visible' }}
-          contentContainerStyle={{ overflow: 'visible' }}
+          showsVerticalScrollIndicator={true}
+          contentContainerStyle={{ 
+            paddingBottom: 0, // Increased bottom padding
+            flexGrow: 1
+          }}
         >
-            <View>
           {GradeDisplaySection}
           {CategoriesSection}
           {/* {ResetButtonSection} */}
-          {FilterSection}
+          {AssignmentsSection}
 
-          <FlatList
-            data={flatListData}
-            renderItem={renderAssignmentItem}
-            keyExtractor={keyExtractor}
-            className="mt-6 pb-10 px-3"
-            scrollEnabled={false}
-            ItemSeparatorComponent={ItemSeparatorComponent}
-            removeClippedSubviews={true}
-            maxToRenderPerBatch={10}
-            windowSize={10}
-            initialNumToRender={8}
-            getItemLayout={(data, index) => ({
-              length: 120, // Approximate height of AssignmentCard + separator
-              offset: 124 * index, // height + separator
-              index,
-            })}
-            ListEmptyComponent={
-              loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0) ? null : (
-                <View className="mt-10 px-5">
-                  <Text className="text-center text-gray-500">No assignments found</Text>
+          <View className="mt-2 px-3 pb-20">
+            {flatListData.map((item, index) => {
+              const shouldShowSkeleton = loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0);
+              
+              return (
+                <View key={keyExtractor(item, index)}>
+                  {shouldShowSkeleton ? (
+                    <SkeletonAssignment />
+                  ) : (
+                    <AssignmentCard
+                      {...(item as Assignment)}
+                      editing={!!isEnabled}
+                      classId={classId}
+                      corNumId={corNumId}
+                      section={section}
+                      gbId={gbId}
+                    />
+                  )}
+                  {index < flatListData.length - 1 && <View className="h-4" />}
                 </View>
-              )
-            }
-          />
-            </View>
+              );
+            })}
+            
+            {!loading && !waitingForRetry && !(apiAssignments.length > 0 && filteredAssignments.length === 0) && flatListData.length === 0 && (
+              <View className="mt-10 px-5">
+                <Text className="text-center text-gray-500">No assignments found</Text>
+              </View>
+            )}
+          </View>
         </ScrollView>
         {/* {isEnabled && apiCategories.names.length > 0 && (
   <View className="absolute bottom-0 left-0 right-0 px-4 pb-6">

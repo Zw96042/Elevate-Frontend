@@ -51,15 +51,16 @@ const SkeletonPlaceholder = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <MaskedView
-      style={{ flex: 1 }}
-      maskElement={<View style={{ flex: 1 }}>{children}</View>}
+      style={{ flex: 1, overflow: 'hidden' }}
+      maskElement={<View style={{ flex: 1, overflow: 'hidden' }}>{children}</View>}
     >
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, overflow: 'hidden' }}>
         <Animated.View
           pointerEvents="none"
           style={{
             ...StyleSheet.absoluteFillObject,
             transform: [{ translateX: translateX1 }],
+            overflow: 'hidden',
           }}
         >
           <LinearGradient
@@ -75,6 +76,7 @@ const SkeletonPlaceholder = ({ children }: { children: React.ReactNode }) => {
           style={{
             ...StyleSheet.absoluteFillObject,
             transform: [{ translateX: translateX2 }],
+            overflow: 'hidden',
           }}
         >
           <LinearGradient
@@ -91,7 +93,7 @@ const SkeletonPlaceholder = ({ children }: { children: React.ReactNode }) => {
 
 const SkeletonAssignment = () => {
   return (
-    <View className="w-full h-20 rounded-2xl bg-cardColor flex-row items-center justify-between px-5 animate-pulse">
+    <View className="w-full h-20 rounded-2xl bg-cardColor flex-row items-center justify-between px-5 animate-pulse overflow-hidden">
       <SkeletonPlaceholder>
         <View className="w-full h-full flex-row items-center justify-between">
           <View className="flex-row">

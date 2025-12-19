@@ -1,5 +1,6 @@
 import { useColorScheme, TouchableOpacity, Text, LayoutAnimation, View, TextInput, ScrollView, Keyboard, findNodeHandle } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
+import { Host, Picker, VStack } from '@expo/ui/swift-ui';
 import { BottomSheetProvider, useBottomSheet, TermLabel } from "@/context/BottomSheetContext";
 import { AddSheetProvider, useAddAssignmentSheet } from "@/context/AddAssignmentSheetContext";
 import BottomSheet, { BottomSheetModalProvider, BottomSheetBackdrop, BottomSheetFlatList, BottomSheetView, TouchableWithoutFeedback } from "@gorhom/bottom-sheet";
@@ -7,12 +8,14 @@ import { colors } from "@/utils/colorTheme";
 import { Stack } from "expo-router";
 import './globals.css';
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import 'react-native-reanimated'
 import 'react-native-gesture-handler'
 import { AddClassSheetProvider } from "@/context/AddClassSheetContext";
 import { UnifiedDataProvider } from '@/context/UnifiedDataContext';
+import { FilterProvider } from '@/context/FilterContext';
 import * as SplashScreen from 'expo-splash-screen';
+import { padding } from "@expo/ui/swift-ui/modifiers";
 
 SplashScreen.setOptions({
   duration: 200,
@@ -119,6 +122,14 @@ function InnerLayout() {
       hideSub.remove();
     };
   }, [currentSnapPosition, modalClosedByOutsideTap, isSubmitting, keyboardListenersDisabled]);
+
+  // Initialize category when categories are available and category is empty
+  useEffect(() => {
+    if (categories.length > 0 && category === '') {
+      setCategory(categories[0]);
+    }
+  }, [categories, category, setCategory]);
+
   return (
     <UnifiedDataProvider>
       <TouchableWithoutFeedback onPress={() => {
@@ -251,7 +262,7 @@ function InnerLayout() {
                     <Text className="text-sm  text-main mb-1" >Assignment Name</Text>
                     <TextInput
                       ref={nameInputRef}
-                      className="rounded-md px-4 py-2 text-main bg-primary"
+                      className="rounded-md px-4 py-2 text-main bg-primary mb-2"
                       onChangeText={setName}
                       value={name}
                       editable
@@ -262,33 +273,34 @@ function InnerLayout() {
                       spellCheck={false}
                     />
                   </View>
-                  <View className="mb-5">
-                    <Text className="text-sm text-main mb-1">Category</Text>
-                    <View className="flex-row flex-wrap gap-2">
-                      {categories.map((cat) => (
-                        <TouchableOpacity
-                          key={cat}
-                          onPress={() => setCategory(cat)}
-                          className={`px-3 py-1 rounded-full border ${
-                            category === cat
-                              ? 'bg-highlight border-highlight'
-                              : 'border-accent'
-                          }`}
-                        >
-                          <Text
-                            className={`text-sm ${
-                              category === cat
-                                ? 'text-highlightText font-bold'
-                                : 'text-main'
-                            }`}
-                          >
-                            {cat}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                  <View className="mb-5">
+                  <Host>
+                  <VStack modifiers={[
+                    // padding({
+                    //   top: 40,
+                    // })
+                  ]}>
+                    {/* <View className="mb-5"> */}
+                      {/* <Text className="text-sm text-main">Category</Text> */}
+                      <View className='bg-cardColor rounded-3xl opacity-80'>
+                        <Host matchContents>
+                          <Picker
+                            options={categories}
+                            selectedIndex={(() => {
+                              const index = categories.indexOf(category);
+                              return index >= 0 ? index : 0;
+                            })()}
+                            onOptionSelected={({ nativeEvent: { index } }) => {
+                              const newCategory = categories[index];
+                              setCategory(newCategory);
+                            }}
+                            variant="segmented"
+                          />
+                        </Host>
+                      </View>
+                    {/* </View> */}
+                  </VStack>
+                  </Host>
+                  <View className="mb-5 mt-2">
                     <Text className="text-sm text-main mb-1">Grade</Text>
                     <TextInput
                       ref={gradeInputRef}
@@ -365,19 +377,21 @@ function InnerLayout() {
 
 export default function RootLayout() {
   return (
-      <AddClassSheetProvider>
-        <AddSheetProvider>
-          <BottomSheetProvider>
-            <BottomSheetModalProvider>
-              
-                <GestureHandlerRootView style={{ flex: 1 }}>
-                  
-                    <InnerLayout />
-                </GestureHandlerRootView>
-              
-            </BottomSheetModalProvider>
-          </BottomSheetProvider>
-          </AddSheetProvider>
-      </AddClassSheetProvider>
+      <FilterProvider>
+        <AddClassSheetProvider>
+          <AddSheetProvider>
+            <BottomSheetProvider>
+              <BottomSheetModalProvider>
+                
+                  <GestureHandlerRootView style={{ flex: 1 }}>
+                    
+                      <InnerLayout />
+                  </GestureHandlerRootView>
+                
+              </BottomSheetModalProvider>
+            </BottomSheetProvider>
+            </AddSheetProvider>
+        </AddClassSheetProvider>
+      </FilterProvider>
     )
 }

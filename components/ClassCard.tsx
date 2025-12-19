@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, useColorScheme } from 'react-native'
+import { View, Text, TouchableOpacity, useColorScheme, Pressable } from 'react-native'
 import React, { useCallback, useEffect, useState, useMemo } from 'react'
 import { Link, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons';
@@ -213,7 +213,7 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
         }}
         asChild
     >
-        <TouchableOpacity  className='w-[100%]'>
+        <TouchableOpacity className='w-[100%]'>
             <View 
                 className='w-full rounded-3xl bg-cardColor flex-row items-center justify-between'
                 style={{ height: cardHeight }}
@@ -249,6 +249,7 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
                         
                     </View>
 
+                    {/* <View className='mr-3'></View> */}
                     <Ionicons name="chevron-forward" size={24} color="#cbd5e1" className='mr-3'/>
                 </View>
             </View>
@@ -257,4 +258,4 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
   )
 }
 
-export default React.memo(ClassCard)
+export default ClassCard
