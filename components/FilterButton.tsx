@@ -1,8 +1,12 @@
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, useColorScheme } from 'react-native';
-import { ContextMenu, Host, Button, Submenu } from "@expo/ui/swift-ui";
+import { ContextMenu, Host, Button, Submenu, Image } from "@expo/ui/swift-ui";
 import { SymbolView } from "expo-symbols";
 import { useFilter } from '@/context/FilterContext';
+import Ionicons from '@expo/vector-icons/build/Ionicons';
+import { buttonStyle, foregroundStyle, glassEffect, padding } from '@expo/ui/swift-ui/modifiers';
+import { HeaderButton } from '@react-navigation/elements';
+import { opacity } from 'react-native-reanimated/lib/typescript/Colors';
 
 interface FilterButtonProps {
   availableCategories?: string[];
@@ -35,18 +39,63 @@ const FilterButton: React.FC<FilterButtonProps> = ({ availableCategories = [] })
 
   // Custom decreasing bars icon using SymbolView
   const DecreasingBarsIcon = () => (
-    <View style={{ width: 24, height: 24, justifyContent: 'center', alignItems: 'center' }}>
-      <SymbolView 
-        name="line.3.horizontal.decrease" 
-        size={20} 
-        tintColor={theme === 'dark' ? '#ffffff' : '#000000'}
-      />
-    </View>
+    // <Host>
+    // <View className="flex-row items-center rounded-full overflow-hidden">
+    // <Host>
+    // <Host>
+    // <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6.5 }}>
+    //    {/* <Button systemImage='slider.horizontal.3'>
+    //     <Text></Text>
+    //   </Button>  */}
+    //   <SymbolView 
+    //     name="slider.horizontal.3" 
+    //     size={22} 
+    //     style={{  width: 22, height: 22}}
+    //   />
+    // </View>
+    // </Host>
+    // <HeaderButton>
+    //   <SymbolView 
+    //     name="slider.horizontal.3" 
+    //     size={22} 
+    //     style={{ width: 22, height: 22 }}
+    //   />
+    // </HeaderButton>
+    <Host matchContents>
+      <Image systemName='slider.horizontal.3' size={22} modifiers={[
+        padding({
+          trailing: 0,
+          leading: 3,
+        })
+      ]}/>
+    </Host>
+
+      // <Ionicons name="options-outline" size={22} style={{ width: 22, height: 22, marginRight: 20 }}  color={theme === 'dark' ? '#fff' : '#000'}/>
+      /* <SymbolView 
+        name="slider.horizontal.3" 
+        size={22} 
+        style={{  width: 22, height: 22, marginLeft: 15}}
+      /> */
+      /* </Host> */
+    // </View>
+    // </Host>
   );
 
   return (
-    <Host>
-      <ContextMenu>
+    <Host matchContents modifiers={[
+      glassEffect({
+          glass: {
+            variant: 'identity'
+          }
+        })
+    ]}>
+      <ContextMenu modifiers={[
+        buttonStyle('plain'),
+        padding({
+          leading: 7,
+          trailing: 5
+        })
+      ]} >
         <ContextMenu.Items>
           {/* Sort By Submenu */}
           <Submenu
@@ -75,7 +124,7 @@ const FilterButton: React.FC<FilterButtonProps> = ({ availableCategories = [] })
           {/* Filter By Categories Submenu */}
           {categories.length > 0 && (
             <Submenu
-              button={<Button systemImage="line.3.horizontal.decrease.circle">Filter</Button>}
+              button={<Button systemImage="line.3.horizontal.decrease">Filter</Button>}
             >
               {categories.map((category) => (
                 <Button
@@ -101,20 +150,42 @@ const FilterButton: React.FC<FilterButtonProps> = ({ availableCategories = [] })
           )}
         </ContextMenu.Items>
 
-        <ContextMenu.Trigger>
-          <TouchableOpacity 
+        <ContextMenu.Trigger >
+          {/* <TouchableOpacity 
             style={{ 
-              padding: 8,
-              borderRadius: 8,
-              backgroundColor: 'transparent'
+              paddingLeft: 12,
+              paddingRight: 12,
+              borderRadius: 8
             }}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <DecreasingBarsIcon />
-          </TouchableOpacity>
+            hitSlop={{ top: 8, bottom: 16, left: 16, right: 8 }}
+          > */}
+            {/* <DecreasingBarsIcon /> */}
+          {/* </TouchableOpacity> */}
+           {/* <View className="flex-row items-center rounded-full overflow-hidden ">
+             <TouchableOpacity
+                 className="px-2 py-2"
+                 hitSlop={0}
+               >
+                 <SymbolView size={22} name="slider.horizontal.3" />
+               </TouchableOpacity>
+           </View> */}
+           <Button variant="plain" systemImage='slider.horizontal.3' modifiers={[
+            // opacity({
+            //   0
+            // })
+            buttonStyle('plain')
+           ]}></Button>
         </ContextMenu.Trigger>
       </ContextMenu>
     </Host>
+    // <View className="flex-row items-center rounded-full overflow-hidden ">
+    //   <TouchableOpacity
+    //       className="px-2 py-2"
+    //       hitSlop={0}
+    //     >
+    //       <SymbolView size={22} name="slider.horizontal.3" />
+    //     </TouchableOpacity>
+    // </View>
   );
 };
 

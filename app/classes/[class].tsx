@@ -2,31 +2,24 @@ import {
   View,
   Text,
   TouchableOpacity,
-  FlatList,
   Keyboard,
   TouchableWithoutFeedback,
   Switch,
   useColorScheme,
-  Animated,
-  StyleSheet,
   RefreshControl,
 } from "react-native";
-import AnimatedReanimated, {
+import {
   useSharedValue,
   useAnimatedReaction,
   withTiming,
   runOnJS,
   Easing,
-  useAnimatedStyle,
 } from 'react-native-reanimated';
-import MaskedView from '@react-native-masked-view/masked-view';
-import { LinearGradient } from 'react-native-linear-gradient';
 import React, {
   useEffect,
   useState,
   useCallback,
   useLayoutEffect,
-  useRef,
   useMemo,
 } from "react";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
@@ -35,21 +28,20 @@ import { Stack, useLocalSearchParams } from "expo-router";
 import formatClassName from "@/utils/formatClassName";
 import { calculateGradeSummary } from "@/utils/calculateGrades";
 import { ensureUniqueAssignmentIds } from "@/utils/uniqueId";
-import { Ionicons } from "@expo/vector-icons";
 import AssignmentCard from "@/components/AssignmentCard";
 import { useAddAssignmentSheet } from "@/context/AddAssignmentSheetContext";
 import { useBottomSheet } from "@/context/BottomSheetContext";
 import PieChart from "react-native-pie-chart";
-import { MotiView, AnimatePresence } from 'moti'
 import { DataService } from '@/lib/services';
 import { logger, Modules } from '@/lib/utils/logger';
 import { ScrollView } from "react-native-gesture-handler";
 import SkeletonAssignment from '@/components/SkeletonAssignment';
-import { Button, ContextMenu, Host, Text as SwiftText } from "@expo/ui/swift-ui";
 import { SymbolView } from "expo-symbols";
 import * as Burnt from "burnt";
 import FilterButton from '@/components/FilterButton';
 import { useFilter } from '@/context/FilterContext';
+import { padding } from "@expo/ui/swift-ui/modifiers";
+import { Button, Host } from "@expo/ui/swift-ui";
 
 const bucketMap: Record<TermLabel, string> = {
   "Q1 Grades": "TERM 3",
@@ -691,16 +683,18 @@ const handleToggle = useCallback(async () => {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
+        
         <View className="flex-row items-center">
-          {/* Always show filter button */}
           <FilterButton availableCategories={apiCategories.names} />
+
           
+                          
           {/* Show editing controls only when enabled */}
           {isEnabled && (
-            <View className="flex-row items-center rounded-full overflow-hidden ml-2">
+            <View className="flex-row items-center rounded-full overflow-hidden ml-1">
               {/* Add */}
               <TouchableOpacity
-                className="px-3 py-2"
+                className="pr-[0.6rem] py-2"
                 onPress={async () => {
                   openModal({
                     className: className || "",
@@ -721,25 +715,22 @@ const handleToggle = useCallback(async () => {
                     meshAssignments,
                   });
                 }}
-                hitSlop={8}
+                hitSlop={0}
               >
-                <SymbolView size={22} name="plus" />
+                <SymbolView size={20} name="plus" />
               </TouchableOpacity>
 
               {apiCategories.names.length > 0 && (
-                <>
-                  <View className="w-px h-5" />
-                  <TouchableOpacity
-                    className="px-3 py-2"
-                    onPress={handleResetArtificialAssignments}
-                    hitSlop={8}
-                  >
-                    <SymbolView
-                      size={20}
-                      name="arrow.counterclockwise"
-                    />
-                  </TouchableOpacity>
-                </>
+                <TouchableOpacity
+                  className="pr-2 py-2"
+                  onPress={handleResetArtificialAssignments}
+                  hitSlop={0}
+                >
+                  <SymbolView
+                    size={20}
+                    name="arrow.counterclockwise"
+                  />
+                </TouchableOpacity>
               )}
             </View>
           )}
