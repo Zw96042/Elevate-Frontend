@@ -8,11 +8,9 @@ import { calculateGradeSummary } from '@/utils/calculateGrades';
 import { generateUniqueId } from '@/utils/uniqueId';
 import { useScreenDimensions } from '@/hooks/useScreenDimensions';
 import PieChart from 'react-native-pie-chart'
-import Animated, {
+import {
   useSharedValue,
-  useAnimatedProps,
   withTiming,
-  useDerivedValue,
   useAnimatedReaction,
   runOnJS,
   Easing
@@ -251,6 +249,7 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
 
                     {/* <View className='mr-3'></View> */}
                     <Ionicons name="chevron-forward" size={24} color="#cbd5e1" className='mr-3'/>
+                    {/* <View className='w-[24px] h-[24px]'></View> */}
                 </View>
             </View>
         </TouchableOpacity>

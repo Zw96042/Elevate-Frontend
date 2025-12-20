@@ -682,19 +682,17 @@ const handleToggle = useCallback(async () => {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerRight: () => (
+      headerRight: () => {
+        if (!isEnabled) {
+          return null;
+        }
         
-        <View className="flex-row items-center">
-          <FilterButton availableCategories={apiCategories.names} />
-
-          
-                          
-          {/* Show editing controls only when enabled */}
-          {isEnabled && (
-            <View className="flex-row items-center rounded-full overflow-hidden ml-1">
+        return (
+          <View className="flex-row items-center">
+            <View className="flex-row items-center rounded-full overflow-hidden">
               {/* Add */}
               <TouchableOpacity
-                className="pr-[0.6rem] py-2"
+                className="pr-2 pl-[0.625rem] py-2"
                 onPress={async () => {
                   openModal({
                     className: className || "",
@@ -722,7 +720,7 @@ const handleToggle = useCallback(async () => {
 
               {apiCategories.names.length > 0 && (
                 <TouchableOpacity
-                  className="pr-2 py-2"
+                  className="px-2 py-2"
                   onPress={handleResetArtificialAssignments}
                   hitSlop={0}
                 >
@@ -733,9 +731,9 @@ const handleToggle = useCallback(async () => {
                 </TouchableOpacity>
               )}
             </View>
-          )}
-        </View>
-      ),
+          </View>
+        );
+      },
     });
   }, [
     navigation,
@@ -891,12 +889,15 @@ const handleToggle = useCallback(async () => {
   // Memoize the reset button section (only depends on isEnabled for visibility)
   
 
-  // Simplified assignments section header
+  // Simplified assignments section header with filter button
   const AssignmentsSection = useMemo(() => (
     <View className="px-5 mt-4 mb-2">
-      <Text className="text-highlightText font-bold text-lg">Assignments</Text>
+      <View className="flex-row items-center justify-between">
+        <Text className="text-highlightText font-bold text-lg">Assignments</Text>
+        <FilterButton availableCategories={apiCategories.names} />
+      </View>
     </View>
-  ), []);
+  ), [apiCategories.names]);
 
 
 

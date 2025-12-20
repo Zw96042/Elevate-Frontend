@@ -14,6 +14,8 @@ import { useUnifiedData } from '@/context/UnifiedDataContext';
 import { useGradeLevel } from '@/hooks/useGradeLevel';
 import * as Animatable from 'react-native-animatable';
 import { logger, Modules } from '@/lib/utils/logger';
+import { CircularProgress, Host } from '@expo/ui/swift-ui';
+import { blue } from 'react-native-reanimated/lib/typescript/Colors';
 
 
 // Default categories and weights (to be replaced by different API later)
