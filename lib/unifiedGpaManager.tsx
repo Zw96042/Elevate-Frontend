@@ -169,12 +169,53 @@ export class UnifiedGPAManager extends UnifiedDataManager {
       // Calculate GPA for all terms using historicalGrades
       const allTerms = ['PR1', 'PR2', 'RC1', 'PR3', 'PR4', 'RC2', 'PR5', 'PR6', 'RC3', 'PR7', 'PR8', 'RC4', 'SM1', 'SM2'];
       const termGPAs: Record<string, GPAData> = {};
+      
       allTerms.forEach(term => {
         let totalUnweighted = 0;
         let totalBonus = 0;
         let courseCount = 0;
+        
         courses.forEach(course => {
-          const gradeStr = course.historicalGrades[term.toLowerCase() as keyof typeof course.historicalGrades];
+          let gradeStr = course.historicalGrades[term.toLowerCase() as keyof typeof course.historicalGrades];
+          
+          // Apply RC rounding logic for RC terms
+          if (['RC1', 'RC2', 'RC3', 'RC4'].includes(term) && gradeStr !== undefined && gradeStr !== null && gradeStr !== '' && !isNaN(Number(gradeStr))) {
+            const rawScore = Number(gradeStr);
+            gradeStr = Math.round(rawScore).toString();
+          }
+          
+          // Calculate semester averages from rounded RC grades if SM grade is missing
+          if (['SM1', 'SM2'].includes(term) && (!gradeStr || gradeStr === '' || gradeStr === null)) {
+            const rc1 = course.historicalGrades.rc1;
+            const rc2 = course.historicalGrades.rc2;
+            const rc3 = course.historicalGrades.rc3;
+            const rc4 = course.historicalGrades.rc4;
+            
+            if (term === 'SM1') {
+              const roundedRC1 = (rc1 && !isNaN(Number(rc1))) ? Math.round(Number(rc1)) : null;
+              const roundedRC2 = (rc2 && !isNaN(Number(rc2))) ? Math.round(Number(rc2)) : null;
+              
+              if (roundedRC1 !== null && roundedRC2 !== null) {
+                gradeStr = ((roundedRC1 + roundedRC2) / 2).toString();
+              } else if (roundedRC1 !== null) {
+                gradeStr = roundedRC1.toString();
+              } else if (roundedRC2 !== null) {
+                gradeStr = roundedRC2.toString();
+              }
+            } else if (term === 'SM2') {
+              const roundedRC3 = (rc3 && !isNaN(Number(rc3))) ? Math.round(Number(rc3)) : null;
+              const roundedRC4 = (rc4 && !isNaN(Number(rc4))) ? Math.round(Number(rc4)) : null;
+              
+              if (roundedRC3 !== null && roundedRC4 !== null) {
+                gradeStr = ((roundedRC3 + roundedRC4) / 2).toString();
+              } else if (roundedRC3 !== null) {
+                gradeStr = roundedRC3.toString();
+              } else if (roundedRC4 !== null) {
+                gradeStr = roundedRC4.toString();
+              }
+            }
+          }
+          
           if (gradeStr !== undefined && gradeStr !== null && gradeStr !== '' && !isNaN(Number(gradeStr))) {
             const score = Number(gradeStr);
             totalUnweighted += score;
@@ -189,6 +230,7 @@ export class UnifiedGPAManager extends UnifiedDataManager {
             courseCount++;
           }
         });
+        
         if (courseCount > 0) {
           const avgUnweighted = totalUnweighted / courseCount;
           const weightedTotal = totalUnweighted + totalBonus;
@@ -199,6 +241,7 @@ export class UnifiedGPAManager extends UnifiedDataManager {
           };
         }
       });
+      
       return termGPAs;
     } catch (error) {
       console.warn('❌ Failed to calculate current grade GPA:', error);

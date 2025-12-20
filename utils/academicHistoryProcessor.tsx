@@ -1,5 +1,7 @@
 // utils/academicHistoryProcessor.tsx
 
+import { calculateSemesterAverages } from './semesterAverageCalculator';
+
 interface CourseData {
   terms: string;
   finalGrade: string;
@@ -260,12 +262,29 @@ const calculateTermGPA = (coursesData: Record<string, CourseData>, termKey: stri
   let hasScheduledCourses = false;
 
   Object.entries(coursesData).forEach(([courseKey, courseData]) => {
-    const grade = courseData[termKey as keyof CourseData];
+    let grade = courseData[termKey as keyof CourseData];
+    
     // Extract the original class name (remove the year suffix)
     const className = courseKey.replace(/_\d{4}-\d{4}$/, '');
     
     // Always get the course level for all courses (not just ones with grades)
     const courseLevel = getCourseLevel(className);
+    
+    // For semester grades (SM1, SM2), calculate from RC grades with rounding if not already present
+    if ((termKey === 'sm1' || termKey === 'sm2') && (!grade || grade === '')) {
+      const averages = calculateSemesterAverages(
+        courseData.rc1,
+        courseData.rc2,
+        courseData.rc3,
+        courseData.rc4
+      );
+      
+      if (termKey === 'sm1' && averages.sm1 !== null) {
+        grade = averages.sm1.toString();
+      } else if (termKey === 'sm2' && averages.sm2 !== null) {
+        grade = averages.sm2.toString();
+      }
+    }
     
     // Check if this course is scheduled for this term
     if (isCourseScheduledForTerm(courseData, termKey)) {

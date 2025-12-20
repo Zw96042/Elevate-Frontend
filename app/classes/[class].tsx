@@ -367,7 +367,7 @@ const ClassDetails = () => {
       const normalizedWeights = Object.fromEntries(
         adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
       );
-      setCourseSummary(calculateGradeSummary(all, normalizedWeights));
+      setCourseSummary(calculateGradeSummary(all, normalizedWeights, termMap, selectedCategory));
       return;
     }
     const parsed = JSON.parse(data);
@@ -443,7 +443,7 @@ const ClassDetails = () => {
     const normalizedWeights = Object.fromEntries(
       adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
     );
-    const newCourseSummary = calculateGradeSummary(all, normalizedWeights);
+    const newCourseSummary = calculateGradeSummary(all, normalizedWeights, termMap, selectedCategory);
     logger.debug(Modules.PAGE_CLASS, `Setting course summary: ${newCourseSummary.courseTotal} (isEnabled: ${isEnabled}, assignments: ${all.length})`);
     setCourseSummary(newCourseSummary);
   }, [apiAssignments, apiCategories, isEnabled, selectedCategory, className, corNumId, section, gbId, sortAndFilterAssignments, setAvailableCategories]);
@@ -610,7 +610,7 @@ const ClassDetails = () => {
     const normalizedWeights = Object.fromEntries(
       adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
     );
-    setCourseSummary(calculateGradeSummary(all, normalizedWeights));
+    setCourseSummary(calculateGradeSummary(all, normalizedWeights, termMap, selectedCategory));
   }, [apiAssignments, apiCategories, isEnabled, selectedCategory, className, corNumId, section, gbId, sortAndFilterAssignments, setAvailableCategories]);
 
   useFocusEffect(

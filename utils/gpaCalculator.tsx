@@ -215,11 +215,60 @@ export function calculateTermGPAs(classes: SavedClass[]): Record<string, GPAResu
     }
     
     const level = getCourseLevel(c.className);
-    for (const term of termLabels) {
-      const grade = c[term];
-      if (typeof grade === 'number' && grade >= 0) {
-        termGrades[term].push({ grade, level });
+    
+    // Handle RC grades with rounding
+    const rcGrades = {
+      rc1: typeof c.rc1 === 'number' && c.rc1 >= 0 ? Math.round(c.rc1) : null,
+      rc2: typeof c.rc2 === 'number' && c.rc2 >= 0 ? Math.round(c.rc2) : null,
+      rc3: typeof c.rc3 === 'number' && c.rc3 >= 0 ? Math.round(c.rc3) : null,
+      rc4: typeof c.rc4 === 'number' && c.rc4 >= 0 ? Math.round(c.rc4) : null,
+    };
+    
+    // Calculate semester averages from rounded RC grades
+    let sm1Grade = typeof c.sm1 === 'number' && c.sm1 >= 0 ? c.sm1 : null;
+    let sm2Grade = typeof c.sm2 === 'number' && c.sm2 >= 0 ? c.sm2 : null;
+    
+    // If semester grades are missing, calculate from rounded RC grades
+    if (sm1Grade === null) {
+      if (rcGrades.rc1 !== null && rcGrades.rc2 !== null) {
+        sm1Grade = (rcGrades.rc1 + rcGrades.rc2) / 2;
+      } else if (rcGrades.rc1 !== null) {
+        sm1Grade = rcGrades.rc1;
+      } else if (rcGrades.rc2 !== null) {
+        sm1Grade = rcGrades.rc2;
       }
+    }
+    
+    if (sm2Grade === null) {
+      if (rcGrades.rc3 !== null && rcGrades.rc4 !== null) {
+        sm2Grade = (rcGrades.rc3 + rcGrades.rc4) / 2;
+      } else if (rcGrades.rc3 !== null) {
+        sm2Grade = rcGrades.rc3;
+      } else if (rcGrades.rc4 !== null) {
+        sm2Grade = rcGrades.rc4;
+      }
+    }
+    
+    // Add grades to term arrays
+    if (sm1Grade !== null) {
+      termGrades.sm1.push({ grade: sm1Grade, level });
+    }
+    if (sm2Grade !== null) {
+      termGrades.sm2.push({ grade: sm2Grade, level });
+    }
+    
+    // Add rounded RC grades
+    if (rcGrades.rc1 !== null) {
+      termGrades.rc1.push({ grade: rcGrades.rc1, level });
+    }
+    if (rcGrades.rc2 !== null) {
+      termGrades.rc2.push({ grade: rcGrades.rc2, level });
+    }
+    if (rcGrades.rc3 !== null) {
+      termGrades.rc3.push({ grade: rcGrades.rc3, level });
+    }
+    if (rcGrades.rc4 !== null) {
+      termGrades.rc4.push({ grade: rcGrades.rc4, level });
     }
   }
 
