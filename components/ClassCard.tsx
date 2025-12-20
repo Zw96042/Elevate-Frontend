@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, useColorScheme, Pressable } from 'react-native'
+import { View, Text, TouchableOpacity, useColorScheme } from 'react-native'
 import React, { useCallback, useEffect, useState, useMemo } from 'react'
 import { Link, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons';
@@ -8,13 +8,6 @@ import { calculateGradeSummary } from '@/utils/calculateGrades';
 import { generateUniqueId } from '@/utils/uniqueId';
 import { useScreenDimensions } from '@/hooks/useScreenDimensions';
 import PieChart from 'react-native-pie-chart'
-import {
-  useSharedValue,
-  withTiming,
-  useAnimatedReaction,
-  runOnJS,
-  Easing
-} from 'react-native-reanimated';
 
 type TermLabel =
   | "Q1 Grades"
@@ -60,11 +53,7 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
 
     // Memoize calculated values
     const percentage = useMemo(() => currTerm.total, [currTerm.total]);
-    const letter = useMemo(() => 
-      percentage >= 90 ? "A" : percentage >= 80 ? "B" : percentage >= 70 ? "C" : "D", 
-      [percentage]);
-    const bgColor = useMemo(() => "bg-highlight", []);
-
+    
     const [isEnabled, setIsEnabled] = useState(false);
 
   
@@ -81,10 +70,6 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
           }
         >;
     }>({ courseTotal: "*", categories: {} });
-
-    const [displayGrade, setDisplayGrade] = useState(0);
-
-    const animatedGrade = useSharedValue(0);
 
     const fetchArtificialAssignments = useCallback(async () => {
       if (!name) return;
@@ -152,18 +137,6 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
     fetchArtificialAssignments();
   }, [fetchArtificialAssignments]);
 
-  useEffect(() => {
-    const value = currTerm.total > 0 
-      ? currTerm.total 
-      : courseSummary.courseTotal === '*'
-        ? 100
-        : Number(courseSummary.courseTotal);
-    animatedGrade.value = withTiming(value, {
-      duration: 700,
-      easing: Easing.inOut(Easing.ease)
-    });
-  }, [currTerm.total, courseSummary.courseTotal]);
-
   useFocusEffect(
     useCallback(() => {
       fetchArtificialAssignments();
@@ -180,12 +153,14 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
 
   const { highlightColor, cardColor } = themeColors;
 
-  useAnimatedReaction(
-    () => animatedGrade.value,
-    (currentValue) => {
-      runOnJS(setDisplayGrade)(currentValue);
-    }
-  );
+  // Calculate display grade
+  const displayGrade = useMemo(() => {
+    return currTerm.total > 0 
+      ? currTerm.total 
+      : courseSummary.courseTotal === '*'
+        ? 100
+        : Number(courseSummary.courseTotal);
+  }, [currTerm.total, courseSummary.courseTotal]);
 
   return (
     
