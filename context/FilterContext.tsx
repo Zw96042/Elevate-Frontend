@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 
 export type SortOption = 'Date' | 'Grade' | 'Category';
 export type SortOrder = 'asc' | 'desc';
+export type AssignmentType = 'missing' | 'noCount' | 'absent';
 
 interface FilterContextType {
   // Sort options
@@ -15,6 +16,11 @@ interface FilterContextType {
   setSelectedCategories: (categories: string[]) => void;
   availableCategories: string[];
   setAvailableCategories: (categories: string[]) => void;
+  
+  // Assignment type filters
+  selectedAssignmentTypes: AssignmentType[];
+  setSelectedAssignmentTypes: (types: AssignmentType[]) => void;
+  toggleAssignmentType: (type: AssignmentType) => void;
   
   // Helper functions
   toggleCategory: (category: string) => void;
@@ -36,6 +42,7 @@ export const FilterProvider: React.FC<FilterProviderProps> = ({ children }) => {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc'); // desc = recent to oldest for dates
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [selectedAssignmentTypes, setSelectedAssignmentTypes] = useState<AssignmentType[]>([]);
 
   const toggleCategory = (category: string) => {
     setSelectedCategories(prev => 
@@ -45,14 +52,26 @@ export const FilterProvider: React.FC<FilterProviderProps> = ({ children }) => {
     );
   };
 
+  const toggleAssignmentType = (type: AssignmentType) => {
+    setSelectedAssignmentTypes(prev => 
+      prev.includes(type) 
+        ? prev.filter(t => t !== type)
+        : [...prev, type]
+    );
+  };
+
   const clearFilters = () => {
     setSelectedCategories([]);
+    setSelectedAssignmentTypes([]);
     setSortOption('Date');
     setSortOrder('desc');
   };
 
   const hasActiveFilters = () => {
-    return selectedCategories.length > 0 || sortOption !== 'Date' || sortOrder !== 'desc';
+    return selectedCategories.length > 0 || 
+           selectedAssignmentTypes.length > 0 || 
+           sortOption !== 'Date' || 
+           sortOrder !== 'desc';
   };
 
   const handleSortChange = (newSortOption: SortOption) => {
@@ -81,6 +100,9 @@ export const FilterProvider: React.FC<FilterProviderProps> = ({ children }) => {
     setSelectedCategories,
     availableCategories,
     setAvailableCategories,
+    selectedAssignmentTypes,
+    setSelectedAssignmentTypes,
+    toggleAssignmentType,
     toggleCategory,
     clearFilters,
     hasActiveFilters,

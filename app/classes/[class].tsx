@@ -164,16 +164,30 @@ const ClassDetails = () => {
     sortOption,
     sortOrder,
     selectedCategories,
+    selectedAssignmentTypes,
     setAvailableCategories,
     handleSortChange: contextHandleSortChange
   } = useFilter();
 
   // Sort and filter assignments function
-  const sortAndFilterAssignments = useCallback((assignments: Assignment[], sortBy: 'Category' | 'Date' | 'Grade', order: 'asc' | 'desc', categoryFilters: string[]) => {
+  const sortAndFilterAssignments = useCallback((assignments: Assignment[], sortBy: 'Category' | 'Date' | 'Grade', order: 'asc' | 'desc', categoryFilters: string[], assignmentTypeFilters: string[] = []) => {
     // First filter by categories if any are selected
     let filtered = assignments;
     if (categoryFilters.length > 0) {
       filtered = assignments.filter(assignment => categoryFilters.includes(assignment.category));
+    }
+    
+    // Then filter by assignment types if any are selected
+    if (assignmentTypeFilters.length > 0) {
+      filtered = filtered.filter(assignment => {
+        // If no meta data, include assignment (it's not missing, absent, or no count)
+        if (!assignment.meta || assignment.meta.length === 0) {
+          return false; // Only show assignments that match the selected types
+        }
+        
+        // Check if assignment has any of the selected meta types
+        return assignment.meta.some(meta => assignmentTypeFilters.includes(meta.type));
+      });
     }
     
     // Then sort the filtered results
@@ -335,7 +349,7 @@ const ClassDetails = () => {
       const categories = [...new Set(realWithIds.map(a => a.category))];
       setAvailableCategories(categories);
       
-      const sortedAssignments = sortAndFilterAssignments(realWithIds, sortOption, sortOrder, selectedCategories);
+      const sortedAssignments = sortAndFilterAssignments(realWithIds, sortOption, sortOrder, selectedCategories, selectedAssignmentTypes);
       setArtificialAssignments([]);
       setFilteredAssignments(sortedAssignments);
       const all = realWithIds.filter(a => a.grade !== '*');
@@ -406,7 +420,7 @@ const ClassDetails = () => {
     const categories = [...new Set(assignmentsWithIds.map(a => a.category))];
     setAvailableCategories(categories);
     
-    const sortedAssignments = sortAndFilterAssignments(assignmentsWithIds, sortOption, sortOrder, selectedCategories);
+    const sortedAssignments = sortAndFilterAssignments(assignmentsWithIds, sortOption, sortOrder, selectedCategories, selectedAssignmentTypes);
     const artificialWithIds = sortedAssignments.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
     
     logger.debug(Modules.PAGE_CLASS, `Meshed ${sortedAssignments.length} assignments (${artificialWithIds.length} artificial)`);
@@ -432,7 +446,7 @@ const ClassDetails = () => {
     const newCourseSummary = calculateGradeSummary(all, normalizedWeights);
     logger.debug(Modules.PAGE_CLASS, `Setting course summary: ${newCourseSummary.courseTotal} (isEnabled: ${isEnabled}, assignments: ${all.length})`);
     setCourseSummary(newCourseSummary);
-  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, sortOption, sortOrder, selectedCategories, className, corNumId, section, gbId, sortAndFilterAssignments, setAvailableCategories]);
+  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, className, corNumId, section, gbId, sortAndFilterAssignments, setAvailableCategories]);
 
 
   // Memoize the grade value calculation to prevent unnecessary recalculations
@@ -496,6 +510,22 @@ const ClassDetails = () => {
     runMeshAssignments();
   }, [apiAssignments, apiCategories, isEnabled, selectedCategory, sortOption, sortOrder]);
 
+  // Separate effect for handling filter changes without re-meshing assignments
+  useEffect(() => {
+    if (apiAssignments.length > 0 || artificialAssignments.length > 0) {
+      // Re-apply sorting and filtering when filter options change
+      const allAssignments = [...artificialAssignments, ...apiAssignments.filter(api => 
+        !artificialAssignments.some(art => art.name === api.name)
+      )];
+      
+      if (allAssignments.length > 0) {
+        const assignmentsWithIds = ensureUniqueAssignmentIds(allAssignments);
+        const sortedAssignments = sortAndFilterAssignments(assignmentsWithIds, sortOption, sortOrder, selectedCategories, selectedAssignmentTypes);
+        setFilteredAssignments(sortedAssignments);
+      }
+    }
+  }, [sortOption, sortOrder, selectedCategories, selectedAssignmentTypes, apiAssignments, artificialAssignments, sortAndFilterAssignments]);
+
   // Separate function for refreshing only artificial assignments on focus
   const refreshArtificialAssignmentsOnFocus = useCallback(async () => {
     logger.debug(Modules.PAGE_CLASS, 'Screen focused - refreshing artificial assignments');
@@ -512,7 +542,7 @@ const ClassDetails = () => {
         const categories = [...new Set(realWithIds.map(a => a.category))];
         setAvailableCategories(categories);
         
-        const sortedAssignments = sortAndFilterAssignments(realWithIds, sortOption, sortOrder, selectedCategories);
+        const sortedAssignments = sortAndFilterAssignments(realWithIds, sortOption, sortOrder, selectedCategories, selectedAssignmentTypes);
         setFilteredAssignments(sortedAssignments);
         setArtificialAssignments([]);
       }
@@ -558,7 +588,7 @@ const ClassDetails = () => {
     const categories = [...new Set(assignmentsWithIds.map(a => a.category))];
     setAvailableCategories(categories);
     
-    const sortedAssignments = sortAndFilterAssignments(assignmentsWithIds, sortOption, sortOrder, selectedCategories);
+    const sortedAssignments = sortAndFilterAssignments(assignmentsWithIds, sortOption, sortOrder, selectedCategories, selectedAssignmentTypes);
     const artificialWithIds = sortedAssignments.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
     
     setArtificialAssignments(artificialWithIds);
@@ -581,7 +611,7 @@ const ClassDetails = () => {
       adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
     );
     setCourseSummary(calculateGradeSummary(all, normalizedWeights));
-  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, selectedCategories, className, corNumId, section, gbId, sortAndFilterAssignments, setAvailableCategories, sortOption, sortOrder]);
+  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, className, corNumId, section, gbId, sortAndFilterAssignments, setAvailableCategories]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -754,17 +784,34 @@ const handleToggle = useCallback(async () => {
 
   // Memoize the key extractor
   const keyExtractor = useCallback((item: any, index: number) => {
-    return loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0) 
-      ? `skeleton-${index}` 
-      : ((item as Assignment).id || `${(item as Assignment).className}-${(item as Assignment).name}-${(item as Assignment).term}-${(item as Assignment).dueDate}`);
-  }, [loading, waitingForRetry, apiAssignments.length, filteredAssignments.length]);
+    // Handle skeleton items (undefined) or loading states
+    if (loading || waitingForRetry || !item) {
+      return `skeleton-${index}`;
+    }
+    
+    // Handle actual assignment items
+    const assignment = item as Assignment;
+    return assignment.id || `${assignment.className}-${assignment.name}-${assignment.term}-${assignment.dueDate}`;
+  }, [loading, waitingForRetry]);
 
   // Memoize the FlatList data to prevent unnecessary re-renders
   const flatListData = useMemo(() => {
-    return loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0) 
-      ? Array.from({ length: 8 }) 
-      : filteredAssignments;
-  }, [loading, waitingForRetry, apiAssignments.length, filteredAssignments]);
+    if (loading || waitingForRetry) {
+      return Array.from({ length: 8 }); // Show skeletons when loading
+    }
+    
+    // If we have API assignments but no filtered assignments, check if it's due to filters
+    if (apiAssignments.length > 0 && filteredAssignments.length === 0) {
+      const hasActiveFilters = selectedCategories.length > 0 || selectedAssignmentTypes.length > 0;
+      if (hasActiveFilters) {
+        return []; // No results due to filters - show empty state
+      } else {
+        return Array.from({ length: 8 }); // Still loading/processing - show skeletons
+      }
+    }
+    
+    return filteredAssignments;
+  }, [loading, waitingForRetry, apiAssignments.length, filteredAssignments, selectedCategories.length, selectedAssignmentTypes.length]);
 
   // Get theme and memoize theme colors
   const theme = useColorScheme();
@@ -941,32 +988,50 @@ const handleToggle = useCallback(async () => {
           {AssignmentsSection}
 
           <View className="mt-2 px-3 pb-20">
-            {flatListData.map((item, index) => {
-              const shouldShowSkeleton = loading || waitingForRetry || (apiAssignments.length > 0 && filteredAssignments.length === 0);
-              
-              return (
-                <View key={keyExtractor(item, index)}>
-                  {shouldShowSkeleton ? (
-                    <SkeletonAssignment />
-                  ) : (
-                    <AssignmentCard
-                      {...(item as Assignment)}
-                      editing={!!isEnabled}
-                      classId={classId}
-                      corNumId={corNumId}
-                      section={section}
-                      gbId={gbId}
-                    />
-                  )}
-                  {index < flatListData.length - 1 && <View className="h-4" />}
-                </View>
-              );
-            })}
-            
-            {!loading && !waitingForRetry && !(apiAssignments.length > 0 && filteredAssignments.length === 0) && flatListData.length === 0 && (
+            {flatListData.length === 0 && !loading && !waitingForRetry ? (
+              // Show "no results" message when filters don't match anything
               <View className="mt-10 px-5">
-                <Text className="text-center text-gray-500">No assignments found</Text>
+                <View className="items-center">
+                  <SymbolView
+                    name="magnifyingglass"
+                    size={48}
+                    type="hierarchical"
+                    tintColor="#9CA3AF"
+                    className="mb-4"
+                  />
+                  <Text className="text-center text-gray-500 text-lg font-medium mb-2">
+                    No assignments found
+                  </Text>
+                  <Text className="text-center text-gray-400 text-sm">
+                    {(selectedCategories.length > 0 || selectedAssignmentTypes.length > 0) 
+                      ? "Try adjusting your filters to see more results"
+                      : "No assignments available for this term"
+                    }
+                  </Text>
+                </View>
               </View>
+            ) : (
+              flatListData.map((item, index) => {
+                const shouldShowSkeleton = loading || waitingForRetry || !item;
+                
+                return (
+                  <View key={keyExtractor(item, index)}>
+                    {shouldShowSkeleton ? (
+                      <SkeletonAssignment />
+                    ) : (
+                      <AssignmentCard
+                        {...(item as Assignment)}
+                        editing={!!isEnabled}
+                        classId={classId}
+                        corNumId={corNumId}
+                        section={section}
+                        gbId={gbId}
+                      />
+                    )}
+                    {index < flatListData.length - 1 && <View className="h-4" />}
+                  </View>
+                );
+              })
             )}
           </View>
         </ScrollView>

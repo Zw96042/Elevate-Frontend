@@ -21,6 +21,8 @@ const FilterButton: React.FC<FilterButtonProps> = ({ availableCategories = [] })
     availableCategories: contextCategories,
     setAvailableCategories,
     toggleCategory,
+    selectedAssignmentTypes,
+    toggleAssignmentType,
     clearFilters,
     hasActiveFilters,
     handleSortChange,
@@ -89,30 +91,70 @@ const FilterButton: React.FC<FilterButtonProps> = ({ availableCategories = [] })
               
             </ContextMenu.Trigger>
           </ContextMenu>
+          <Divider />
           {categories.length > 0 && (
             <ContextMenu>
               <ContextMenu.Items>
-                {categories.map((category) => (
-                  <Button
-                    key={category}
-                    systemImage={selectedCategories.includes(category) ? "checkmark.circle.fill" : "circle"}
-                    onPress={() => toggleCategory(category)}
-                  >
-                    {category}
-                  </Button>
-                ))}
+                <ContextMenu>
+                  <ContextMenu.Items>
+                    {categories.map((category) => (
+                    <Button
+                      key={category}
+                      systemImage={selectedCategories.includes(category) ? "checkmark.circle.fill" : "circle"}
+                      onPress={() => toggleCategory(category)}
+                    >
+                      {category}
+                    </Button>
+                  ))}
+                  </ContextMenu.Items>
+                  <ContextMenu.Trigger>
+                    <SText>Categories</SText>
+                  </ContextMenu.Trigger>
+                </ContextMenu>
+                <ContextMenu>
+                  <ContextMenu.Items>
+                    <Button
+                      systemImage={selectedAssignmentTypes.includes('noCount') ? "checkmark.circle.fill" : "circle"}
+                      onPress={() => toggleAssignmentType('noCount')}
+                    >
+                      No Count
+                    </Button>
+                    <Button
+                      systemImage={selectedAssignmentTypes.includes('absent') ? "checkmark.circle.fill" : "circle"}
+                      onPress={() => toggleAssignmentType('absent')}
+                    >
+                      Absent
+                    </Button>
+                    <Button
+                      systemImage={selectedAssignmentTypes.includes('missing') ? "checkmark.circle.fill" : "circle"}
+                      onPress={() => toggleAssignmentType('missing')}
+                    >
+                      Missing
+                    </Button>
+                  </ContextMenu.Items>
+                  <ContextMenu.Trigger>
+                    <SText >Assignment Types</SText>
+                  </ContextMenu.Trigger>
+                </ContextMenu>
+                
               </ContextMenu.Items>
               <ContextMenu.Trigger>
                 <Button systemImage="line.3.horizontal.decrease">
-                  Filter {selectedCategories.length > 0 && `(${selectedCategories.length})`}
+                  Filter {(selectedCategories.length + selectedAssignmentTypes.length) > 0 && `(${selectedCategories.length + selectedAssignmentTypes.length})`}
                 </Button>
                 <ContextMenu.Trigger>
                   <Button systemImage="line.3.horizontal.decrease">
-                    {selectedCategories.length === 0 
+                    {selectedCategories.length === 0 && selectedAssignmentTypes.length === 0
                       ? "All categories" 
-                      : selectedCategories.length === 1 
-                      ? selectedCategories[0]
-                      : selectedCategories.join(", ")
+                      : (() => {
+                          const allFilters = [...selectedCategories];
+                          if (selectedAssignmentTypes.includes('noCount')) allFilters.push('No Count');
+                          if (selectedAssignmentTypes.includes('absent')) allFilters.push('Absent');
+                          if (selectedAssignmentTypes.includes('missing')) allFilters.push('Missing');
+                          return allFilters.length === 1 
+                            ? allFilters[0]
+                            : allFilters.join(", ");
+                        })()
                     }
                   </Button>
                 </ContextMenu.Trigger>
@@ -121,6 +163,7 @@ const FilterButton: React.FC<FilterButtonProps> = ({ availableCategories = [] })
             </ContextMenu>
           )}
 
+          <Divider />
           {/* Reset Section */}
           {hasActiveFilters() && (
             <Button

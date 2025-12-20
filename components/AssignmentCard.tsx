@@ -84,18 +84,18 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
           assignment: id || name, // Use ID if available, fallback to name
           assignmentId: id, // Always pass the ID separately
           class: className,
-          classId: classId, // Pass classId to assignment detail page
+          classId: classId || '', // Handle undefined classId
           corNumId,
           section,
           gbId,
           name,
           term,
           category,
-          grade: grade.toString(),
-          outOf: outOf.toString(),
+          grade: grade?.toString() || '',
+          outOf: outOf?.toString() || '',
           dueDate,
-          artificial: artificial.toString(),
-          editing: editing.toString(),
+          artificial: artificial?.toString() || 'false',
+          editing: editing?.toString() || 'false',
           meta: JSON.stringify(meta || [])
         }
       }}
