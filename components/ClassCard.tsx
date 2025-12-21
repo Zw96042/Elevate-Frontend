@@ -203,8 +203,8 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
                           <PieChart
                             widthAndHeight={50}
                             series={[
-                              { value: 100, color: highlightColor },
-                              { value: 0, color: cardColor },
+                              { value: Math.min(displayGrade, 100), color: highlightColor },
+                              { value: 100 - Math.min(displayGrade, 100), color: cardColor },
                             ]}
                           />
                           <View className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 justify-center items-center">
@@ -212,7 +212,7 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
                               {currTerm.total > 0
                                 ? currTerm.total === 100
                                   ? '100%'
-                                  : `100%`
+                                  : `${currTerm.total.toFixed(0)}%`
                                 : courseSummary.courseTotal === '*'
                                 ? '--'
                                 : Number(courseSummary.courseTotal) === 100

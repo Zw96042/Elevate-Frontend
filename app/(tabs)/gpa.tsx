@@ -1,10 +1,9 @@
 import { useSettingSheet } from '@/context/SettingSheetContext';
 import { SkywardAuth } from '@/lib/skywardAuthInfo';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MotiView } from 'moti';
 import React, { JSX, useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Alert, Dimensions, PanResponder, Text, TouchableOpacity, View, RefreshControl, DeviceEventEmitter } from 'react-native';
+import { Dimensions, PanResponder, Text, TouchableOpacity, View, RefreshControl, DeviceEventEmitter } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler'
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 import GradeLevelSelector from '@/components/GradeLevelSelector';
@@ -15,25 +14,12 @@ import ErrorDisplay from '@/components/ErrorDisplay';
 import LoginPrompt from '@/components/LoginPrompt';
 import { useGradeLevel } from '@/hooks/useGradeLevel';
 import { UnifiedGPAManager, GPAData } from '@/lib/unifiedGpaManager';
-import { UnifiedCourseData } from '@/lib/unifiedDataManager';
 import { useUnifiedData } from '@/context/UnifiedDataContext';
 import { useColorScheme } from 'nativewind';
 
 type GradeLevel = 'Freshman' | 'Sophomore' | 'Junior' | 'Senior' | 'All Time';
 
 const gpaScale = 100; // Change this to 4, 5, etc. as needed
-
-// Helper function to convert grade level names to numbers - memoized
-const getGradeNumber = (gradeLevel: GradeLevel): number | undefined => {
-  switch (gradeLevel) {
-    case 'Freshman': return 9;
-    case 'Sophomore': return 10;
-    case 'Junior': return 11;
-    case 'Senior': return 12;
-    case 'All Time': return undefined; // All grades
-    default: return undefined;
-  }
-};
 
 // Memoized grade map to prevent recreation
 const GRADE_MAP: Record<string, number> = {
@@ -49,7 +35,7 @@ const GPA = () => {
   const [hasCredentials, setHasCredentials] = useState(false);
   
   // Use extracted hook for current grade level and available grade levels
-  const { currentGradeLevel, availableGradeLevels, isLoading: gradeLevelLoading, refreshGradeLevelData, debugCacheState, clearGradeLevelCache, loadGradeFromCourseData } = useGradeLevel();
+  const { currentGradeLevel, availableGradeLevels, isLoading: gradeLevelLoading, debugCacheState,loadGradeFromCourseData } = useGradeLevel();
 
   // Move useColorScheme to top level to avoid hook order violations
   const { colorScheme } = useColorScheme();
@@ -75,7 +61,7 @@ const GPA = () => {
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [isGraphAnimating, setIsGraphAnimating] = useState(false);
-  const [savedClasses, setSavedClasses] = useState<any[] | null>(null);
+  const [savedClasses] = useState<any[] | null>(null);
   const [gpaData, setGpaData] = useState<Record<string, GPAData>>({});
   const { coursesData, loading, refreshCourses, clearCache } = useUnifiedData();
   
@@ -91,8 +77,6 @@ const GPA = () => {
   }, [coursesData?.length, gradeLevelLoading]); // Remove loadGradeFromCourseData dependency to prevent infinite loop
   const [refreshing, setRefreshing] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
-  const [lastLoadedGrade, setLastLoadedGrade] = useState<GradeLevel | null>(null);
-  const loadingRef = React.useRef(false);
   const isInteractingWithGraph = useRef(false);
   const hasInitializedGradeRef = useRef(false);
   const userHasManuallySelectedGradeRef = useRef(false); // Track if user manually selected a grade
@@ -320,7 +304,7 @@ const GPA = () => {
     const screenWidth = Dimensions.get('window').width;
     const graphWidth = screenWidth - 42; 
     const graphHeight = 100;
-    const containerWidth = screenWidth - 24; 
+    // const containerWidth = screenWidth - 24; 
 
     const gpaPoints = validLabels.map(label => gpaData[label]?.weighted ?? 0);
 
