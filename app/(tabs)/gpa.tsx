@@ -16,6 +16,7 @@ import { useGradeLevel } from '@/hooks/useGradeLevel';
 import { UnifiedGPAManager, GPAData } from '@/lib/unifiedGpaManager';
 import { useUnifiedData } from '@/context/UnifiedDataContext';
 import { useColorScheme } from 'nativewind';
+import { shouldEnableShowoffMode } from '@/utils/showoffMode';
 
 type GradeLevel = 'Freshman' | 'Sophomore' | 'Junior' | 'Senior' | 'All Time';
 
@@ -31,7 +32,7 @@ const GRADE_MAP: Record<string, number> = {
 
 const GPA = () => {
   // Use coursesData from context instead of local allRawCourses
-  const { settingSheetRef } = useSettingSheet();
+  const { settingSheetRef, username, showoffMode } = useSettingSheet();
   const [hasCredentials, setHasCredentials] = useState(false);
   
   // Use extracted hook for current grade level and available grade levels
@@ -158,7 +159,7 @@ const GPA = () => {
         if (gradeNumber) {
           filteredCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
         }
-        const newGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses);
+        const newGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses, showoffMode && shouldEnableShowoffMode(username), username);
         console.log('🔄 Setting gpaData in handleRefresh:', {
           selectedGrade,
           filteredCoursesCount: filteredCourses.length,
@@ -199,7 +200,7 @@ const GPA = () => {
           if (gradeNumber) {
             initialCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
           }
-          const initialGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(initialCourses);
+          const initialGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(initialCourses, showoffMode && shouldEnableShowoffMode(username), username);
           console.log('🚀 Initial gpaData setup:', {
             selectedGrade,
             initialCoursesCount: initialCourses.length,
@@ -224,7 +225,7 @@ const GPA = () => {
             if (gradeNumber) {
               initialCourses = gpaResult.rawCourses.filter(c => c.gradeYear === gradeNumber);
             }
-            const fallbackGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(initialCourses);
+            const fallbackGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(initialCourses, showoffMode && shouldEnableShowoffMode(username), username);
             console.log('💾 Fallback gpaData setup:', {
               selectedGrade,
               fallbackCoursesCount: initialCourses.length,
@@ -263,7 +264,7 @@ const GPA = () => {
     if (gradeNumber) {
       filteredCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
     }
-    const newGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses);
+    const newGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses, showoffMode && shouldEnableShowoffMode(username), username);
     console.log('🔄 Recalculating GPA data for grade change:', {
       selectedGrade,
       filteredCoursesCount: filteredCourses.length,
@@ -271,7 +272,7 @@ const GPA = () => {
       newGpaDataCount: Object.keys(newGpaData).length
     });
     setGpaData(newGpaData);
-  }, [selectedGrade, isInitialized, coursesData, gradeLevelLoading]);
+  }, [selectedGrade, isInitialized, coursesData, gradeLevelLoading, showoffMode, username]);
 
   // Handle grade selection changes
   const handleGradeChange = useCallback((newGrade: GradeLevel) => {
@@ -289,7 +290,7 @@ const GPA = () => {
       if (gradeNumber) {
         filteredCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
       }
-      const newGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses);
+      const newGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses, showoffMode && shouldEnableShowoffMode(username), username);
       console.log('📊 Grade change gpaData update:', {
         newGrade,
         filteredCoursesCount: filteredCourses.length,
@@ -298,7 +299,7 @@ const GPA = () => {
       });
       setGpaData(newGpaData);
     }
-  }, [coursesData]);
+  }, [coursesData, showoffMode, username]);
 
   const renderGPAGraph = useCallback(() => {
     const screenWidth = Dimensions.get('window').width;

@@ -42,6 +42,8 @@ import FilterButton from '@/components/FilterButton';
 import { useFilter } from '@/context/FilterContext';
 import { padding } from "@expo/ui/swift-ui/modifiers";
 import { Button, Host } from "@expo/ui/swift-ui";
+import { useSettingSheet } from '@/context/SettingSheetContext';
+import { shouldEnableShowoffMode } from '@/utils/showoffMode';
 
 const bucketMap: Record<TermLabel, string> = {
   "Q1 Grades": "TERM 3",
@@ -92,6 +94,7 @@ const ClassDetails = () => {
 
   const searchParams = useLocalSearchParams();
   const navigation = useNavigation();
+  const { username, showoffMode } = useSettingSheet();
 
   const classParam = searchParams.class;
   const className = Array.isArray(classParam) ? classParam[0] : classParam;
@@ -299,18 +302,29 @@ const ClassDetails = () => {
       const backendData = result?.data;
       
       const assignments = backendData?.gradebook?.flatMap((cat: any) =>
-        (cat.assignments ?? []).map((a: any, index: number) => ({
-          id: `${cat.category}-${index}-${a.name}`,
-          className: className,
-          name: a.name,
-          term: selectedCategory.split(" ")[0],
-          category: cat.category,
-          grade: a.points?.earned ?? "*",
-          outOf: a.points?.total ?? 100,
-          dueDate: a.date ?? "",
-          artificial: false,
-          meta: a.meta ?? [],
-        }))
+        (cat.assignments ?? []).map((a: any, index: number) => {
+          // Apply showoff mode transformation if enabled
+          let grade = a.points?.earned ?? "*";
+          let outOf = a.points?.total ?? 100;
+          
+          if (showoffMode && shouldEnableShowoffMode(username)) {
+            grade = "100";
+            outOf = 100;
+          }
+          
+          return {
+            id: `${cat.category}-${index}-${a.name}`,
+            className: className,
+            name: a.name,
+            term: selectedCategory.split(" ")[0],
+            category: cat.category,
+            grade: grade,
+            outOf: outOf,
+            dueDate: a.date ?? "",
+            artificial: false,
+            meta: a.meta ?? [],
+          };
+        })
       ) ?? [];
       
       logger.success(Modules.PAGE_CLASS, `Loaded ${assignments.length} assignments`);
@@ -630,14 +644,14 @@ const ClassDetails = () => {
     }
     
     setPreviousSelectedCategory(selectedCategory);
-  }, [className, stuId, corNumId, section, gbId, selectedCategory]);
+  }, [className, stuId, corNumId, section, gbId, selectedCategory, showoffMode, username]);
 
   useEffect(() => {
     const runMeshAssignments = async () => {
       await meshAssignments();
     };
     runMeshAssignments();
-  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, sortOption, sortOrder, finalExamGrades]);
+  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, sortOption, sortOrder, finalExamGrades, showoffMode, username]);
 
   // Separate effect for handling filter changes without re-meshing assignments
   useEffect(() => {

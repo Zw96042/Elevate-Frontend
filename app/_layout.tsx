@@ -14,6 +14,7 @@ import 'react-native-gesture-handler'
 import { AddClassSheetProvider } from "@/context/AddClassSheetContext";
 import { UnifiedDataProvider } from '@/context/UnifiedDataContext';
 import { FilterProvider } from '@/context/FilterContext';
+import { SettingSheetProvider } from '@/context/SettingSheetContext';
 import * as SplashScreen from 'expo-splash-screen';
 import { padding } from "@expo/ui/swift-ui/modifiers";
 
@@ -378,20 +379,22 @@ function InnerLayout() {
 export default function RootLayout() {
   return (
       <FilterProvider>
-        <AddClassSheetProvider>
-          <AddSheetProvider>
-            <BottomSheetProvider>
-              <BottomSheetModalProvider>
-                
-                  <GestureHandlerRootView style={{ flex: 1 }}>
-                    
-                      <InnerLayout />
-                  </GestureHandlerRootView>
-                
-              </BottomSheetModalProvider>
-            </BottomSheetProvider>
-            </AddSheetProvider>
-        </AddClassSheetProvider>
+        <SettingSheetProvider>
+          <AddClassSheetProvider>
+            <AddSheetProvider>
+              <BottomSheetProvider>
+                <BottomSheetModalProvider>
+                  
+                    <GestureHandlerRootView style={{ flex: 1 }}>
+                      
+                        <InnerLayout />
+                    </GestureHandlerRootView>
+                  
+                </BottomSheetModalProvider>
+              </BottomSheetProvider>
+              </AddSheetProvider>
+          </AddClassSheetProvider>
+        </SettingSheetProvider>
       </FilterProvider>
     )
 }

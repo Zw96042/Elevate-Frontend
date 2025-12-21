@@ -1,5 +1,7 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import { DataService, UnifiedCourseData } from '@/lib/services';
+import { useSettingSheet } from '@/context/SettingSheetContext';
+import { transformDataForShowoffMode, shouldEnableShowoffMode } from '@/utils/showoffMode';
 
 interface UnifiedDataContextType {
 	coursesData: UnifiedCourseData[] | null;
@@ -14,10 +16,24 @@ interface UnifiedDataContextType {
 const UnifiedDataContext = createContext<UnifiedDataContextType | undefined>(undefined);
 
 export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-	const [coursesData, setCoursesData] = useState<UnifiedCourseData[] | null>(null);
+	const [rawCoursesData, setRawCoursesData] = useState<UnifiedCourseData[] | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+	
+	const { username, showoffMode } = useSettingSheet();
+
+	// Apply showoff mode transformation if enabled
+	const coursesData = useMemo(() => {
+		if (showoffMode && shouldEnableShowoffMode(username)) {
+			return transformDataForShowoffMode(rawCoursesData);
+		}
+		return rawCoursesData;
+	}, [rawCoursesData, showoffMode, username]);
+
+	const setCoursesData = useCallback((data: React.SetStateAction<UnifiedCourseData[] | null>) => {
+		setRawCoursesData(data);
+	}, []);
 
 	const refreshCourses = useCallback(async (force = false) => {
 		// Prevent multiple simultaneous refresh calls
@@ -33,11 +49,11 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 		try {
 			const result = await DataService.getCombinedData(force);
 			if (result.success && result.courses) {
-				setCoursesData(result.courses);
+				setRawCoursesData(result.courses);
 				setLastUpdated(result.lastUpdated || new Date().toISOString());
 				console.log('✅ Courses data updated in context, count:', result.courses.length);
 			} else {
-				setCoursesData(null);
+				setRawCoursesData(null);
 				const errorMessage = result.error || 'Failed to load courses';
 				setError(errorMessage);
 				console.error('❌ Failed to load courses:', result.error);
@@ -50,7 +66,7 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 				}
 			}
 		} catch (error: any) {
-			setCoursesData(null);
+			setRawCoursesData(null);
 			const errorMessage = error.message || 'Unknown error occurred';
 			setError(errorMessage);
 			console.error('❌ Error in refreshCourses:', error);
@@ -64,7 +80,7 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 		try {
 			await DataService.clearCache();
 			// Reset local state
-			setCoursesData(null);
+			setRawCoursesData(null);
 			setLastUpdated(null);
 			setError(null);
 			console.log('✅ Cache cleared and local state reset');
@@ -76,7 +92,7 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
 	// Load initial data on mount (only once)
 	useEffect(() => {
-		if (!coursesData && !loading && !error) {
+		if (!rawCoursesData && !loading && !error) {
 			refreshCourses(false); // Use cache if available
 		}
 	}, []); // Remove dependencies to prevent infinite loop

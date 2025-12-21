@@ -1,4 +1,4 @@
-import { View, Text, useColorScheme, TextInput, TouchableWithoutFeedback, Platform, Keyboard, TouchableOpacity, Linking, DeviceEventEmitter } from 'react-native'
+import { View, Text, useColorScheme, TextInput, TouchableWithoutFeedback, Platform, Keyboard, TouchableOpacity, Linking, DeviceEventEmitter, Switch } from 'react-native'
 import React, { useEffect, useState, useRef, useMemo } from 'react'
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs'
 import { Ionicons } from '@expo/vector-icons'
@@ -9,6 +9,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authenticate } from '@/lib/authHandler'
 import * as Burnt from "burnt";
+import { shouldEnableShowoffMode } from '@/utils/showoffMode';
 
 const InnerLayout = () => {
   const [gradeLevel, setGradeLevel] = useState('');
@@ -22,13 +23,15 @@ const InnerLayout = () => {
     setUsername,
     password,
     setPassword,
+    showoffMode,
+    setShowoffMode,
   } = useSettingSheet()
   const colorScheme = useColorScheme()
   const [showPassword, setShowPassword] = useState(false);
   const cardColor = colorScheme === 'dark' ? colors.cardColor.dark : colors.cardColor.light;
 
   // Ref to store the last saved values
-  const lastSaved = useRef({ link: '', username: '', password: '', gradeLevel: '' });
+  const lastSaved = useRef({ link: '', username: '', password: '', gradeLevel: '', showoffMode: false });
 
   // Keyboard show/hide snap logic
   useEffect(() => {
@@ -71,11 +74,13 @@ const InnerLayout = () => {
       const storedUser = await AsyncStorage.getItem('skywardUser');
       const storedPass = await AsyncStorage.getItem('skywardPass');
       const storedGrade = await AsyncStorage.getItem('gradeLevel');
+      const storedShowoffMode = await AsyncStorage.getItem('showoffMode');
 
       if (storedLink) setLink(storedLink);
       if (storedUser) setUsername(storedUser);
       if (storedPass) setPassword(storedPass);
       if (storedGrade) setGradeLevel(storedGrade);
+      if (storedShowoffMode) setShowoffMode(storedShowoffMode === 'true');
 
       // Store loaded credentials in lastSaved
       lastSaved.current = {
@@ -83,6 +88,7 @@ const InnerLayout = () => {
         username: storedUser || '',
         password: storedPass || '',
         gradeLevel: storedGrade || '',
+        showoffMode: storedShowoffMode === 'true',
       };
     };
 
@@ -97,7 +103,8 @@ const InnerLayout = () => {
       // link !== lastSaved.current.link ||
       username !== lastSaved.current.username ||
       password !== lastSaved.current.password ||
-      gradeLevel !== lastSaved.current.gradeLevel;
+      gradeLevel !== lastSaved.current.gradeLevel ||
+      showoffMode !== lastSaved.current.showoffMode;
 
     if (!changed) return;
 
@@ -106,8 +113,9 @@ const InnerLayout = () => {
       await AsyncStorage.setItem('skywardPass', password);
       await AsyncStorage.setItem('skywardLink', "https://skyward-eisdprod.iscorp.com/scripts/wsisa.dll/WService=wsedueanesisdtx/"); // TODO: Change back to add more districts
       await AsyncStorage.setItem('gradeLevel', gradeLevel);
+      await AsyncStorage.setItem('showoffMode', showoffMode.toString());
 
-      lastSaved.current = { link, username, password, gradeLevel };
+      lastSaved.current = { link, username, password, gradeLevel, showoffMode };
 
       const authResult = await authenticate();
 
@@ -253,6 +261,24 @@ const InnerLayout = () => {
                     </TouchableOpacity>
                   </View>
                 </View>
+
+                {/* Showoff Mode Toggle - only show for username 96042 */}
+                {shouldEnableShowoffMode(username) && (
+                  <View className="pb-[62px]">
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-1">
+                        <Text className="font-medium text-main">Display Mode</Text>
+                        <Text className="text-sm text-gray-500 mt-1">Show perfect grades for demonstrations</Text>
+                      </View>
+                      <Switch
+                        value={showoffMode}
+                        onValueChange={setShowoffMode}
+                        trackColor={{ false: '#767577', true: '#81b0ff' }}
+                        thumbColor={showoffMode ? '#f5dd4b' : '#f4f3f4'}
+                      />
+                    </View>
+                  </View>
+                )}
               </BottomSheetView>
             </TouchableWithoutFeedback>
           </BottomSheet>
@@ -263,13 +289,11 @@ const InnerLayout = () => {
 
 const _layout = () => {
   return (
-    <SettingSheetProvider>
-      <BottomSheetModalProvider>
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <InnerLayout />
-        </GestureHandlerRootView>
-      </BottomSheetModalProvider>
-    </SettingSheetProvider>
+    <BottomSheetModalProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <InnerLayout />
+      </GestureHandlerRootView>
+    </BottomSheetModalProvider>
   )
 }
 

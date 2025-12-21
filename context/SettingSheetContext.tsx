@@ -9,6 +9,8 @@ type SettingSheetContextType = {
   setUsername: React.Dispatch<React.SetStateAction<string>>;
   password: string;
   setPassword: React.Dispatch<React.SetStateAction<string>>;
+  showoffMode: boolean;
+  setShowoffMode: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
 const SettingSheetContext = createContext<SettingSheetContextType | undefined>(undefined);
@@ -18,9 +20,10 @@ export const SettingSheetProvider = ({ children }: { children: ReactNode }) => {
   const [link, setLink] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showoffMode, setShowoffMode] = useState(false);
 
   return (
-    <SettingSheetContext.Provider value={{ settingSheetRef, link, setLink, username, setUsername, password, setPassword }}>
+    <SettingSheetContext.Provider value={{ settingSheetRef, link, setLink, username, setUsername, password, setPassword, showoffMode, setShowoffMode }}>
       {children}
     </SettingSheetContext.Provider>
   );

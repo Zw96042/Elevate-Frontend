@@ -3,6 +3,7 @@ import { UnifiedDataManager, UnifiedCourseData } from './unifiedDataManager';
 import { processAcademicHistory } from '@/utils/academicHistoryProcessor';
 import { calculateTermGPAs, getCourseLevel } from '@/utils/gpaCalculator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getShowoffModeGPA, shouldEnableShowoffMode } from '@/utils/showoffMode';
 
 
 export interface GPAData {
@@ -164,8 +165,40 @@ export class UnifiedGPAManager extends UnifiedDataManager {
   }
 
   // Calculate GPA for current grade level using scrape report scores with academic history term structure
-  public static calculateCurrentGradeGPA(courses: UnifiedCourseData[]): Record<string, GPAData> {
+  public static calculateCurrentGradeGPA(courses: UnifiedCourseData[], showoffMode: boolean = false, username: string = ''): Record<string, GPAData> {
     try {
+      // Check if showoff mode should be applied
+      if (showoffMode && shouldEnableShowoffMode(username)) {
+        const allTerms = ['PR1', 'PR2', 'RC1', 'PR3', 'PR4', 'RC2', 'PR5', 'PR6', 'RC3', 'PR7', 'PR8', 'RC4', 'SM1', 'SM2'];
+        const termGPAs: Record<string, GPAData> = {};
+        
+        // Create variation pattern: up-down-up-down with high scores
+        const variationPattern = [98, 104, 100, 98, 98, 104, 100, 98, 98, 104, 100];
+        
+        // Return varied GPAs for all terms that have data
+        allTerms.forEach((term, index) => {
+          let hasData = false;
+          courses.forEach(course => {
+            const gradeStr = course.historicalGrades[term.toLowerCase() as keyof typeof course.historicalGrades];
+            if (gradeStr !== undefined && gradeStr !== null && gradeStr !== '') {
+              hasData = true;
+            }
+          });
+          
+          if (hasData) {
+            const unweightedScore = variationPattern[index] || 100;
+            const weightedScore = Math.min(unweightedScore + 4, 104); // Add 4 for weighted, cap at 104
+            
+            termGPAs[term] = {
+              unweighted: unweightedScore,
+              weighted: weightedScore
+            };
+          }
+        });
+        
+        return termGPAs;
+      }
+
       // Calculate GPA for all terms using historicalGrades
       const allTerms = ['PR1', 'PR2', 'RC1', 'PR3', 'PR4', 'RC2', 'PR5', 'PR6', 'RC3', 'PR7', 'PR8', 'RC4', 'SM1', 'SM2'];
       const termGPAs: Record<string, GPAData> = {};
