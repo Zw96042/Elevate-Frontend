@@ -264,11 +264,10 @@ const InnerLayout = () => {
 
                 {/* Showoff Mode Toggle - only show for username 96042 */}
                 {shouldEnableShowoffMode(username) && (
-                  <View className="pb-[62px]">
+                  <View className="pb-[62px] mt-[-40px]">
                     <View className="flex-row items-center justify-between">
                       <View className="flex-1">
                         <Text className="font-medium text-main">Display Mode</Text>
-                        <Text className="text-sm text-gray-500 mt-1">Show perfect grades for demonstrations</Text>
                       </View>
                       <Switch
                         value={showoffMode}
