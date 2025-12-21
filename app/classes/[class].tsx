@@ -207,6 +207,7 @@ const ClassDetails = () => {
     selectedCategories,
     selectedAssignmentTypes,
     setAvailableCategories,
+    setSelectedCategories,
     handleSortChange: contextHandleSortChange
   } = useFilter();
 
@@ -612,6 +613,12 @@ const ClassDetails = () => {
       runOnJS(setDisplayGrade)(currentValue);
     }
   );
+
+  // Clear category filters when navigating to a different class
+  useEffect(() => {
+    // Clear category filters when class changes (but keep sort options)
+    setSelectedCategories([]);
+  }, [className, classId, setSelectedCategories]);
 
   useEffect(() => {
     const isInitialLoad = apiAssignments.length === 0 && apiCategories.names.length === 0;
