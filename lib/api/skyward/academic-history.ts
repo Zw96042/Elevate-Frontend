@@ -324,8 +324,11 @@ export async function fetchCombinedAcademicData(
       timeoutPromise,
     ]);
 
+
     const gradebookData = await parseGradebookHTML(gradebookHtml);
+    // console.log("BBB", gradebookData);
     const result = combineAcademicData(academicHistory, gradebookData);
+    // console.log("BBB", result, "BBB");
     
     const duration = Date.now() - startTime;
     logger.success(Modules.API_HISTORY, `Combined academic data loaded (${duration}ms)`);
@@ -495,6 +498,7 @@ function condenseAcademicHistory(gridObjects: any): any {
     const finalGrade = semester2Grade || semester1Grade ||
       grades.rc4 || grades.rc3 || grades.rc2 || grades.rc1;
 
+    console.log("Course:", courseName, "Final Grade Ex1:", grades.ex1);
     return {
       courseName, terms, finalGrade, isAltCourse,
       semester1: semester1Grade, semester2: semester2Grade,

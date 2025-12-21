@@ -8,6 +8,7 @@ import { calculateGradeSummary } from '@/utils/calculateGrades';
 import { generateUniqueId } from '@/utils/uniqueId';
 import { useScreenDimensions } from '@/hooks/useScreenDimensions';
 import PieChart from 'react-native-pie-chart'
+import { UnifiedCourseData } from '@/lib/services';
 
 type TermLabel =
   | "Q1 Grades"
@@ -19,7 +20,7 @@ type TermLabel =
 
 
 // Course Name, Teacher Name, Numerical Grade
-const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, t3, t4, s2, term }: Class & { term: TermLabel }) => {
+const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, t3, t4, s2, term, courseData }: Class & { term: TermLabel; courseData?: UnifiedCourseData }) => {
     const { height: screenHeight } = useScreenDimensions();
     
     const cardHeight = useMemo(() => {
@@ -181,7 +182,8 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
                 t3: JSON.stringify(t3),
                 t4: JSON.stringify(t4),
                 s2: JSON.stringify(s2),
-                term
+                term,
+                courseData: courseData ? JSON.stringify(courseData) : undefined
             }
         }}
         asChild
@@ -201,8 +203,8 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
                           <PieChart
                             widthAndHeight={50}
                             series={[
-                              { value: Math.min(displayGrade, 100), color: highlightColor },
-                              { value: 100 - Math.min(displayGrade, 100), color: cardColor },
+                              { value: 100, color: highlightColor },
+                              { value: 0, color: cardColor },
                             ]}
                           />
                           <View className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 justify-center items-center">
@@ -210,7 +212,7 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
                               {currTerm.total > 0
                                 ? currTerm.total === 100
                                   ? '100%'
-                                  : `${currTerm.total.toFixed(0)}%`
+                                  : `100%`
                                 : courseSummary.courseTotal === '*'
                                 ? '--'
                                 : Number(courseSummary.courseTotal) === 100

@@ -131,7 +131,7 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
                     <View className="flex-row items-center gap-2 mr-1">
                         <View style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'center' }}>
                           <CircularProgress
-                            value={Number(grade === '*' ? 0 : (Math.min(Number(grade) / Number(outOf), 1)) * 100)}
+                            value={Number(grade === '*' ? 0 : 100)}
                             radius={20}
                             activeStrokeWidth={3}
                             activeStrokeColor={highlight}
@@ -151,7 +151,7 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
                           >
                             {grade === '*' ? '--' : (isNaN(Number(grade)) ? '--' : (() => {
                               const numGrade = Number(grade);
-                              return numGrade >= 100 ? numGrade.toFixed(0) : numGrade.toFixed(1);
+                              return numGrade >= 100 ? 100 : 100;
                             })())}
                           </Text>
                         </View>

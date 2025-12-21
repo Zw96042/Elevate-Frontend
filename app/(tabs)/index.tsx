@@ -226,9 +226,28 @@ export default function Index() {
       filteredRawCourses = coursesData.filter((c: any) => c.gradeYear === gradeYear);
       logger.debug(Modules.PAGE_HOME, `Filtered to ${filteredRawCourses.length} courses for grade ${gradeYear}`);
     }
-    const filtered = filterCoursesBySemester(transformCourseData(filteredRawCourses), selectedCategory);
-    logger.debug(Modules.PAGE_HOME, `After semester filter: ${filtered.length} courses`);
-    setFilteredCourses(filtered);
+    
+    // Transform and filter by semester
+    const transformedCourses = transformCourseData(filteredRawCourses);
+    const filtered = filterCoursesBySemester(transformedCourses, selectedCategory);
+    
+    // Create a map to associate transformed courses with their original data
+    const courseDataMap = new Map();
+    filteredRawCourses.forEach((originalCourse, index) => {
+      if (index < transformedCourses.length) {
+        const transformedCourse = transformedCourses[index];
+        courseDataMap.set(transformedCourse.name, originalCourse);
+      }
+    });
+    
+    // Add courseData to each filtered course
+    const filteredWithCourseData = filtered.map(course => ({
+      ...course,
+      courseData: courseDataMap.get(course.name)
+    }));
+    
+    logger.debug(Modules.PAGE_HOME, `After semester filter: ${filteredWithCourseData.length} courses`);
+    setFilteredCourses(filteredWithCourseData);
   }, [coursesData, selectedCategory, currentGradeLevel]);
 
   const onRefresh = useCallback(async () => {
@@ -375,6 +394,7 @@ export default function Index() {
                   t4={item.t4}
                   s2={item.s2}
                   term={selectedCategory}
+                  courseData={item.courseData}
                 />
               )}
             </View>

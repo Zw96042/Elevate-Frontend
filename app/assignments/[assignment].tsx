@@ -77,6 +77,24 @@ const AssignmentDetails = () => {
     const corNumIdParam = corNumId?.toString() || '';
     const sectionParam = section?.toString() || '';
     const gbIdParam = gbId?.toString() || '';
+    
+    // Special handling for final exam grades
+    if (category?.toString() === "Final Exam") {
+      const examKey = `${className}_${corNumIdParam}_${sectionParam}_${gbIdParam}`;
+      const examType = term?.toString() || '';
+      const existing = JSON.parse(await AsyncStorage.getItem("finalExamGrades") ?? "{}");
+      
+      if (!existing[examKey]) {
+        existing[examKey] = {};
+      }
+      
+      const formattedGrade = gradeValue === '*' ? '*' : parseFloat(Number(gradeValue).toFixed(2));
+      existing[examKey][examType] = formattedGrade.toString();
+      await AsyncStorage.setItem("finalExamGrades", JSON.stringify(existing));
+      return;
+    }
+    
+    // Regular assignment handling
     const existing = JSON.parse(await AsyncStorage.getItem('artificialAssignments') ?? '{}');
     const formattedGrade = gradeValue === '*' ? '*' : parseFloat(Number(gradeValue).toFixed(2));
     const formattedOutOf = Number(outOfValue);
@@ -270,6 +288,28 @@ const AssignmentDetails = () => {
                       const corNumIdParam = corNumId?.toString() || '';
                       const sectionParam = section?.toString() || '';
                       const gbIdParam = gbId?.toString() || '';
+                      
+                      // Special handling for final exam grades
+                      if (category?.toString() === "Final Exam") {
+                        const examKey = `${className}_${corNumIdParam}_${sectionParam}_${gbIdParam}`;
+                        const examType = term?.toString() || '';
+                        const existing = JSON.parse(await AsyncStorage.getItem("finalExamGrades") ?? "{}");
+                        
+                        if (existing[examKey] && existing[examKey][examType]) {
+                          delete existing[examKey][examType];
+                          
+                          // Remove the entire class key if no exam grades left
+                          if (Object.keys(existing[examKey]).length === 0) {
+                            delete existing[examKey];
+                          }
+                          
+                          await AsyncStorage.setItem("finalExamGrades", JSON.stringify(existing));
+                        }
+                        router.back();
+                        return;
+                      }
+                      
+                      // Regular assignment deletion
                       const existing = JSON.parse(await AsyncStorage.getItem('artificialAssignments') ?? '{}');
                       // Check for the assignment in the current term format
                       const currentStorageKey = `${className}_${corNumIdParam}_${sectionParam}_${gbIdParam}_${term}`;
@@ -309,7 +349,9 @@ const AssignmentDetails = () => {
                     }}
                     className='mt-4 mx-4 bg-cardColor items-center rounded-lg'
                     >
-                    <Text className='text-red-500 font-medium py-3 text-lg'>Delete Assignment</Text>
+                    <Text className='text-red-500 font-medium py-3 text-lg'>
+                      {category?.toString() === "Final Exam" ? "Reset Exam Grade" : "Delete Assignment"}
+                    </Text>
                 </TouchableOpacity>
                 )}
             </View>

@@ -87,6 +87,9 @@ const ClassDetails = () => {
   const [waitingForRetry, setWaitingForRetry] = useState(false);
   const animatedGrade = useSharedValue(0);
 
+  // State for final exam grades
+  const [finalExamGrades, setFinalExamGrades] = useState<{[key: string]: string}>({});
+
   const searchParams = useLocalSearchParams();
   const navigation = useNavigation();
 
@@ -98,6 +101,44 @@ const ClassDetails = () => {
   const stuId = Array.isArray(searchParams.stuId) ? searchParams.stuId[0] : searchParams.stuId;
   const section = Array.isArray(searchParams.section) ? searchParams.section[0] : searchParams.section;
   const gbId = Array.isArray(searchParams.gbId) ? searchParams.gbId[0] : searchParams.gbId;
+
+  // Parse courseData from URL params
+  const courseDataParam = Array.isArray(searchParams.courseData) ? searchParams.courseData[0] : searchParams.courseData;
+  const courseData = useMemo(() => {
+    if (courseDataParam) {
+      try {
+        return JSON.parse(courseDataParam);
+      } catch (error) {
+        logger.warn(Modules.PAGE_CLASS, 'Failed to parse courseData from URL params', error);
+        return null;
+      }
+    }
+    return null;
+  }, [courseDataParam]);
+
+  // Now you have access to the full UnifiedCourseData object!
+  // Examples of what you can access:
+  // - courseData?.currentScores: Array of current scores with bucket names
+  // - courseData?.historicalGrades: Object with all historical grade data
+  // - courseData?.semester: 'fall' | 'spring' | 'both' | 'unknown'
+  // - courseData?.gradeYear: The grade year (9, 10, 11, 12)
+  // - courseData?.instructor: Full instructor name
+  // - courseData?.period: Class period number
+  // - courseData?.time: Class time string
+  // - courseData?.termLength: Term length information
+  
+  useEffect(() => {
+    if (courseData) {
+      logger.info(Modules.PAGE_CLASS, 'Course data available', {
+        courseName: courseData.courseName,
+        instructor: courseData.instructor,
+        semester: courseData.semester,
+        gradeYear: courseData.gradeYear,
+        currentScoresCount: courseData.currentScores?.length || 0,
+        hasHistoricalGrades: Object.keys(courseData.historicalGrades || {}).length > 0
+      });
+    }
+  }, [courseData]);
 
 
 
@@ -216,41 +257,6 @@ const ClassDetails = () => {
     });
   }, []);
 
-
-
-  // Use context handleSortChange
-  const handleSortChange = contextHandleSortChange;
-
-  // Debug function to check cache status
-  const checkCacheStatus = async () => {
-    const cacheKey = `assignments_${className}_${stuId}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
-    try {
-      const cachedData = await AsyncStorage.getItem(cacheKey);
-      if (cachedData) {
-        const parsed = JSON.parse(cachedData);
-        const cacheAge = Date.now() - (parsed.timestamp || 0);
-        // console.log('Cache status:', {
-        //   key: cacheKey,
-        //   age: Math.round(cacheAge / 1000) + 's',
-        //   isValid: cacheAge < CACHE_DURATION,
-        //   assignmentsCount: parsed.assignments?.length || 0,
-        //   categoriesCount: parsed.categories?.names?.length || 0
-        // });
-      } else {
-        // console.log('No cache found for key:', cacheKey);
-      }
-    } catch (error) {
-      console.log('Cache check error:', error);
-    }
-  };
-
-  // Function to clear cache for debugging
-  const clearCache = async () => {
-    const cacheKey = `assignments_${className}_${stuId}_${corNumId}_${section}_${gbId}_${selectedCategory}`;
-    await AsyncStorage.removeItem(cacheKey);
-    // console.log('Cache cleared for:', cacheKey);
-  };
-
   // Handle pull-to-refresh
   const handleRefresh = async () => {
     // console.log('Pull-to-refresh triggered');
@@ -339,25 +345,55 @@ const ClassDetails = () => {
     });
     
     const data = await AsyncStorage.getItem("artificialAssignments");
+    
+    // Create final exam assignments if toggle is enabled and we're in semester view
+    let finalExamAssignments: Assignment[] = [];
+    if (isEnabled && (selectedCategory === "SM1 Grade" || selectedCategory === "SM2 Grades")) {
+      const examType = selectedCategory.split(" ")[0] === "SM1" ? "EX1" : "EX2";
+      const examName = selectedCategory.split(" ")[0] === "SM1" ? "Exam 1" : "Exam 2";
+      
+      if (finalExamGrades[examType] && finalExamGrades[examType] !== "*") {
+        finalExamAssignments.push({
+          id: `final-exam-${examType}`,
+          className: className || "",
+          name: examName,
+          term: examType,
+          category: "Final Exam",
+          grade: finalExamGrades[examType],
+          outOf: 100,
+          dueDate: selectedCategory.split(" ")[0] === "SM1" ? "12/19/25" : "5/22/26",
+          artificial: true,
+          meta: []
+        });
+      }
+    }
+    
     if (!data) {
       if (apiAssignments.length === 0 && filteredAssignments.length > 0) {
         return;
       }
-      const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
+      const realWithIds = ensureUniqueAssignmentIds([...apiAssignments, ...finalExamAssignments]);
       
       // Update available categories for filtering
       const categories = [...new Set(realWithIds.map(a => a.category))];
       setAvailableCategories(categories);
       
       const sortedAssignments = sortAndFilterAssignments(realWithIds, sortOption, sortOrder, selectedCategories, selectedAssignmentTypes);
+      
+      // Filter out final exam assignments from the regular assignments list
+      const filteredSortedAssignments = sortedAssignments.filter(a => a.category !== "Final Exam");
+      
       setArtificialAssignments([]);
-      setFilteredAssignments(sortedAssignments);
+      setFilteredAssignments(filteredSortedAssignments);
       const all = realWithIds.filter(a => a.grade !== '*');
       const weightsMap = Object.fromEntries(
         (apiCategories.names || []).map((name, i) => [name, apiCategories.weights[i]])
       );
+      
+      // Don't add Final Exam to weightsMap - it should not affect category weight normalization
+      
       const nonEmptyCategories = all.reduce((set, a) => {
-        if (!set.has(a.category)) set.add(a.category);
+        if (!set.has(a.category) && a.category !== "Final Exam") set.add(a.category);
         return set;
       }, new Set<string>());
       const adjustedWeights = Object.entries(weightsMap).filter(([name]) =>
@@ -367,7 +403,51 @@ const ClassDetails = () => {
       const normalizedWeights = Object.fromEntries(
         adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
       );
-      setCourseSummary(calculateGradeSummary(all, normalizedWeights, termMap, selectedCategory));
+      // Get final exam grade for calculation (always include if available)
+      let finalExamGrade: number | undefined;
+      if (selectedCategory === "SM1 Grade" || selectedCategory === "SM2 Grades") {
+        const examType = selectedCategory.split(" ")[0] === "SM1" ? "EX1" : "EX2";
+        
+        console.log('🔍 Grade Calc Debug (1):', {
+          examType,
+          isEnabled,
+          hasArtificialGrade: !!finalExamGrades[examType],
+          hasCourseData: !!courseData,
+          hasCurrentScores: !!courseData?.currentScores
+        });
+        
+        // First check for artificial final exam grade (if toggle is ON and artificial grade exists)
+        if (isEnabled && finalExamGrades[examType]) {
+          const examAssignment = finalExamAssignments.find(a => a.term === examType);
+          if (examAssignment && examAssignment.grade !== "*") {
+            finalExamGrade = Number(examAssignment.grade);
+            console.log('🔍 Using artificial exam grade for calc:', finalExamGrade);
+          }
+        }
+        
+        // If no artificial grade found, use real grade (regardless of toggle state)
+        if (finalExamGrade === undefined) {
+          // Look for real final exam assignment in API data first
+          const realExamAssignment = apiAssignments.find(a => 
+            a.category === "Final Exam" && a.term === examType && a.grade !== "*"
+          );
+          
+          if (realExamAssignment) {
+            finalExamGrade = Number(realExamAssignment.grade);
+            console.log('🔍 Using API exam grade for calc:', finalExamGrade);
+          } else if (courseData?.currentScores) {
+            // Fallback to courseData if no assignment found
+            const realExamScore = courseData.currentScores.find((s: { bucket: string; }) => s.bucket === examType);
+            console.log('🔍 Found courseData exam score:', realExamScore);
+            if (realExamScore && realExamScore.score !== undefined && realExamScore.score !== null && realExamScore.score !== "*") {
+              finalExamGrade = Number(realExamScore.score);
+              console.log('🔍 Using courseData exam grade for calc:', finalExamGrade);
+            }
+          }
+        }
+      }
+      
+      setCourseSummary(calculateGradeSummary(all, normalizedWeights, termMap, selectedCategory, finalExamGrade));
       return;
     }
     const parsed = JSON.parse(data);
@@ -392,7 +472,7 @@ const ClassDetails = () => {
       }
     });
     
-    const artificial = isEnabled ? allArtificialAssignments : [];
+    const artificial = isEnabled ? [...allArtificialAssignments, ...finalExamAssignments] : [];
 
     const fixedArtificial = artificial.map((a: Assignment) => ({
       ...a,
@@ -421,19 +501,25 @@ const ClassDetails = () => {
     setAvailableCategories(categories);
     
     const sortedAssignments = sortAndFilterAssignments(assignmentsWithIds, sortOption, sortOrder, selectedCategories, selectedAssignmentTypes);
-    const artificialWithIds = sortedAssignments.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
     
-    logger.debug(Modules.PAGE_CLASS, `Meshed ${sortedAssignments.length} assignments (${artificialWithIds.length} artificial)`);
+    // Filter out final exam assignments from the regular assignments list
+    const filteredSortedAssignments = sortedAssignments.filter(a => a.category !== "Final Exam");
+    const artificialWithIds = filteredSortedAssignments.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
+    
+    logger.debug(Modules.PAGE_CLASS, `Meshed ${filteredSortedAssignments.length} assignments (${artificialWithIds.length} artificial)`);
     
     setArtificialAssignments(artificialWithIds);
-    setFilteredAssignments(sortedAssignments);
+    setFilteredAssignments(filteredSortedAssignments);
 
     const all = assignmentsWithIds.filter(a => a.grade !== '*');
     const weightsMap = Object.fromEntries(
       (apiCategories.names || []).map((name, i) => [name, apiCategories.weights[i]])
     );
+    
+    // Don't add Final Exam to weightsMap - it should not affect category weight normalization
+    
     const nonEmptyCategories = all.reduce((set, a) => {
-      if (!set.has(a.category)) set.add(a.category);
+      if (!set.has(a.category) && a.category !== "Final Exam") set.add(a.category);
       return set;
     }, new Set<string>());
     const adjustedWeights = Object.entries(weightsMap).filter(([name]) =>
@@ -443,10 +529,46 @@ const ClassDetails = () => {
     const normalizedWeights = Object.fromEntries(
       adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
     );
-    const newCourseSummary = calculateGradeSummary(all, normalizedWeights, termMap, selectedCategory);
+    // Get final exam grade for calculation (always include if available)
+    let finalExamGrade: number | undefined;
+    if (selectedCategory === "SM1 Grade" || selectedCategory === "SM2 Grades") {
+      const examType = selectedCategory.split(" ")[0] === "SM1" ? "EX1" : "EX2";
+      
+      // First check for artificial final exam grade (if toggle is ON and artificial grade exists)
+      if (isEnabled && finalExamGrades[examType]) {
+        const examAssignment = finalExamAssignments.find(a => a.term === examType);
+        if (examAssignment && examAssignment.grade !== "*") {
+          finalExamGrade = Number(examAssignment.grade);
+          console.log('🔍 Using artificial exam grade for calc (meshAssignments):', finalExamGrade);
+        }
+      }
+      
+      // If no artificial grade found, use real grade (regardless of toggle state)
+      if (finalExamGrade === undefined) {
+        // Look for real final exam assignment in API data first
+        const realExamAssignment = apiAssignments.find(a => 
+          a.category === "Final Exam" && a.term === examType && a.grade !== "*"
+        );
+        
+        if (realExamAssignment) {
+          finalExamGrade = Number(realExamAssignment.grade);
+          console.log('🔍 Using API exam grade for calc (meshAssignments):', finalExamGrade);
+        } else if (courseData?.currentScores) {
+          // Fallback to courseData if no assignment found
+          const realExamScore = courseData.currentScores.find((s: { bucket: string; }) => s.bucket === examType);
+          console.log('🔍 Found courseData exam score (meshAssignments):', realExamScore);
+          if (realExamScore && realExamScore.score !== undefined && realExamScore.score !== null && realExamScore.score !== "*") {
+            finalExamGrade = Number(realExamScore.score);
+            console.log('🔍 Using courseData exam grade for calc (meshAssignments):', finalExamGrade);
+          }
+        }
+      }
+    }
+    
+    const newCourseSummary = calculateGradeSummary(all, normalizedWeights, termMap, selectedCategory, finalExamGrade);
     logger.debug(Modules.PAGE_CLASS, `Setting course summary: ${newCourseSummary.courseTotal} (isEnabled: ${isEnabled}, assignments: ${all.length})`);
     setCourseSummary(newCourseSummary);
-  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, className, corNumId, section, gbId, sortAndFilterAssignments, setAvailableCategories]);
+  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, className, corNumId, section, gbId, sortAndFilterAssignments, setAvailableCategories, finalExamGrades]);
 
 
   // Memoize the grade value calculation to prevent unnecessary recalculations
@@ -508,7 +630,7 @@ const ClassDetails = () => {
       await meshAssignments();
     };
     runMeshAssignments();
-  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, sortOption, sortOrder]);
+  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, sortOption, sortOrder, finalExamGrades]);
 
   // Separate effect for handling filter changes without re-meshing assignments
   useEffect(() => {
@@ -521,29 +643,80 @@ const ClassDetails = () => {
       if (allAssignments.length > 0) {
         const assignmentsWithIds = ensureUniqueAssignmentIds(allAssignments);
         const sortedAssignments = sortAndFilterAssignments(assignmentsWithIds, sortOption, sortOrder, selectedCategories, selectedAssignmentTypes);
-        setFilteredAssignments(sortedAssignments);
+        
+        // Filter out final exam assignments from the regular assignments list
+        const filteredSortedAssignments = sortedAssignments.filter(a => a.category !== "Final Exam");
+        
+        setFilteredAssignments(filteredSortedAssignments);
       }
     }
   }, [sortOption, sortOrder, selectedCategories, selectedAssignmentTypes, apiAssignments, artificialAssignments, sortAndFilterAssignments]);
 
-  // Separate function for refreshing only artificial assignments on focus
-  const refreshArtificialAssignmentsOnFocus = useCallback(async () => {
-    logger.debug(Modules.PAGE_CLASS, 'Screen focused - refreshing artificial assignments');
+  // Comprehensive refresh function that reloads all cached data
+  const refreshAllCachedData = useCallback(async () => {
+    logger.debug(Modules.PAGE_CLASS, 'Screen focused - refreshing all cached data');
     
-    // Only process artificial assignments without triggering API calls
-    // This ensures updates made in assignment detail view are reflected
+    // Reload final exam grades from storage
+    try {
+      const examData = await AsyncStorage.getItem("finalExamGrades");
+      if (examData) {
+        const parsed = JSON.parse(examData);
+        const examKey = `${className}_${corNumId}_${section}_${gbId}`;
+        setFinalExamGrades(parsed[examKey] || {});
+      }
+    } catch (error) {
+      console.error('Failed to load final exam grades on focus:', error);
+    }
+    
+    // Create final exam assignments if toggle is enabled and we're in semester view
+    let finalExamAssignments: Assignment[] = [];
+    if (isEnabled && (selectedCategory === "SM1 Grade" || selectedCategory === "SM2 Grades")) {
+      const examType = selectedCategory.split(" ")[0] === "SM1" ? "EX1" : "EX2";
+      const examName = selectedCategory.split(" ")[0] === "SM1" ? "Exam 1" : "Exam 2";
+      
+      // Get the latest final exam grades from storage
+      const latestExamData = await AsyncStorage.getItem("finalExamGrades");
+      let latestFinalExamGrades: {[key: string]: string} = {};
+      if (latestExamData) {
+        const parsed = JSON.parse(latestExamData);
+        const examKey = `${className}_${corNumId}_${section}_${gbId}`;
+        latestFinalExamGrades = parsed[examKey] || {};
+      }
+      
+      if (latestFinalExamGrades[examType] && latestFinalExamGrades[examType] !== "*") {
+        finalExamAssignments.push({
+          id: `final-exam-${examType}`,
+          className: className || "",
+          name: examName,
+          term: examType,
+          category: "Final Exam",
+          grade: latestFinalExamGrades[examType],
+          outOf: 100,
+          dueDate: selectedCategory.split(" ")[0] === "SM1" ? "12/19/25" : "5/22/26",
+          artificial: true,
+          meta: []
+        });
+      }
+    }
+    
+    // Process artificial assignments without triggering API calls
     const data = await AsyncStorage.getItem("artificialAssignments");
+    
     if (!data) {
       // If no artificial data exists, just ensure filtered assignments match API assignments
       if (apiAssignments.length > 0) {
-        const realWithIds = ensureUniqueAssignmentIds(apiAssignments);
+        const realWithIds = ensureUniqueAssignmentIds([...apiAssignments, ...finalExamAssignments]);
         
         // Update available categories for filtering
         const categories = [...new Set(realWithIds.map(a => a.category))];
         setAvailableCategories(categories);
         
         const sortedAssignments = sortAndFilterAssignments(realWithIds, sortOption, sortOrder, selectedCategories, selectedAssignmentTypes);
-        setFilteredAssignments(sortedAssignments);
+        
+        // Filter out final exam assignments from the regular assignments list
+        const filteredSortedAssignments = sortedAssignments.filter(a => a.category !== "Final Exam");
+        
+        setFilteredAssignments(filteredSortedAssignments);
         setArtificialAssignments([]);
       }
       return;
@@ -571,7 +744,7 @@ const ClassDetails = () => {
       }
     });
     
-    const artificial = isEnabled ? allArtificialAssignments : [];
+    const artificial = isEnabled ? [...allArtificialAssignments, ...finalExamAssignments] : [];
     const fixedArtificial = artificial.map((a: Assignment) => ({
       ...a,
       grade: a.grade !== undefined && a.grade !== null ? a.grade : "*",
@@ -589,18 +762,24 @@ const ClassDetails = () => {
     setAvailableCategories(categories);
     
     const sortedAssignments = sortAndFilterAssignments(assignmentsWithIds, sortOption, sortOrder, selectedCategories, selectedAssignmentTypes);
-    const artificialWithIds = sortedAssignments.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
+    
+    // Filter out final exam assignments from the regular assignments list
+    const filteredSortedAssignments = sortedAssignments.filter(a => a.category !== "Final Exam");
+    const artificialWithIds = filteredSortedAssignments.filter(a => fixedArtificial.some((orig: any) => orig.name === a.name));
     
     setArtificialAssignments(artificialWithIds);
-    setFilteredAssignments(sortedAssignments);
+    setFilteredAssignments(filteredSortedAssignments);
 
     // Recalculate course summary with updated assignments
     const all = assignmentsWithIds.filter(a => a.grade !== '*');
     const weightsMap = Object.fromEntries(
       (apiCategories.names || []).map((name, i) => [name, apiCategories.weights[i]])
     );
+    
+    // Don't add Final Exam to weightsMap - it should not affect category weight normalization
+    
     const nonEmptyCategories = all.reduce((set, a) => {
-      if (!set.has(a.category)) set.add(a.category);
+      if (!set.has(a.category) && a.category !== "Final Exam") set.add(a.category);
       return set;
     }, new Set<string>());
     const adjustedWeights = Object.entries(weightsMap).filter(([name]) =>
@@ -610,13 +789,49 @@ const ClassDetails = () => {
     const normalizedWeights = Object.fromEntries(
       adjustedWeights.map(([name, weight]) => [name, (weight / totalAdjustedWeight) * 100])
     );
-    setCourseSummary(calculateGradeSummary(all, normalizedWeights, termMap, selectedCategory));
-  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, className, corNumId, section, gbId, sortAndFilterAssignments, setAvailableCategories]);
+    // Get final exam grade for calculation (always include if available)
+    let finalExamGrade: number | undefined;
+    if (selectedCategory === "SM1 Grade" || selectedCategory === "SM2 Grades") {
+      const examType = selectedCategory.split(" ")[0] === "SM1" ? "EX1" : "EX2";
+      
+      // First check for artificial final exam grade (if toggle is ON and artificial grade exists)
+      if (isEnabled && finalExamGrades[examType]) {
+        const examAssignment = finalExamAssignments.find(a => a.term === examType);
+        if (examAssignment && examAssignment.grade !== "*") {
+          finalExamGrade = Number(examAssignment.grade);
+          console.log('🔍 Using artificial exam grade for calc (refreshAllCachedData):', finalExamGrade);
+        }
+      }
+      
+      // If no artificial grade found, use real grade (regardless of toggle state)
+      if (finalExamGrade === undefined) {
+        // Look for real final exam assignment in API data first
+        const realExamAssignment = apiAssignments.find(a => 
+          a.category === "Final Exam" && a.term === examType && a.grade !== "*"
+        );
+        
+        if (realExamAssignment) {
+          finalExamGrade = Number(realExamAssignment.grade);
+          console.log('🔍 Using API exam grade for calc (refreshAllCachedData):', finalExamGrade);
+        } else if (courseData?.currentScores) {
+          // Fallback to courseData if no assignment found
+          const realExamScore = courseData.currentScores.find((s: { bucket: string; }) => s.bucket === examType);
+          console.log('🔍 Found courseData exam score (refreshAllCachedData):', realExamScore);
+          if (realExamScore && realExamScore.score !== undefined && realExamScore.score !== null && realExamScore.score !== "*") {
+            finalExamGrade = Number(realExamScore.score);
+            console.log('🔍 Using courseData exam grade for calc (refreshAllCachedData):', finalExamGrade);
+          }
+        }
+      }
+    }
+    
+    setCourseSummary(calculateGradeSummary(all, normalizedWeights, termMap, selectedCategory, finalExamGrade));
+  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, className, corNumId, section, gbId, sortAndFilterAssignments, setAvailableCategories, sortOption, sortOrder, selectedCategories, selectedAssignmentTypes]);
 
   useFocusEffect(
     React.useCallback(() => {
-      refreshArtificialAssignmentsOnFocus();
-    }, [refreshArtificialAssignmentsOnFocus])
+      refreshAllCachedData();
+    }, [refreshAllCachedData])
   );
 
   const { openModal } = useAddAssignmentSheet();
@@ -695,9 +910,12 @@ const handleToggle = useCallback(async () => {
     });
 
     await AsyncStorage.setItem("artificialAssignments", JSON.stringify(parsed));
+    
+    // Also reset final exam grades
+    await resetFinalExamGrades();
+    
     Burnt.toast({
       title: "Reset the assignments",
-     
       duration: 1,
       preset: 'done',
       haptic: 'success',
@@ -933,8 +1151,108 @@ const handleToggle = useCallback(async () => {
     );
   }, [loading, apiCategories.names, apiCategories.weights, courseSummary.categories, isEnabled, handleToggle, isToggling]);
 
-  // Memoize the reset button section (only depends on isEnabled for visibility)
-  
+  // Load final exam grades from storage
+  useEffect(() => {
+    const loadFinalExamGrades = async () => {
+      try {
+        const data = await AsyncStorage.getItem("finalExamGrades");
+        if (data) {
+          const parsed = JSON.parse(data);
+          const examKey = `${className}_${corNumId}_${section}_${gbId}`;
+          setFinalExamGrades(parsed[examKey] || {});
+        }
+      } catch (error) {
+        console.error('Failed to load final exam grades:', error);
+      }
+    };
+    loadFinalExamGrades();
+  }, [className, corNumId, section, gbId]);
+
+  // Reset final exam grades
+  const resetFinalExamGrades = async () => {
+    try {
+      const examKey = `${className}_${corNumId}_${section}_${gbId}`;
+      const existing = JSON.parse(await AsyncStorage.getItem("finalExamGrades") ?? "{}");
+      
+      if (existing[examKey]) {
+        delete existing[examKey];
+        await AsyncStorage.setItem("finalExamGrades", JSON.stringify(existing));
+      }
+      
+      setFinalExamGrades({});
+    } catch (error) {
+      console.error('Failed to reset final exam grades:', error);
+    }
+  };
+
+  // Memoized final exam section (only for SM1 / SM2)
+  const FinalExamSection = useMemo(() => {
+    if (loading) return null;
+
+    if (selectedCategory !== "SM1 Grade" && selectedCategory !== "SM2 Grades") {
+      return null;
+    }
+
+    const examType = selectedCategory.split(" ")[0] === "SM1" ? "EX1" : "EX2";
+    const examName = selectedCategory.split(" ")[0] === "SM1" ? "Exam 1" : "Exam 2";
+    
+    // Get grade from artificial storage if toggle is on, otherwise from API or courseData
+    let displayGrade = "*";
+    let isArtificial = false;
+    
+    console.log('🔍 Final Exam Debug:', {
+      examType,
+      isEnabled,
+      hasArtificialGrade: !!finalExamGrades[examType],
+      artificialGrade: finalExamGrades[examType],
+      hasCourseData: !!courseData,
+      hasCurrentScores: !!courseData?.currentScores,
+      currentScores: courseData?.currentScores
+    });
+    
+    if (isEnabled && finalExamGrades[examType]) {
+      displayGrade = finalExamGrades[examType];
+      isArtificial = true;
+      console.log('🔍 Using artificial grade:', displayGrade);
+    } else {
+      // Look for real final exam assignment in API data first
+      const realExamAssignment = apiAssignments.find(a => 
+        a.category === "Final Exam" && a.term === examType
+      );
+      
+      console.log('🔍 Real exam assignment found:', realExamAssignment);
+      
+      if (realExamAssignment) {
+        displayGrade = realExamAssignment.grade;
+        console.log('🔍 Using API assignment grade:', displayGrade);
+      } else if (courseData?.currentScores) {
+        // Fallback to courseData if no assignment found
+        const examScore = courseData.currentScores.find((s: { bucket: string; }) => s.bucket === examType);
+        console.log('🔍 Looking for exam score with bucket:', examType, 'found:', examScore);
+        displayGrade = examScore?.score ?? "*";
+        console.log('🔍 Using courseData score:', displayGrade);
+      }
+    }
+
+    return (
+      <AssignmentCard 
+        id={`final-exam-${examType}`}
+        className={className || ""} 
+        name={examName} 
+        term={examType} 
+        category={"Final Exam"}
+        grade={displayGrade} 
+        outOf={100} 
+        dueDate={selectedCategory.split(" ")[0] === "SM1" ? "12/19/25" : "5/22/26"} // TODO: CHANGE DATES
+        artificial={isArtificial} 
+        editing={!!isEnabled}
+        classId={classId}
+        corNumId={corNumId}
+        section={section}
+        gbId={gbId}
+        />
+    );
+  }, [loading, selectedCategory, isEnabled, courseData, finalExamGrades, className, classId, corNumId, section, gbId, apiAssignments]);
 
   // Simplified assignments section header with filter button
   const AssignmentsSection = useMemo(() => (
@@ -984,10 +1302,13 @@ const handleToggle = useCallback(async () => {
         >
           {GradeDisplaySection}
           {CategoriesSection}
-          {/* {ResetButtonSection} */}
+          <View className="px-3 mt-2">
+            {FinalExamSection}
+          </View>
+          
           {AssignmentsSection}
 
-          <View className="mt-2 px-3 pb-20">
+          <View className="px-3 pb-20">
             {flatListData.length === 0 && !loading && !waitingForRetry ? (
               // Show "no results" message when filters don't match anything
               <View className="mt-10 px-5">
@@ -1035,20 +1356,6 @@ const handleToggle = useCallback(async () => {
             )}
           </View>
         </ScrollView>
-        {/* {isEnabled && apiCategories.names.length > 0 && (
-  <View className="absolute bottom-0 left-0 right-0 px-4 pb-6">
-    <View className="bg-[#1e293b]/80 backdrop-blur-xl  rounded-2xl opacity-80">
-      <TouchableOpacity
-        onPress={handleResetArtificialAssignments}
-        className="py-4 items-center"
-      >
-        <Text className="text-highlightText font-semibold text-lg">
-          Reset Assignments
-        </Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-)} */}
       </View>
     </TouchableWithoutFeedback>
   );

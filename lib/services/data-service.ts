@@ -71,6 +71,8 @@ export class DataService {
       const result = await RequestDeduplicator.deduplicate(UNIFIED_DATA_REQUEST_KEY, async () => {
         return this.fetchAndCacheData();
       });
+
+      console.log("EEE", JSON.stringify(result, null, 2))
       
       endTimer();
       return result;
@@ -380,9 +382,11 @@ export class DataService {
         { key: 'rc1', label: 'Q1' },
         { key: 'rc2', label: 'Q2' },
         { key: 'sm1', label: 'S1' },
+        { key: 'ex1', label: 'EX1' },
         { key: 'rc3', label: 'Q3' },
         { key: 'rc4', label: 'Q4' },
         { key: 'sm2', label: 'S2' },
+        { key: 'ex2', label: 'EX2' },
       ];
       return buckets
         .filter(b => courseObj[b.key] !== undefined && courseObj[b.key] !== null && courseObj[b.key] !== '')
