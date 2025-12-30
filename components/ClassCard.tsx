@@ -24,9 +24,21 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
     const { height: screenHeight } = useScreenDimensions();
     
     const cardHeight = useMemo(() => {
-        const responsiveHeight = Math.round(screenHeight * 0.0855);
-        // Ensure minimum of 80px and maximum of 120px for usability
-        return Math.max(72, Math.min(120, responsiveHeight));
+      // console.log("SHA", screenHeight);
+      
+      if (screenHeight <= 852) {
+        // 6.1"
+        return 72;
+      } else if (screenHeight <= 912) {
+        // 6.5", iPhone Air
+        return 81;
+      } else if (screenHeight <= 926) {
+        // 6.7"
+        return 83;
+      } else {
+        // 6.9"
+        return 87;
+      } 
     }, [screenHeight]);
 
     // Generate a truly unique identifier for this class instance
@@ -51,13 +63,8 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
         total: number;
     };
     const currTerm = useMemo(() => termMap[term], [termMap, term]);
-
-    // Memoize calculated values
-    const percentage = useMemo(() => currTerm.total, [currTerm.total]);
     
     const [isEnabled, setIsEnabled] = useState(false);
-
-  
 
     const [courseSummary, setCourseSummary] = useState<{
         courseTotal: string;

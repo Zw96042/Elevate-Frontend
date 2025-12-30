@@ -272,7 +272,12 @@ export class DataService {
       const cachedData = await AsyncStorage.getItem(CACHE_KEY);
       if (cachedData) {
         console.log('✅ DataService: Using valid cached data');
-        return JSON.parse(cachedData);
+        const parsed = JSON.parse(cachedData);
+        // Ensure success field exists for compatibility with UnifiedDataManager cache format
+        if (!parsed.success && parsed.courses) {
+          parsed.success = true;
+        }
+        return parsed;
       }
     } catch (error) {
       console.error('❌ DataService: Failed to get cached data:', error);

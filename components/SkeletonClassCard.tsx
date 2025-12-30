@@ -45,6 +45,8 @@ const SkeletonPlaceholder = ({ children }: { children: React.ReactNode }) => {
     outputRange: [-300, 300],
   });
 
+  
+
   return (
     <MaskedView maskElement={<View className="absolute inset-0">{children}</View>}>
       <View style={{ flex: 1 }}>
@@ -81,11 +83,23 @@ const SkeletonPlaceholder = ({ children }: { children: React.ReactNode }) => {
 
 const SkeletonClassCard = () => {
   const { height: screenHeight } = useScreenDimensions();
-  
-  // Calculate responsive height to match ClassCard (approximately 11% of screen height)
+
   const cardHeight = useMemo(() => {
-    const responsiveHeight = Math.round(screenHeight * 0.0855);
-    return Math.max(72, Math.min(120, responsiveHeight));
+    // console.log("SHA", screenHeight);
+    
+    if (screenHeight <= 852) {
+      // 6.1"
+      return 72;
+    } else if (screenHeight <= 912) {
+      // 6.5"
+      return 81;
+    } else if (screenHeight <= 926) {
+      // 6.7"
+      return 83;
+    } else {
+      // 6.9"
+      return 87;
+    } 
   }, [screenHeight]);
 
   return (

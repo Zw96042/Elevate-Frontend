@@ -671,7 +671,7 @@ const AcademicHistoryView = () => {
       >
         {/* Header Info */}
         <View className="mx-6 mt-6 mb-4">
-          <View className="bg-cardColor rounded-2xl p-4 shadow-sm">
+          <View className="bg-cardColor rounded-2xl p-4">
             <Text className="text-main text-xl font-semibold mb-2">
               {getGradeLevelName(gradeNumber)} Year Overview
             </Text>

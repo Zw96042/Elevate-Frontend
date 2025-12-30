@@ -153,6 +153,7 @@ export class UnifiedDataManager {
         
         if (cachedData) {
           console.log(`⚡ UnifiedDataManager: Using cached data (${cacheTime}ms) - ${cachedData.courses?.length || 0} courses`);
+          // Ensure we always return success: true for valid cached data
           return {
             success: true,
             courses: cachedData.courses,
@@ -249,19 +250,16 @@ export class UnifiedDataManager {
       const transformTime = Date.now() - transformStartTime;
       console.log(`⚙️ UnifiedDataManager: Data transformation complete (${transformTime}ms) - ${transformedCourses.length} courses`);
       
-      const result = {
+      const result: UnifiedDataResult = {
         success: true,
         courses: transformedCourses,
         lastUpdated: new Date().toISOString()
       };
 
-      // Cache the result
+      // Cache the result - include success field for compatibility with DataService
       console.log('💾 UnifiedDataManager: Caching transformed data...');
       const cacheStartTime = Date.now();
-      await this.setCachedData(CACHE_KEY, CACHE_TIMESTAMP_KEY, {
-        courses: transformedCourses,
-        lastUpdated: result.lastUpdated
-      });
+      await this.setCachedData(CACHE_KEY, CACHE_TIMESTAMP_KEY, result);
       const cacheTime = Date.now() - cacheStartTime;
       
       const totalTime = Date.now() - totalStartTime;

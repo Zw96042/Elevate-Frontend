@@ -50,11 +50,23 @@ const ClassCard2Sem = ({
 }) => {
   const { height: screenHeight } = useScreenDimensions();
   
-  // Calculate responsive height (approximately 10% of screen height, with min/max bounds)
+  // Calculate responsive height based on screen size categories
   const cardHeight = useMemo(() => {
-    const responsiveHeight = Math.round(screenHeight * 0.10);
-    // Ensure minimum of 80px and maximum of 110px for usability
-    return Math.max(80, Math.min(110, responsiveHeight));
+    console.log("SHA", screenHeight);
+    
+    if (screenHeight <= 852) {
+      // 6.1"
+      return 72;
+    } else if (screenHeight <= 912) {
+      // 6.5", iPhone Air
+      return 81;
+    } else if (screenHeight <= 926) {
+      // 6.7"
+      return 83;
+    } else {
+      // 6.9"
+      return 87;
+    } 
   }, [screenHeight]);
 
   const [displaySM1, setDisplaySM1] = useState(0)
@@ -82,19 +94,6 @@ const ClassCard2Sem = ({
     setDisplaySM2(sm2Total);
   }, [s2]);
 
-  const theme = useColorScheme()
-  const highlightColor = theme === 'dark' ? '#3b5795' : '#a4bfed'
-  const cardColor = theme === 'dark' ? '#1e293b' : '#fafafa'
-
-  // Get badge color based on course level
-  const getBadgeColor = () => {
-    switch (courseLevel) {
-      case "AP": return "bg-purple-600";
-      case "Honors": return "bg-blue-600";
-      case "Regular": return "bg-gray-600";
-      default: return "bg-gray-600";
-    }
-  };
 
   const cardContent = (
     <View className='bg-bgColor mx-6'>
