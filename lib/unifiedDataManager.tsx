@@ -28,12 +28,14 @@ export interface UnifiedCourseData {
     pr3?: string;
     pr4?: string;
     rc2?: string;
+    ex1?: string;
     pr5?: string;
     pr6?: string;
     rc3?: string;
     pr7?: string;
     pr8?: string;
     rc4?: string;
+    ex2?: string;
     sm1?: string;
     sm2?: string;
     finalGrade?: string;
@@ -491,12 +493,14 @@ export class UnifiedDataManager {
             pr3: courseObj.pr3,
             pr4: courseObj.pr4,
             rc2: courseObj.rc2,
+            ex1: courseObj.ex1,
             pr5: courseObj.pr5,
             pr6: courseObj.pr6,
             rc3: courseObj.rc3,
             pr7: courseObj.pr7,
             pr8: courseObj.pr8,
             rc4: courseObj.rc4,
+            ex2: courseObj.ex2,
             sm1: courseObj.sm1,
             sm2: courseObj.sm2,
             finalGrade: courseObj.finalGrade,
@@ -544,12 +548,14 @@ export class UnifiedDataManager {
             pr3: courseObj.pr3,
             pr4: courseObj.pr4,
             rc2: courseObj.rc2,
+            ex1: courseObj.ex1,
             pr5: courseObj.pr5,
             pr6: courseObj.pr6,
             rc3: courseObj.rc3,
             pr7: courseObj.pr7,
             pr8: courseObj.pr8,
             rc4: courseObj.rc4,
+            ex2: courseObj.ex2,
             sm1: courseObj.sm1,
             sm2: courseObj.sm2,
             finalGrade: courseObj.finalGrade,

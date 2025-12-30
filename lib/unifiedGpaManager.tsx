@@ -217,18 +217,26 @@ export class UnifiedGPAManager extends UnifiedDataManager {
             gradeStr = Math.round(rawScore).toString();
           }
           
-          // Calculate semester averages from rounded RC grades if SM grade is missing
+          // Calculate semester averages from rounded RC grades and exam if SM grade is missing
+          // Weighting: Q1/RC1 = 40%, Q2/RC2 = 40%, Semester Exam = 20%
           if (['SM1', 'SM2'].includes(term) && (!gradeStr || gradeStr === '' || gradeStr === null)) {
             const rc1 = course.historicalGrades.rc1;
             const rc2 = course.historicalGrades.rc2;
             const rc3 = course.historicalGrades.rc3;
             const rc4 = course.historicalGrades.rc4;
+            const ex1 = course.historicalGrades.ex1;
+            const ex2 = course.historicalGrades.ex2;
             
             if (term === 'SM1') {
               const roundedRC1 = (rc1 && !isNaN(Number(rc1))) ? Math.round(Number(rc1)) : null;
               const roundedRC2 = (rc2 && !isNaN(Number(rc2))) ? Math.round(Number(rc2)) : null;
+              const examGrade = (ex1 && !isNaN(Number(ex1))) ? Number(ex1) : null;
               
-              if (roundedRC1 !== null && roundedRC2 !== null) {
+              if (roundedRC1 !== null && roundedRC2 !== null && examGrade !== null) {
+                // Full 40-40-20 weighting with exam
+                gradeStr = (roundedRC1 * 0.4 + roundedRC2 * 0.4 + examGrade * 0.2).toString();
+              } else if (roundedRC1 !== null && roundedRC2 !== null) {
+                // No exam, 50-50 between quarters
                 gradeStr = ((roundedRC1 + roundedRC2) / 2).toString();
               } else if (roundedRC1 !== null) {
                 gradeStr = roundedRC1.toString();
@@ -238,8 +246,13 @@ export class UnifiedGPAManager extends UnifiedDataManager {
             } else if (term === 'SM2') {
               const roundedRC3 = (rc3 && !isNaN(Number(rc3))) ? Math.round(Number(rc3)) : null;
               const roundedRC4 = (rc4 && !isNaN(Number(rc4))) ? Math.round(Number(rc4)) : null;
+              const examGrade = (ex2 && !isNaN(Number(ex2))) ? Number(ex2) : null;
               
-              if (roundedRC3 !== null && roundedRC4 !== null) {
+              if (roundedRC3 !== null && roundedRC4 !== null && examGrade !== null) {
+                // Full 40-40-20 weighting with exam
+                gradeStr = (roundedRC3 * 0.4 + roundedRC4 * 0.4 + examGrade * 0.2).toString();
+              } else if (roundedRC3 !== null && roundedRC4 !== null) {
+                // No exam, 50-50 between quarters
                 gradeStr = ((roundedRC3 + roundedRC4) / 2).toString();
               } else if (roundedRC3 !== null) {
                 gradeStr = roundedRC3.toString();
