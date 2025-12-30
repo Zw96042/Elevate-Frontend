@@ -678,12 +678,14 @@ const ClassDetails = () => {
     logger.debug(Modules.PAGE_CLASS, 'Screen focused - refreshing all cached data');
     
     // Reload final exam grades from storage
+    let latestFinalExamGrades: {[key: string]: string} = {};
     try {
       const examData = await AsyncStorage.getItem("finalExamGrades");
       if (examData) {
         const parsed = JSON.parse(examData);
         const examKey = `${className}_${corNumId}_${section}_${gbId}`;
-        setFinalExamGrades(parsed[examKey] || {});
+        latestFinalExamGrades = parsed[examKey] || {};
+        setFinalExamGrades(latestFinalExamGrades);
       }
     } catch (error) {
       console.error('Failed to load final exam grades on focus:', error);
@@ -694,15 +696,6 @@ const ClassDetails = () => {
     if (isEnabled && (selectedCategory === "SM1 Grade" || selectedCategory === "SM2 Grades")) {
       const examType = selectedCategory.split(" ")[0] === "SM1" ? "EX1" : "EX2";
       const examName = selectedCategory.split(" ")[0] === "SM1" ? "Exam 1" : "Exam 2";
-      
-      // Get the latest final exam grades from storage
-      const latestExamData = await AsyncStorage.getItem("finalExamGrades");
-      let latestFinalExamGrades: {[key: string]: string} = {};
-      if (latestExamData) {
-        const parsed = JSON.parse(latestExamData);
-        const examKey = `${className}_${corNumId}_${section}_${gbId}`;
-        latestFinalExamGrades = parsed[examKey] || {};
-      }
       
       if (latestFinalExamGrades[examType] && latestFinalExamGrades[examType] !== "*") {
         finalExamAssignments.push({
@@ -816,7 +809,8 @@ const ClassDetails = () => {
       const examType = selectedCategory.split(" ")[0] === "SM1" ? "EX1" : "EX2";
       
       // First check for artificial final exam grade (if toggle is ON and artificial grade exists)
-      if (isEnabled && finalExamGrades[examType]) {
+      // Use latestFinalExamGrades instead of stale finalExamGrades state
+      if (isEnabled && latestFinalExamGrades[examType]) {
         const examAssignment = finalExamAssignments.find(a => a.term === examType);
         if (examAssignment && examAssignment.grade !== "*") {
           finalExamGrade = Number(examAssignment.grade);
@@ -847,7 +841,7 @@ const ClassDetails = () => {
     }
     
     setCourseSummary(calculateGradeSummary(all, normalizedWeights, termMap, selectedCategory, finalExamGrade));
-  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, className, corNumId, section, gbId, sortAndFilterAssignments, setAvailableCategories, sortOption, sortOrder, selectedCategories, selectedAssignmentTypes]);
+  }, [apiAssignments, apiCategories, isEnabled, selectedCategory, className, corNumId, section, gbId, sortAndFilterAssignments, setAvailableCategories, sortOption, sortOrder, selectedCategories, selectedAssignmentTypes, courseData, termMap, calculateGradeSummary]);
 
   useFocusEffect(
     React.useCallback(() => {
