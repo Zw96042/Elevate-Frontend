@@ -1,5 +1,5 @@
-import { View, Text, useColorScheme, TextInput, TouchableWithoutFeedback, Platform, Keyboard, TouchableOpacity, Linking, DeviceEventEmitter, Switch } from 'react-native'
-import React, { useEffect, useState, useRef, useMemo } from 'react'
+import { View, Text, useColorScheme, TextInput, TouchableWithoutFeedback, Platform, Keyboard, TouchableOpacity, Linking, DeviceEventEmitter, Switch, Pressable } from 'react-native'
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs'
 import { Ionicons } from '@expo/vector-icons'
 import { SettingSheetProvider, useSettingSheet } from '@/context/SettingSheetContext'
@@ -194,7 +194,34 @@ const InnerLayout = () => {
               settingSheetRef.current?.snapToIndex(0, { duration: 350 });
             }}>
               <BottomSheetView className="bg-cardColor px-8 rounded-2xl">
-                <Text className="text-2xl text-main">Settings</Text>
+                <Pressable
+                  onLongPress={async () => {
+                    // Preserve credentials
+                    const savedUser = await AsyncStorage.getItem('skywardUser');
+                    const savedPass = await AsyncStorage.getItem('skywardPass');
+                    const savedLink = await AsyncStorage.getItem('skywardLink');
+                    
+                    await AsyncStorage.clear();
+                    
+                    // Restore credentials
+                    if (savedUser) await AsyncStorage.setItem('skywardUser', savedUser);
+                    if (savedPass) await AsyncStorage.setItem('skywardPass', savedPass);
+                    if (savedLink) await AsyncStorage.setItem('skywardLink', savedLink);
+                    
+                    setGradeLevel('');
+                    setShowoffMode(false);
+                    lastSaved.current = { ...lastSaved.current, gradeLevel: '', showoffMode: false };
+                    
+                    Burnt.toast({
+                      title: 'Cache Cleared',
+                      preset: 'done',
+                      duration: 1
+                    });
+                  }}
+                  delayLongPress={5000}
+                >
+                  <Text className="text-2xl text-main">Settings</Text>
+                </Pressable>
                 <View className='my-4 border-slate-600 border-[0.5px]'></View>
                 <View className="pb-3 ">
                   <Text className="text-base font-medium text-main">School District</Text>
