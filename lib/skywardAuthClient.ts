@@ -95,16 +95,39 @@ export function parsePostResponse(postResponse: string): SkywardSessionCodes | n
   // Try to extract session codes from the clean response
   const toks = cleanResponse.split('^');
   
+  // Find the first non-empty token to determine offset
+  // Some responses have leading empty tokens (^^^^) which shifts all indices
+  let offset = 0;
+  while (offset < toks.length && toks[offset] === '') {
+    offset++;
+  }
+  
   if (toks.length >= 15) {
-    // Valid session codes found
-    console.log('✅ Successfully parsed session codes from response');
-    return {
-      dwd: toks[0],
-      wfaacl: toks[3],
-      encses: toks[14],
-      'User-Type': toks[6],
-      sessionid: `${toks[1]}\x15${toks[2]}`,
-    };
+    let dwd: string, wfaacl: string, encses: string, userType: string, sessionid: string;
+    
+    if (offset === 0) {
+      // Standard format
+      dwd = toks[0];
+      wfaacl = toks[3];
+      encses = toks[14];
+      userType = toks[6];
+      sessionid = `${toks[1]}\x15${toks[2]}`;
+    } else {
+      // Offset format - tokens are shifted due to leading empty values
+      dwd = toks[offset] || '';
+      const sessionPart1 = toks[offset + 1] || '';
+      const sessionPart2 = toks[offset + 2] || '';
+      wfaacl = toks[offset + 3] || '';
+      userType = toks[offset + 4] || '2';
+      encses = toks[14] || '';
+      sessionid = `${sessionPart1}\x15${sessionPart2}`;
+    }
+    
+    // Validate we got the essential codes
+    if (dwd && wfaacl && encses) {
+      console.log('✅ Successfully parsed session codes from response');
+      return { dwd, wfaacl, encses, 'User-Type': userType, sessionid };
+    }
   }
   
   // If that fails, try the old format parsing
@@ -112,15 +135,35 @@ export function parsePostResponse(postResponse: string): SkywardSessionCodes | n
     const dissectedString = postResponse.substring(4, postResponse.length - 5);
     const oldToks = dissectedString.split('^');
     
+    // Find offset for old format too
+    let oldOffset = 0;
+    while (oldOffset < oldToks.length && oldToks[oldOffset] === '') {
+      oldOffset++;
+    }
+    
     if (oldToks.length >= 15) {
-      console.log('✅ Successfully parsed session codes using legacy format');
-      return {
-        dwd: oldToks[0],
-        wfaacl: oldToks[3],
-        encses: oldToks[14],
-        'User-Type': oldToks[6],
-        sessionid: `${oldToks[1]}\x15${oldToks[2]}`,
-      };
+      let dwd: string, wfaacl: string, encses: string, userType: string, sessionid: string;
+      
+      if (oldOffset === 0) {
+        dwd = oldToks[0];
+        wfaacl = oldToks[3];
+        encses = oldToks[14];
+        userType = oldToks[6];
+        sessionid = `${oldToks[1]}\x15${oldToks[2]}`;
+      } else {
+        dwd = oldToks[oldOffset] || '';
+        const sessionPart1 = oldToks[oldOffset + 1] || '';
+        const sessionPart2 = oldToks[oldOffset + 2] || '';
+        wfaacl = oldToks[oldOffset + 3] || '';
+        userType = oldToks[oldOffset + 4] || '2';
+        encses = oldToks[14] || '';
+        sessionid = `${sessionPart1}\x15${sessionPart2}`;
+      }
+      
+      if (dwd && wfaacl && encses) {
+        console.log('✅ Successfully parsed session codes using legacy format');
+        return { dwd, wfaacl, encses, 'User-Type': userType, sessionid };
+      }
     }
   }
   
@@ -142,7 +185,7 @@ export function parsePostResponse(postResponse: string): SkywardSessionCodes | n
   } else {
     // For other parsing failures, log but don't necessarily throw
     console.warn('⚠️ Session code parsing failed, response text:', rootText.substring(0, 200));
-    console.warn('⚠️ Response length:', postResponse.length, 'Token count:', toks.length);
+    console.warn('⚠️ Response length:', postResponse.length, 'Token count:', toks.length, 'Offset:', offset);
   }
   
   // Return null to indicate parsing failed, but let caller decide how to handle
