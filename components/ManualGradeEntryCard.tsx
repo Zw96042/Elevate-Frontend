@@ -61,7 +61,7 @@ const ManualGradeEntryCard = ({ selectedGrade, minimized = false, rawCourses = n
           }
         })}
         activeOpacity={0.7}
-        className="bg-cardColor rounded-xl border border-dashed border-highlightText shadow-md px-4 py-2 flex-row items-center justify-between"
+        className="bg-cardColor rounded-xl border border-dashed border-highlightText px-4 py-2 flex-row items-center justify-between"
         style={{ height: 50 }}
       >
         <Text className="text-main text-lg">

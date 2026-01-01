@@ -34,6 +34,7 @@ const GPA = () => {
   // Use coursesData from context instead of local allRawCourses
   const { settingSheetRef, username, showoffMode } = useSettingSheet();
   const [hasCredentials, setHasCredentials] = useState(false);
+  const [hasCheckedCredentials, setHasCheckedCredentials] = useState(false);
   
   // Use extracted hook for current grade level and available grade levels
   const { currentGradeLevel, availableGradeLevels, isLoading: gradeLevelLoading, debugCacheState,loadGradeFromCourseData } = useGradeLevel();
@@ -216,6 +217,7 @@ const GPA = () => {
         const result = await SkywardAuth.hasCredentials();
         if (!isMounted) return;
         setHasCredentials(result);
+        setHasCheckedCredentials(true);
         
         if (result) {
           const gpaResult = await UnifiedGPAManager.getGPAData('All Time', false);
@@ -898,8 +900,8 @@ const GPA = () => {
     );
   }
 
-  // Show login prompt if credentials are not set
-  if (!hasCredentials && !loading && !isInitialized) {
+  // Show login prompt if credentials are not set (but only after we've checked)
+  if (hasCheckedCredentials && !hasCredentials && !loading && !coursesData) {
     return (
       <View className="flex-1 bg-primary">
         <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
@@ -924,6 +926,9 @@ const GPA = () => {
 
     // console.log("BB" + !(savedClasses && savedClasses.length > 0));
 
+  // Show loading state while initializing or loading data
+  const isLoadingState = loading || gradeLevelLoading || !hasCheckedCredentials || (!isInitialized && hasCredentials);
+
   return (
     <View className="flex-1 bg-primary">
       <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
@@ -946,7 +951,7 @@ const GPA = () => {
       </View>
 
       <View className="flex-1 bg-primary">
-        {loading ? (
+        {isLoadingState ? (
           <View className="flex-1 justify-center items-center">
             <Text className="text-main text-lg">Loading academic history...</Text>
           </View>

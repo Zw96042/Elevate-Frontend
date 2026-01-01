@@ -17,9 +17,10 @@ const UnifiedDataContext = createContext<UnifiedDataContextType | undefined>(und
 
 export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 	const [rawCoursesData, setRawCoursesData] = useState<UnifiedCourseData[] | null>(null);
-	const [loading, setLoading] = useState(false);
+	const [loading, setLoading] = useState(true); // Start as true since we load on mount
 	const [error, setError] = useState<string | null>(null);
 	const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+	const [hasInitialLoad, setHasInitialLoad] = useState(false); // Track if initial load happened
 	
 	const { username, showoffMode } = useSettingSheet();
 
@@ -36,44 +37,51 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 	}, []);
 
 	const refreshCourses = useCallback(async (force = false) => {
-		// Prevent multiple simultaneous refresh calls
-		if (loading && !force) {
-			console.log('⏸️ Courses refresh already in progress, skipping...');
+		// Prevent multiple simultaneous refresh calls (but allow initial load)
+		if (loading && !force && hasInitialLoad) {
+			console.log('⏸️ [Context] Courses refresh already in progress, skipping...');
 			return;
 		}
 
-		console.log('🔄 UnifiedDataContext.refreshCourses called with force:', force);
+		console.log('🔄 [Context] refreshCourses called with force:', force);
 		setLoading(true);
+		setHasInitialLoad(true);
 		setError(null);
 		
 		try {
 			const result = await DataService.getCombinedData(force);
+			console.log('📦 [Context] DataService result:', { 
+				success: result.success, 
+				coursesCount: result.courses?.length || 0,
+				error: result.error 
+			});
 			if (result.success && result.courses) {
 				setRawCoursesData(result.courses);
 				setLastUpdated(result.lastUpdated || new Date().toISOString());
-				console.log('✅ Courses data updated in context, count:', result.courses.length);
+				console.log('✅ [Context] Courses data updated, count:', result.courses.length);
 			} else {
 				setRawCoursesData(null);
 				const errorMessage = result.error || 'Failed to load courses';
 				setError(errorMessage);
-				console.error('❌ Failed to load courses:', result.error);
+				console.error('❌ [Context] Failed to load courses:', result.error);
 				
 				// If it's an authentication error, don't retry automatically
 				if (errorMessage.includes('Invalid username or password') || 
 				    errorMessage.includes('Authentication failed') ||
 				    errorMessage.includes('wait') && errorMessage.includes('seconds')) {
-					console.log('🚫 Authentication error detected, stopping automatic retries');
+					console.log('🚫 [Context] Authentication error detected, stopping automatic retries');
 				}
 			}
 		} catch (error: any) {
 			setRawCoursesData(null);
 			const errorMessage = error.message || 'Unknown error occurred';
 			setError(errorMessage);
-			console.error('❌ Error in refreshCourses:', error);
+			console.error('❌ [Context] Error in refreshCourses:', error);
 		} finally {
+			console.log('🏁 [Context] Setting loading to false');
 			setLoading(false);
 		}
-	}, [loading]);
+	}, [loading, hasInitialLoad]);
 
 	const clearCache = useCallback(async () => {
 		console.log('🗑️ UnifiedDataContext.clearCache called');
@@ -92,10 +100,14 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
 	// Load initial data on mount (only once)
 	useEffect(() => {
-		if (!rawCoursesData && !loading && !error) {
-			refreshCourses(false); // Use cache if available
-		}
-	}, []); // Remove dependencies to prevent infinite loop
+		console.log('🚀 [Context] Initial load useEffect triggered', { 
+			hasData: !!rawCoursesData, 
+			loading, 
+			error 
+		});
+		// Always try to load on mount since we start with loading: true
+		refreshCourses(false); // Use cache if available
+	}, []); // Empty deps - only run once on mount
 
 	return (
 		<UnifiedDataContext.Provider value={{ 

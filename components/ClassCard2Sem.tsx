@@ -52,7 +52,7 @@ const ClassCard2Sem = ({
   
   // Calculate responsive height based on screen size categories
   const cardHeight = useMemo(() => {
-    console.log("SHA", screenHeight);
+    // console.log("SHA", screenHeight);
     
     if (screenHeight <= 852) {
       // 6.1"
