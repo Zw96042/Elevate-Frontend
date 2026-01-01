@@ -196,6 +196,7 @@ const InnerLayout = () => {
               <BottomSheetView className="bg-cardColor px-8 rounded-2xl">
                 <Pressable
                   onLongPress={async () => {
+                    
                     // Preserve credentials
                     const savedUser = await AsyncStorage.getItem('skywardUser');
                     const savedPass = await AsyncStorage.getItem('skywardPass');
@@ -219,7 +220,6 @@ const InnerLayout = () => {
                       duration: 1
                     });
                   }}
-                  delayLongPress={5000}
                 >
                   <Text className="text-2xl text-main">Settings</Text>
                 </Pressable>
