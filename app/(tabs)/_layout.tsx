@@ -215,6 +215,7 @@ const InnerLayout = () => {
                     Burnt.toast({
                       title: 'Cache Cleared',
                       preset: 'done',
+                      haptic: 'success',
                       duration: 1
                     });
                   }}
