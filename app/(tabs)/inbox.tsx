@@ -174,7 +174,7 @@ const Inbox = () => {
         <FlatList
           className="mt-4 px-5"
           contentContainerStyle={{ flexGrow: 1 }}
-          data={Array.from({ length: 8 })}
+          data={Array.from({ length: 9 })}
           keyExtractor={(_, i) => `skeleton-${i}`}
           renderItem={() => <SkeletonMessage />}
           ItemSeparatorComponent={() => <View className="h-4" />}
