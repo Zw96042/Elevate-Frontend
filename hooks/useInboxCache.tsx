@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DeviceEventEmitter } from 'react-native';
-import { SkywardAuth } from '@/lib/skywardAuthInfo';
+import { SkywardAuth } from '@/lib';
 import { MessageService } from '@/lib/services';
 import Burnt from 'burnt';
 

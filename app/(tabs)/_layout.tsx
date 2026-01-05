@@ -7,7 +7,7 @@ import BottomSheet, { BottomSheetBackdrop, BottomSheetModalProvider, BottomSheet
 import { colors } from '@/utils/colorTheme'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { authenticate } from '@/lib/authHandler'
+import { AuthService } from '@/lib/services'
 import * as Burnt from "burnt";
 import { shouldEnableShowoffMode } from '@/utils/showoffMode';
 
@@ -117,7 +117,7 @@ const InnerLayout = () => {
 
       lastSaved.current = { link, username, password, gradeLevel, showoffMode };
 
-      const authResult = await authenticate();
+      const authResult = await AuthService.authenticate();
 
       if (authResult.success) {
         Burnt.toast({

@@ -1,12 +1,9 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ActivityIndicator, RefreshControl } from 'react-native';
-import { useColorScheme } from 'nativewind';
-import { colors } from '@/utils/colorTheme';
 import { ScrollView } from 'react-native-gesture-handler';
 import ClassCard2Sem from '@/components/ClassCard2Sem';
-import { UnifiedDataManager, UnifiedCourseData } from '@/lib/unifiedDataManager';
-import { UnifiedGPAManager } from '@/lib/unifiedGpaManager';
+import { DataService, UnifiedCourseData, UnifiedGPAManager } from '@/lib';
 import { ensureUniqueCourseIds } from '@/utils/uniqueId';
 
 interface CourseData {
@@ -135,7 +132,6 @@ const getCourseLevel = (className: string): "AP" | "Honors" | "Regular" => {
 
 const AcademicHistoryView = () => {
   const { gradeLevel, preloadedClasses, unifiedCourses: unifiedCoursesParam } = useLocalSearchParams();
-  const { colorScheme } = useColorScheme();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [academicData, setAcademicData] = useState<AcademicHistoryData | null>(null);
@@ -191,7 +187,7 @@ const AcademicHistoryView = () => {
 
       // First get unified data to determine current grade level
       console.log('🔄 Fetching unified data to determine current grade...');
-      const unifiedResult = await UnifiedDataManager.getCombinedData(forceRefresh);
+      const unifiedResult = await DataService.getCombinedData(forceRefresh);
       console.log('📊 Unified result:', {
         success: unifiedResult.success,
         coursesCount: unifiedResult.courses?.length || 0,

@@ -1,21 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, FlatList, useColorScheme, LayoutAnimation, RefreshControl, DeviceEventEmitter } from 'react-native';
+import { View, Text, TouchableOpacity, FlatList, RefreshControl, DeviceEventEmitter } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ClassCard from '@/components/ClassCard';
 import SkeletonClassCard from '@/components/SkeletonClassCard';
 import ErrorDisplay from '@/components/ErrorDisplay';
 import LoginPrompt from '@/components/LoginPrompt';
-import { useFocusEffect } from 'expo-router';
-import { SkywardAuth } from '@/lib/skywardAuthInfo';
+import { SkywardAuth, UnifiedCourseData } from '@/lib';
 import { useBottomSheet, BottomSheetProvider } from '@/context/BottomSheetContext'
 import { useSettingSheet } from '@/context/SettingSheetContext';
-import { UnifiedCourseData } from '@/lib/unifiedDataManager';
 import { useUnifiedData } from '@/context/UnifiedDataContext';
 import { useGradeLevel } from '@/hooks/useGradeLevel';
-import * as Animatable from 'react-native-animatable';
 import { logger, Modules } from '@/lib/utils/logger';
-import { CircularProgress, Host } from '@expo/ui/swift-ui';
-import { blue } from 'react-native-reanimated/lib/typescript/Colors';
 
 
 // Default categories and weights (to be replaced by different API later)

@@ -1,5 +1,5 @@
 import { useSettingSheet } from '@/context/SettingSheetContext';
-import { SkywardAuth } from '@/lib/skywardAuthInfo';
+import { SkywardAuth, UnifiedGPAManager, GPAData } from '@/lib';
 import { Ionicons } from '@expo/vector-icons';
 import { MotiView } from 'moti';
 import React, { JSX, useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -13,7 +13,6 @@ import { GpaCard, GpaSoloCard } from '@/components/GpaCard';
 import ErrorDisplay from '@/components/ErrorDisplay';
 import LoginPrompt from '@/components/LoginPrompt';
 import { useGradeLevel } from '@/hooks/useGradeLevel';
-import { UnifiedGPAManager, GPAData } from '@/lib/unifiedGpaManager';
 import { useUnifiedData } from '@/context/UnifiedDataContext';
 import { useColorScheme } from 'nativewind';
 import { shouldEnableShowoffMode } from '@/utils/showoffMode';

@@ -1,10 +1,9 @@
 // lib/unifiedGpaManager.tsx
-import { UnifiedDataManager, UnifiedCourseData } from './unifiedDataManager';
-import { processAcademicHistory } from '@/utils/academicHistoryProcessor';
+// GPA calculation service using the new DataService
+import { DataService, UnifiedCourseData } from './services';
 import { calculateTermGPAs, getCourseLevel } from '@/utils/gpaCalculator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getShowoffModeGPA, shouldEnableShowoffMode } from '@/utils/showoffMode';
-
+import { shouldEnableShowoffMode } from '@/utils/showoffMode';
 
 export interface GPAData {
   unweighted: number;
@@ -23,109 +22,90 @@ export interface UnifiedGPAResult {
 
 type GradeLevel = 'Freshman' | 'Sophomore' | 'Junior' | 'Senior' | 'All Time';
 
-// Helper function to convert grade level names to numbers
 const getGradeNumber = (gradeLevel: GradeLevel): number | undefined => {
   switch (gradeLevel) {
     case 'Freshman': return 9;
     case 'Sophomore': return 10;
     case 'Junior': return 11;
     case 'Senior': return 12;
-    case 'All Time': return undefined; // All grades
+    case 'All Time': return undefined;
     default: return undefined;
   }
 };
 
-export class UnifiedGPAManager extends UnifiedDataManager {
-
-  // Get GPA data for current/all grade levels (historical grade support removed)
-  public static async getGPAData(
+export class UnifiedGPAManager {
+  /**
+   * Get GPA data for a specific grade level
+   */
+  static async getGPAData(
     gradeLevel: GradeLevel = 'All Time', 
     forceRefresh: boolean = false
   ): Promise<UnifiedGPAResult> {
     try {
-      console.log('📊 UnifiedGPAManager.getGPAData called with:', { gradeLevel, forceRefresh });
-      // Get combined data from parent class
-      const combinedResult = await this.getCombinedData(forceRefresh);
-      console.log('📈 Combined data result:', { 
-        success: combinedResult.success, 
-        coursesCount: combinedResult.courses?.length || 0,
-        error: combinedResult.error 
-      });
+      console.log('📊 UnifiedGPAManager.getGPAData:', { gradeLevel, forceRefresh });
+      
+      // Use DataService instead of UnifiedDataManager
+      const combinedResult = await DataService.getCombinedData(forceRefresh);
+      
       if (!combinedResult.success) {
-        console.log('⚠️ Combined data failed, trying fallback...');
-        // Try to fallback to manual classes if no unified data available
         const fallbackResult = await this.getFallbackGPAData(gradeLevel);
         if (fallbackResult.success) {
-          console.log('✅ Fallback GPA data succeeded');
           return fallbackResult;
         }
-        console.log('❌ Both unified and fallback failed');
         return {
           success: false,
           error: combinedResult.error || 'Failed to get combined data'
         };
       }
+      
       const courses = combinedResult.courses || [];
 
-      // Detect grade levels by parsing academic years from backend response
-      let currentGradeLevel: number | undefined = undefined;
+      // Detect available grade levels
       const gradeLevelsSet = new Set<number>();
       courses.forEach((c: UnifiedCourseData) => {
         if (typeof c.gradeYear === 'number') {
           gradeLevelsSet.add(c.gradeYear);
         }
       });
+      
       const availableGradeLevels = Array.from(gradeLevelsSet).sort((a, b) => a - b);
-      if (availableGradeLevels.length > 0) {
-        currentGradeLevel = availableGradeLevels[availableGradeLevels.length - 1];
-      }
-      // If user selected a grade, override currentGradeLevel
+      let currentGradeLevel = availableGradeLevels.length > 0 
+        ? availableGradeLevels[availableGradeLevels.length - 1] 
+        : undefined;
+
+      // Override with user selection
       const gradeNumber = getGradeNumber(gradeLevel);
       if (gradeNumber) {
         currentGradeLevel = gradeNumber;
       }
-      // Filter courses ONLY for GPA calculation, not for rawCourses
+
+      // Filter courses for GPA calculation
       let filteredCourses = courses;
       if (currentGradeLevel) {
         filteredCourses = courses.filter((c: UnifiedCourseData) => c.gradeYear === currentGradeLevel);
       }
-      console.log('🟢 Selected currentGradeLevel:', currentGradeLevel);
-      console.log('🟢 Filtered courses for current grade:', filteredCourses);
 
-      console.log('🔄 Processing courses for GPA calculation, count:', filteredCourses.length);
-      // For current grade, use current scores with academicHistory term structure
       const gpaData = this.calculateCurrentGradeGPA(filteredCourses);
-      console.log('📊 Current grade GPA calculation result:', {
-        currentGradeLevel,
-        availableGradeLevels
-      });
+      
       return {
         success: true,
         gpaData,
-        rawCourses: courses, // always return all courses
+        rawCourses: courses,
         currentGradeLevel,
         availableGradeLevels,
         lastUpdated: combinedResult.lastUpdated
       };
     } catch (error: any) {
-      console.error('❌ Error in UnifiedGPAManager.getGPAData:', error);
-      console.error('❌ Error details:', { 
-        message: error.message, 
-        stack: error.stack,
-        gradeLevel,
-        forceRefresh 
-      });
-      // Try fallback to manual classes
-      console.log('🔄 Attempting fallback to manual classes...');
+      console.error('❌ UnifiedGPAManager.getGPAData error:', error);
+      
       const fallbackResult = await this.getFallbackGPAData(gradeLevel);
       if (fallbackResult.success) {
-        console.log('✅ Fallback successful, returning manual grade data');
         return {
           ...fallbackResult,
-          error: `Using manual grades due to error: ${error.message}`
+          error: `Using manual grades: ${error.message}`
         };
       }
-      console.log('❌ Fallback also failed');
+      
       return {
         success: false,
         error: error.message || 'Unknown error occurred'
@@ -133,73 +113,20 @@ export class UnifiedGPAManager extends UnifiedDataManager {
     }
   }
 
-  // Calculate GPA from unified data using existing academic history processor
-  private static calculateGPAFromUnifiedData(academicData: any, gradeNumber?: number): Record<string, GPAData> {
+  /**
+   * Calculate GPA for current grade level
+   */
+  static calculateCurrentGradeGPA(
+    courses: UnifiedCourseData[], 
+    showoffMode: boolean = false, 
+    username: string = ''
+  ): Record<string, GPAData> {
     try {
-      console.log('🧮 calculateGPAFromUnifiedData called with:', { 
-        hasAcademicData: !!academicData, 
-        gradeNumber,
-        academicDataKeys: academicData ? Object.keys(academicData) : []
-      });
-      
-      if (!academicData) {
-        console.log('⚠️ No academic data provided to calculateGPAFromUnifiedData');
-        return {};
-      }
-      
-      const result = processAcademicHistory(academicData, gradeNumber);
-      console.log('📊 processAcademicHistory result:', {
-        termCount: Object.keys(result).length,
-        terms: Object.keys(result),
-        sampleTerm: Object.keys(result)[0] ? { 
-          term: Object.keys(result)[0], 
-          data: result[Object.keys(result)[0]] 
-        } : null
-      });
-      
-      return result;
-    } catch (error) {
-      console.warn('❌ Failed to process academic history for GPA:', error);
-      return {};
-    }
-  }
-
-  // Calculate GPA for current grade level using scrape report scores with academic history term structure
-  public static calculateCurrentGradeGPA(courses: UnifiedCourseData[], showoffMode: boolean = false, username: string = ''): Record<string, GPAData> {
-    try {
-      // Check if showoff mode should be applied
+      // Showoff mode handling
       if (showoffMode && shouldEnableShowoffMode(username)) {
-        const allTerms = ['PR1', 'PR2', 'RC1', 'PR3', 'PR4', 'RC2', 'PR5', 'PR6', 'RC3', 'PR7', 'PR8', 'RC4', 'SM1', 'SM2'];
-        const termGPAs: Record<string, GPAData> = {};
-        
-        // Create variation pattern: up-down-up-down with high scores
-        const variationPattern = [98, 104, 100, 98, 98, 104, 100, 98, 98, 104, 100];
-        
-        // Return varied GPAs for all terms that have data
-        allTerms.forEach((term, index) => {
-          let hasData = false;
-          courses.forEach(course => {
-            const gradeStr = course.historicalGrades[term.toLowerCase() as keyof typeof course.historicalGrades];
-            if (gradeStr !== undefined && gradeStr !== null && gradeStr !== '') {
-              hasData = true;
-            }
-          });
-          
-          if (hasData) {
-            const unweightedScore = variationPattern[index] || 100;
-            const weightedScore = Math.min(unweightedScore + 4, 104); // Add 4 for weighted, cap at 104
-            
-            termGPAs[term] = {
-              unweighted: unweightedScore,
-              weighted: weightedScore
-            };
-          }
-        });
-        
-        return termGPAs;
+        return this.getShowoffModeGPA(courses);
       }
 
-      // Calculate GPA for all terms using historicalGrades
       const allTerms = ['PR1', 'PR2', 'RC1', 'PR3', 'PR4', 'RC2', 'PR5', 'PR6', 'RC3', 'PR7', 'PR8', 'RC4', 'SM1', 'SM2'];
       const termGPAs: Record<string, GPAData> = {};
       
@@ -211,67 +138,22 @@ export class UnifiedGPAManager extends UnifiedDataManager {
         courses.forEach(course => {
           let gradeStr = course.historicalGrades[term.toLowerCase() as keyof typeof course.historicalGrades];
           
-          // Apply RC rounding logic for RC terms
-          if (['RC1', 'RC2', 'RC3', 'RC4'].includes(term) && gradeStr !== undefined && gradeStr !== null && gradeStr !== '' && !isNaN(Number(gradeStr))) {
-            const rawScore = Number(gradeStr);
-            gradeStr = Math.round(rawScore).toString();
+          // RC rounding logic
+          if (['RC1', 'RC2', 'RC3', 'RC4'].includes(term) && gradeStr && !isNaN(Number(gradeStr))) {
+            gradeStr = Math.round(Number(gradeStr)).toString();
           }
           
-          // Calculate semester averages from rounded RC grades and exam if SM grade is missing
-          // Weighting: Q1/RC1 = 40%, Q2/RC2 = 40%, Semester Exam = 20%
-          if (['SM1', 'SM2'].includes(term) && (!gradeStr || gradeStr === '' || gradeStr === null)) {
-            const rc1 = course.historicalGrades.rc1;
-            const rc2 = course.historicalGrades.rc2;
-            const rc3 = course.historicalGrades.rc3;
-            const rc4 = course.historicalGrades.rc4;
-            const ex1 = course.historicalGrades.ex1;
-            const ex2 = course.historicalGrades.ex2;
-            
-            if (term === 'SM1') {
-              const roundedRC1 = (rc1 && !isNaN(Number(rc1))) ? Math.round(Number(rc1)) : null;
-              const roundedRC2 = (rc2 && !isNaN(Number(rc2))) ? Math.round(Number(rc2)) : null;
-              const examGrade = (ex1 && !isNaN(Number(ex1))) ? Number(ex1) : null;
-              
-              if (roundedRC1 !== null && roundedRC2 !== null && examGrade !== null) {
-                // Full 40-40-20 weighting with exam
-                gradeStr = (roundedRC1 * 0.4 + roundedRC2 * 0.4 + examGrade * 0.2).toString();
-              } else if (roundedRC1 !== null && roundedRC2 !== null) {
-                // No exam, 50-50 between quarters
-                gradeStr = ((roundedRC1 + roundedRC2) / 2).toString();
-              } else if (roundedRC1 !== null) {
-                gradeStr = roundedRC1.toString();
-              } else if (roundedRC2 !== null) {
-                gradeStr = roundedRC2.toString();
-              }
-            } else if (term === 'SM2') {
-              const roundedRC3 = (rc3 && !isNaN(Number(rc3))) ? Math.round(Number(rc3)) : null;
-              const roundedRC4 = (rc4 && !isNaN(Number(rc4))) ? Math.round(Number(rc4)) : null;
-              const examGrade = (ex2 && !isNaN(Number(ex2))) ? Number(ex2) : null;
-              
-              if (roundedRC3 !== null && roundedRC4 !== null && examGrade !== null) {
-                // Full 40-40-20 weighting with exam
-                gradeStr = (roundedRC3 * 0.4 + roundedRC4 * 0.4 + examGrade * 0.2).toString();
-              } else if (roundedRC3 !== null && roundedRC4 !== null) {
-                // No exam, 50-50 between quarters
-                gradeStr = ((roundedRC3 + roundedRC4) / 2).toString();
-              } else if (roundedRC3 !== null) {
-                gradeStr = roundedRC3.toString();
-              } else if (roundedRC4 !== null) {
-                gradeStr = roundedRC4.toString();
-              }
-            }
+          // Calculate semester averages if missing
+          if (['SM1', 'SM2'].includes(term) && (!gradeStr || gradeStr === '')) {
+            gradeStr = this.calculateSemesterAverage(course, term);
           }
           
-          if (gradeStr !== undefined && gradeStr !== null && gradeStr !== '' && !isNaN(Number(gradeStr))) {
+          if (gradeStr && !isNaN(Number(gradeStr))) {
             const score = Number(gradeStr);
             totalUnweighted += score;
+            
             const courseLevel = getCourseLevel(course.courseName);
-            let bonus = 0;
-            if (courseLevel === "AP") {
-              bonus = 10;
-            } else if (courseLevel === "Honors") {
-              bonus = 5;
-            }
+            const bonus = courseLevel === "AP" ? 10 : courseLevel === "Honors" ? 5 : 0;
             totalBonus += bonus;
             courseCount++;
           }
@@ -279,8 +161,7 @@ export class UnifiedGPAManager extends UnifiedDataManager {
         
         if (courseCount > 0) {
           const avgUnweighted = totalUnweighted / courseCount;
-          const weightedTotal = totalUnweighted + totalBonus;
-          const avgWeighted = weightedTotal / courseCount;
+          const avgWeighted = (totalUnweighted + totalBonus) / courseCount;
           termGPAs[term] = {
             unweighted: parseFloat(avgUnweighted.toFixed(2)),
             weighted: parseFloat(avgWeighted.toFixed(2))
@@ -290,90 +171,85 @@ export class UnifiedGPAManager extends UnifiedDataManager {
       
       return termGPAs;
     } catch (error) {
-      console.warn('❌ Failed to calculate current grade GPA:', error);
+      console.warn('❌ Failed to calculate GPA:', error);
       return {};
     }
   }
 
-  // Helper method to parse term length string into individual terms
-  private static parseTermLength(termLength: string): string[] {
-    const terms: string[] = [];
+  /**
+   * Calculate semester average from quarter grades
+   */
+  private static calculateSemesterAverage(course: UnifiedCourseData, term: string): string | undefined {
+    const { rc1, rc2, rc3, rc4, ex1, ex2 } = course.historicalGrades;
     
-    switch (termLength) {
-      case '1':
-        terms.push('PR1', 'PR2', 'RC1');
-        break;
-      case '2':
-        terms.push('PR3', 'PR4', 'RC2');
-        break;
-      case '1-2':
-        terms.push('PR1', 'PR2', 'RC1', 'PR3', 'PR4', 'RC2');
-        break;
-      case '3':
-        terms.push('PR5', 'PR6', 'RC3');
-        break;
-      case '4':
-        terms.push('PR7', 'PR8', 'RC4');
-        break;
-      case '3-4':
-        terms.push('PR5', 'PR6', 'RC3', 'PR7', 'PR8', 'RC4');
-        break;
-      case '1-4':
-      case 'unknown':
-      default:
-        terms.push('PR1', 'PR2', 'RC1', 'PR3', 'PR4', 'RC2', 'PR5', 'PR6', 'RC3', 'PR7', 'PR8', 'RC4');
-        break;
-    }
-    
-    return terms;
-  }
-
-  // Helper method to get the appropriate score for a specific term
-  private static getScoreForTerm(termGrades: Record<string, number>, term: string): number {
-    // Map term names to score bucket names (corrected mapping based on actual sequence)
-    // Sequence: TERM 1, TERM 2, TERM 3, TERM 4, TERM 5, TERM 6, SEM 1, TERM 7, TERM 8, TERM 9, TERM 10, TERM 11, TERM 12, SEM 2
-    // Maps to:  PR1,    PR2,    RC1,    PR3,    PR4,    RC2,    SM1,   PR5,    PR6,    RC3,    PR7,    PR8,    RC4,    SM2
-    const termToScoreMap: Record<string, string[]> = {
-      // First semester terms
-      'PR1': ['TERM 1'],
-      'PR2': ['TERM 2'], 
-      'RC1': ['TERM 3'],
-      'PR3': ['TERM 4'],
-      'PR4': ['TERM 5'],
-      'RC2': ['TERM 6'],
-      'SM1': ['SEM 1'],
-      // Second semester terms
-      'PR5': ['TERM 7'],
-      'PR6': ['TERM 8'],
-      'RC3': ['TERM 9'],
-      'PR7': ['TERM 10'],
-      'PR8': ['TERM 11'],
-      'RC4': ['TERM 12'],
-      'SM2': ['SEM 2']
-    };
-    
-    const possibleScoreBuckets = termToScoreMap[term] || [];
-    
-    // Find the first available score for this term
-    for (const bucket of possibleScoreBuckets) {
-      if (termGrades[bucket] && termGrades[bucket] > 0) {
-        return termGrades[bucket];
+    if (term === 'SM1') {
+      const roundedRC1 = rc1 && !isNaN(Number(rc1)) ? Math.round(Number(rc1)) : null;
+      const roundedRC2 = rc2 && !isNaN(Number(rc2)) ? Math.round(Number(rc2)) : null;
+      const examGrade = ex1 && !isNaN(Number(ex1)) ? Number(ex1) : null;
+      
+      if (roundedRC1 !== null && roundedRC2 !== null && examGrade !== null) {
+        return (roundedRC1 * 0.4 + roundedRC2 * 0.4 + examGrade * 0.2).toString();
+      } else if (roundedRC1 !== null && roundedRC2 !== null) {
+        return ((roundedRC1 + roundedRC2) / 2).toString();
+      } else if (roundedRC1 !== null) {
+        return roundedRC1.toString();
+      } else if (roundedRC2 !== null) {
+        return roundedRC2.toString();
+      }
+    } else if (term === 'SM2') {
+      const roundedRC3 = rc3 && !isNaN(Number(rc3)) ? Math.round(Number(rc3)) : null;
+      const roundedRC4 = rc4 && !isNaN(Number(rc4)) ? Math.round(Number(rc4)) : null;
+      const examGrade = ex2 && !isNaN(Number(ex2)) ? Number(ex2) : null;
+      
+      if (roundedRC3 !== null && roundedRC4 !== null && examGrade !== null) {
+        return (roundedRC3 * 0.4 + roundedRC4 * 0.4 + examGrade * 0.2).toString();
+      } else if (roundedRC3 !== null && roundedRC4 !== null) {
+        return ((roundedRC3 + roundedRC4) / 2).toString();
+      } else if (roundedRC3 !== null) {
+        return roundedRC3.toString();
+      } else if (roundedRC4 !== null) {
+        return roundedRC4.toString();
       }
     }
     
-    return -1; // No score found
+    return undefined;
   }
 
-  // Fallback method to get GPA data from manually saved classes
+  /**
+   * Generate showoff mode GPA data
+   */
+  private static getShowoffModeGPA(courses: UnifiedCourseData[]): Record<string, GPAData> {
+    const allTerms = ['PR1', 'PR2', 'RC1', 'PR3', 'PR4', 'RC2', 'PR5', 'PR6', 'RC3', 'PR7', 'PR8', 'RC4', 'SM1', 'SM2'];
+    const termGPAs: Record<string, GPAData> = {};
+    const variationPattern = [98, 104, 100, 98, 98, 104, 100, 98, 98, 104, 100];
+    
+    allTerms.forEach((term, index) => {
+      const hasData = courses.some(course => {
+        const gradeStr = course.historicalGrades[term.toLowerCase() as keyof typeof course.historicalGrades];
+        return gradeStr !== undefined && gradeStr !== null && gradeStr !== '';
+      });
+      
+      if (hasData) {
+        const unweightedScore = variationPattern[index] || 100;
+        termGPAs[term] = {
+          unweighted: unweightedScore,
+          weighted: Math.min(unweightedScore + 4, 104)
+        };
+      }
+    });
+    
+    return termGPAs;
+  }
+
+  /**
+   * Fallback to manually saved classes
+   */
   private static async getFallbackGPAData(gradeLevel: GradeLevel): Promise<UnifiedGPAResult> {
     try {
-      console.log('🔄 getFallbackGPAData called for:', gradeLevel);
-      
       const key = `savedClasses-${gradeLevel}`;
       const data = await AsyncStorage.getItem(key);
       
       if (!data) {
-        console.log('❌ No fallback data found for', gradeLevel);
         return {
           success: false,
           error: `No saved classes found for ${gradeLevel}`
@@ -381,21 +257,17 @@ export class UnifiedGPAManager extends UnifiedDataManager {
       }
       
       const savedClasses = JSON.parse(data);
-      console.log('📝 Found saved classes:', savedClasses.length);
-      
-      // Process saved classes to calculate GPA
       const gpaData = calculateTermGPAs(savedClasses);
       
       return {
         success: true,
         gpaData,
         rawCourses: savedClasses,
-        currentGradeLevel: 10, // Default
+        currentGradeLevel: 10,
         availableGradeLevels: [9, 10, 11, 12],
         lastUpdated: new Date().toISOString()
       };
     } catch (error: any) {
-      console.warn('❌ Fallback GPA data failed:', error);
       return {
         success: false,
         error: `Fallback failed: ${error.message}`
@@ -403,24 +275,19 @@ export class UnifiedGPAManager extends UnifiedDataManager {
     }
   }
 
-  // Clear GPA cache (clears saved classes data used for fallback AND shared cache)
-  public static async clearGPACache(): Promise<void> {
+  /**
+   * Clear GPA cache
+   */
+  static async clearGPACache(): Promise<void> {
     try {
-      console.log('🧹 Clearing GPA cache...');
+      await DataService.clearCache();
       
-      // Clear the shared cache from UnifiedDataManager first
-      await this.clearCache();
-      
-      // Clear saved classes for all grade levels (fallback data)
       const gradeLevels: GradeLevel[] = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'All Time'];
-      const clearPromises = gradeLevels.map(gradeLevel => {
-        const key = `savedClasses-${gradeLevel}`;
-        console.log(`🗑️ Removing cache key: ${key}`);
-        return AsyncStorage.removeItem(key);
-      });
-
-      await Promise.all(clearPromises);
-      console.log('✅ GPA cache cleared successfully (including shared cache)');
+      await Promise.all(
+        gradeLevels.map(level => AsyncStorage.removeItem(`savedClasses-${level}`))
+      );
+      
+      console.log('✅ GPA cache cleared');
     } catch (error) {
       console.error('❌ Error clearing GPA cache:', error);
     }

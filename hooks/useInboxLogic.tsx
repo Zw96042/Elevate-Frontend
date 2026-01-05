@@ -1,10 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DeviceEventEmitter } from 'react-native';
-import { SkywardAuth } from '@/lib/skywardAuthInfo';
-import { authenticate } from '@/lib/authHandler';
-import { loadMessages } from '@/lib/loadMessageHandler';
-import { loadMoreMessages } from '@/lib/loadMoreMessagesHandler';
-import Burnt from 'burnt';
+import { SkywardAuth, MessageService } from '@/lib';
 
 export function useInboxLogic() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -13,38 +9,47 @@ export function useInboxLogic() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const handleLoadMessages = async () => {
+  const handleLoadMessages = useCallback(async () => {
     if (!credentialsSet) {
       setMessages([]);
       setLoading(false);
       return;
     }
-    const result = await loadMessages();
-    setMessages(result.messages);
+    
+    const result = await MessageService.loadMessages();
+    if (result.success) {
+      setMessages(result.messages);
+    }
     setLoading(false);
-  };
+  }, [credentialsSet]);
 
-  const handleLoadMoreMessages = async () => {
+  const handleLoadMoreMessages = useCallback(async () => {
     if (loadingMore || messages.length === 0) return;
+    
     setLoadingMore(true);
     const lastMessage = messages[messages.length - 1];
+    
     try {
-      const result = await loadMoreMessages(lastMessage.messageRowId, 6);
-      setMessages(prev => [...prev, ...result.messages]);
+      const result = await MessageService.loadMoreMessages(lastMessage.messageRowId, 6);
+      if (result.success) {
+        setMessages(prev => [...prev, ...result.messages]);
+      }
     } catch (err) {
       console.error("Failed to fetch more messages", err);
     } finally {
       setLoadingMore(false);
     }
-  };
+  }, [loadingMore, messages]);
 
   useEffect(() => {
     const handleValidCreds = async () => {
       const hasCreds = await SkywardAuth.hasCredentials();
       if (hasCreds) {
         setCredentialsSet(true);
-        const result = await loadMessages();
-        setMessages(result.messages);
+        const result = await MessageService.loadMessages();
+        if (result.success) {
+          setMessages(result.messages);
+        }
       }
     };
 
@@ -55,6 +60,7 @@ export function useInboxLogic() {
 
     const subValid = DeviceEventEmitter.addListener('credentialsAdded', handleValidCreds);
     const subInvalid = DeviceEventEmitter.addListener('credentialsInvalid', handleInvalidCreds);
+    
     return () => {
       subValid.remove();
       subInvalid.remove();
