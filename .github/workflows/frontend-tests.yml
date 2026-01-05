@@ -7,10 +7,6 @@ on:
   pull_request:
     branches: [main, master, develop]
 
-defaults:
-  run:
-    working-directory: frontend/elevate
-
 jobs:
   test:
     name: Run Tests
@@ -28,24 +24,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-          cache-dependency-path: frontend/elevate/package-lock.json
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
       - name: Run linter
-        run: npm run lint
-        continue-on-error: true
+        run: npm run lint || true
 
       - name: Run tests
         run: npm test -- --ci --coverage
 
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
         if: matrix.node-version == '20.x'
+        uses: codecov/codecov-action@v4
         with:
-          file: frontend/elevate/coverage/lcov.info
+          file: coverage/lcov.info
           flags: frontend
           fail_ci_if_error: false
 
@@ -61,12 +55,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
-          cache: 'npm'
-          cache-dependency-path: frontend/elevate/package-lock.json
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
       - name: Run TypeScript compiler
-        run: npx tsc --noEmit
-        continue-on-error: true
+        run: npx tsc --noEmit || true
