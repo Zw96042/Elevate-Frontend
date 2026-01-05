@@ -1,14 +1,11 @@
 name: Frontend Tests
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, master, develop]
-    paths:
-      - 'frontend/elevate/**'
   pull_request:
     branches: [main, master, develop]
-    paths:
-      - 'frontend/elevate/**'
 
 defaults:
   run:
