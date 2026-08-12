@@ -129,6 +129,98 @@ struct BucketScore: Codable, Hashable {
     var score: Double
 }
 
+enum AcademicScoreValue {
+    /// Grade and point values are small in practice. This generous boundary
+    /// rejects corrupted numeric payloads before they can overflow integer
+    /// conversion or poison SwiftUI/widget calculations.
+    static let magnitudeLimit = 1_000_000_000.0
+
+    static func finiteDouble(_ text: String?) -> Double? {
+        guard let text else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let value = Double(trimmed),
+              value.isFinite,
+              abs(value) <= magnitudeLimit else { return nil }
+        return value
+    }
+
+    static func sanitizedGradeText(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if Double(trimmed) != nil { return finiteDouble(trimmed) == nil ? nil : trimmed }
+        let normalized = trimmed.lowercased()
+        guard normalized != "nan",
+              normalized != "infinity",
+              normalized != "+infinity",
+              normalized != "-infinity" else { return nil }
+        return trimmed
+    }
+}
+
+enum UnifiedCourseTransformer {
+    static func transform(history: AcademicHistory) -> [UnifiedCourseData] {
+        var courses: [UnifiedCourseData] = []
+        for (_, yearData) in history {
+            for (storageKey, course) in yearData.courses {
+                let courseName = course.courseName ?? storageKey
+                let scores: [BucketScore] = [
+                    ("Q1", course.rc1), ("Q2", course.rc2), ("S1", course.sm1), ("EX1", course.ex1),
+                    ("Q3", course.rc3), ("Q4", course.rc4), ("S2", course.sm2), ("EX2", course.ex2),
+                ].compactMap { bucket, text in
+                    AcademicScoreValue.finiteDouble(text).map { BucketScore(bucket: bucket, score: $0) }
+                }
+
+                courses.append(UnifiedCourseData(
+                    courseId: course.courseId,
+                    corNumId: course.corNumId ?? "",
+                    stuId: course.stuId ?? "",
+                    section: course.section ?? "",
+                    gbId: course.gbId ?? "",
+                    courseName: courseName,
+                    instructor: course.instructor,
+                    period: course.period,
+                    time: course.time,
+                    semester: inferSemester(course.terms),
+                    termLength: course.terms,
+                    gradeYear: yearData.grade,
+                    currentScores: scores,
+                    historicalGrades: HistoricalGrades(
+                        pr1: clean(course.pr1), pr2: clean(course.pr2),
+                        pr3: clean(course.pr3), pr4: clean(course.pr4),
+                        pr5: clean(course.pr5), pr6: clean(course.pr6),
+                        pr7: clean(course.pr7), pr8: clean(course.pr8),
+                        rc1: clean(course.rc1), rc2: clean(course.rc2),
+                        rc3: clean(course.rc3), rc4: clean(course.rc4),
+                        ex1: clean(course.ex1), ex2: clean(course.ex2),
+                        sm1: clean(course.sm1), sm2: clean(course.sm2),
+                        finalGrade: clean(course.finalGrade)
+                    )
+                ))
+            }
+        }
+        return courses.sorted {
+            if $0.gradeYear != $1.gradeYear { return ($0.gradeYear ?? 0) < ($1.gradeYear ?? 0) }
+            if $0.period != $1.period { return ($0.period ?? 99) < ($1.period ?? 99) }
+            return $0.courseName < $1.courseName
+        }
+    }
+
+    private static func clean(_ value: String?) -> String? {
+        AcademicScoreValue.sanitizedGradeText(value)
+    }
+
+    private static func inferSemester(_ terms: String) -> Semester {
+        switch terms.replacingOccurrences(of: " ", with: "") {
+        case "1-4": return .both
+        case "1-2": return .fall
+        case "3-4": return .spring
+        default: return .unknown
+        }
+    }
+}
+
 enum Semester: String, Codable {
     case fall, spring, both, unknown
 }

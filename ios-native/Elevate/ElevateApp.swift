@@ -20,6 +20,7 @@ struct RootTabView: View {
     }
 
     @Environment(AppStore.self) private var store
+    @Environment(\.scenePhase) private var scenePhase
     @State private var theme = ThemeManager.shared
     @State private var selectedTab: AppTab = .courses
 
@@ -46,12 +47,9 @@ struct RootTabView: View {
             default: selectedTab = .courses
             }
         }
-        .task {
-            if store.canShowData {
-                async let courses: Void = store.refreshCourses()
-                async let messages: Void = store.refreshMessages()
-                _ = await (courses, messages)
-            }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            await store.handleSceneBecameActive()
         }
     }
 }

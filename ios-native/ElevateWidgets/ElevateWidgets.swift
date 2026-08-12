@@ -76,21 +76,47 @@ private struct WidgetEmptyStateView: View {
 
 private struct SnapshotFreshnessModifier: ViewModifier {
     var snapshot: WidgetSnapshot?
+    var section: WidgetSnapshot.SectionStatus?
 
     func body(content: Content) -> some View {
         content.overlay(alignment: .bottomTrailing) {
             if let snapshot,
-               Date().timeIntervalSince(snapshot.generatedAt) > 6 * 60 * 60 {
-                Text("Out of date")
+               isStale(snapshot: snapshot) {
+                Text(section?.isComplete == false ? "Partial data" : "Out of date")
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 3)
                     .background(.thinMaterial, in: Capsule())
-                    .accessibilityLabel("Data is out of date")
+                    .accessibilityLabel(section?.isComplete == false ? "Some data is unavailable" : "Data is out of date")
             }
         }
     }
+
+    private func isStale(snapshot: WidgetSnapshot) -> Bool {
+        guard let section else {
+            return Date().timeIntervalSince(snapshot.generatedAt) > 6 * 60 * 60
+        }
+        if !section.isComplete { return true }
+        guard let updatedAt = section.updatedAt else { return true }
+        return Date().timeIntervalSince(updatedAt) > 6 * 60 * 60
+    }
+}
+
+private func combinedStatus(
+    _ first: WidgetSnapshot.SectionStatus,
+    _ second: WidgetSnapshot.SectionStatus
+) -> WidgetSnapshot.SectionStatus {
+    let updatedAt: Date?
+    if let firstDate = first.updatedAt, let secondDate = second.updatedAt {
+        updatedAt = min(firstDate, secondDate)
+    } else {
+        updatedAt = nil
+    }
+    return WidgetSnapshot.SectionStatus(
+        updatedAt: updatedAt,
+        isComplete: first.isComplete && second.isComplete
+    )
 }
 
 private func gpaTrendAccessibilityValue(_ snapshot: WidgetSnapshot) -> String {
@@ -201,7 +227,10 @@ struct GPAWidget: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
                 .privacySensitive(entry.snapshot != nil)
                 .widgetURL(URL(string: "com.zacharywilson.elevate://gpa"))
-                .modifier(SnapshotFreshnessModifier(snapshot: entry.snapshot))
+                .modifier(SnapshotFreshnessModifier(
+                    snapshot: entry.snapshot,
+                    section: entry.snapshot?.resolvedBaseStatus
+                ))
         }
         .configurationDisplayName("GPA")
         .description("Your weighted and unweighted GPA for the current term.")
@@ -265,7 +294,10 @@ struct GPATrendWidget: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
                 .privacySensitive(entry.snapshot != nil)
                 .widgetURL(URL(string: "com.zacharywilson.elevate://gpa"))
-                .modifier(SnapshotFreshnessModifier(snapshot: entry.snapshot))
+                .modifier(SnapshotFreshnessModifier(
+                    snapshot: entry.snapshot,
+                    section: entry.snapshot?.resolvedBaseStatus
+                ))
         }
         .configurationDisplayName("GPA Trend")
         .description("A clean visual of how your GPA has moved recently.")
@@ -334,7 +366,12 @@ struct SchoolPulseWidget: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
                 .privacySensitive(entry.snapshot != nil)
                 .widgetURL(URL(string: "com.zacharywilson.elevate://gpa"))
-                .modifier(SnapshotFreshnessModifier(snapshot: entry.snapshot))
+                .modifier(SnapshotFreshnessModifier(
+                    snapshot: entry.snapshot,
+                    section: entry.snapshot.map {
+                        combinedStatus($0.resolvedBaseStatus, $0.resolvedAssignmentStatus)
+                    }
+                ))
         }
         .configurationDisplayName("School Pulse")
         .description("GPA movement, missing work, and absences in one glance.")
@@ -463,7 +500,10 @@ struct GradesWidget: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
                 .privacySensitive(entry.snapshot != nil)
                 .widgetURL(URL(string: "com.zacharywilson.elevate://courses"))
-                .modifier(SnapshotFreshnessModifier(snapshot: entry.snapshot))
+                .modifier(SnapshotFreshnessModifier(
+                    snapshot: entry.snapshot,
+                    section: entry.snapshot?.resolvedBaseStatus
+                ))
         }
         .configurationDisplayName("Grades")
         .description("Current grades for all of your classes.")
@@ -486,9 +526,11 @@ struct GradesWidgetView: View {
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text(s.generatedAt, style: .relative)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    if let updatedAt = s.resolvedBaseStatus.updatedAt {
+                        Text(updatedAt, style: .relative)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 ForEach(s.courses.prefix(maxRows), id: \.self) { course in
                     GradeMeterRow(course: course)
@@ -513,7 +555,10 @@ struct RecentGradesWidget: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
                 .privacySensitive(entry.snapshot != nil)
                 .widgetURL(URL(string: "com.zacharywilson.elevate://courses"))
-                .modifier(SnapshotFreshnessModifier(snapshot: entry.snapshot))
+                .modifier(SnapshotFreshnessModifier(
+                    snapshot: entry.snapshot,
+                    section: entry.snapshot?.resolvedAssignmentStatus
+                ))
         }
         .configurationDisplayName("Recent Grades")
         .description("The latest assignments your teachers have graded.")
@@ -591,7 +636,10 @@ struct MissingAssignmentsWidget: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
                 .privacySensitive(entry.snapshot != nil)
                 .widgetURL(URL(string: "com.zacharywilson.elevate://courses"))
-                .modifier(SnapshotFreshnessModifier(snapshot: entry.snapshot))
+                .modifier(SnapshotFreshnessModifier(
+                    snapshot: entry.snapshot,
+                    section: entry.snapshot?.resolvedAssignmentStatus
+                ))
         }
         .configurationDisplayName("Missing Work")
         .description("Assignments Skyward has flagged as missing.")
@@ -685,7 +733,10 @@ struct InboxWidget: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
                 .privacySensitive(entry.snapshot != nil)
                 .widgetURL(URL(string: "com.zacharywilson.elevate://inbox"))
-                .modifier(SnapshotFreshnessModifier(snapshot: entry.snapshot))
+                .modifier(SnapshotFreshnessModifier(
+                    snapshot: entry.snapshot,
+                    section: entry.snapshot?.resolvedMessageStatus
+                ))
         }
         .configurationDisplayName("Inbox")
         .description("Your most recent Skyward messages.")

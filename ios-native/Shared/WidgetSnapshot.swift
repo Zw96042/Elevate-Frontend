@@ -17,6 +17,26 @@ struct WidgetSnapshot: Codable {
     var missingAssignmentsTotal: Int? = nil
     var absentAssignmentsTotal: Int? = nil
     var isComplete: Bool? = nil
+    var baseStatus: SectionStatus? = nil
+    var assignmentStatus: SectionStatus? = nil
+    var messageStatus: SectionStatus? = nil
+
+    struct SectionStatus: Codable, Hashable {
+        var updatedAt: Date?
+        var isComplete: Bool
+    }
+
+    var resolvedBaseStatus: SectionStatus {
+        baseStatus ?? SectionStatus(updatedAt: generatedAt, isComplete: true)
+    }
+
+    var resolvedAssignmentStatus: SectionStatus {
+        assignmentStatus ?? SectionStatus(updatedAt: generatedAt, isComplete: isComplete ?? true)
+    }
+
+    var resolvedMessageStatus: SectionStatus {
+        messageStatus ?? SectionStatus(updatedAt: generatedAt, isComplete: true)
+    }
 
     struct CourseGrade: Codable, Hashable {
         var name: String
@@ -75,7 +95,10 @@ struct WidgetSnapshot: Codable {
         messages: [
             MessageItem(from: "J. Smith", subject: "Final exam review posted", date: "6/11/26", isAdministrator: false),
             MessageItem(from: "Administrator", subject: "Schedule for finals week", date: "6/10/26", isAdministrator: true),
-        ]
+        ],
+        baseStatus: SectionStatus(updatedAt: Date(), isComplete: true),
+        assignmentStatus: SectionStatus(updatedAt: Date(), isComplete: true),
+        messageStatus: SectionStatus(updatedAt: Date(), isComplete: true)
     )
 }
 

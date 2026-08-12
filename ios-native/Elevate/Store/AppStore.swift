@@ -8,9 +8,20 @@ import WidgetKit
 @MainActor
 final class AppStore {
     @ObservationIgnored private var widgetSnapshotTask: Task<Void, Never>?
+    @ObservationIgnored private var coursesRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var messagesRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var foregroundRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var coursesRefreshIsForced = false
+    @ObservationIgnored private var coursesRefreshID: UUID?
+    @ObservationIgnored private var messagesRefreshID: UUID?
+    @ObservationIgnored private var foregroundRefreshID: UUID?
+    @ObservationIgnored private var hasStartedForegroundHydration = false
+    @ObservationIgnored private var lastAutomaticallySelectedTerm: TermLabel?
     @ObservationIgnored private var accountGeneration = 0
+    @ObservationIgnored private var credentialSaveOwnership = CredentialSaveOwnership()
+    private static let foregroundRefreshMaxAge: TimeInterval = 15 * 60
     // Credentials / auth
-    var hasCredentials: Bool = CredentialStore.hasCredentials
+    var hasCredentials = false
     var isUsingSampleData = false
     var authError: String?
 
@@ -38,6 +49,14 @@ final class AppStore {
     @ObservationIgnored private var messagePaginationCursor: String?
 
     init() {
+        lastAutomaticallySelectedTerm = selectedTerm
+        do {
+            _ = try LegacyAsyncStorageMigration.migrateIfNeeded()
+        } catch {
+            authError = error.localizedDescription
+        }
+        hasCredentials = CredentialStore.hasCredentials
+
         #if DEBUG
         if !hasCredentials || ProcessInfo.processInfo.arguments.contains("-SampleData") {
             isUsingSampleData = true
@@ -92,42 +111,110 @@ final class AppStore {
     // MARK: - Actions
 
     func saveCredentials(username: String, password: String) async -> Bool {
+        let saveID = credentialSaveOwnership.begin()
         let previousAccount = CredentialStore.currentAccountIdentifier
+        let requestGeneration = accountGeneration
         let credentials = SkywardCredentials(
             username: username,
             password: password,
             baseURL: CredentialStore.baseURL
         )
+        let newAccount = CredentialStore.accountIdentifier(for: username)
+        if let previousAccount, previousAccount != newAccount {
+            SkywardHTTP.clearCookies()
+        }
         do {
             let codes = try await AuthService.verify(credentials: credentials)
-            try SessionStore.save(codes)
+            guard AuthenticationRequestPolicy.permitsCompletion(
+                isCancelled: Task.isCancelled,
+                requestGeneration: requestGeneration,
+                currentGeneration: accountGeneration
+            ), credentialSaveOwnership.owns(saveID) else {
+                throw CancellationError()
+            }
+            // Make old UI, disk caches, and widget data unreachable before a
+            // replacement identity becomes authoritative in Keychain. A crash
+            // during the remaining writes can therefore expose no prior data.
+            hasCredentials = false
+            isUsingSampleData = false
+            await clearAccountScopedData()
+            guard credentialSaveOwnership.owns(saveID) else {
+                throw CancellationError()
+            }
+            SkywardHTTP.clearCookies()
+
+            if let previousAccount, previousAccount != newAccount {
+                // Verification has succeeded, so the replacement session is
+                // ready to become authoritative. Remove the old account's
+                // secret even if the later credential write has to fall back
+                // to re-authenticating that unchanged account.
+                try SessionStore.clear(accountIdentifier: previousAccount)
+            }
+            try SessionStore.save(codes, accountIdentifier: newAccount)
             do {
                 try CredentialStore.save(username: username, password: password)
             } catch {
-                try? SessionStore.clear()
+                try? SessionStore.clear(accountIdentifier: newAccount)
                 throw error
             }
-            let newAccount = CredentialStore.accountIdentifier(for: username)
+            // A prior Expo install may retain manual data for multiple account
+            // scopes. Activating one of those accounts is the explicit signal
+            // that its matching scope may now be imported.
+            _ = try? LegacyAsyncStorageMigration.migrateIfNeeded()
             if let previousAccount, previousAccount != newAccount {
                 WhatIfStore.clearAccountData(scope: previousAccount)
             }
-            isUsingSampleData = false
-            await clearAccountScopedData()
             hasCredentials = true
             authError = nil
+            credentialSaveOwnership.finish(saveID)
             Task {
                 await refreshCourses(force: true)
                 await refreshMessages(force: true)
             }
             return true
         } catch {
-            authError = error.localizedDescription
-            hasCredentials = CredentialStore.hasCredentials
+            if credentialSaveOwnership.owns(saveID) {
+                credentialSaveOwnership.finish(saveID)
+                authError = error.localizedDescription
+                hasCredentials = CredentialStore.hasCredentials
+            }
             return false
         }
     }
 
     func refreshCourses(force: Bool = false) async {
+        if let task = coursesRefreshTask {
+            let activeRefreshID = coursesRefreshID
+            let needsForcedFollowUp = force && !coursesRefreshIsForced
+            await task.value
+            if needsForcedFollowUp {
+                if coursesRefreshID == activeRefreshID {
+                    coursesRefreshTask = nil
+                    coursesRefreshID = nil
+                    coursesRefreshIsForced = false
+                }
+                await refreshCourses(force: true)
+            }
+            return
+        }
+
+        coursesRefreshIsForced = force
+        let refreshID = UUID()
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.performRefreshCourses(force: force)
+        }
+        coursesRefreshID = refreshID
+        coursesRefreshTask = task
+        await task.value
+        if coursesRefreshID == refreshID {
+            coursesRefreshTask = nil
+            coursesRefreshID = nil
+            coursesRefreshIsForced = false
+        }
+    }
+
+    private func performRefreshCourses(force: Bool) async {
         #if DEBUG
         if isUsingSampleData {
             courses = SampleData.courses
@@ -138,26 +225,59 @@ final class AppStore {
         #endif
         guard hasCredentials else { return }
         let generation = accountGeneration
+        let diskFallback = DataService.shared.cachedCourses()
         coursesLoading = courses == nil || force
         coursesError = nil
         do {
-            let result = try await DataService.shared.combinedCourses(forceRefresh: force)
+            let diskDataExceedsForegroundAge = diskFallback.map {
+                Date().timeIntervalSince($0.updatedAt) >= Self.foregroundRefreshMaxAge
+            } ?? false
+            let result = try await DataService.shared.combinedCourses(
+                forceRefresh: force || diskDataExceedsForegroundAge
+            )
             guard generation == accountGeneration else { return }
             courses = result
-            coursesLastUpdated = Date()
+            coursesLastUpdated = DataService.shared.cachedCourses()?.updatedAt ?? Date()
             if !availableGradeLevels.contains(selectedGradeLevel) {
                 selectedGradeLevel = currentGradeLevel
             }
-            updateWidgetSnapshot()
         } catch {
             if generation == accountGeneration {
+                if let diskFallback {
+                    courses = diskFallback.value
+                    coursesLastUpdated = diskFallback.updatedAt
+                    if !availableGradeLevels.contains(selectedGradeLevel) {
+                        selectedGradeLevel = currentGradeLevel
+                    }
+                }
                 coursesError = error.localizedDescription
             }
         }
         if generation == accountGeneration { coursesLoading = false }
+        updateWidgetSnapshot()
     }
 
     func refreshMessages(force: Bool = false) async {
+        if let task = messagesRefreshTask {
+            await task.value
+            return
+        }
+
+        let refreshID = UUID()
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.performRefreshMessages(force: force)
+        }
+        messagesRefreshID = refreshID
+        messagesRefreshTask = task
+        await task.value
+        if messagesRefreshID == refreshID {
+            messagesRefreshTask = nil
+            messagesRefreshID = nil
+        }
+    }
+
+    private func performRefreshMessages(force: Bool) async {
         #if DEBUG
         if isUsingSampleData {
             messages = SampleData.messages
@@ -168,6 +288,7 @@ final class AppStore {
         #endif
         guard hasCredentials else { return }
         let generation = accountGeneration
+        let diskFallback = DataService.shared.cachedMessages()
         if messages.isEmpty || force {
             messagesLoading = messages.isEmpty
         }
@@ -178,22 +299,85 @@ final class AppStore {
             guard generation == accountGeneration else { return }
             messages = result
             hasLoadedMessages = true
-            messagesLastUpdated = Date()
+            messagesLastUpdated = DataService.shared.cachedMessages()?.updatedAt ?? Date()
             messagesExhausted = result.isEmpty
             messagePaginationCursor = nil
-            updateWidgetSnapshot()
         } catch {
             if generation == accountGeneration {
+                if let diskFallback {
+                    messages = diskFallback.value
+                    hasLoadedMessages = true
+                    messagesLastUpdated = diskFallback.updatedAt
+                    messagesExhausted = diskFallback.value.isEmpty
+                    messagePaginationCursor = nil
+                }
                 messagesError = error.localizedDescription
             }
         }
         if generation == accountGeneration { messagesLoading = false }
+        updateWidgetSnapshot()
+    }
+
+    /// Entry point for scene activation. The first activation hydrates state;
+    /// later activations refresh only data older than the foreground threshold.
+    /// Repeated active notifications join the same task.
+    func handleSceneBecameActive(now: Date = Date()) async {
+        let currentTerm = AcademicCalendar.currentTerm(for: now)
+        if let lastAutomaticallySelectedTerm {
+            selectedTerm = TermSelectionPolicy.selectionOnActivation(
+                selected: selectedTerm,
+                current: currentTerm,
+                lastAutomatic: lastAutomaticallySelectedTerm
+            )
+        }
+        lastAutomaticallySelectedTerm = currentTerm
+        guard canShowData else { return }
+        if let foregroundRefreshTask {
+            await foregroundRefreshTask.value
+            return
+        }
+
+        let isInitialHydration = !hasStartedForegroundHydration
+        hasStartedForegroundHydration = true
+        let refreshCourses = needsForegroundRefresh(lastUpdated: coursesLastUpdated, now: now)
+        let refreshMessages = needsForegroundRefresh(lastUpdated: messagesLastUpdated, now: now)
+        guard refreshCourses || refreshMessages else { return }
+
+        let refreshID = UUID()
+        let task = Task { [weak self] in
+            guard let self else { return }
+            if refreshCourses, refreshMessages {
+                async let courses: Void = self.refreshCourses(force: !isInitialHydration)
+                async let messages: Void = self.refreshMessages(force: !isInitialHydration)
+                _ = await (courses, messages)
+            } else if refreshCourses {
+                await self.refreshCourses(force: !isInitialHydration)
+            } else {
+                await self.refreshMessages(force: !isInitialHydration)
+            }
+        }
+        foregroundRefreshID = refreshID
+        foregroundRefreshTask = task
+        await task.value
+        if foregroundRefreshID == refreshID {
+            foregroundRefreshTask = nil
+            foregroundRefreshID = nil
+        }
+    }
+
+    private func needsForegroundRefresh(lastUpdated: Date?, now: Date) -> Bool {
+        guard let lastUpdated else { return true }
+        return now.timeIntervalSince(lastUpdated) >= Self.foregroundRefreshMaxAge
     }
 
     /// Rebuilds the shared widget snapshot in the background.
     private func updateWidgetSnapshot() {
-        guard let courses, hasLoadedMessages else { return }
-        let messages = messages
+        let courses = courses
+        let messages = hasLoadedMessages ? messages : nil
+        let coursesUpdatedAt = coursesLastUpdated
+        let messagesUpdatedAt = messagesLastUpdated
+        let coursesAreComplete = courses != nil && coursesError == nil
+        let messagesAreComplete = hasLoadedMessages && messagesError == nil
         widgetSnapshotTask?.cancel()
         widgetSnapshotTask = Task {
             do {
@@ -201,7 +385,14 @@ final class AppStore {
             } catch {
                 return
             }
-            await WidgetSnapshotBuilder.refresh(courses: courses, messages: messages)
+            await WidgetSnapshotBuilder.refresh(
+                courses: courses,
+                coursesUpdatedAt: coursesUpdatedAt,
+                coursesAreComplete: coursesAreComplete,
+                messages: messages,
+                messagesUpdatedAt: messagesUpdatedAt,
+                messagesAreComplete: messagesAreComplete
+            )
         }
     }
 
@@ -252,26 +443,53 @@ final class AppStore {
     }
 
     func disconnect() async throws {
+        credentialSaveOwnership.cancel()
         let account = CredentialStore.currentAccountIdentifier
-        try SessionStore.clear()
+        // Stop every account-bound task before removing secrets. Otherwise an
+        // authentication completing between session and credential deletion
+        // could repopulate the just-cleared account session.
+        await invalidateAccountScopedWork()
+        try LegacyAsyncStorageMigration.cleanupLegacyArtifacts(accountIdentifier: account)
+        if let account {
+            try SessionStore.clear(accountIdentifier: account)
+        }
         try CredentialStore.clear()
         SkywardHTTP.clearCookies()
         WhatIfStore.clearAccountData(scope: account)
-        await clearAccountScopedData()
+        await resetAccountScopedState()
 
         hasCredentials = false
         isUsingSampleData = false
         authError = nil
         coursesLastUpdated = nil
         messagesLastUpdated = nil
-        selectedTerm = AcademicCalendar.currentTerm()
         selectedGradeLevel = .senior
     }
 
     private func clearAccountScopedData() async {
+        await invalidateAccountScopedWork()
+        await resetAccountScopedState()
+    }
+
+    private func invalidateAccountScopedWork() async {
         accountGeneration += 1
+        foregroundRefreshTask?.cancel()
+        coursesRefreshTask?.cancel()
+        messagesRefreshTask?.cancel()
         widgetSnapshotTask?.cancel()
+        foregroundRefreshTask = nil
+        coursesRefreshTask = nil
+        messagesRefreshTask = nil
+        foregroundRefreshID = nil
+        coursesRefreshID = nil
+        messagesRefreshID = nil
+        coursesRefreshIsForced = false
+        hasStartedForegroundHydration = false
         await DataService.shared.clearCaches()
+        await DataService.shared.cancelAuthentication()
+    }
+
+    private func resetAccountScopedState() async {
         courses = nil
         messages = []
         coursesError = nil
@@ -282,6 +500,8 @@ final class AppStore {
         messagePaginationCursor = nil
         coursesLastUpdated = nil
         messagesLastUpdated = nil
+        selectedTerm = AcademicCalendar.currentTerm()
+        lastAutomaticallySelectedTerm = selectedTerm
         WidgetSnapshotStore.clear()
         WidgetCenter.shared.reloadAllTimelines()
     }

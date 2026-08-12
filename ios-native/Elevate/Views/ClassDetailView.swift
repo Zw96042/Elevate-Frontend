@@ -49,6 +49,8 @@ struct ClassDetailView: View {
     @State private var loading = true
     @State private var loadError: String?
     @State private var loadedBucket: String?
+    @State private var quarterGradeInfo: [String: GradeInfoResult] = [:]
+    @State private var semesterCalculationError: String?
 
     @State private var showCalculated = false
     @State private var whatIfAssignments: [WhatIfAssignment] = []
@@ -110,7 +112,7 @@ struct ClassDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
-            if showCalculated {
+            if isWhatIfActive {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { showingAddSheet = true } label: { Image(systemName: "plus") }
                         .accessibilityLabel("Add what-if assignment")
@@ -125,7 +127,7 @@ struct ClassDetailView: View {
         }
         .sheet(isPresented: $showingAddSheet) {
             AddAssignmentSheet(
-                categories: gradeInfo?.gradebook.map(\.category).filter { $0 != "Final Exam" } ?? [],
+                categoriesByTerm: addAssignmentCategoriesByTerm,
                 term: store.selectedTerm
             ) { assignment in
                 var a = assignment
@@ -159,16 +161,42 @@ struct ClassDetailView: View {
     // MARK: - Data
 
     private func load(force: Bool = false) async {
-        let bucket = store.selectedTerm.bucket
+        let selectedTerm = store.selectedTerm
+        let bucket = selectedTerm.bucket
         if !force, loadedBucket == bucket, gradeInfo != nil { return }
         loading = gradeInfo == nil || loadedBucket != bucket
         loadError = nil
+        semesterCalculationError = nil
         do {
-            let params = GradeInfoParams(stuId: course.stuId, corNumId: course.corNumId,
-                                         gbId: course.gbId, section: course.section, bucket: bucket)
-            let result = try await DataService.shared.gradeInfo(params: params, forceRefresh: force)
+            let result: GradeInfoResult
+            var loadedQuarters: [String: GradeInfoResult] = [:]
+
+            if selectedTerm.isSemester {
+                let quarterTerms = selectedTerm.whatIfQuarterTerms
+                async let mainResponse = gradeInfoResponse(for: selectedTerm, force: force)
+                async let firstResponse = gradeInfoResponse(for: quarterTerms[0], force: force)
+                async let secondResponse = gradeInfoResponse(for: quarterTerms[1], force: force)
+                let responses = await (mainResponse, firstResponse, secondResponse)
+                result = try responses.0.get()
+
+                switch responses.1 {
+                case .success(let info): loadedQuarters[quarterTerms[0].shortName] = info
+                case .failure(let error): semesterCalculationError = error.localizedDescription
+                }
+                switch responses.2 {
+                case .success(let info): loadedQuarters[quarterTerms[1].shortName] = info
+                case .failure(let error):
+                    semesterCalculationError = semesterCalculationError ?? error.localizedDescription
+                }
+            } else {
+                result = try await gradeInfoResponse(for: selectedTerm, force: force).get()
+            }
+
             guard !Task.isCancelled, store.selectedTerm.bucket == bucket else { return }
             gradeInfo = result
+            for (term, info) in loadedQuarters {
+                quarterGradeInfo[term] = info
+            }
             gradeInfoLastUpdated = Date()
             let availableCategories = Set(
                 gradeInfo?.gradebook.map(\.category).filter { $0 != "Final Exam" } ?? []
@@ -183,6 +211,24 @@ struct ClassDetailView: View {
         }
         guard !Task.isCancelled, store.selectedTerm.bucket == bucket else { return }
         loading = false
+    }
+
+    private func gradeInfoResponse(
+        for term: TermLabel,
+        force: Bool
+    ) async -> Result<GradeInfoResult, Error> {
+        let params = GradeInfoParams(
+            stuId: course.stuId,
+            corNumId: course.corNumId,
+            gbId: course.gbId,
+            section: course.section,
+            bucket: term.bucket
+        )
+        do {
+            return .success(try await DataService.shared.gradeInfo(params: params, forceRefresh: force))
+        } catch {
+            return .failure(error)
+        }
     }
 
     private var hasCurrentGradeInfo: Bool {
@@ -212,15 +258,43 @@ struct ClassDetailView: View {
 
     // MARK: - Computation
 
+    private var semesterCalculationAvailable: Bool {
+        !store.selectedTerm.isSemester
+            || store.selectedTerm.whatIfQuarterTerms.allSatisfy {
+                quarterGradeInfo[$0.shortName] != nil
+            }
+    }
+
+    private var isWhatIfActive: Bool {
+        showCalculated && semesterCalculationAvailable
+    }
+
+    private var addAssignmentCategoriesByTerm: [String: [String]] {
+        Dictionary(uniqueKeysWithValues: store.selectedTerm.whatIfQuarterTerms.map { term in
+            let info = store.selectedTerm.isSemester
+                ? quarterGradeInfo[term.shortName]
+                : gradeInfo
+            let categories = Set(
+                info?.gradebook.map(\.category)
+                    .filter { !$0.isEmpty && $0 != "Final Exam" } ?? []
+            )
+            return (term.shortName, categories.sorted())
+        })
+    }
+
     private var apiAssignments: [CalcAssignment] {
         guard let gradeInfo else { return [] }
-        return gradeInfo.gradebook.flatMap { cat in
+        return calcAssignments(from: gradeInfo, term: store.selectedTerm)
+    }
+
+    private func calcAssignments(from info: GradeInfoResult, term: TermLabel) -> [CalcAssignment] {
+        info.gradebook.flatMap { cat in
             cat.assignments.enumerated().map { index, a in
                 CalcAssignment(
-                    id: "\(cat.category)-\(index)-\(a.name)",
+                    id: "\(term.shortName)-\(cat.category)-\(index)-\(a.name)",
                     className: course.courseName,
                     name: a.name,
-                    term: store.selectedTerm.shortName,
+                    term: term.shortName,
                     category: cat.category,
                     grade: a.pointsEarned,
                     outOf: a.pointsTotal ?? 100,
@@ -234,14 +308,24 @@ struct ClassDetailView: View {
 
     /// Real assignments plus independently identified hypothetical assignments.
     private var meshedAssignments: [CalcAssignment] {
-        guard showCalculated else { return apiAssignments }
-        let whatIf = whatIfAssignments.map { w in
-            CalcAssignment(id: w.id, className: w.className, name: w.name, term: w.term,
-                           category: w.category, grade: w.grade, outOf: w.outOf,
-                           dueDate: w.dueDate, artificial: true,
-                           meta: metadata(for: w.resolvedStatus))
-        }
+        guard isWhatIfActive else { return apiAssignments }
+        let whatIf = whatIfAssignments.map(calcAssignment(from:))
         return whatIf + apiAssignments
+    }
+
+    private func calcAssignment(from assignment: WhatIfAssignment) -> CalcAssignment {
+        CalcAssignment(
+            id: assignment.id,
+            className: assignment.className,
+            name: assignment.name,
+            term: assignment.term,
+            category: assignment.category,
+            grade: assignment.grade,
+            outOf: assignment.outOf,
+            dueDate: assignment.dueDate,
+            artificial: true,
+            meta: metadata(for: assignment.resolvedStatus)
+        )
     }
 
     private func metadata(for status: WhatIfAssignmentStatus) -> [AssignmentMeta] {
@@ -258,7 +342,7 @@ struct ClassDetailView: View {
     }
 
     private var effectiveFinalExamGrade: Double? {
-        if showCalculated, let estimate = finalExamGrades[examType], estimate.isFinite {
+        if isWhatIfActive, let estimate = finalExamGrades[examType], estimate.isFinite {
             return estimate
         }
         if let assignment = gradeInfo?.gradebook
@@ -285,13 +369,54 @@ struct ClassDetailView: View {
             : (score("Q3"), score("Q4"))
     }
 
+    private var predictedQuarterTotals: (first: Double?, second: Double?) {
+        guard isWhatIfActive, store.selectedTerm.isSemester else { return quarterTotals }
+        let terms = store.selectedTerm.whatIfQuarterTerms
+        return (
+            recalculatedQuarterTotal(for: terms[0]) ?? quarterTotals.first,
+            recalculatedQuarterTotal(for: terms[1]) ?? quarterTotals.second
+        )
+    }
+
+    private func recalculatedQuarterTotal(for term: TermLabel) -> Double? {
+        guard let info = quarterGradeInfo[term.shortName] else { return nil }
+        let real = calcAssignments(from: info, term: term).filter { $0.category != "Final Exam" }
+        let hypothetical = whatIfAssignments
+            .filter { $0.term == term.shortName }
+            .map(calcAssignment(from:))
+            .filter { $0.category != "Final Exam" }
+        let assignments = real + hypothetical
+        let weights = GradeCalculator.normalizedWeights(categories: info.gradebook, assignments: assignments)
+        let hypotheticalCategories = Set(
+            hypothetical
+                .filter { !$0.isNoCount && $0.grade != nil && $0.outOf > 0 }
+                .map(\.category)
+        )
+        let everyHypotheticalHasWeight = hypotheticalCategories.allSatisfy { weights[$0] != nil }
+        if everyHypotheticalHasWeight {
+            if let weighted = GradeCalculator.summary(
+                assignments: assignments,
+                categoryWeights: weights
+            ).courseTotal {
+                return weighted
+            }
+        }
+
+        // Some Skyward gradebooks are points-based and omit category weights.
+        // In that case, preserve a predictable what-if result using total points.
+        let countable = assignments.filter { !$0.isNoCount && $0.grade != nil && $0.outOf > 0 }
+        let totalPossible = countable.reduce(0) { $0 + $1.outOf }
+        guard totalPossible > 0 else { return nil }
+        return countable.reduce(0) { $0 + ($1.grade ?? 0) } / totalPossible * 100
+    }
+
     private var summary: GradeSummary {
         let countable = meshedAssignments.filter { $0.category != "Final Exam" }
         let weights = GradeCalculator.normalizedWeights(categories: gradeInfo?.gradebook ?? [], assignments: countable)
         return GradeCalculator.summary(
             assignments: countable,
             categoryWeights: weights,
-            quarterTotals: store.selectedTerm.isSemester ? quarterTotals : nil,
+            quarterTotals: store.selectedTerm.isSemester ? predictedQuarterTotals : nil,
             selectedTerm: store.selectedTerm,
             finalExamGrade: store.selectedTerm.isSemester ? effectiveFinalExamGrade : nil
         )
@@ -299,12 +424,12 @@ struct ClassDetailView: View {
 
     private var displayGrade: Double? {
         guard hasCurrentGradeInfo else { return nil }
-        if showCalculated, let calculated = summary.courseTotal {
+        if isWhatIfActive, let calculated = summary.courseTotal {
             return calculated
         }
         return gradeInfo?.score
             ?? summary.courseTotal
-            ?? course.historicalGrades[store.selectedTerm.historicalKey].flatMap { Double($0) }
+            ?? AcademicScoreValue.finiteDouble(course.historicalGrades[store.selectedTerm.historicalKey])
     }
 
     private var displayedAssignments: [CalcAssignment] {
@@ -383,14 +508,27 @@ struct ClassDetailView: View {
                 .frame(height: 0.5)
 
             Toggle("What-if grades", isOn: Binding(
-                get: { showCalculated },
+                get: { isWhatIfActive },
                 set: { newValue in
                     showCalculated = newValue
                     WhatIfStore.setShowCalculated(newValue, classKey: classKey)
                 }
             ))
             .frame(minHeight: 52)
+            .disabled(!semesterCalculationAvailable)
             .sensoryFeedback(.selection, trigger: showCalculated)
+
+            if store.selectedTerm.isSemester, !semesterCalculationAvailable {
+                Text("What-if needs both quarter gradebooks. Refresh to try loading them again.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 10)
+            } else if store.selectedTerm.isSemester, semesterCalculationError != nil {
+                Text("Using previously loaded quarter details for this prediction.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 10)
+            }
 
             Rectangle()
                 .fill(Color(uiColor: .separator).opacity(0.32))
@@ -525,15 +663,15 @@ struct ClassDetailView: View {
         let dueDate = realAssignment?.dueDate ?? ""
         let estimate = finalExamGrades[examType]
         let realGrade = effectiveFinalExamGrade
-        let shown: Double? = (showCalculated && estimate != nil) ? estimate : realGrade
+        let shown: Double? = (isWhatIfActive && estimate != nil) ? estimate : realGrade
 
         return AssignmentRow(
             assignment: CalcAssignment(
                 id: "final-exam-\(examType)", className: course.courseName, name: examName,
                 term: examType, category: "Final Exam", grade: shown, outOf: 100,
-                dueDate: dueDate, artificial: showCalculated && estimate != nil, meta: []
+                dueDate: dueDate, artificial: isWhatIfActive && estimate != nil, meta: []
             ),
-            editable: showCalculated,
+            editable: isWhatIfActive,
             onEditGrade: { newGrade in
                 WhatIfStore.setFinalExamGrade(newGrade, examType: examType, classKey: classKey)
                 reloadWhatIf()
@@ -574,7 +712,7 @@ struct ClassDetailView: View {
                     ForEach(assignments) { assignment in
                         AssignmentRow(
                             assignment: assignment,
-                            editable: showCalculated && assignment.artificial,
+                            editable: isWhatIfActive && assignment.artificial,
                             onEditGrade: assignment.artificial ? { newGrade in
                                 if var match = whatIfAssignments.first(where: { $0.id == assignment.id }) {
                                     match.grade = newGrade
@@ -806,7 +944,7 @@ struct AssignmentRow: View {
         if assignment.isMissing { return ("MISSING", .red) }
         if assignment.isNoCount { return ("NO COUNT", .gray) }
         if assignment.isAbsent { return ("ABSENT", .orange) }
-        if assignment.artificial { return ("WHAT-IF", Color.themeAccent) }
+        if assignment.artificial { return ("WHAT-IF · \(assignment.term)", Color.themeAccent) }
         return nil
     }
 
@@ -1068,7 +1206,7 @@ struct AssignmentRow: View {
 // MARK: - Add what-if assignment sheet
 
 struct AddAssignmentSheet: View {
-    var categories: [String]
+    var categoriesByTerm: [String: [String]]
     var term: TermLabel
     var onAdd: (WhatIfAssignment) -> Void
 
@@ -1078,7 +1216,19 @@ struct AddAssignmentSheet: View {
     @State private var gradeText = ""
     @State private var outOfText = "100"
     @State private var status: WhatIfAssignmentStatus = .counted
+    @State private var assignmentTerm: TermLabel
     @FocusState private var focusedField: Field?
+
+    init(
+        categoriesByTerm: [String: [String]],
+        term: TermLabel,
+        onAdd: @escaping (WhatIfAssignment) -> Void
+    ) {
+        self.categoriesByTerm = categoriesByTerm
+        self.term = term
+        self.onAdd = onAdd
+        _assignmentTerm = State(initialValue: term.whatIfQuarterTerms.last ?? term)
+    }
 
     private enum Field: Hashable {
         case name
@@ -1097,6 +1247,18 @@ struct AddAssignmentSheet: View {
 
                     Picker("Category", selection: $category) {
                         ForEach(availableCategories, id: \.self) { Text($0).tag($0) }
+                    }
+                }
+
+                if term.isSemester {
+                    Section {
+                        Picker("Counts toward", selection: $assignmentTerm) {
+                            ForEach(term.whatIfQuarterTerms) { quarter in
+                                Text(quarter.shortName).tag(quarter)
+                            }
+                        }
+                    } footer: {
+                        Text("Semester predictions recalculate the selected quarter, then apply the 40/40/20 semester formula.")
                     }
                 }
 
@@ -1143,7 +1305,7 @@ struct AddAssignmentSheet: View {
                         onAdd(WhatIfAssignment(
                             className: "",
                             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                            term: term.shortName,
+                            term: assignmentTerm.shortName,
                             category: category,
                             grade: parsedGrade,
                             outOf: pointsPossible,
@@ -1158,11 +1320,18 @@ struct AddAssignmentSheet: View {
             .onAppear {
                 if category.isEmpty { category = availableCategories.first ?? "Assignments" }
             }
+            .onChange(of: assignmentTerm) {
+                if !availableCategories.contains(category) {
+                    category = availableCategories.first ?? "Assignments"
+                }
+            }
         }
     }
 
     private var availableCategories: [String] {
-        let unique = Array(Set(categories.filter { !$0.isEmpty })).sorted()
+        let unique = Array(Set(
+            (categoriesByTerm[assignmentTerm.shortName] ?? []).filter { !$0.isEmpty }
+        )).sorted()
         return unique.isEmpty ? ["Assignments"] : unique
     }
 

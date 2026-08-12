@@ -33,8 +33,9 @@ enum SkywardGradesAPI {
         ])
         try SkywardHTTP.checkSessionExpired(raw)
 
-        // Extract HTML from the CDATA <output> section.
-        let html = extractCDATA(raw, tag: "output") ?? raw
+        // Loader responses must contain a complete output envelope. Direct HTML is
+        // still accepted for district variants that do not use httploader XML.
+        let html = try extractGradeInfoHTML(from: raw)
         try SkywardHTTP.checkSessionExpired(html)
         return try parseGradeInfoHTML(html, rawResponse: raw)
     }
@@ -47,15 +48,43 @@ enum SkywardGradesAPI {
         return String(raw[openRange.upperBound..<closeRange.lowerBound])
     }
 
+    static func extractGradeInfoHTML(from raw: String) throws -> String {
+        if raw.range(of: "<output", options: [.caseInsensitive]) != nil {
+            guard let output = extractCDATA(raw, tag: "output") else {
+                throw SkywardError.invalidResponse("incomplete grade-info output envelope")
+            }
+            return output
+        }
+        return raw
+    }
+
     // MARK: - Parsing
 
     static func parseGradeInfoHTML(_ html: String, rawResponse: String) throws -> GradeInfoResult {
+        try SkywardHTTP.checkSessionExpired(html)
+
         // Empty <data> CDATA means the session died.
         if rawResponse.range(of: #"<data><!\[CDATA\[\s*\]\]></data>"#, options: .regularExpression) != nil {
             throw SkywardError.sessionExpired
         }
 
         let root = MiniHTML.parse(html)
+
+        // A legitimate empty gradebook still renders the heading, term-summary
+        // grid, and assignment-summary grid. Login, maintenance, and arbitrary
+        // HTTP 200 pages do not. Validate those structural anchors before an
+        // empty parse can become cacheable data.
+        guard root.querySelector("h2.gb_heading") != nil else {
+            throw SkywardError.invalidResponse("grade-info heading not found")
+        }
+        guard root.querySelector("table[id^='grid_stuTermSummaryGrid']") != nil
+                || root.querySelector("div[id*='stuTermSummaryGrid']") != nil else {
+            throw SkywardError.invalidResponse("grade-info term grid not found")
+        }
+        guard root.querySelector("table[id^='grid_stuAssignmentSummaryGrid']") != nil
+                || root.querySelector("div[id*='stuAssignmentSummaryGrid']") != nil else {
+            throw SkywardError.invalidResponse("grade-info assignment grid not found")
+        }
 
         // Course / instructor / period from the heading.
         let headingLinks = root.querySelectorAll("h2.gb_heading a")
@@ -71,6 +100,9 @@ enum SkywardGradesAPI {
         let litHeaderFirstText = litHeader?.children.first(where: { $0.isText })?.text ?? litHeader?.text ?? ""
         let litName = clean(litHeaderFirstText).replacingOccurrences(of: #"Grade\s*$"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespaces)
+        guard !course.isEmpty, !litName.isEmpty else {
+            throw SkywardError.invalidResponse("grade-info identity fields are missing")
+        }
         var litBegin: String? = nil
         var litEnd: String? = nil
         if let spanText = litHeader?.querySelector("span")?.text,
@@ -87,7 +119,7 @@ enum SkywardGradesAPI {
         let topScore = toDouble(summaryRow?.querySelector("td:last-child")?.text ?? "")
         let topGrade = topScore.map { Int($0.rounded()) }
 
-        let gradebook = parseGradebook(root)
+        let gradebook = try parseGradebook(root)
 
         return GradeInfoResult(
             course: course, instructor: instructor, period: period,
@@ -96,15 +128,12 @@ enum SkywardGradesAPI {
         )
     }
 
-    private static func parseGradebook(_ root: HTMLNode) -> [GradeCategory] {
+    private static func parseGradebook(_ root: HTMLNode) throws -> [GradeCategory] {
         var rows = root.querySelectorAll("table[id^='grid_stuAssignmentSummaryGrid'] tbody tr")
         if rows.isEmpty, let grid = root.querySelector("div[id*='stuAssignmentSummaryGrid']") {
-            rows = grid.querySelectorAll("tr")
-        }
-        if rows.isEmpty {
-            rows = root.querySelectorAll("tr").filter { tr in
-                tr.querySelector("a[id='showAssignmentInfo']") != nil
-                    || (tr.hasClass("sf_Section") && tr.hasClass("cat"))
+            rows = grid.querySelectorAll("tbody tr")
+            if rows.isEmpty, grid.querySelector("tbody") == nil {
+                rows = grid.querySelectorAll("tr").filter { $0.parent?.tagName != "thead" }
             }
         }
 
@@ -116,10 +145,15 @@ enum SkywardGradesAPI {
         for row in rows {
             if row.hasClass("sf_Section") && row.hasClass("cat") {
                 let cells = row.querySelectorAll("td")
-                guard cells.count > 1 else { continue }
+                guard cells.count > 1 else {
+                    throw SkywardError.invalidResponse("grade category row is malformed")
+                }
                 let nameCell = cells[1]
                 let firstTextChild = nameCell.children.first(where: { $0.isText })?.text
                 let rawName = clean(firstTextChild ?? nameCell.text)
+                guard !rawName.isEmpty else {
+                    throw SkywardError.invalidResponse("grade category name is missing")
+                }
 
                 let styleAttr = nameCell.attribute("style") ?? ""
                 let isBold = styleAttr.range(of: #"font-weight:\s*bold"#, options: [.regularExpression, .caseInsensitive]) != nil
@@ -130,8 +164,8 @@ enum SkywardGradesAPI {
                     if let m = firstMatch(in: clean(span.text),
                                           pattern: #"weighted at ([\d.]+)%(?:, adjusted to ([\d.]+)%)?"#,
                                           caseInsensitive: true) {
-                        weight = Double(m[1])
-                        adjustedWeight = m.count > 2 && !m[2].isEmpty ? Double(m[2]) : nil
+                        weight = toDouble(m[1])
+                        adjustedWeight = m.count > 2 && !m[2].isEmpty ? toDouble(m[2]) : nil
                         break
                     }
                 }
@@ -159,22 +193,40 @@ enum SkywardGradesAPI {
                 continue
             }
 
-            guard let link = row.querySelectorAll("a").first(where: { $0.id == "showAssignmentInfo" }),
-                  let catIndex = currentCategoryIndex else { continue }
+            guard let link = row.querySelectorAll("a").first(where: { $0.id == "showAssignmentInfo" }) else {
+                let rowText = clean(row.text).lowercased()
+                let isKnownEmptyRow = rowText.isEmpty
+                    || rowText.contains("no assignments")
+                    || rowText.contains("no records")
+                    || rowText.contains("nothing to display")
+                guard isKnownEmptyRow else {
+                    throw SkywardError.invalidResponse("unrecognized gradebook row")
+                }
+                continue
+            }
+            guard let catIndex = currentCategoryIndex else {
+                throw SkywardError.invalidResponse("assignment row has no category")
+            }
             let cells = row.querySelectorAll("td")
+            guard cells.count >= 5 else {
+                throw SkywardError.invalidResponse("assignment row is malformed")
+            }
             func cell(_ i: Int) -> HTMLNode? { cells.indices.contains(i) ? cells[i] : nil }
 
             let date = clean(cell(0)?.text ?? "")
             let name = clean(link.text)
+            guard !name.isEmpty else {
+                throw SkywardError.invalidResponse("assignment name is missing")
+            }
             let grade = toInt(cell(2)?.text ?? "")
             let score = toDouble(cell(3)?.text ?? "")
             let pointsText = clean(cell(4)?.text ?? "")
 
             var earned: Double? = nil
             var total: Double? = nil
-            if let m = firstMatch(in: pointsText, pattern: #"(-?\d+(?:\.\d+)?)\s*out of\s*(-?\d+(?:\.\d+)?)"#, caseInsensitive: true) {
-                earned = Double(m[1])
-                total = Double(m[2])
+            if let m = firstMatch(in: pointsText, pattern: #"^([+-]?\d+(?:\.\d+)?)\s*out of\s*([+-]?\d+(?:\.\d+)?)$"#, caseInsensitive: true) {
+                earned = toDouble(m[1])
+                total = toDouble(m[2])
             }
 
             var meta: [AssignmentMeta] = []
@@ -211,11 +263,12 @@ enum SkywardGradesAPI {
     }
 
     static func toInt(_ text: String) -> Int? {
-        firstMatch(in: clean(text), pattern: #"^-?\d+"#).flatMap { Int($0[0]) }
+        firstMatch(in: clean(text), pattern: #"^([+-]?\d+)(?:\s*%)?$"#).flatMap { Int($0[1]) }
     }
 
     static func toDouble(_ text: String) -> Double? {
-        firstMatch(in: clean(text), pattern: #"-?\d+(?:\.\d+)?"#).flatMap { Double($0[0]) }
+        firstMatch(in: clean(text), pattern: #"^([+-]?\d+(?:\.\d+)?)(?:\s*%)?$"#)
+            .flatMap { AcademicScoreValue.finiteDouble($0[1]) }
     }
 
     /// Returns the full match at index 0 followed by capture groups (empty string for non-participating groups).

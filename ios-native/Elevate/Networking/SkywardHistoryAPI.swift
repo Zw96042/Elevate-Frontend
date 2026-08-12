@@ -84,8 +84,7 @@ enum SkywardHistoryAPI {
         ]
         let html = try await SkywardHTTP.post(url: url, fields: fields)
         try SkywardHTTP.checkSessionExpired(html)
-        let title = MiniHTML.parse(html).querySelector("title")?.text ?? ""
-        if !html.contains("sf_gridObjects"), title.localizedCaseInsensitiveContains("Academic History") {
+        if isVerifiedEmptyAcademicHistoryPage(html) {
             #if DEBUG
             logger.debug("Academic-history page contains no historical grid; continuing with current gradebook")
             #endif
@@ -93,7 +92,19 @@ enum SkywardHistoryAPI {
         }
 
         let gridObjects = try parseGridObjects(html: html, pattern: #"sff\.sv\('sf_gridObjects',\s*\$\.extend\([^,]+,\s*(\{[\s\S]*?\})\)\);"#)
-        return condenseAcademicHistory(gridObjects)
+        return try condenseAcademicHistory(gridObjects)
+    }
+
+    static func isVerifiedEmptyAcademicHistoryPage(_ html: String) -> Bool {
+        guard !html.contains("sf_gridObjects") else { return false }
+        let root = MiniHTML.parse(html)
+        let title = root.querySelector("title")?.text ?? ""
+        guard title.localizedCaseInsensitiveContains("Academic History") else { return false }
+        let pageText = root.querySelector("body")?.text ?? root.text
+        return pageText.range(
+            of: #"\bno\s+(?:academic\s+history\s+)?records?(?:\s+(?:found|available|to\s+display))?\b"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
     }
 
     static func fetchGradebookHTML(baseUrl: String, sessionCodes: SkywardSessionCodes) async throws -> String {
@@ -132,16 +143,21 @@ enum SkywardHistoryAPI {
 
     // MARK: - Academic history condensing
 
-    static func condenseAcademicHistory(_ gridObjects: [String: Any]) -> AcademicHistory {
-        let targetGrids = gridObjects
+    static func condenseAcademicHistory(_ gridObjects: [String: Any]) throws -> AcademicHistory {
+        let targetPairs = gridObjects
             .filter { $0.key.range(of: #"gradeGrid_\d+_\d+_\d+"#, options: .regularExpression) != nil }
-            .compactMap { $0.value as? [String: Any] }
+        guard !targetPairs.isEmpty else {
+            throw SkywardError.invalidResponse("academic-history grid not found")
+        }
 
         var academicYears: AcademicHistory = [:]
 
-        for grid in targetGrids {
-            guard let tb = grid["tb"] as? [String: Any],
-                  let rows = tb["r"] as? [[String: Any]] else { continue }
+        for (_, value) in targetPairs {
+            guard let grid = value as? [String: Any],
+                  let tb = grid["tb"] as? [String: Any],
+                  let rows = tb["r"] as? [[String: Any]] else {
+                throw SkywardError.invalidResponse("academic-history grid is incomplete")
+            }
 
             struct YearSection {
                 var begin: String
@@ -157,20 +173,35 @@ enum SkywardHistoryAPI {
                 let firstHTML = cells[0]["h"] as? String ?? ""
                 let yearText = MiniHTML.parse(firstHTML).text
                 if let m = SkywardGradesAPI.firstMatch(in: yearText, pattern: #"(\d{4})\s*-\s*(\d{4}).*Grade\s+(\d+)"#) {
+                    guard let begin = Int(m[1]), let end = Int(m[2]),
+                          let grade = Int(m[3]), end == begin + 1, (1...12).contains(grade) else {
+                        throw SkywardError.invalidResponse("academic-history year header is invalid")
+                    }
                     if let current { sections.append(current) }
-                    current = YearSection(begin: m[1], end: m[2], grade: Int(m[3]) ?? 0, rows: [])
+                    current = YearSection(begin: m[1], end: m[2], grade: grade, rows: [])
                 } else if current != nil {
                     current?.rows.append(row)
                 }
             }
             if let current { sections.append(current) }
+            if !rows.isEmpty, sections.isEmpty {
+                throw SkywardError.invalidResponse("academic-history grid has unrecognized populated rows")
+            }
 
             for section in sections {
                 var courses: [String: HistoryCourse] = [:]
                 var nameCounts: [String: Int] = [:]
+                var validCourseRows = 0
+                var malformedRows = 0
 
                 for row in section.rows {
-                    guard let parsed = parseCourseRow(row), isValidCourse(name: parsed.name) else { continue }
+                    if isKnownEmptyHistoryRow(row) { continue }
+                    guard let parsed = parseCourseRow(row) else {
+                        malformedRows += 1
+                        continue
+                    }
+                    guard isValidCourse(name: parsed.name) else { continue }
+                    validCourseRows += 1
                     // Alt courses (non-linked rows, e.g. middle-school credit) are
                     // excluded from year data, matching the unified-data transform.
                     if parsed.isAlt { continue }
@@ -186,6 +217,14 @@ enum SkywardHistoryAPI {
                     courses[key] = parsed.course
                 }
 
+                if !section.rows.isEmpty, validCourseRows == 0, malformedRows > 0 {
+                    throw SkywardError.invalidResponse("academic-history grid has malformed populated rows")
+                }
+
+                // Transcripts can carry pre-high-school credit. Validate those
+                // sections but omit them from Elevate's grade 9-12 model.
+                if section.grade < 9 { continue }
+
                 if !courses.isEmpty || section.rows.count > 1 {
                     academicYears["\(section.begin)-\(section.end)"] = AcademicYear(grade: section.grade, courses: courses)
                 }
@@ -195,7 +234,8 @@ enum SkywardHistoryAPI {
     }
 
     private static func parseCourseRow(_ row: [String: Any]) -> (name: String, isAlt: Bool, course: HistoryCourse)? {
-        guard let cells = row["c"] as? [[String: Any]], !cells.isEmpty else { return nil }
+        guard let cells = row["c"] as? [[String: Any]], cells.count >= 18,
+              cells.allSatisfy({ $0["h"] is String }) else { return nil }
         let columns: [String] = cells.map { cell in
             MiniHTML.parse(cell["h"] as? String ?? "").text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
@@ -220,6 +260,15 @@ enum SkywardHistoryAPI {
             ?? [course.rc4, course.rc3, course.rc2, course.rc1].compactMap { $0 }.first { !$0.isEmpty }
             ?? ""
         return (name, isAlt, course)
+    }
+
+    private static func isKnownEmptyHistoryRow(_ row: [String: Any]) -> Bool {
+        guard let cells = row["c"] as? [[String: Any]] else { return false }
+        let text = cells.map { MiniHTML.parse($0["h"] as? String ?? "").text }.joined(separator: " ")
+        return text.range(
+            of: #"\bno\s+(?:academic\s+history\s+)?records?\b"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
     }
 
     private static func isValidCourse(name: String) -> Bool {
@@ -256,7 +305,7 @@ enum SkywardHistoryAPI {
             #if DEBUG
             logger.error("Current gradebook response has no compatible stuGradesGrid")
             #endif
-            return []
+            throw SkywardError.invalidResponse("current gradebook grid is missing or incomplete")
         }
 
         // Course details (name, instructor, period, ids) from classDesc_ tables.
@@ -293,9 +342,11 @@ enum SkywardHistoryAPI {
         #endif
 
         var courses: [GradebookCourse] = []
+        var recognizedCourseRows = 0
         for row in rows {
             guard let cells = row["c"] as? [[String: Any]], !cells.isEmpty,
                   cells[0]["cId"] != nil else { continue }
+            recognizedCourseRows += 1
 
             var courseNumber: Int? = nil
             var gbId: String? = nil
@@ -312,12 +363,14 @@ enum SkywardHistoryAPI {
                 guard let bucket = gradeElement.attribute("data-bkt") else { continue }
                 courseNumber = course
                 let scoreText = gradeElement.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let score = Double(scoreText) {
+                if let score = AcademicScoreValue.finiteDouble(scoreText) {
                     scores.append((bucket, score))
                 }
             }
 
-            guard let courseNumber else { continue }
+            guard let courseNumber else {
+                throw SkywardError.invalidResponse("current gradebook course row is incomplete")
+            }
             let details = detailsById[courseNumber]
             courses.append(GradebookCourse(
                 course: courseNumber,
@@ -331,6 +384,9 @@ enum SkywardHistoryAPI {
                 section: details?.section,
                 gbId: gbId
             ))
+        }
+        if !rows.isEmpty, recognizedCourseRows == 0 {
+            throw SkywardError.invalidResponse("current gradebook has unrecognized populated rows")
         }
         #if DEBUG
         logger.debug("Current gradebook parsed course rows=\(courses.count, privacy: .public)")
@@ -459,7 +515,8 @@ enum SkywardHistoryAPI {
     }
 
     static func formatScore(_ score: Double) -> String {
-        score == score.rounded() ? String(Int(score)) : String(score)
+        guard score.isFinite, abs(score) <= AcademicScoreValue.magnitudeLimit else { return "" }
+        return score == score.rounded() ? String(Int(score)) : String(score)
     }
 
     private static func normalizedCourseName(_ name: String) -> String {

@@ -3,6 +3,10 @@
 A native Swift/SwiftUI rewrite of the React Native (Expo) app in `frontend/elevate`.
 Zero third-party dependencies — Apple frameworks only.
 
+The native rewrite is version **2.1.0** and requires iOS 17. The Expo **2.0.4**
+security release remains the supported update path for iOS 15 and 16; do not
+replace that compatibility release with this target.
+
 ## Requirements
 
 - Xcode 16+ (project uses filesystem-synchronized groups)
@@ -14,6 +18,9 @@ Zero third-party dependencies — Apple frameworks only.
 open Elevate.xcodeproj          # run from Xcode, or:
 xcodebuild -project Elevate.xcodeproj -target Elevate -sdk iphonesimulator build
 ```
+
+CI also runs the Swift package tests, an unsigned Release simulator build, and
+Xcode static analysis from `.github/workflows/ios.yml`.
 
 ## Architecture
 
@@ -36,6 +43,9 @@ xcodebuild -project Elevate.xcodeproj -target Elevate -sdk iphonesimulator build
   there is no backend dependency at runtime.
 - The app target retains the released Expo app's `com.zachwilson.elevate` bundle
   identifier so the native rewrite ships as an update, not a separate app.
+- On first launch after an Expo update, the app imports compatible SecureStore
+  records, migrates supported AsyncStorage what-if data, invalidates legacy
+  sessions, and removes plaintext legacy secrets before normal hydration.
 - Semester grades use the district policy: `40% RC_a + 40% RC_b + 20% final exam`
   (RC grades rounded first), falling back to the RC average without an exam grade.
 - GPA weighting: +10 for AP, +5 for Honors, with the same course-name exception

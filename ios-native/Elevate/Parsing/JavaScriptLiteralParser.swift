@@ -10,7 +10,7 @@ enum JavaScriptLiteralParser {
             throw ParseError.inputTooLarge
         }
         var parser = Parser(source)
-        return try parser.parseValue()
+        return try parser.parseDocument()
     }
 
     private enum ParseError: LocalizedError {
@@ -46,6 +46,13 @@ enum JavaScriptLiteralParser {
 
         init(_ source: String) {
             scalars = Array(source.unicodeScalars)
+        }
+
+        mutating func parseDocument() throws -> Any {
+            let value = try parseValue()
+            try skipTrivia()
+            guard current == nil else { throw ParseError.unexpectedCharacter }
+            return value
         }
 
         mutating func parseValue() throws -> Any {
@@ -113,6 +120,7 @@ enum JavaScriptLiteralParser {
             while true {
                 try skipTrivia()
                 if consume(",") {
+                    try recordValue()
                     array.append(NSNull())
                     continue
                 }

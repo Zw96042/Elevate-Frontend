@@ -115,7 +115,7 @@ struct ClassCardView: View {
 
     private var termScore: Double? {
         course.currentScores.first { $0.bucket == bucketLabel }?.score
-            ?? course.historicalGrades[term.historicalKey].flatMap { Double($0) }
+            ?? AcademicScoreValue.finiteDouble(course.historicalGrades[term.historicalKey])
     }
 
     private var bucketLabel: String {

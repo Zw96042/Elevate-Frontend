@@ -23,4 +23,19 @@ struct JavaScriptLiteralParserTests {
             _ = try JavaScriptLiteralParser.parse("{value:(function(){return 1})()}")
         }
     }
+
+    @Test("Rejects executable text after a valid literal")
+    func rejectsTrailingCode() {
+        #expect(throws: (any Error).self) {
+            _ = try JavaScriptLiteralParser.parse("{grid:{}}; globalThis.pwn()")
+        }
+    }
+
+    @Test("Array holes count toward the value limit")
+    func boundsSparseArrays() {
+        let source = "[" + String(repeating: ",", count: 250_001) + "]"
+        #expect(throws: (any Error).self) {
+            _ = try JavaScriptLiteralParser.parse(source)
+        }
+    }
 }

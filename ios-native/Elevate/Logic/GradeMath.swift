@@ -1,5 +1,41 @@
 import Foundation
 
+extension TermLabel {
+    /// Quarter buckets that contribute to this selected term. New semester
+    /// what-if assignments must choose one of these buckets so their effect is
+    /// unambiguous and can be recomputed from the matching gradebook.
+    var whatIfQuarterTerms: [TermLabel] {
+        switch self {
+        case .sm1: return [.q1, .q2]
+        case .sm2: return [.q3, .q4]
+        default: return [self]
+        }
+    }
+
+    /// Older builds stored semester-created assignments as SM1/SM2 even though
+    /// those buckets cannot be recalculated as a quarter. Treat them as part of
+    /// the semester's second quarter during one-time migration.
+    var legacyWhatIfQuarter: TermLabel? {
+        switch self {
+        case .sm1: return .q2
+        case .sm2: return .q4
+        default: return nil
+        }
+    }
+}
+
+enum TermSelectionPolicy {
+    /// Advance a term automatically only while the user is still following the
+    /// term that was selected automatically on the previous activation.
+    static func selectionOnActivation(
+        selected: TermLabel,
+        current: TermLabel,
+        lastAutomatic: TermLabel
+    ) -> TermLabel {
+        selected == lastAutomatic ? current : selected
+    }
+}
+
 // MARK: - Class name formatting (port of formatClassName.tsx)
 
 enum ClassNameFormatter {
@@ -84,7 +120,10 @@ enum CourseLevelDetector {
         if hasAPKeyword || matchesException(normalized, in: apExceptions) { return .ap }
 
         let hasHonorsKeyword = normalized.range(of: #"\bhonors?\b"#, options: .regularExpression) != nil
-        if hasHonorsKeyword || matchesException(normalized, in: honorsExceptions) { return .honors }
+        let hasTrailingHonorsMarker = normalized.range(of: #"\bh$"#, options: .regularExpression) != nil
+        if hasHonorsKeyword || hasTrailingHonorsMarker || matchesException(normalized, in: honorsExceptions) {
+            return .honors
+        }
 
         return .regular
     }
@@ -192,23 +231,35 @@ enum GradeCalculator {
         var courseTotal: Double? = totalWeight > 0 ? weightedSum / totalWeight : nil
 
         if let selectedTerm, selectedTerm.isSemester, let quarterTotals {
-            let rcA = quarterTotals.first.map { $0.rounded() }
-            let rcB = quarterTotals.second.map { $0.rounded() }
-            var semester: Double? = nil
-            if let rcA, let rcB {
-                if let exam = finalExamGrade {
-                    semester = rcA * 0.4 + rcB * 0.4 + exam * 0.2
-                } else {
-                    semester = (rcA + rcB) / 2
-                }
-            } else {
-                semester = rcA ?? rcB
-            }
+            let semester = semesterTotal(
+                firstQuarter: quarterTotals.first,
+                secondQuarter: quarterTotals.second,
+                finalExamGrade: finalExamGrade
+            )
             if selectedTerm == .sm1 { sm1 = semester } else { sm2 = semester }
             if let semester { courseTotal = semester }
         }
 
         return GradeSummary(courseTotal: courseTotal, categories: categories, sm1: sm1, sm2: sm2)
+    }
+
+    /// District semester policy. Quarter grades are rounded before the 40/40/20
+    /// calculation, matching posted report-card math. Without an exam, the two
+    /// quarters are averaged; a single available quarter remains usable.
+    static func semesterTotal(
+        firstQuarter: Double?,
+        secondQuarter: Double?,
+        finalExamGrade: Double?
+    ) -> Double? {
+        let first = firstQuarter?.rounded()
+        let second = secondQuarter?.rounded()
+        if let first, let second {
+            if let finalExamGrade {
+                return first * 0.4 + second * 0.4 + finalExamGrade * 0.2
+            }
+            return (first + second) / 2
+        }
+        return first ?? second
     }
 
     /// Normalizes weights over only the categories that have graded work.
@@ -291,7 +342,8 @@ enum GPACalculator {
 
                 guard let g = gradeStr, let score = Double(g), score.isFinite else { continue }
                 totalUnweighted += score
-                totalWeighted += score + CourseLevelDetector.level(for: course.courseName).gpaBonus
+                let weighted = score + CourseLevelDetector.level(for: course.courseName).gpaBonus
+                totalWeighted += min(weighted, 110)
                 count += 1
             }
 
@@ -300,7 +352,10 @@ enum GPACalculator {
                 for manualClass in manualClasses {
                     guard let grade = manualClass[keyPath: keyPath],
                           grade.isFinite, grade >= 0 else { continue }
-                    let score = min(max(grade, 0), 100)
+                    // Manual entry permits legitimate extra-credit grades. Keep
+                    // the unweighted contribution intact while bounding the
+                    // weighted scale to the district maximum.
+                    let score = max(grade, 0)
                     let bonus = CourseLevelDetector.level(for: manualClass.className).gpaBonus
                     totalUnweighted += score
                     totalWeighted += min(score + bonus, 110)

@@ -6,27 +6,37 @@ enum AuthService {
         guard let credentials = CredentialStore.load() else {
             throw SkywardError.missingSession
         }
-        let codes = try await AuthenticationCoordinator.shared.authenticate(credentials: credentials)
-        try SessionStore.save(codes)
-        return codes
+        return try await AuthenticationCoordinator.shared.authenticate(
+            credentials: credentials,
+            persistSession: true
+        )
     }
 
     /// Validates replacement credentials without changing the saved account.
     static func verify(credentials: SkywardCredentials) async throws -> SkywardSessionCodes {
-        try await AuthenticationCoordinator.shared.authenticate(credentials: credentials)
+        try await AuthenticationCoordinator.shared.authenticate(
+            credentials: credentials,
+            persistSession: false
+        )
     }
 
     /// Returns a valid session, logging in if needed.
     static func currentSession() async throws -> (codes: SkywardSessionCodes, baseUrl: String) {
-        if let codes = SessionStore.load() {
+        if let accountIdentifier = CredentialStore.currentAccountIdentifier,
+           let codes = SessionStore.load(accountIdentifier: accountIdentifier) {
             return (codes, CredentialStore.baseURL)
         }
         let codes = try await authenticate()
         return (codes, CredentialStore.baseURL)
     }
 
-    static func logout() {
+    static func logout() async {
+        await AuthenticationCoordinator.shared.cancel()
         try? SessionStore.clear()
+    }
+
+    static func cancelAuthentication() async {
+        await AuthenticationCoordinator.shared.cancel()
     }
 }
 
@@ -35,13 +45,25 @@ private actor AuthenticationCoordinator {
     static let shared = AuthenticationCoordinator()
     private var inFlight: Task<SkywardSessionCodes, Error>?
     private var inFlightCredentials: SkywardCredentials?
+    private var generation = 0
 
-    func authenticate(credentials: SkywardCredentials) async throws -> SkywardSessionCodes {
+    func authenticate(
+        credentials: SkywardCredentials,
+        persistSession: Bool
+    ) async throws -> SkywardSessionCodes {
+        let requestGeneration = generation
         if let inFlight, inFlightCredentials == credentials {
-            return try await inFlight.value
+            let codes = try await inFlight.value
+            return try finish(
+                codes: codes, credentials: credentials,
+                persistSession: persistSession, requestGeneration: requestGeneration
+            )
         }
         if let inFlight {
             _ = try? await inFlight.value
+            guard generation == requestGeneration, !Task.isCancelled else {
+                throw CancellationError()
+            }
         }
         let task = Task<SkywardSessionCodes, Error> {
             try await SkywardAuthAPI.authenticate(credentials: credentials)
@@ -54,7 +76,10 @@ private actor AuthenticationCoordinator {
                 inFlight = nil
                 inFlightCredentials = nil
             }
-            return codes
+            return try finish(
+                codes: codes, credentials: credentials,
+                persistSession: persistSession, requestGeneration: requestGeneration
+            )
         } catch {
             if inFlightCredentials == credentials {
                 inFlight = nil
@@ -62,6 +87,44 @@ private actor AuthenticationCoordinator {
             }
             throw error
         }
+    }
+
+    func cancel() {
+        generation &+= 1
+        inFlight?.cancel()
+        inFlight = nil
+        inFlightCredentials = nil
+    }
+
+    private func finish(
+        codes: SkywardSessionCodes,
+        credentials: SkywardCredentials,
+        persistSession: Bool,
+        requestGeneration: Int
+    ) throws -> SkywardSessionCodes {
+        guard AuthenticationRequestPolicy.permitsCompletion(
+            isCancelled: Task.isCancelled,
+            requestGeneration: requestGeneration,
+            currentGeneration: generation
+        ) else {
+            throw CancellationError()
+        }
+        if persistSession {
+            guard SessionPersistencePolicy.permitsSave(
+                requestedCredentials: credentials,
+                currentCredentials: CredentialStore.load(),
+                isCancelled: false,
+                requestGeneration: requestGeneration,
+                currentGeneration: generation
+            ) else {
+                throw CancellationError()
+            }
+            try SessionStore.save(
+                codes,
+                accountIdentifier: CredentialStore.accountIdentifier(for: credentials.username)
+            )
+        }
+        return codes
     }
 }
 
@@ -71,18 +134,52 @@ actor DataService {
     static let shared = DataService()
 
     private static let coursesCacheKey = "unifiedCourseData"
+    private static let messagesCacheKey = "skywardMessages"
     private static let coursesCacheMaxAge: TimeInterval = 30 * 60      // 30 min
+    private static let messagesCacheMaxAge: TimeInterval = 30 * 60     // 30 min
     private static let gradeInfoCacheMaxAge: TimeInterval = 5 * 60     // 5 min
 
     private var inFlightCourses: Task<[UnifiedCourseData], Error>?
     private var inFlightGradeInfo: [String: Task<GradeInfoResult, Error>] = [:]
     private var cacheGeneration = 0
 
+    func cancelAuthentication() async {
+        await AuthService.cancelAuthentication()
+    }
+
+    /// Last-known-good disk values remain available after expiry so AppStore
+    /// can retain them only when a real refresh fails, with an honest timestamp.
+    nonisolated func cachedCourses() -> JSONCacheRecord<[UnifiedCourseData]>? {
+        guard let cacheKey = Self.cacheKey(base: Self.coursesCacheKey) else { return nil }
+        let record = JSONCache.record(
+            [UnifiedCourseData].self,
+            key: cacheKey,
+            maxAge: Self.coursesCacheMaxAge
+        )
+        if let record {
+            _ = LegacyAsyncStorageMigration.bindPendingCourseData(to: record.value)
+        }
+        return record
+    }
+
+    nonisolated func cachedMessages() -> JSONCacheRecord<[SkywardMessage]>? {
+        guard let cacheKey = Self.cacheKey(base: Self.messagesCacheKey) else { return nil }
+        return JSONCache.record(
+            [SkywardMessage].self,
+            key: cacheKey,
+            maxAge: Self.messagesCacheMaxAge
+        )
+    }
+
     // MARK: - Combined course data
 
     func combinedCourses(forceRefresh: Bool = false) async throws -> [UnifiedCourseData] {
+        guard let cacheKey = Self.cacheKey(base: Self.coursesCacheKey) else {
+            throw SkywardError.missingSession
+        }
         if !forceRefresh,
-           let cached = JSONCache.load([UnifiedCourseData].self, key: Self.coursesCacheKey, maxAge: Self.coursesCacheMaxAge) {
+           let cached = JSONCache.load([UnifiedCourseData].self, key: cacheKey, maxAge: Self.coursesCacheMaxAge) {
+            _ = LegacyAsyncStorageMigration.bindPendingCourseData(to: cached)
             return cached
         }
         if let task = inFlightCourses {
@@ -101,7 +198,8 @@ actor DataService {
         }
         let courses = try await task.value
         guard generation == cacheGeneration else { throw CancellationError() }
-        JSONCache.save(courses, key: Self.coursesCacheKey)
+        JSONCache.save(courses, key: cacheKey)
+        _ = LegacyAsyncStorageMigration.bindPendingCourseData(to: courses)
         return courses
     }
 
@@ -111,9 +209,12 @@ actor DataService {
         #if DEBUG
         if let sample = SampleData.gradeInfo(for: params) { return sample }
         #endif
-        let cacheKey = [
+        let cacheBase = [
             "gradeInfo", params.stuId, params.corNumId, params.gbId, params.section, params.bucket,
         ].joined(separator: "_")
+        guard let cacheKey = Self.cacheKey(base: cacheBase) else {
+            throw SkywardError.missingSession
+        }
         if !forceRefresh,
            let cached = JSONCache.load(GradeInfoResult.self, key: cacheKey, maxAge: Self.gradeInfoCacheMaxAge) {
             return cached
@@ -140,10 +241,19 @@ actor DataService {
     // MARK: - Messages
 
     func loadMessages() async throws -> [SkywardMessage] {
-        try await Self.withSessionRetry { codes, baseUrl in
+        guard let cacheKey = Self.cacheKey(base: Self.messagesCacheKey) else {
+            throw SkywardError.missingSession
+        }
+        let generation = cacheGeneration
+        let messages = try await Self.withSessionRetry { codes, baseUrl in
             let messages = try await SkywardMessagesAPI.fetchMessages(sessionCodes: codes, baseUrl: baseUrl)
             return messages  // already in feed order (newest first)
         }
+        guard generation == cacheGeneration, !Task.isCancelled else {
+            throw CancellationError()
+        }
+        JSONCache.save(messages, key: cacheKey)
+        return messages
     }
 
     func loadMoreMessages(after lastMessageRowId: String, limit: Int = 10) async throws -> [SkywardMessage] {
@@ -164,10 +274,18 @@ actor DataService {
         for task in inFlightGradeInfo.values { task.cancel() }
         inFlightGradeInfo.removeAll()
         JSONCache.clear(prefix: Self.coursesCacheKey)
+        JSONCache.clear(prefix: Self.messagesCacheKey)
         JSONCache.clear(prefix: "gradeInfo_")
     }
 
     // MARK: - Helpers
+
+    private nonisolated static func cacheKey(base: String) -> String? {
+        AccountCacheNamespace.key(
+            base: base,
+            accountIdentifier: CredentialStore.currentAccountIdentifier
+        )
+    }
 
     /// Runs `operation` with a valid session, re-authenticating once on expiry.
     private static func withSessionRetry<T>(
@@ -177,7 +295,11 @@ actor DataService {
         do {
             return try await operation(codes, baseUrl)
         } catch SkywardError.sessionExpired {
-            try? SessionStore.clear()
+            if let accountIdentifier = CredentialStore.currentAccountIdentifier {
+                try? SessionStore.clear(accountIdentifier: accountIdentifier)
+            } else {
+                SessionStore.invalidateUnboundLegacySessions()
+            }
             let freshCodes = try await AuthService.authenticate()
             return try await operation(freshCodes, baseUrl)
         }
@@ -185,48 +307,7 @@ actor DataService {
 
     /// Flattens academic history years into the unified course list.
     static func transform(history: AcademicHistory) -> [UnifiedCourseData] {
-        var courses: [UnifiedCourseData] = []
-        for (_, yearData) in history {
-            for (storageKey, c) in yearData.courses {
-                let courseName = c.courseName ?? storageKey
-                let scores: [BucketScore] = [
-                    ("Q1", c.rc1), ("Q2", c.rc2), ("S1", c.sm1), ("EX1", c.ex1),
-                    ("Q3", c.rc3), ("Q4", c.rc4), ("S2", c.sm2), ("EX2", c.ex2),
-                ].compactMap { bucket, value in
-                    guard let value, let score = Double(value) else { return nil }
-                    return BucketScore(bucket: bucket, score: score)
-                }
-
-                courses.append(UnifiedCourseData(
-                    courseId: c.courseId,
-                    corNumId: c.corNumId ?? "",
-                    stuId: c.stuId ?? "",
-                    section: c.section ?? "",
-                    gbId: c.gbId ?? "",
-                    courseName: courseName,
-                    instructor: c.instructor,
-                    period: c.period,
-                    time: c.time,
-                    semester: inferSemester(c.terms),
-                    termLength: c.terms,
-                    gradeYear: yearData.grade,
-                    currentScores: scores,
-                    historicalGrades: HistoricalGrades(
-                        pr1: c.pr1, pr2: c.pr2, pr3: c.pr3, pr4: c.pr4,
-                        pr5: c.pr5, pr6: c.pr6, pr7: c.pr7, pr8: c.pr8,
-                        rc1: c.rc1, rc2: c.rc2, rc3: c.rc3, rc4: c.rc4,
-                        ex1: c.ex1, ex2: c.ex2,
-                        sm1: c.sm1, sm2: c.sm2, finalGrade: c.finalGrade
-                    )
-                ))
-            }
-        }
-        // Stable ordering: by grade year, then period, then name.
-        return courses.sorted {
-            if $0.gradeYear != $1.gradeYear { return ($0.gradeYear ?? 0) < ($1.gradeYear ?? 0) }
-            if $0.period != $1.period { return ($0.period ?? 99) < ($1.period ?? 99) }
-            return $0.courseName < $1.courseName
-        }
+        UnifiedCourseTransformer.transform(history: history)
     }
 
     static func inferSemester(_ terms: String) -> Semester {

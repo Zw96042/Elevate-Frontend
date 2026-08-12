@@ -52,11 +52,46 @@ enum WhatIfStore {
             return [:]
         }
         do {
-            return try JSONDecoder().decode([String: [WhatIfAssignment]].self, from: data)
+            let decoded = try JSONDecoder().decode([String: [WhatIfAssignment]].self, from: data)
+            let migration = migrateLegacySemesterAssignments(decoded)
+            if migration.didChange {
+                saveAllAssignments(migration.assignments)
+            }
+            return migration.assignments
         } catch {
             preserveCorruptData(data, for: assignmentsKey)
             return [:]
         }
+    }
+
+    /// Older builds saved assignments created from a semester screen under an
+    /// SM1/SM2 key. Those buckets do not identify which 40% quarter component
+    /// should change, so migrate them once to the semester's second quarter.
+    /// New UI requires an explicit quarter choice and never writes SM keys.
+    private static func migrateLegacySemesterAssignments(
+        _ assignments: [String: [WhatIfAssignment]]
+    ) -> (assignments: [String: [WhatIfAssignment]], didChange: Bool) {
+        var migrated = assignments
+        var didChange = false
+
+        for semester in [TermLabel.sm1, .sm2] {
+            guard let quarter = semester.legacyWhatIfQuarter else { continue }
+            let legacySuffix = "_\(semester.shortName)"
+            for key in migrated.keys.filter({ $0.hasSuffix(legacySuffix) }) {
+                let targetKey = String(key.dropLast(legacySuffix.count)) + "_\(quarter.shortName)"
+                var target = migrated[targetKey] ?? []
+                for var assignment in migrated[key] ?? [] {
+                    assignment.term = quarter.shortName
+                    if !target.contains(where: { $0.id == assignment.id }) {
+                        target.append(assignment)
+                    }
+                }
+                migrated[targetKey] = target
+                migrated.removeValue(forKey: key)
+                didChange = true
+            }
+        }
+        return (migrated, didChange)
     }
 
     private static func saveAllAssignments(_ all: [String: [WhatIfAssignment]]) {
@@ -68,11 +103,7 @@ enum WhatIfStore {
     /// Terms whose stored assignments are relevant when viewing `term`
     /// (a semester view includes both of its quarters).
     static func relevantTerms(for term: TermLabel) -> [String] {
-        switch term {
-        case .sm1: return ["Q1", "Q2", "SM1"]
-        case .sm2: return ["Q3", "Q4", "SM2"]
-        default: return [term.shortName]
-        }
+        term.whatIfQuarterTerms.map(\.shortName)
     }
 
     static func assignments(classKey: String, term: TermLabel) -> [WhatIfAssignment] {
@@ -113,6 +144,10 @@ enum WhatIfStore {
         var all = loadAllAssignments()
         for t in relevantTerms(for: term) {
             all.removeValue(forKey: "\(classKey)_\(t)")
+        }
+        // Defensive cleanup for a legacy value if migration could not persist.
+        if term.isSemester {
+            all.removeValue(forKey: "\(classKey)_\(term.shortName)")
         }
         saveAllAssignments(all)
         switch term {

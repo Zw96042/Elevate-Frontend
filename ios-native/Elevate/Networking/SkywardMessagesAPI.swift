@@ -8,7 +8,7 @@ enum SkywardMessagesAPI {
         }
         let initial = try await SkywardHTTP.post(url: initialUrl, fields: SkywardHTTP.sessionFields(sessionCodes))
         try SkywardHTTP.checkSessionExpired(initial)
-        return parseMessages(initial)
+        return try parseMessages(initial, context: .initialPage)
     }
 
     static func fetchMoreMessages(sessionCodes: SkywardSessionCodes, baseUrl: String,
@@ -21,15 +21,17 @@ enum SkywardMessagesAPI {
             let batch = try await fetchBatch(sessionCodes: sessionCodes, baseUrl: baseUrl, lastMessageRowId: lastId)
             if batch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { break }
             try SkywardHTTP.checkSessionExpired(batch)
-            let fragment = SkywardGradesAPI.extractCDATA(batch, tag: "output") ?? batch
+            let fragment = try extractMessageFragment(from: batch)
+            let parsedBatch = try parseMessages(fragment, context: .paginationFragment)
             allHTML.append(fragment)
             let newLastId = extractLastMessageId(batch)
             if newLastId == nil || newLastId == lastId { break }
             currentLastId = newLastId
-            totalLoaded += parseMessages(fragment).count
+            totalLoaded += parsedBatch.count
         }
 
-        return parseMessages(allHTML.joined())
+        guard !allHTML.isEmpty else { return [] }
+        return try parseMessages(allHTML.joined(), context: .paginationFragment)
     }
 
     private static func fetchBatch(sessionCodes: SkywardSessionCodes, baseUrl: String, lastMessageRowId: String) async throws -> String {
@@ -62,8 +64,47 @@ enum SkywardMessagesAPI {
         return wrap.attribute("data-wall-id")
     }
 
-    static func parseMessages(_ html: String) -> [SkywardMessage] {
+    static func extractMessageFragment(from raw: String) throws -> String {
+        if raw.range(of: "<output", options: [.caseInsensitive]) != nil {
+            guard let output = SkywardGradesAPI.extractCDATA(raw, tag: "output") else {
+                throw SkywardError.invalidResponse("incomplete message output envelope")
+            }
+            return output
+        }
+        return raw
+    }
+
+    enum ParseContext {
+        case initialPage
+        case paginationFragment
+    }
+
+    static func parseMessages(
+        _ html: String,
+        context: ParseContext = .initialPage
+    ) throws -> [SkywardMessage] {
+        try SkywardHTTP.checkSessionExpired(html)
         let root = MiniHTML.parse(html)
+        let messageItems = root.querySelectorAll("li.feedItem.allowRemove")
+
+        if messageItems.isEmpty {
+            switch context {
+            case .initialPage:
+                let hasFeedAnchor = root.querySelector("#messageFeed") != nil
+                    || root.querySelector("#messageWall") != nil
+                    || root.querySelector("#messageCenter") != nil
+                    || root.querySelector(".messageFeed") != nil
+                    || root.querySelector(".messageList") != nil
+                guard hasFeedAnchor else {
+                    throw SkywardError.invalidResponse("message feed not found")
+                }
+            case .paginationFragment:
+                guard html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw SkywardError.invalidResponse("message fragment has no feed items")
+                }
+            }
+            return []
+        }
 
         // Message bodies arrive inside JS: $('<var>…</var>').appendTo('#messageText_…');
         var contentMap: [String: [(content: String, index: Int)]] = [:]
@@ -81,8 +122,17 @@ enum SkywardMessagesAPI {
         }
 
         var messages: [SkywardMessage] = []
-        for li in root.querySelectorAll("li.feedItem.allowRemove") {
-            guard let wrap = li.querySelector(".messageWrap") else { continue }
+        for li in messageItems {
+            guard let wrap = li.querySelector(".messageWrap"),
+                  let messageRowId = wrap.attribute("data-wall-id"),
+                  !messageRowId.isEmpty else {
+                throw SkywardError.invalidResponse("message item is missing its identity")
+            }
+            guard wrap.querySelector(".messageHead") != nil,
+                  let messageBody = wrap.querySelector(".messageBody"),
+                  messageBody.querySelector(".text") != nil else {
+                throw SkywardError.invalidResponse("message item is structurally incomplete")
+            }
             let rawClassAttr = wrap.attribute("class") ?? ""
 
             var className = "Administrator"
@@ -116,11 +166,13 @@ enum SkywardMessagesAPI {
                 content = pieces.sorted { $0.index < $1.index }.map(\.content).joined(separator: "\n\n")
             }
 
-            let messageRowId = wrap.attribute("data-wall-id") ?? ""
             messages.append(SkywardMessage(
                 className: className, content: content, date: date,
                 from: from, messageRowId: messageRowId, subject: subject
             ))
+        }
+        guard messages.count == messageItems.count else {
+            throw SkywardError.invalidResponse("message feed could not be parsed completely")
         }
         return messages
     }
@@ -138,16 +190,16 @@ enum SkywardMessagesAPI {
 
     private static func render(node: HTMLNode, into out: inout String) {
         if node.isText {
-            out += HTMLEntities.decode(node.textContentRaw)
+            out += markdownEscapedText(HTMLEntities.decode(node.textContentRaw))
             return
         }
         switch node.tagName {
         case "a":
             let text = node.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let href = node.attribute("href"), !href.isEmpty {
-                out += "[\(text)](\(href))"
+            if let href = node.attribute("href"), let url = safeMessageURL(href) {
+                out += "[\(markdownEscapedLabel(text))](\(url.absoluteString))"
             } else {
-                out += text
+                out += markdownEscapedText(text)
             }
         case "b", "strong":
             out += "**"
@@ -172,5 +224,25 @@ enum SkywardMessagesAPI {
         default:
             for child in node.children { render(node: child, into: &out) }
         }
+    }
+
+    static func safeMessageURL(_ value: String) -> URL? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var components = URLComponents(string: trimmed),
+              components.scheme?.lowercased() == "https",
+              components.host?.isEmpty == false else { return nil }
+        components.scheme = "https"
+        return components.url
+    }
+
+    private static func markdownEscapedLabel(_ value: String) -> String {
+        markdownEscapedText(value)
+    }
+
+    private static func markdownEscapedText(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "[", with: "\\[")
+            .replacingOccurrences(of: "]", with: "\\]")
     }
 }
