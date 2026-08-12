@@ -1,5 +1,11 @@
 import { UnifiedCourseData } from '@/lib/services';
-import { Assignment } from '@/interfaces/interfaces';
+
+type ShowoffAssignment = {
+  grade?: string;
+  totalPoints?: string;
+  earnedPoints?: string;
+  [key: string]: unknown;
+};
 
 /**
  * Transforms course data for showoff mode - sets all grades to 100/100
@@ -8,15 +14,20 @@ import { Assignment } from '@/interfaces/interfaces';
 export function transformDataForShowoffMode(coursesData: UnifiedCourseData[] | null): UnifiedCourseData[] | null {
   if (!coursesData) return null;
 
-  return coursesData.map(course => ({
-    ...course,
-    // Transform assignments to all be 100/100
-    assignments: course.assignments?.map(assignment => ({
+  return coursesData.map(course => {
+    const assignments = (course as UnifiedCourseData & {
+      assignments?: ShowoffAssignment[];
+    }).assignments;
+
+    return {
+      ...course,
+      // Transform assignments to all be 100/100
+      assignments: assignments?.map(assignment => ({
       ...assignment,
       grade: '100',
       totalPoints: '100',
       earnedPoints: '100'
-    })) || [],
+      })) || [],
     
     // Set semester grades to 100
     semester1Grade: 100,
@@ -48,8 +59,9 @@ export function transformDataForShowoffMode(coursesData: UnifiedCourseData[] | n
       sm1: '100',
       sm2: '100',
       finalGrade: '100'
-    }
-  }));
+      }
+    };
+  });
 }
 
 /**

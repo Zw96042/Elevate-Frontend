@@ -3,8 +3,8 @@ import React, { useRef, useState, useMemo, useCallback } from 'react'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import formatClassName from '@/utils/formatClassName';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generateUniqueId } from '@/utils/uniqueId';
+import { getAccountScopedItem, setAccountScopedItem } from '@/lib/utils/account-scoped-storage';
 
 const AssignmentDetails = () => {
   const router = useRouter();
@@ -18,20 +18,11 @@ const AssignmentDetails = () => {
   const parsedMeta = useMemo(() => {
     try {
       const metaData = meta ? JSON.parse(meta.toString()) : [];
-      
-      // Temporary test: simulate missing assignment metadata
-      if (name?.toString() === 'PS 1A 1B' && grade?.toString() === '*') {
-        return [{
-          type: 'missing',
-          note: 'This assignment is marked missing'
-        }];
-      }
-      
       return metaData;
     } catch {
       return [];
     }
-  }, [meta, name, grade]);
+  }, [meta]);
 
   // Memoize initial values to prevent unnecessary recalculations
   const initialGradeValue = useMemo(() => 
@@ -82,7 +73,7 @@ const AssignmentDetails = () => {
     if (category?.toString() === "Final Exam") {
       const examKey = `${className}_${corNumIdParam}_${sectionParam}_${gbIdParam}`;
       const examType = term?.toString() || '';
-      const existing = JSON.parse(await AsyncStorage.getItem("finalExamGrades") ?? "{}");
+      const existing = JSON.parse(await getAccountScopedItem("finalExamGrades") ?? "{}");
       
       if (!existing[examKey]) {
         existing[examKey] = {};
@@ -90,12 +81,12 @@ const AssignmentDetails = () => {
       
       const formattedGrade = gradeValue === '*' ? '*' : parseFloat(Number(gradeValue).toFixed(2));
       existing[examKey][examType] = formattedGrade.toString();
-      await AsyncStorage.setItem("finalExamGrades", JSON.stringify(existing));
+      await setAccountScopedItem("finalExamGrades", JSON.stringify(existing));
       return;
     }
     
     // Regular assignment handling
-    const existing = JSON.parse(await AsyncStorage.getItem('artificialAssignments') ?? '{}');
+    const existing = JSON.parse(await getAccountScopedItem('artificialAssignments') ?? '{}');
     const formattedGrade = gradeValue === '*' ? '*' : parseFloat(Number(gradeValue).toFixed(2));
     const formattedOutOf = Number(outOfValue);
 
@@ -135,7 +126,7 @@ const AssignmentDetails = () => {
     } else {
       updated[storageKey] = updatedClassList;
     }
-    await AsyncStorage.setItem('artificialAssignments', JSON.stringify(updated));
+    await setAccountScopedItem('artificialAssignments', JSON.stringify(updated));
   }, [gradeValue, outOfValue, assignmentId, name, category, dueDate, parsedMeta, classParam, classId, corNumId, section, gbId, term]);
 
   const saveAndUpdate = useCallback(async () => {
@@ -170,7 +161,7 @@ const AssignmentDetails = () => {
                 <View className='flex-row mt-4'>
                     <View className='flex-1 items-center'>
                         <Text className='text-[#7398e6] font-bold text-sm'>Due Date</Text>
-                        <Text className='text-main'>{dueDate?.toString().replaceAll("/", "-") || ''}</Text>
+                        <Text className='text-main'>{dueDate?.toString().replaceAll("/", "-") || '—'}</Text>
                     </View>
                     <View className='flex-1 items-center'>
                         <Text className='text-[#7398e6] font-bold text-sm'>Percentage</Text>
@@ -293,7 +284,7 @@ const AssignmentDetails = () => {
                       if (category?.toString() === "Final Exam") {
                         const examKey = `${className}_${corNumIdParam}_${sectionParam}_${gbIdParam}`;
                         const examType = term?.toString() || '';
-                        const existing = JSON.parse(await AsyncStorage.getItem("finalExamGrades") ?? "{}");
+                        const existing = JSON.parse(await getAccountScopedItem("finalExamGrades") ?? "{}");
                         
                         if (existing[examKey] && existing[examKey][examType]) {
                           delete existing[examKey][examType];
@@ -303,14 +294,14 @@ const AssignmentDetails = () => {
                             delete existing[examKey];
                           }
                           
-                          await AsyncStorage.setItem("finalExamGrades", JSON.stringify(existing));
+                          await setAccountScopedItem("finalExamGrades", JSON.stringify(existing));
                         }
                         router.back();
                         return;
                       }
                       
                       // Regular assignment deletion
-                      const existing = JSON.parse(await AsyncStorage.getItem('artificialAssignments') ?? '{}');
+                      const existing = JSON.parse(await getAccountScopedItem('artificialAssignments') ?? '{}');
                       // Check for the assignment in the current term format
                       const currentStorageKey = `${className}_${corNumIdParam}_${sectionParam}_${gbIdParam}_${term}`;
                       
@@ -344,7 +335,7 @@ const AssignmentDetails = () => {
                         }
                       }
                       
-                      await AsyncStorage.setItem('artificialAssignments', JSON.stringify(updated));
+                      await setAccountScopedItem('artificialAssignments', JSON.stringify(updated));
                       router.back();
                     }}
                     className='mt-4 mx-4 bg-cardColor items-center rounded-lg'

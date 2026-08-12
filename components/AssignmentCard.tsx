@@ -29,14 +29,13 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
     isMissing: meta?.some(m => m.type === 'missing'),
     isNoCount: meta?.some(m => m.type === 'noCount'),
     isAbsent: meta?.some(m => m.type === 'absent'),
-    testIsMissing: name === 'PS 1A 1B' && grade === '*'
-  }), [meta, name, grade]);
+  }), [meta]);
 
-  const { isMissing, isNoCount, isAbsent, testIsMissing } = metaChecks;
+  const { isMissing, isNoCount, isAbsent } = metaChecks;
   
   // Memoize metadata display configuration
   const metaDisplay = useMemo(() => {
-    if (isMissing || testIsMissing) {
+    if (isMissing) {
       return {
         label: 'Missing',
         bgColor: theme === 'dark' ? 'bg-red-900' : 'bg-red-500',
@@ -58,15 +57,15 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
       };
     }
     return null;
-  }, [isMissing, testIsMissing, isNoCount, isAbsent, theme]);
+  }, [isMissing, isNoCount, isAbsent, theme]);
   
   // Memoize styling functions
   const cardStyle = useMemo(() => {
-    if (isMissing || testIsMissing) {
+    if (isMissing) {
       return 'w-full h-20 rounded-2xl bg-cardColor flex-row items-center justify-between border-[0.5px] border-red-500';
     }
     return 'w-full h-20 rounded-2xl bg-cardColor flex-row items-center justify-between';
-  }, [isMissing, testIsMissing]);
+  }, [isMissing]);
   
   const textStyle = useMemo(() => {
     if (isNoCount) {
@@ -125,7 +124,9 @@ const AssignmentCard = ({ id, className, name, term, category, grade, outOf, due
                             )}
                         </View>
                     </View>
-                    <Text className='text-xs text-secondary ml-5 mb-2'>Due {dueDate}</Text>
+                    {dueDate ? (
+                      <Text className='text-xs text-secondary ml-5 mb-2'>Due {dueDate}</Text>
+                    ) : null}
                 </View>
                 <View className='flex-row items-center'>
                     <View className="flex-row items-center gap-2 mr-1">

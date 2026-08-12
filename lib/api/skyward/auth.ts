@@ -33,6 +33,7 @@ export async function authenticateWithSkyward(
 
   const response = await axios.post(authenticationURL, formData.toString(), {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    timeout: 30000,
   });
 
   const parsed = parseAuthResponse(response.data);
@@ -46,26 +47,27 @@ export async function authenticateWithSkyward(
 /**
  * Parse login response string
  */
-function parseAuthResponse(postResponse: string): SkywardSessionCodes | null {
+export function parseAuthResponse(postResponse: string): SkywardSessionCodes | null {
   if (!postResponse) return null;
 
-  const dissectedString = postResponse.substring(4, postResponse.length - 5);
-  const toks = dissectedString.split('^');
+  const response = postResponse.trim();
+  const root = parse(response);
+  const rootText = (root.text || response).toLowerCase();
 
-  if (toks.length < 15) {
-    const root = parse(postResponse);
-    const rootText = (root.text || postResponse || '').toLowerCase();
-
-    if (
-      rootText.includes('invalid username or password') ||
-      rootText.includes('invalid user') ||
-      rootText.includes('invalid login')
-    ) {
-      throw new Error('Invalid username or password');
-    }
-
-    throw new Error(`Authentication parsing failed: ${rootText || 'Unknown error'}`);
+  if (
+    rootText.includes('invalid username or password') ||
+    rootText.includes('invalid user') ||
+    rootText.includes('invalid login')
+  ) {
+    throw new Error('Invalid username or password');
   }
+
+  if (!response.startsWith('<li>') || !response.endsWith('</li>')) {
+    throw new Error('Skyward returned an unsupported authentication response');
+  }
+
+  const dissectedString = response.substring(4, response.length - 5);
+  const toks = dissectedString.split('^');
 
   // Find the first non-empty token to determine offset
   // Some responses have leading empty tokens (^^^^) which shifts all indices
@@ -74,32 +76,18 @@ function parseAuthResponse(postResponse: string): SkywardSessionCodes | null {
     offset++;
   }
 
-  let dwd: string, wfaacl: string, encses: string, userType: string, sessionid: string;
-
-  if (offset === 0) {
-    // Standard format
-    dwd = toks[0];
-    wfaacl = toks[3];
-    encses = toks[14];
-    userType = toks[6];
-    sessionid = `${toks[1]}\x15${toks[2]}`;
-  } else {
-    // Offset format - tokens are shifted due to leading empty values
-    dwd = toks[offset] || '';
-    const sessionPart1 = toks[offset + 1] || '';
-    const sessionPart2 = toks[offset + 2] || '';
-    wfaacl = toks[offset + 3] || '';
-    userType = toks[offset + 4] || '2';
-    encses = toks[14] || '';
-    sessionid = `${sessionPart1}\x15${sessionPart2}`;
+  if (toks.length < offset + 15) {
+    throw new Error('Skyward returned an unsupported authentication response');
   }
+
+  const dwd = toks[offset];
+  const wfaacl = toks[offset + 3];
+  const encses = toks[offset + 14];
+  const userType = toks[offset + 6];
+  const sessionid = `${toks[offset + 1]}\x15${toks[offset + 2]}`;
 
   // Validate we got the essential codes
   if (!dwd || !wfaacl || !encses) {
-    console.error('❌ Auth parsing: Missing essential session codes', {
-      dwd: !!dwd, wfaacl: !!wfaacl, encses: !!encses,
-      offset, tokensCount: toks.length
-    });
     throw new Error('Failed to extract session codes from Skyward response');
   }
 

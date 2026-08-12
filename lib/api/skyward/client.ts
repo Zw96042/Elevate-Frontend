@@ -1,6 +1,7 @@
 // Main Skyward API client with centralized error handling
 import { SessionManager } from '../../utils/session-manager';
 import { SkywardSessionCodes } from '../../types/api';
+import { logger, Modules } from '../../utils/logger';
 
 export class SkywardAPIError extends Error {
   code?: string;
@@ -47,7 +48,7 @@ export async function getRequiredSessionData(): Promise<{
  * Handle API errors consistently
  */
 export function handleAPIError(error: any, context: string): never {
-  console.error(`❌ ${context}:`, error);
+  logger.error(Modules.API_AUTH, context, error);
 
   if (isSessionExpiredError(error)) {
     throw new SkywardAPIError('Session expired', 'SESSION_EXPIRED', 401);
@@ -57,9 +58,10 @@ export function handleAPIError(error: any, context: string): never {
     throw error;
   }
 
+  const isTransportError = error?.name === 'AxiosError' || error?.config || error?.request;
   throw new SkywardAPIError(
-    error.message || 'Unknown error occurred',
+    isTransportError ? 'Skyward request failed' : error.message || 'Unknown error occurred',
     error.code,
-    error.statusCode
+    error.response?.status ?? error.statusCode
   );
 }

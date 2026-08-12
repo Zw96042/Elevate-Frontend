@@ -1,9 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DeviceEventEmitter } from 'react-native';
 import { SkywardAuth } from '@/lib';
 import { MessageService } from '@/lib/services';
 import Burnt from 'burnt';
+import { logger, Modules } from '@/lib/utils/logger';
+import {
+  clearInboxDataCache,
+  getAccountDataGeneration,
+  isAccountDataCurrent,
+  writeAccountDataCache,
+} from '@/lib/utils/account-data-cache';
 
 // Cache configuration
 const INBOX_CACHE_KEY = 'cachedInboxMessages';
@@ -23,9 +30,11 @@ export function useInboxCache() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState<number>(0);
+  const latestLoadID = useRef(0);
+  const latestPaginationID = useRef(0);
 
   // Check if cache is valid
-  const isCacheValid = async (): Promise<boolean> => {
+  const isCacheValid = async (generation: number): Promise<boolean> => {
     try {
       const timestampStr = await AsyncStorage.getItem(INBOX_TIMESTAMP_KEY);
       if (!timestampStr) return false;
@@ -40,33 +49,33 @@ export function useInboxCache() {
         maxAge: Math.round(CACHE_DURATION / (1000 * 60 * 60)) // hours
       });
       
-      return isValid;
+      return isValid && isAccountDataCurrent(generation);
     } catch (error) {
-      console.error('❌ Inbox cache validity check failed:', error);
+      logger.error(Modules.MESSAGE, 'Inbox cache validity check failed', error);
       return false;
     }
   };
 
   // Get cached messages
-  const getCachedMessages = async (): Promise<Message[] | null> => {
+  const getCachedMessages = async (generation: number): Promise<Message[] | null> => {
     try {
-      const isValid = await isCacheValid();
+      const isValid = await isCacheValid(generation);
       if (!isValid) return null;
       
       const cachedDataStr = await AsyncStorage.getItem(INBOX_CACHE_KEY);
       if (cachedDataStr) {
         const cachedData: CachedInboxData = JSON.parse(cachedDataStr);
         console.log('✅ Using cached inbox messages:', cachedData.messages.length, 'messages');
-        return cachedData.messages;
+        return isAccountDataCurrent(generation) ? cachedData.messages : null;
       }
     } catch (error) {
-      console.error('❌ Failed to get cached inbox messages:', error);
+      logger.error(Modules.MESSAGE, 'Failed to read inbox cache', error);
     }
     return null;
   };
 
   // Cache messages
-  const cacheMessages = async (messages: Message[]): Promise<void> => {
+  const cacheMessages = async (messages: Message[], generation: number): Promise<boolean> => {
     try {
       const cachedData: CachedInboxData = {
         messages,
@@ -74,42 +83,49 @@ export function useInboxCache() {
         totalCount: messages.length
       };
       
-      await AsyncStorage.multiSet([
+      const written = await writeAccountDataCache([
         [INBOX_CACHE_KEY, JSON.stringify(cachedData)],
         [INBOX_TIMESTAMP_KEY, Date.now().toString()]
-      ]);
+      ], generation);
       
-      console.log('💾 Cached inbox messages:', messages.length, 'messages');
+      if (written) console.log('💾 Cached inbox messages:', messages.length, 'messages');
+      return written;
     } catch (error) {
-      console.error('❌ Failed to cache inbox messages:', error);
+      logger.error(Modules.MESSAGE, 'Failed to cache inbox messages', error);
+      return false;
     }
   };
 
   // Clear cache (useful for force refresh)
   const clearCache = async (): Promise<void> => {
     try {
-      await AsyncStorage.multiRemove([INBOX_CACHE_KEY, INBOX_TIMESTAMP_KEY]);
+      await clearInboxDataCache();
       console.log('🗑️ Inbox cache cleared');
     } catch (error) {
-      console.error('❌ Failed to clear inbox cache:', error);
+      logger.error(Modules.MESSAGE, 'Failed to clear inbox cache', error);
     }
   };
 
   // Merge new messages with existing ones (avoiding duplicates)
-  const mergeMessages = (existing: Message[], newMessages: Message[]): Message[] => {
-    const existingIds = new Set(existing.map(msg => msg.messageRowId));
-    const uniqueNewMessages = newMessages.filter(msg => !existingIds.has(msg.messageRowId));
-    
-    // Combine and sort by date (newest first)
-    const combined = [...existing, ...uniqueNewMessages];
+  const mergeMessages = (existing: Message[], freshFirstPage: Message[]): Message[] => {
+    const freshIDs = new Set(freshFirstPage.map(message => message.messageRowId));
+    // Fresh rows win so edits to an existing message are not kept stale. Older
+    // paginated rows stay available behind the refreshed first page.
+    const combined = [
+      ...freshFirstPage,
+      ...existing.filter(message => !freshIDs.has(message.messageRowId)),
+    ];
     return combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   };
 
   // Load messages with caching
   const loadMessagesWithCache = async (forceRefresh: boolean = false): Promise<void> => {
+    const requestID = ++latestLoadID.current;
+    const generation = getAccountDataGeneration();
     setLoading(true);
     
     const hasCreds = await SkywardAuth.hasCredentials();
+    if (!isAccountDataCurrent(generation) || requestID !== latestLoadID.current) return;
     setCredentialsSet(hasCreds);
     
     if (!hasCreds) {
@@ -121,78 +137,92 @@ export function useInboxCache() {
     try {
       // If not forcing refresh, try cache first
       if (!forceRefresh) {
-        const cachedMessages = await getCachedMessages();
-        if (cachedMessages && cachedMessages.length > 0) {
+        const cachedMessages = await getCachedMessages(generation);
+        if (!isAccountDataCurrent(generation) || requestID !== latestLoadID.current) return;
+        if (cachedMessages !== null) {
           console.log('📧 Using cached inbox messages, no refresh needed');
           setMessages(cachedMessages);
           setLoading(false);
           setLastFetchTime(Date.now());
           
           // Check for new messages in background (don't wait for it)
-          loadNewMessagesInBackground(cachedMessages);
+          void loadNewMessagesInBackground(cachedMessages, generation, requestID);
           return;
         }
       }
 
       // Load fresh messages using MessageService
       const result = await MessageService.loadMessages();
+      if (!isAccountDataCurrent(generation) || requestID !== latestLoadID.current) return;
       
       if (!result.success) {
         throw new Error(result.error || 'Failed to load messages');
       }
       
-      if (result.messages.length === 0) {
-        throw new Error('No messages found');
-      }
-      
       setMessages(result.messages);
-      await cacheMessages(result.messages);
+      await cacheMessages(result.messages, generation);
       setLastFetchTime(Date.now());
       
     } catch (error: any) {
-      console.error('Error loading messages:', error);
+      logger.error(Modules.MESSAGE, 'Error loading messages', error);
       throw error;
     } finally {
-      setLoading(false);
+      if (requestID === latestLoadID.current) setLoading(false);
     }
   };
 
   // Load new messages in background and merge with existing
-  const loadNewMessagesInBackground = async (existingMessages: Message[]): Promise<void> => {
+  const loadNewMessagesInBackground = async (
+    existingMessages: Message[],
+    generation: number,
+    requestID: number
+  ): Promise<void> => {
     try {
       console.log('🔄 Checking for new messages in background...');
       const result = await MessageService.loadMessages();
+      if (!isAccountDataCurrent(generation) || requestID !== latestLoadID.current) return;
       
-      if (result.success && result.messages.length > existingMessages.length) {
+      const existingByID = new Map(
+        existingMessages.map(message => [message.messageRowId, JSON.stringify(message)])
+      );
+      const firstPageChanged = result.success && result.messages.some(message =>
+        existingByID.get(message.messageRowId) !== JSON.stringify(message)
+      ) || result.success && result.messages.length === 0 && existingMessages.length > 0;
+      if (result.success && firstPageChanged) {
         console.log('📧 Found new messages, updating cache...');
-        const mergedMessages = mergeMessages(existingMessages, result.messages);
+        const mergedMessages = result.messages.length === 0
+          ? []
+          : mergeMessages(existingMessages, result.messages);
         setMessages(mergedMessages);
-        await cacheMessages(mergedMessages);
+        await cacheMessages(mergedMessages, generation);
       }
     } catch (error) {
-      console.log('⚠️ Background message check failed (this is okay):', error);
+      logger.debug(Modules.MESSAGE, 'Background message check failed');
     }
   };
 
   // Load more messages (for pagination)
   const handleLoadMoreMessages = async (): Promise<void> => {
     if (loadingMore || messages.length === 0) return;
+    const requestID = ++latestPaginationID.current;
+    const generation = getAccountDataGeneration();
     
     setLoadingMore(true);
     const lastMessage = messages[messages.length - 1];
     
     try {
       const result = await MessageService.loadMoreMessages(lastMessage.messageRowId, 10);
+      if (!isAccountDataCurrent(generation) || requestID !== latestPaginationID.current) return;
       
       if (result.success && result.messages.length > 0) {
         const updatedMessages = [...messages, ...result.messages];
         setMessages(updatedMessages);
-        await cacheMessages(updatedMessages);
+        await cacheMessages(updatedMessages, generation);
       }
     } catch (err) {
-      console.error("Failed to fetch more messages", err);
+      logger.error(Modules.MESSAGE, 'Failed to fetch more messages', err);
     } finally {
-      setLoadingMore(false);
+      if (requestID === latestPaginationID.current) setLoadingMore(false);
     }
   };
 
@@ -211,12 +241,18 @@ export function useInboxCache() {
   useEffect(() => {
     const handleValidCreds = async () => {
       setCredentialsSet(true);
-      await loadMessagesWithCache(false);
+      setMessages([]);
+      await clearCache();
+      await loadMessagesWithCache(true);
     };
 
     const handleInvalidCreds = async () => {
+      latestLoadID.current += 1;
+      latestPaginationID.current += 1;
       setCredentialsSet(false);
       setMessages([]);
+      setLoading(false);
+      setLoadingMore(false);
       await clearCache();
     };
 

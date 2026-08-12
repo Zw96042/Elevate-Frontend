@@ -4,6 +4,7 @@ import { AuthService } from './auth-service';
 import { RequestDeduplicator } from '../utils/request-deduplicator';
 import { Message } from '../types/api';
 import { logger, Modules, log } from '../utils/logger';
+import { getAccountDataGeneration, isAccountDataCurrent } from '../utils/account-data-cache';
 
 export interface MessageResult {
   messages: Message[];
@@ -18,6 +19,7 @@ export class MessageService {
    * Load messages with automatic retry on session expiration
    */
   static async loadMessages(retryCount = 0): Promise<MessageResult> {
+    const generation = getAccountDataGeneration();
     const endTimer = logger.time(Modules.MESSAGE, 'loadMessages');
     
     if (retryCount > 1) {
@@ -35,14 +37,20 @@ export class MessageService {
           logger.error(Modules.MESSAGE, 'Authentication failed', authResult.error);
           return { messages: [], success: false, error: authResult.error };
         }
+        if (!isAccountDataCurrent(generation)) {
+          return { messages: [], success: false, error: 'Account changed while loading messages' };
+        }
         return this.loadMessages(retryCount + 1);
       }
 
       // Use request deduplication
-      const result = await RequestDeduplicator.deduplicate(MESSAGES_REQUEST_KEY, async () => {
+      const result = await RequestDeduplicator.deduplicate(`${MESSAGES_REQUEST_KEY}_${generation}`, async () => {
         try {
           const { sessionCodes, baseUrl } = await getRequiredSessionData();
           const data = await fetchMessages(sessionCodes, baseUrl);
+          if (!isAccountDataCurrent(generation)) {
+            return { messages: [], success: false, error: 'Account changed while loading messages' };
+          }
 
           // Sort by date
           const sorted = data.sort(
@@ -57,6 +65,9 @@ export class MessageService {
       });
       
       endTimer();
+      if (!isAccountDataCurrent(generation)) {
+        return { messages: [], success: false, error: 'Account changed while loading messages' };
+      }
       return result;
     } catch (error: any) {
       // Handle session expiration
@@ -66,6 +77,9 @@ export class MessageService {
         if (!authResult.success) {
           logger.error(Modules.MESSAGE, 'Re-authentication failed', authResult.error);
           return { messages: [], success: false, error: authResult.error };
+        }
+        if (!isAccountDataCurrent(generation)) {
+          return { messages: [], success: false, error: 'Account changed while loading messages' };
         }
         return this.loadMessages(retryCount + 1);
       }
@@ -84,6 +98,7 @@ export class MessageService {
     limit: number = 10,
     retryCount = 0
   ): Promise<MessageResult> {
+    const generation = getAccountDataGeneration();
     logger.debug(Modules.MESSAGE, `Loading more messages (limit: ${limit})`);
     
     if (retryCount > 1) {
@@ -100,11 +115,17 @@ export class MessageService {
         if (!authResult.success) {
           return { messages: [], success: false, error: authResult.error };
         }
+        if (!isAccountDataCurrent(generation)) {
+          return { messages: [], success: false, error: 'Account changed while loading messages' };
+        }
         return this.loadMoreMessages(lastMessageId, limit, retryCount + 1);
       }
 
       const { sessionCodes, baseUrl } = await getRequiredSessionData();
       const data = await fetchMoreMessages(sessionCodes, baseUrl, lastMessageId, limit);
+      if (!isAccountDataCurrent(generation)) {
+        return { messages: [], success: false, error: 'Account changed while loading messages' };
+      }
 
       logger.success(Modules.MESSAGE, `Loaded ${data.length} more messages`);
       return { messages: data, success: true };
@@ -115,6 +136,9 @@ export class MessageService {
         const authResult = await AuthService.authenticate();
         if (!authResult.success) {
           return { messages: [], success: false, error: authResult.error };
+        }
+        if (!isAccountDataCurrent(generation)) {
+          return { messages: [], success: false, error: 'Account changed while loading messages' };
         }
         return this.loadMoreMessages(lastMessageId, limit, retryCount + 1);
       }

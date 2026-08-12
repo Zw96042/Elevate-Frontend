@@ -3,6 +3,7 @@ import axios from 'axios';
 import { parse } from 'node-html-parser';
 import { SkywardSessionCodes, Message } from '../../types/api';
 import { logger, Modules, log } from '../../utils/logger';
+import { safeMessageURL } from '../../utils/message-links';
 
 /**
  * Fetch all messages from Skyward directly
@@ -14,18 +15,15 @@ export async function fetchMessages(
   const startTime = Date.now();
   log.api.request(Modules.API_MESSAGES, 'sfhome01.w');
   
-  let allMessagesHtml = '';
-  let lastMessageId: string | null = null;
-  let keepLoading = true;
-  let count = 0;
-
   try {
-    // Initial fetch
+    // Return the first page immediately. Older pages are loaded through the
+    // UI's explicit pagination path instead of blocking initial rendering.
     const initialPostData = new URLSearchParams({ ...sessionCodes });
     const initialUrl = baseUrl + 'sfhome01.w';
     
     const initialResponse = await axios.post(initialUrl, initialPostData.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      timeout: 30000,
     });
 
     if (
@@ -37,54 +35,10 @@ export async function fetchMessages(
       throw error;
     }
 
-    allMessagesHtml += initialResponse.data;
-    lastMessageId = extractLastMessageId(initialResponse.data);
-    logger.debug(Modules.API_MESSAGES, 'Initial batch loaded');
-
-    // Load more messages (up to 4 batches)
-    while (keepLoading && lastMessageId && count < 4) {
-      const postData = new URLSearchParams({
-        action: 'moreMessages',
-        lastMessageRowId: lastMessageId,
-        ishttp: 'true',
-        sessionid: sessionCodes.sessionid,
-        encses: sessionCodes.encses,
-        dwd: sessionCodes.dwd,
-        wfaacl: sessionCodes.wfaacl,
-        'javascript.filesAdded':
-          'jquery.1.8.2.js,qsfmain001.css,sfhome001.css,qsfmain001.min.js,sfhome001.js',
-        requestId: Date.now().toString(),
-      });
-
-      const url = `${baseUrl}httploader.p?file=sfhome01.w`;
-
-      const headers = {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'X-Requested-With': 'XMLHttpRequest',
-        'User-Agent': 'Mozilla/5.0 (compatible; BetterSkywardClient/1.0)',
-      };
-
-      const resp = await axios.post(url, postData.toString(), { headers });
-
-      if (!resp.data || resp.data.trim().length === 0) {
-        keepLoading = false;
-      } else {
-        allMessagesHtml += resp.data;
-        const newLastId = extractLastMessageId(resp.data);
-        if (!newLastId || newLastId === lastMessageId) {
-          keepLoading = false;
-        } else {
-          lastMessageId = newLastId;
-        }
-      }
-      count++;
-      logger.debug(Modules.API_MESSAGES, `Loaded batch ${count}`);
-    }
-
-    const messages = parseMessages(allMessagesHtml);
+    const messages = parseMessages(initialResponse.data, 'initial');
     const duration = Date.now() - startTime;
     log.api.success(Modules.API_MESSAGES, 'sfhome01.w', duration);
-    logger.info(Modules.API_MESSAGES, `Parsed ${messages.length} messages from ${count + 1} batches`);
+    logger.info(Modules.API_MESSAGES, `Parsed ${messages.length} messages from the initial batch`);
     
     return messages;
   } catch (error) {
@@ -134,7 +88,7 @@ export async function fetchMoreMessages(
         'User-Agent': 'Mozilla/5.0 (compatible; BetterSkywardClient/1.0)',
       };
 
-      const resp = await axios.post(url, postData.toString(), { headers });
+      const resp = await axios.post(url, postData.toString(), { headers, timeout: 30000 });
       
       if (!resp.data || resp.data.trim().length === 0) break;
       
@@ -144,18 +98,20 @@ export async function fetchMoreMessages(
         throw error;
       }
 
-      allHtml.push(resp.data);
+      const fragment = extractMessageFragment(resp.data);
+      allHtml.push(fragment);
       batchCount++;
 
-      const newLastId = extractLastMessageId(resp.data);
+      const parsedBatch = parseMessages(fragment, 'pagination');
+      const newLastId = extractLastMessageId(fragment);
       if (!newLastId || newLastId === currentLastId) break;
 
       currentLastId = newLastId;
-      totalLoaded += parseMessages(resp.data).length;
+      totalLoaded += parsedBatch.length;
     }
 
     const combinedHtml = allHtml.join('');
-    const messages = parseMessages(combinedHtml);
+    const messages = combinedHtml ? parseMessages(combinedHtml, 'pagination') : [];
     const duration = Date.now() - startTime;
     
     logger.success(Modules.API_MESSAGES, `Loaded ${messages.length} more messages in ${batchCount} batches (${duration}ms)`);
@@ -185,7 +141,19 @@ function extractLastMessageId(rawResponse: string): string | null {
   return msgWrap ? msgWrap.getAttribute('data-wall-id') ?? null : null;
 }
 
-function parseMessages(html: string): Message[] {
+function extractMessageFragment(rawResponse: string): string {
+  if (/<output\b/i.test(rawResponse)) {
+    const match = rawResponse.match(/<output><!\[CDATA\[([\s\S]*?)\]\]><\/output>/i);
+    if (!match) throw new Error('Skyward message response was incomplete');
+    return match[1];
+  }
+  return rawResponse;
+}
+
+export function parseMessages(
+  html: string,
+  context: 'initial' | 'pagination' = 'initial'
+): Message[] {
   const root = parse(html);
 
   // Map to hold content pieces keyed by spanId
@@ -198,61 +166,7 @@ function parseMessages(html: string): Message[] {
   for (const match of html.matchAll(globalRegex)) {
     const fullHtml = match[1];
     const spanId = match[2];
-
-    const parsed = parse(`<div class='msgDetail'>${fullHtml}</div>`);
-    const msgElem = parsed.querySelector('.msgDetail');
-
-    // Convert anchor tags to markdown
-    msgElem &&
-      msgElem.querySelectorAll('a').forEach((a) => {
-        const text = a.text.trim();
-        const href = a.getAttribute('href');
-        if (href) {
-          a.replaceWith(parse(`[${text}](${href})`));
-        }
-      });
-
-    // Preserve bold text
-    msgElem &&
-      msgElem.querySelectorAll('b').forEach((b) => {
-        b.insertAdjacentHTML('beforebegin', '**');
-        b.insertAdjacentHTML('afterend', '**');
-      });
-
-    // Convert list items
-    msgElem &&
-      msgElem.querySelectorAll('li').forEach((li) => {
-        li.insertAdjacentHTML('beforebegin', '\t• ');
-        li.insertAdjacentHTML('afterend', '\n');
-      });
-
-    // Add line breaks
-    msgElem &&
-      msgElem.querySelectorAll('div').forEach((div) => {
-        const content = div.innerText.trim();
-        if (content === '\xa0' || content === '') {
-          div.replaceWith(parse('<div>__LINE_BREAK__</div>'));
-        } else {
-          div.insertAdjacentHTML('afterend', '__LINE_BREAK__');
-        }
-      });
-
-    msgElem &&
-      msgElem.querySelectorAll('p').forEach((p) => {
-        const content = p.innerText.trim();
-        if (content === '\xa0' || content === '') {
-          p.replaceWith(parse('<div>__LINE_BREAK__</div>'));
-        } else {
-          p.insertAdjacentHTML('afterend', '__LINE_BREAK__');
-        }
-      });
-
-    const cleaned = msgElem
-      ? msgElem.textContent
-          .replace(/__LINE_BREAK__/g, '\n')
-          .replace(/\n{2,}/g, '\n\n')
-          .trim()
-      : '';
+    const cleaned = renderMessageBody(fullHtml);
 
     if (!contentMap.has(spanId)) contentMap.set(spanId, []);
     contentMap.get(spanId)!.push({ content: cleaned, index: match.index });
@@ -261,9 +175,30 @@ function parseMessages(html: string): Message[] {
   const messages: Message[] = [];
 
   const allMessageItems = root.querySelectorAll('li.feedItem.allowRemove');
+  if (allMessageItems.length === 0) {
+    if (context === 'pagination' && html.trim() === '') return [];
+    const hasFeedAnchor =
+      root.querySelector('#messageFeed') !== null ||
+      root.querySelector('#messageWall') !== null ||
+      root.querySelector('#messageCenter') !== null ||
+      root.querySelector('.messageFeed') !== null ||
+      root.querySelector('.messageList') !== null;
+    if (context === 'initial' && hasFeedAnchor) return [];
+    throw new Error('Skyward message feed was not found');
+  }
+
   allMessageItems.forEach((li) => {
     const msgWrap = li.querySelector('.messageWrap');
-    if (!msgWrap) return;
+    if (!msgWrap) throw new Error('Skyward message item was missing its wrapper');
+    const messageRowId = msgWrap.getAttribute('data-wall-id') || '';
+    if (!messageRowId) throw new Error('Skyward message item was missing its identity');
+    if (
+      !msgWrap.querySelector('.messageHead') ||
+      !msgWrap.querySelector('.messageBody') ||
+      !msgWrap.querySelector('.messageBody > .text')
+    ) {
+      throw new Error('Skyward message item was structurally incomplete');
+    }
 
     const rawClassAttr = msgWrap.getAttribute('class') || '';
 
@@ -316,10 +251,61 @@ function parseMessages(html: string): Message[] {
       }
     }
 
-    const messageRowId = msgWrap.getAttribute('data-wall-id') || '';
-
     messages.push({ className, messageRowId, subject, from, date, content });
   });
 
+  if (messages.length !== allMessageItems.length) {
+    throw new Error('Skyward message feed could not be parsed completely');
+  }
+
   return messages;
+}
+
+export function renderMessageBody(fullHtml: string): string {
+  const parsed = parse(`<div class='msgDetail'>${fullHtml}</div>`);
+  const msgElem = parsed.querySelector('.msgDetail');
+  if (!msgElem) return '';
+
+  msgElem.querySelectorAll('a').forEach((anchor) => {
+    const text = anchor.text.trim();
+    const href = anchor.getAttribute('href');
+    const safeURL = href ? safeMessageURL(href) : null;
+    const replacement = safeURL ? `[${text}](${safeURL})` : text;
+    anchor.replaceWith(parse(escapeHTML(replacement)));
+  });
+
+  msgElem.querySelectorAll('b').forEach((bold) => {
+    bold.insertAdjacentHTML('beforebegin', '**');
+    bold.insertAdjacentHTML('afterend', '**');
+  });
+
+  msgElem.querySelectorAll('li').forEach((item) => {
+    item.insertAdjacentHTML('beforebegin', '\t• ');
+    item.insertAdjacentHTML('afterend', '\n');
+  });
+
+  for (const selector of ['div', 'p']) {
+    msgElem.querySelectorAll(selector).forEach((block) => {
+      const content = block.innerText.trim();
+      if (content === '\xa0' || content === '') {
+        block.replaceWith(parse('<div>__LINE_BREAK__</div>'));
+      } else {
+        block.insertAdjacentHTML('afterend', '__LINE_BREAK__');
+      }
+    });
+  }
+
+  return msgElem.textContent
+    .replace(/__LINE_BREAK__/g, '\n')
+    .replace(/\n{2,}/g, '\n\n')
+    .trim();
+}
+
+function escapeHTML(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

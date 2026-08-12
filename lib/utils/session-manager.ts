@@ -1,44 +1,29 @@
 // Centralized session token management
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SkywardSessionCodes } from '../types/api';
+import {
+  clearStoredSessionCodes,
+  getStoredSessionCodes,
+  saveStoredSessionCodes,
+} from './secure-skyward-storage';
 import { logger, Modules } from './logger';
 
 export class SessionManager {
-  private static readonly SESSION_KEYS = {
-    DWD: 'dwd',
-    WFAACL: 'wfaacl',
-    ENCSES: 'encses',
-    USER_TYPE: 'User-Type',
-    SESSION_ID: 'sessionid',
-    BASE_URL: 'skywardBaseURL',
-  };
+  private static readonly BASE_URL_KEY = 'skywardBaseURL';
 
   /**
    * Get all session codes from storage
    */
   static async getSessionCodes(): Promise<SkywardSessionCodes | null> {
     try {
-      const [dwd, wfaacl, encses, userType, sessionid] = await Promise.all([
-        AsyncStorage.getItem(this.SESSION_KEYS.DWD),
-        AsyncStorage.getItem(this.SESSION_KEYS.WFAACL),
-        AsyncStorage.getItem(this.SESSION_KEYS.ENCSES),
-        AsyncStorage.getItem(this.SESSION_KEYS.USER_TYPE),
-        AsyncStorage.getItem(this.SESSION_KEYS.SESSION_ID),
-      ]);
-
-      if (!dwd || !wfaacl || !encses || !userType || !sessionid) {
+      const sessionCodes = await getStoredSessionCodes();
+      if (!sessionCodes) {
         logger.debug(Modules.SESSION, 'Session codes not found in storage');
         return null;
       }
 
       logger.debug(Modules.SESSION, 'Session codes retrieved from storage');
-      return {
-        dwd,
-        wfaacl,
-        encses,
-        'User-Type': userType,
-        sessionid,
-      };
+      return sessionCodes;
     } catch (error) {
       logger.error(Modules.SESSION, 'Failed to get session codes', error);
       return null;
@@ -50,7 +35,7 @@ export class SessionManager {
    */
   static async getBaseURL(): Promise<string | null> {
     try {
-      const baseUrl = await AsyncStorage.getItem(this.SESSION_KEYS.BASE_URL);
+      const baseUrl = await AsyncStorage.getItem(this.BASE_URL_KEY);
       if (baseUrl) {
         logger.debug(Modules.SESSION, 'Base URL retrieved from storage');
       }
@@ -69,14 +54,8 @@ export class SessionManager {
     baseURL: string
   ): Promise<void> {
     try {
-      await Promise.all([
-        AsyncStorage.setItem(this.SESSION_KEYS.DWD, sessionCodes.dwd),
-        AsyncStorage.setItem(this.SESSION_KEYS.WFAACL, sessionCodes.wfaacl),
-        AsyncStorage.setItem(this.SESSION_KEYS.ENCSES, sessionCodes.encses),
-        AsyncStorage.setItem(this.SESSION_KEYS.USER_TYPE, sessionCodes['User-Type']),
-        AsyncStorage.setItem(this.SESSION_KEYS.SESSION_ID, sessionCodes.sessionid),
-        AsyncStorage.setItem(this.SESSION_KEYS.BASE_URL, baseURL),
-      ]);
+      await AsyncStorage.setItem(this.BASE_URL_KEY, baseURL);
+      await saveStoredSessionCodes(sessionCodes);
       logger.success(Modules.SESSION, 'Session codes saved to storage');
     } catch (error) {
       logger.error(Modules.SESSION, 'Failed to save session codes', error);
@@ -89,13 +68,7 @@ export class SessionManager {
    */
   static async clearSessionCodes(): Promise<void> {
     try {
-      await AsyncStorage.multiRemove([
-        this.SESSION_KEYS.DWD,
-        this.SESSION_KEYS.WFAACL,
-        this.SESSION_KEYS.ENCSES,
-        this.SESSION_KEYS.USER_TYPE,
-        this.SESSION_KEYS.SESSION_ID,
-      ]);
+      await clearStoredSessionCodes();
       logger.success(Modules.SESSION, 'Session codes cleared from storage');
     } catch (error) {
       logger.error(Modules.SESSION, 'Failed to clear session codes', error);

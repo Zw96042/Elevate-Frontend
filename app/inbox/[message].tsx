@@ -2,6 +2,7 @@ import { View, Text, Linking } from 'react-native'
 import { ScrollView } from 'react-native-gesture-handler'
 import React from 'react'
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { safeMessageURL } from '@/lib/utils/message-links';
 
 const MessageDetails = () => {
   const router = useRouter();
@@ -38,13 +39,15 @@ const MessageDetails = () => {
                 const linkMatch = part.match(/^\[(.*?)\]\((.*?)\)$/);
                 if (linkMatch) {
                 const [, text, url] = linkMatch;
+                const safeURL = safeMessageURL(url);
+                if (!safeURL) return <Text key={i}>{text}</Text>;
                 return (
                     <Text
                     key={i}
                     className='text-blue-400'
                     onPress={() => {
                         // Open in browser
-                        Linking.openURL(url).catch(err =>
+                        Linking.openURL(safeURL).catch(err =>
                         console.error('Failed to open URL:', err)
                         );
                     }}

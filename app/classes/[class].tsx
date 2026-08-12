@@ -23,7 +23,6 @@ import React, {
   useMemo,
 } from "react";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useLocalSearchParams } from "expo-router";
 import formatClassName from "@/utils/formatClassName";
 import { calculateGradeSummary } from "@/utils/calculateGrades";
@@ -44,6 +43,7 @@ import { padding } from "@expo/ui/swift-ui/modifiers";
 import { Button, Host } from "@expo/ui/swift-ui";
 import { useSettingSheet } from '@/context/SettingSheetContext';
 import { shouldEnableShowoffMode } from '@/utils/showoffMode';
+import { getAccountScopedItem, setAccountScopedItem } from '@/lib/utils/account-scoped-storage';
 
 const bucketMap: Record<TermLabel, string> = {
   "Q1 Grades": "TERM 3",
@@ -263,7 +263,6 @@ const ClassDetails = () => {
 
   // Handle pull-to-refresh
   const handleRefresh = async () => {
-    // console.log('Pull-to-refresh triggered');
     await fetchApiAssignments(true); // Force refresh
   };
 
@@ -359,7 +358,7 @@ const ClassDetails = () => {
       enabled: isEnabled,
     });
     
-    const data = await AsyncStorage.getItem("artificialAssignments");
+    const data = await getAccountScopedItem("artificialAssignments");
     
     // Create final exam assignments if toggle is enabled and we're in semester view
     let finalExamAssignments: Assignment[] = [];
@@ -376,7 +375,7 @@ const ClassDetails = () => {
           category: "Final Exam",
           grade: finalExamGrades[examType],
           outOf: 100,
-          dueDate: selectedCategory.split(" ")[0] === "SM1" ? "12/19/25" : "5/22/26",
+          dueDate: "",
           artificial: true,
           meta: []
         });
@@ -423,7 +422,7 @@ const ClassDetails = () => {
       if (selectedCategory === "SM1 Grade" || selectedCategory === "SM2 Grades") {
         const examType = selectedCategory.split(" ")[0] === "SM1" ? "EX1" : "EX2";
         
-        console.log('🔍 Grade Calc Debug (1):', {
+        logger.debug(Modules.PAGE_CLASS, 'Preparing semester grade calculation', {
           examType,
           isEnabled,
           hasArtificialGrade: !!finalExamGrades[examType],
@@ -436,7 +435,7 @@ const ClassDetails = () => {
           const examAssignment = finalExamAssignments.find(a => a.term === examType);
           if (examAssignment && examAssignment.grade !== "*") {
             finalExamGrade = Number(examAssignment.grade);
-            console.log('🔍 Using artificial exam grade for calc:', finalExamGrade);
+            logger.debug(Modules.PAGE_CLASS, 'Using an artificial exam grade');
           }
         }
         
@@ -449,14 +448,14 @@ const ClassDetails = () => {
           
           if (realExamAssignment) {
             finalExamGrade = Number(realExamAssignment.grade);
-            console.log('🔍 Using API exam grade for calc:', finalExamGrade);
+            logger.debug(Modules.PAGE_CLASS, 'Using the API exam grade');
           } else if (courseData?.currentScores) {
             // Fallback to courseData if no assignment found
             const realExamScore = courseData.currentScores.find((s: { bucket: string; }) => s.bucket === examType);
-            console.log('🔍 Found courseData exam score:', realExamScore);
+            logger.debug(Modules.PAGE_CLASS, 'Course-data exam score lookup completed', { found: !!realExamScore });
             if (realExamScore && realExamScore.score !== undefined && realExamScore.score !== null && realExamScore.score !== "*") {
               finalExamGrade = Number(realExamScore.score);
-              console.log('🔍 Using courseData exam grade for calc:', finalExamGrade);
+              logger.debug(Modules.PAGE_CLASS, 'Using the course-data exam grade');
             }
           }
         }
@@ -554,7 +553,7 @@ const ClassDetails = () => {
         const examAssignment = finalExamAssignments.find(a => a.term === examType);
         if (examAssignment && examAssignment.grade !== "*") {
           finalExamGrade = Number(examAssignment.grade);
-          console.log('🔍 Using artificial exam grade for calc (meshAssignments):', finalExamGrade);
+          logger.debug(Modules.PAGE_CLASS, 'Using an artificial exam grade while meshing assignments');
         }
       }
       
@@ -567,14 +566,14 @@ const ClassDetails = () => {
         
         if (realExamAssignment) {
           finalExamGrade = Number(realExamAssignment.grade);
-          console.log('🔍 Using API exam grade for calc (meshAssignments):', finalExamGrade);
+          logger.debug(Modules.PAGE_CLASS, 'Using the API exam grade while meshing assignments');
         } else if (courseData?.currentScores) {
           // Fallback to courseData if no assignment found
           const realExamScore = courseData.currentScores.find((s: { bucket: string; }) => s.bucket === examType);
-          console.log('🔍 Found courseData exam score (meshAssignments):', realExamScore);
+          logger.debug(Modules.PAGE_CLASS, 'Course-data exam score lookup completed while meshing', { found: !!realExamScore });
           if (realExamScore && realExamScore.score !== undefined && realExamScore.score !== null && realExamScore.score !== "*") {
             finalExamGrade = Number(realExamScore.score);
-            console.log('🔍 Using courseData exam grade for calc (meshAssignments):', finalExamGrade);
+            logger.debug(Modules.PAGE_CLASS, 'Using the course-data exam grade while meshing assignments');
           }
         }
       }
@@ -680,7 +679,7 @@ const ClassDetails = () => {
     // Reload final exam grades from storage
     let latestFinalExamGrades: {[key: string]: string} = {};
     try {
-      const examData = await AsyncStorage.getItem("finalExamGrades");
+      const examData = await getAccountScopedItem("finalExamGrades");
       if (examData) {
         const parsed = JSON.parse(examData);
         const examKey = `${className}_${corNumId}_${section}_${gbId}`;
@@ -688,7 +687,7 @@ const ClassDetails = () => {
         setFinalExamGrades(latestFinalExamGrades);
       }
     } catch (error) {
-      console.error('Failed to load final exam grades on focus:', error);
+      logger.error(Modules.PAGE_CLASS, 'Failed to load final exam grades on focus', error);
     }
     
     // Create final exam assignments if toggle is enabled and we're in semester view
@@ -706,7 +705,7 @@ const ClassDetails = () => {
           category: "Final Exam",
           grade: latestFinalExamGrades[examType],
           outOf: 100,
-          dueDate: selectedCategory.split(" ")[0] === "SM1" ? "12/19/25" : "5/22/26",
+          dueDate: "",
           artificial: true,
           meta: []
         });
@@ -714,7 +713,7 @@ const ClassDetails = () => {
     }
     
     // Process artificial assignments without triggering API calls
-    const data = await AsyncStorage.getItem("artificialAssignments");
+    const data = await getAccountScopedItem("artificialAssignments");
     
     if (!data) {
       // If no artificial data exists, just ensure filtered assignments match API assignments
@@ -814,7 +813,7 @@ const ClassDetails = () => {
         const examAssignment = finalExamAssignments.find(a => a.term === examType);
         if (examAssignment && examAssignment.grade !== "*") {
           finalExamGrade = Number(examAssignment.grade);
-          console.log('🔍 Using artificial exam grade for calc (refreshAllCachedData):', finalExamGrade);
+          logger.debug(Modules.PAGE_CLASS, 'Using an artificial exam grade during refresh');
         }
       }
       
@@ -827,14 +826,14 @@ const ClassDetails = () => {
         
         if (realExamAssignment) {
           finalExamGrade = Number(realExamAssignment.grade);
-          console.log('🔍 Using API exam grade for calc (refreshAllCachedData):', finalExamGrade);
+          logger.debug(Modules.PAGE_CLASS, 'Using the API exam grade during refresh');
         } else if (courseData?.currentScores) {
           // Fallback to courseData if no assignment found
           const realExamScore = courseData.currentScores.find((s: { bucket: string; }) => s.bucket === examType);
-          console.log('🔍 Found courseData exam score (refreshAllCachedData):', realExamScore);
+          logger.debug(Modules.PAGE_CLASS, 'Course-data exam score lookup completed during refresh', { found: !!realExamScore });
           if (realExamScore && realExamScore.score !== undefined && realExamScore.score !== null && realExamScore.score !== "*") {
             finalExamGrade = Number(realExamScore.score);
-            console.log('🔍 Using courseData exam grade for calc (refreshAllCachedData):', finalExamGrade);
+            logger.debug(Modules.PAGE_CLASS, 'Using the course-data exam grade during refresh');
           }
         }
       }
@@ -858,10 +857,10 @@ const ClassDetails = () => {
   useEffect(() => {
     const loadShowCalculated = async () => {
       try {
-        const value = await AsyncStorage.getItem(showCalculatedKey);
+        const value = await getAccountScopedItem(showCalculatedKey);
         setIsEnabled(value === 'true');
       } catch (error) {
-        console.error('Failed to load toggle state:', error);
+        logger.error(Modules.PAGE_CLASS, 'Failed to load toggle state', error);
         setIsEnabled(false);
       }
     };
@@ -882,7 +881,7 @@ const handleToggle = useCallback(async () => {
     setIsEnabled(newValue);
     
     // Save to storage in background
-    await AsyncStorage.setItem(showCalculatedKey, newValue.toString());
+    await setAccountScopedItem(showCalculatedKey, newValue.toString());
     
     // Small delay to ensure smooth animation completion
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -890,7 +889,7 @@ const handleToggle = useCallback(async () => {
     logger.debug(Modules.PAGE_CLASS, 'Toggle completed successfully');
   } catch (error) {
     // If storage fails, revert the state
-    console.error('Failed to toggle switch:', error);
+    logger.error(Modules.PAGE_CLASS, 'Failed to toggle switch', error);
     setIsEnabled(!newValue);
   } finally {
     setIsToggling(false);
@@ -898,7 +897,7 @@ const handleToggle = useCallback(async () => {
 }, [isEnabled, isToggling, showCalculatedKey]);
 
   const handleResetArtificialAssignments = async () => {
-    const data = await AsyncStorage.getItem("artificialAssignments");
+    const data = await getAccountScopedItem("artificialAssignments");
     if (!data || !className) return;
 
     const parsed = JSON.parse(data);
@@ -924,7 +923,7 @@ const handleToggle = useCallback(async () => {
       }
     });
 
-    await AsyncStorage.setItem("artificialAssignments", JSON.stringify(parsed));
+    await setAccountScopedItem("artificialAssignments", JSON.stringify(parsed));
     
     // Also reset final exam grades
     await resetFinalExamGrades();
@@ -1170,14 +1169,14 @@ const handleToggle = useCallback(async () => {
   useEffect(() => {
     const loadFinalExamGrades = async () => {
       try {
-        const data = await AsyncStorage.getItem("finalExamGrades");
+        const data = await getAccountScopedItem("finalExamGrades");
         if (data) {
           const parsed = JSON.parse(data);
           const examKey = `${className}_${corNumId}_${section}_${gbId}`;
           setFinalExamGrades(parsed[examKey] || {});
         }
       } catch (error) {
-        console.error('Failed to load final exam grades:', error);
+        logger.error(Modules.PAGE_CLASS, 'Failed to load final exam grades', error);
       }
     };
     loadFinalExamGrades();
@@ -1187,16 +1186,16 @@ const handleToggle = useCallback(async () => {
   const resetFinalExamGrades = async () => {
     try {
       const examKey = `${className}_${corNumId}_${section}_${gbId}`;
-      const existing = JSON.parse(await AsyncStorage.getItem("finalExamGrades") ?? "{}");
+      const existing = JSON.parse(await getAccountScopedItem("finalExamGrades") ?? "{}");
       
       if (existing[examKey]) {
         delete existing[examKey];
-        await AsyncStorage.setItem("finalExamGrades", JSON.stringify(existing));
+        await setAccountScopedItem("finalExamGrades", JSON.stringify(existing));
       }
       
       setFinalExamGrades({});
     } catch (error) {
-      console.error('Failed to reset final exam grades:', error);
+      logger.error(Modules.PAGE_CLASS, 'Failed to reset final exam grades', error);
     }
   };
 
@@ -1215,37 +1214,38 @@ const handleToggle = useCallback(async () => {
     let displayGrade = "*";
     let isArtificial = false;
     
-    console.log('🔍 Final Exam Debug:', {
+    logger.debug(Modules.PAGE_CLASS, 'Preparing final-exam display', {
       examType,
       isEnabled,
       hasArtificialGrade: !!finalExamGrades[examType],
-      artificialGrade: finalExamGrades[examType],
       hasCourseData: !!courseData,
-      hasCurrentScores: !!courseData?.currentScores,
-      currentScores: courseData?.currentScores
+      currentScoreCount: courseData?.currentScores?.length || 0
     });
     
     if (isEnabled && finalExamGrades[examType]) {
       displayGrade = finalExamGrades[examType];
       isArtificial = true;
-      console.log('🔍 Using artificial grade:', displayGrade);
+      logger.debug(Modules.PAGE_CLASS, 'Using the displayed artificial exam grade');
     } else {
       // Look for real final exam assignment in API data first
       const realExamAssignment = apiAssignments.find(a => 
         a.category === "Final Exam" && a.term === examType
       );
       
-      console.log('🔍 Real exam assignment found:', realExamAssignment);
+      logger.debug(Modules.PAGE_CLASS, 'API exam assignment lookup completed', { found: !!realExamAssignment });
       
       if (realExamAssignment) {
         displayGrade = realExamAssignment.grade;
-        console.log('🔍 Using API assignment grade:', displayGrade);
+        logger.debug(Modules.PAGE_CLASS, 'Using the displayed API exam grade');
       } else if (courseData?.currentScores) {
         // Fallback to courseData if no assignment found
         const examScore = courseData.currentScores.find((s: { bucket: string; }) => s.bucket === examType);
-        console.log('🔍 Looking for exam score with bucket:', examType, 'found:', examScore);
+        logger.debug(Modules.PAGE_CLASS, 'Course-data exam score lookup completed', {
+          bucket: examType,
+          found: !!examScore,
+        });
         displayGrade = examScore?.score ?? "*";
-        console.log('🔍 Using courseData score:', displayGrade);
+        logger.debug(Modules.PAGE_CLASS, 'Using the displayed course-data exam grade');
       }
     }
 
@@ -1258,7 +1258,7 @@ const handleToggle = useCallback(async () => {
         category={"Final Exam"}
         grade={displayGrade} 
         outOf={100} 
-        dueDate={selectedCategory.split(" ")[0] === "SM1" ? "12/19/25" : "5/22/26"} // TODO: CHANGE DATES
+        dueDate=""
         artificial={isArtificial} 
         editing={!!isEnabled}
         classId={classId}
@@ -1283,7 +1283,6 @@ const handleToggle = useCallback(async () => {
 
 
 
-  // console.log(filteredAssignments);
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View className="bg-primary flex-1 overflow-visible">

@@ -5,6 +5,12 @@ import { AuthService } from './auth-service';
 import { RequestDeduplicator } from '../utils/request-deduplicator';
 import { GradeInfoParams, GradeInfoResult } from '../types/api';
 import { logger, Modules, log } from '../utils/logger';
+import {
+  getAccountDataGeneration,
+  invalidateAccountDataCache,
+  isAccountDataCurrent,
+  writeAccountDataCache,
+} from '../utils/account-data-cache';
 
 export interface UnifiedCourseData {
   courseId?: number;
@@ -54,13 +60,14 @@ export class DataService {
    * Get combined academic data with caching
    */
   static async getCombinedData(forceRefresh = false): Promise<UnifiedDataResult> {
+    const generation = getAccountDataGeneration();
     const endTimer = logger.time(Modules.DATA, 'getCombinedData');
     
     try {
       // Check cache first
       if (!forceRefresh) {
         const cachedData = await this.getCachedData();
-        if (cachedData) {
+        if (cachedData && isAccountDataCurrent(generation)) {
           endTimer();
           log.cache.hit(Modules.DATA, 'unified_data');
           return cachedData;
@@ -69,13 +76,14 @@ export class DataService {
       }
 
       // Use request deduplication
-      const result = await RequestDeduplicator.deduplicate(UNIFIED_DATA_REQUEST_KEY, async () => {
-        return this.fetchAndCacheData();
+      const result = await RequestDeduplicator.deduplicate(`${UNIFIED_DATA_REQUEST_KEY}_${generation}`, async () => {
+        return this.fetchAndCacheData(generation);
       });
 
-      console.log("EEE", JSON.stringify(result, null, 2))
-      
       endTimer();
+      if (!isAccountDataCurrent(generation)) {
+        return { success: false, error: 'Account changed while loading courses' };
+      }
       return result;
     } catch (error: any) {
       endTimer();
@@ -94,6 +102,7 @@ export class DataService {
     params: GradeInfoParams,
     retryCount = 0
   ): Promise<{ success: boolean; data?: GradeInfoResult; error?: string }> {
+    const generation = getAccountDataGeneration();
     if (retryCount > 1) {
       logger.warn(Modules.DATA, 'Max retry attempts reached for grade info');
       return { success: false, error: 'Max retry attempts reached' };
@@ -105,16 +114,19 @@ export class DataService {
       return { success: false, error: 'Missing required parameters' };
     }
 
-    const cacheKey = `${GRADE_INFO_CACHE_PREFIX}${params.corNumId}_${params.bucket}`;
-    const timestampKey = `${GRADE_INFO_TIMESTAMP_PREFIX}${params.corNumId}_${params.bucket}`;
-    const requestKey = `${GRADE_INFO_REQUEST_PREFIX}${params.corNumId}_${params.bucket}`;
+    const identity = [params.stuId, params.corNumId, params.section, params.gbId, params.bucket]
+      .map(value => encodeURIComponent(value))
+      .join('_');
+    const cacheKey = `${GRADE_INFO_CACHE_PREFIX}${identity}`;
+    const timestampKey = `${GRADE_INFO_TIMESTAMP_PREFIX}${identity}`;
+    const requestKey = `${GRADE_INFO_REQUEST_PREFIX}${generation}_${identity}`;
 
     const endTimer = logger.time(Modules.DATA, `getGradeInfo:${params.bucket}`);
 
     try {
       // Check cache first
       const cachedData = await this.getGradeInfoCache(cacheKey, timestampKey);
-      if (cachedData) {
+      if (cachedData && isAccountDataCurrent(generation)) {
         endTimer();
         log.cache.hit(Modules.DATA, `grade_${params.corNumId}_${params.bucket}`);
         return { success: true, data: cachedData };
@@ -129,6 +141,9 @@ export class DataService {
         if (!authResult.success) {
           return { success: false, error: authResult.error };
         }
+        if (!isAccountDataCurrent(generation)) {
+          return { success: false, error: 'Account changed while loading grades' };
+        }
         return this.getGradeInfo(params, retryCount + 1);
       }
 
@@ -137,9 +152,15 @@ export class DataService {
         try {
           const { sessionCodes, baseUrl } = await getRequiredSessionData();
           const gradeResult = await fetchGradeInfo(params, baseUrl, sessionCodes);
+          if (!isAccountDataCurrent(generation)) {
+            return { success: false, error: 'Account changed while loading grades' };
+          }
 
           // Cache the result
-          await this.setGradeInfoCache(cacheKey, timestampKey, gradeResult);
+          const cached = await this.setGradeInfoCache(cacheKey, timestampKey, gradeResult, generation);
+          if (!cached) {
+            return { success: false, error: 'Account changed while loading grades' };
+          }
 
           return {
             success: true,
@@ -169,6 +190,9 @@ export class DataService {
         if (!authResult.success) {
           return { success: false, error: authResult.error };
         }
+        if (!isAccountDataCurrent(generation)) {
+          return { success: false, error: 'Account changed while loading grades' };
+        }
         return this.getGradeInfo(params, retryCount + 1);
       }
 
@@ -182,21 +206,13 @@ export class DataService {
    */
   static async clearCache(): Promise<void> {
     try {
-      // Get all keys and remove grade info caches
-      const allKeys = await AsyncStorage.getAllKeys();
-      const gradeInfoKeys = allKeys.filter(
-        key => key.startsWith(GRADE_INFO_CACHE_PREFIX) || key.startsWith(GRADE_INFO_TIMESTAMP_PREFIX)
-      );
-      
-      await AsyncStorage.multiRemove([
-        CACHE_KEY,
-        CACHE_TIMESTAMP_KEY,
-        ...gradeInfoKeys,
-      ]);
+      const invalidation = invalidateAccountDataCache();
       RequestDeduplicator.clear();
+      await invalidation;
       log.cache.clear(Modules.DATA, 'all');
     } catch (error) {
       logger.error(Modules.DATA, 'Failed to clear cache', error);
+      throw error;
     }
   }
 
@@ -222,7 +238,7 @@ export class DataService {
         return JSON.parse(cachedData);
       }
     } catch (error) {
-      console.error('❌ DataService: Failed to get cached grade info:', error);
+      logger.error(Modules.DATA, 'Failed to read cached grade info', error);
     }
     return null;
   }
@@ -230,16 +246,20 @@ export class DataService {
   private static async setGradeInfoCache(
     cacheKey: string,
     timestampKey: string,
-    data: GradeInfoResult
-  ): Promise<void> {
+    data: GradeInfoResult,
+    generation: number
+  ): Promise<boolean> {
     try {
-      await AsyncStorage.multiSet([
+      const written = await writeAccountDataCache([
         [cacheKey, JSON.stringify(data)],
         [timestampKey, Date.now().toString()],
-      ]);
+      ], generation);
+      if (!written) return false;
       log.cache.set(Modules.DATA, cacheKey);
+      return true;
     } catch (error) {
       logger.error(Modules.DATA, 'Failed to cache grade info', error);
+      return false;
     }
   }
 
@@ -281,24 +301,30 @@ export class DataService {
         return parsed;
       }
     } catch (error) {
-      console.error('❌ DataService: Failed to get cached data:', error);
+      logger.error(Modules.DATA, 'Failed to read cached course data', error);
     }
     return null;
   }
 
-  private static async setCachedData(data: UnifiedDataResult): Promise<void> {
+  private static async setCachedData(
+    data: UnifiedDataResult,
+    generation: number
+  ): Promise<boolean> {
     try {
-      await AsyncStorage.multiSet([
+      const written = await writeAccountDataCache([
         [CACHE_KEY, JSON.stringify(data)],
         [CACHE_TIMESTAMP_KEY, Date.now().toString()],
-      ]);
+      ], generation);
+      if (!written) return false;
       log.cache.set(Modules.DATA, 'unified_data');
+      return true;
     } catch (error) {
       logger.error(Modules.DATA, 'Failed to cache data', error);
+      return false;
     }
   }
 
-  private static async fetchAndCacheData(): Promise<UnifiedDataResult> {
+  private static async fetchAndCacheData(generation: number): Promise<UnifiedDataResult> {
     try {
       // Check session first and authenticate if needed
       const hasSession = await AuthService.hasValidSession();
@@ -321,6 +347,9 @@ export class DataService {
       }
 
       const combinedData = await fetchCombinedAcademicData(baseUrl, sessionCodes);
+      if (!isAccountDataCurrent(generation)) {
+        return { success: false, error: 'Account changed while loading courses' };
+      }
 
       // Transform data
       const transformedCourses = this.transformCombinedData(combinedData);
@@ -332,11 +361,17 @@ export class DataService {
       };
 
       // Cache the result
-      await this.setCachedData(result);
+      if (!(await this.setCachedData(result, generation))) {
+        return { success: false, error: 'Account changed while loading courses' };
+      }
 
       return result;
     } catch (error: any) {
-      console.error('❌ DataService: fetchAndCacheData error:', error);
+      logger.error(Modules.DATA, 'fetchAndCacheData failed', error);
+
+      if (!isAccountDataCurrent(generation)) {
+        return { success: false, error: 'Account changed while loading courses' };
+      }
       
       // Handle session expiration with retry limit
       if (error.code === 'SESSION_EXPIRED' || error.message?.includes('session')) {
@@ -350,6 +385,9 @@ export class DataService {
         try {
           const { sessionCodes, baseUrl } = await getRequiredSessionData();
           const combinedData = await fetchCombinedAcademicData(baseUrl, sessionCodes);
+          if (!isAccountDataCurrent(generation)) {
+            return { success: false, error: 'Account changed while loading courses' };
+          }
           const transformedCourses = this.transformCombinedData(combinedData);
           
           const result: UnifiedDataResult = {
@@ -358,10 +396,12 @@ export class DataService {
             lastUpdated: new Date().toISOString(),
           };
           
-          await this.setCachedData(result);
+          if (!(await this.setCachedData(result, generation))) {
+            return { success: false, error: 'Account changed while loading courses' };
+          }
           return result;
         } catch (retryError: any) {
-          console.error('❌ DataService: Retry after re-authentication failed:', retryError);
+          logger.error(Modules.DATA, 'Retry after re-authentication failed', retryError);
           return { success: false, error: retryError.message || 'Failed after re-authentication' };
         }
       }
@@ -373,7 +413,7 @@ export class DataService {
     }
   }
 
-  private static transformCombinedData(combined: any): UnifiedCourseData[] {
+  static transformCombinedData(combined: any): UnifiedCourseData[] {
     function inferSemester(terms: string): 'fall' | 'spring' | 'both' | 'unknown' {
       if (!terms) return 'unknown';
       const t = terms.replace(/\s/g, '');
@@ -394,9 +434,26 @@ export class DataService {
         { key: 'sm2', label: 'S2' },
         { key: 'ex2', label: 'EX2' },
       ];
-      return buckets
-        .filter(b => courseObj[b.key] !== undefined && courseObj[b.key] !== null && courseObj[b.key] !== '')
-        .map(b => ({ bucket: b.label, score: Number(courseObj[b.key]) }));
+      return buckets.flatMap(bucket => {
+        const value = courseObj[bucket.key];
+        if (value === undefined || value === null || value === '') return [];
+        const score = Number(value);
+        return Number.isFinite(score) && Math.abs(score) <= 1_000_000_000
+          ? [{ bucket: bucket.label, score }]
+          : [];
+      });
+    }
+
+    function gradeText(value: unknown): string | undefined {
+      if (value === null || value === undefined) return undefined;
+      const text = String(value).trim();
+      if (!text) return undefined;
+      const numeric = /^[+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(text);
+      if (numeric) {
+        const score = Number(text);
+        return Number.isFinite(score) && Math.abs(score) <= 1_000_000_000 ? text : undefined;
+      }
+      return /^(?:nan|[+-]?infinity)$/i.test(text) ? undefined : text;
     }
 
     // Handle flat array format
@@ -416,12 +473,13 @@ export class DataService {
         gradeYear: courseObj.gradeYear || courseObj.grade || undefined,
         currentScores: buildCurrentScores(courseObj),
         historicalGrades: {
-          pr1: courseObj.pr1, pr2: courseObj.pr2, rc1: courseObj.rc1,
-          pr3: courseObj.pr3, pr4: courseObj.pr4, rc2: courseObj.rc2,
-          pr5: courseObj.pr5, pr6: courseObj.pr6, rc3: courseObj.rc3,
-          pr7: courseObj.pr7, pr8: courseObj.pr8, rc4: courseObj.rc4,
-          ex1: courseObj.ex1, ex2: courseObj.ex2,
-          sm1: courseObj.sm1, sm2: courseObj.sm2, finalGrade: courseObj.finalGrade,
+          pr1: gradeText(courseObj.pr1), pr2: gradeText(courseObj.pr2), rc1: gradeText(courseObj.rc1),
+          pr3: gradeText(courseObj.pr3), pr4: gradeText(courseObj.pr4), rc2: gradeText(courseObj.rc2),
+          pr5: gradeText(courseObj.pr5), pr6: gradeText(courseObj.pr6), rc3: gradeText(courseObj.rc3),
+          pr7: gradeText(courseObj.pr7), pr8: gradeText(courseObj.pr8), rc4: gradeText(courseObj.rc4),
+          ex1: gradeText(courseObj.ex1), ex2: gradeText(courseObj.ex2),
+          sm1: gradeText(courseObj.sm1), sm2: gradeText(courseObj.sm2),
+          finalGrade: gradeText(courseObj.finalGrade),
         },
       }));
     }
@@ -451,12 +509,13 @@ export class DataService {
           gradeYear: yearData.grade,
           currentScores: buildCurrentScores(courseObj),
           historicalGrades: {
-            pr1: courseObj.pr1, pr2: courseObj.pr2, rc1: courseObj.rc1,
-            pr3: courseObj.pr3, pr4: courseObj.pr4, rc2: courseObj.rc2,
-            pr5: courseObj.pr5, pr6: courseObj.pr6, rc3: courseObj.rc3,
-            pr7: courseObj.pr7, pr8: courseObj.pr8, rc4: courseObj.rc4,
-            ex1: courseObj.ex1, ex2: courseObj.ex2,
-            sm1: courseObj.sm1, sm2: courseObj.sm2, finalGrade: courseObj.finalGrade,
+            pr1: gradeText(courseObj.pr1), pr2: gradeText(courseObj.pr2), rc1: gradeText(courseObj.rc1),
+            pr3: gradeText(courseObj.pr3), pr4: gradeText(courseObj.pr4), rc2: gradeText(courseObj.rc2),
+            pr5: gradeText(courseObj.pr5), pr6: gradeText(courseObj.pr6), rc3: gradeText(courseObj.rc3),
+            pr7: gradeText(courseObj.pr7), pr8: gradeText(courseObj.pr8), rc4: gradeText(courseObj.rc4),
+            ex1: gradeText(courseObj.ex1), ex2: gradeText(courseObj.ex2),
+            sm1: gradeText(courseObj.sm1), sm2: gradeText(courseObj.sm2),
+            finalGrade: gradeText(courseObj.finalGrade),
           },
         });
       }

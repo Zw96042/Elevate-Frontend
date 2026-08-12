@@ -1,7 +1,13 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { DataService, UnifiedCourseData } from '@/lib/services';
 import { useSettingSheet } from '@/context/SettingSheetContext';
 import { transformDataForShowoffMode, shouldEnableShowoffMode } from '@/utils/showoffMode';
+import { DeviceEventEmitter } from 'react-native';
+import { logger, Modules } from '@/lib/utils/logger';
+import {
+	getAccountDataGeneration,
+	isLatestAccountRequest,
+} from '@/lib/utils/account-data-cache';
 
 interface UnifiedDataContextType {
 	coursesData: UnifiedCourseData[] | null;
@@ -21,6 +27,7 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 	const [error, setError] = useState<string | null>(null);
 	const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 	const [hasInitialLoad, setHasInitialLoad] = useState(false); // Track if initial load happened
+	const latestRefreshID = useRef(0);
 	
 	const { username, showoffMode } = useSettingSheet();
 
@@ -43,6 +50,8 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 			return;
 		}
 
+		const requestID = ++latestRefreshID.current;
+		const generation = getAccountDataGeneration();
 		console.log('🔄 [Context] refreshCourses called with force:', force);
 		setLoading(true);
 		setHasInitialLoad(true);
@@ -50,6 +59,7 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 		
 		try {
 			const result = await DataService.getCombinedData(force);
+			if (!isLatestAccountRequest(generation, requestID, latestRefreshID.current)) return;
 			console.log('📦 [Context] DataService result:', { 
 				success: result.success, 
 				coursesCount: result.courses?.length || 0,
@@ -60,7 +70,6 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 				setLastUpdated(result.lastUpdated || new Date().toISOString());
 				console.log('✅ [Context] Courses data updated, count:', result.courses.length);
 			} else {
-				setRawCoursesData(null);
 				const errorMessage = result.error || 'Failed to load courses';
 				setError(errorMessage);
 				console.error('❌ [Context] Failed to load courses:', result.error);
@@ -73,28 +82,33 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 				}
 			}
 		} catch (error: any) {
-			setRawCoursesData(null);
+			if (!isLatestAccountRequest(generation, requestID, latestRefreshID.current)) return;
 			const errorMessage = error.message || 'Unknown error occurred';
 			setError(errorMessage);
-			console.error('❌ [Context] Error in refreshCourses:', error);
+			logger.error(Modules.DATA, 'Course refresh failed', error);
 		} finally {
-			console.log('🏁 [Context] Setting loading to false');
-			setLoading(false);
+			if (requestID === latestRefreshID.current) {
+				console.log('🏁 [Context] Setting loading to false');
+				setLoading(false);
+			}
 		}
 	}, [loading, hasInitialLoad]);
 
 	const clearCache = useCallback(async () => {
 		console.log('🗑️ UnifiedDataContext.clearCache called');
 		try {
+			latestRefreshID.current += 1;
 			await DataService.clearCache();
 			// Reset local state
 			setRawCoursesData(null);
 			setLastUpdated(null);
 			setError(null);
+			setLoading(false);
 			console.log('✅ Cache cleared and local state reset');
 		} catch (error: any) {
-			console.error('❌ Error clearing cache:', error);
+			logger.error(Modules.DATA, 'Error clearing cache', error);
 			setError(error.message || 'Failed to clear cache');
+			setLoading(false);
 		}
 	}, []);
 
@@ -108,6 +122,24 @@ export const UnifiedDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 		// Always try to load on mount since we start with loading: true
 		refreshCourses(false); // Use cache if available
 	}, []); // Empty deps - only run once on mount
+
+	useEffect(() => {
+		const invalid = DeviceEventEmitter.addListener('credentialsInvalid', () => {
+			latestRefreshID.current += 1;
+			setRawCoursesData(null);
+			setLastUpdated(null);
+			setError(null);
+			setLoading(false);
+		});
+		const added = DeviceEventEmitter.addListener('credentialsAdded', () => {
+			void refreshCourses(true);
+		});
+
+		return () => {
+			invalid.remove();
+			added.remove();
+		};
+	}, [refreshCourses]);
 
 	return (
 		<UnifiedDataContext.Provider value={{ 

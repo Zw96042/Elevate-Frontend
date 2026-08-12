@@ -8,6 +8,43 @@ export enum LogLevel {
   NONE = 4,
 }
 
+type ErrorLike = {
+  name?: unknown;
+  message?: unknown;
+  code?: unknown;
+  statusCode?: unknown;
+  response?: { status?: unknown };
+  config?: unknown;
+  request?: unknown;
+};
+
+/** Keeps request bodies, headers, responses, credentials, and session tokens out of logs. */
+export function safeErrorDetails(error: unknown): Record<string, string | number> {
+  if (typeof error === 'string') {
+    return { message: error.slice(0, 240) };
+  }
+  if (!error || typeof error !== 'object') {
+    return { name: 'UnknownError' };
+  }
+
+  const candidate = error as ErrorLike;
+  const details: Record<string, string | number> = {
+    name: typeof candidate.name === 'string' ? candidate.name : 'Error',
+  };
+  const isTransportError =
+    candidate.name === 'AxiosError' ||
+    candidate.config !== undefined ||
+    candidate.request !== undefined ||
+    candidate.response !== undefined;
+  if (!isTransportError && typeof candidate.message === 'string') {
+    details.message = candidate.message.slice(0, 240);
+  }
+  if (typeof candidate.code === 'string') details.code = candidate.code;
+  const status = candidate.response?.status ?? candidate.statusCode;
+  if (typeof status === 'number') details.status = status;
+  return details;
+}
+
 class Logger {
   private currentLevel: LogLevel = __DEV__ ? LogLevel.DEBUG : LogLevel.WARN;
   private enabledModules: Set<string> = new Set();
@@ -112,7 +149,7 @@ class Logger {
     if (!this.shouldLog(module, LogLevel.ERROR)) return;
     const formatted = this.format('❌', module, message);
     if (error) {
-      console.error(formatted, error);
+      console.error(formatted, safeErrorDetails(error));
     } else {
       console.error(formatted);
     }

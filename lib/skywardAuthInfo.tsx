@@ -1,44 +1,34 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getStoredSkywardCredentials } from './utils/secure-skyward-storage';
+import { logger, Modules } from './utils/logger';
+
+const SKYWARD_LINK = 'https://skyward-eisdprod.iscorp.com/scripts/wsisa.dll/WService=wsedueanesisdtx/';
 
 export class SkywardAuth {
   static async get(): Promise<SkywardAuthInfo | null> {
     try {
-      const [link, username, password] = await Promise.all([
-        // AsyncStorage.getItem('skywardLink'),
-        "https://skyward-eisdprod.iscorp.com/scripts/wsisa.dll/WService=wsedueanesisdtx/",
-        AsyncStorage.getItem('skywardUser'),
-        AsyncStorage.getItem('skywardPass'),
-      ]);
-// https://skyward-eisdprod.iscorp.com/scripts/wsisa.dll/WService=wsedueanesisdtx/
-      if (!link || !username || !password) {
+      const credentials = await getStoredSkywardCredentials();
+      if (!credentials?.username || !credentials.password) {
         console.warn('[SkywardAuth] Missing credentials');
         return null;
       }
 
-      return { link, username, password };
+      return {
+        link: SKYWARD_LINK,
+        username: credentials.username,
+        password: credentials.password,
+      };
     } catch (err) {
-      console.error('[SkywardAuth] Error retrieving credentials:', err);
+      logger.error(Modules.AUTH, 'Error retrieving credentials', err);
       return null;
     }
   }
 
   static async hasCredentials(): Promise<boolean> {
     try {
-      const [link, username, password] = await Promise.all([
-        AsyncStorage.getItem('skywardLink'),
-        AsyncStorage.getItem('skywardUser'),
-        AsyncStorage.getItem('skywardPass'),
-      ]);
-
-      // console.log("User", username);
-      // console.log("Pass", password);
-      // console.log("Link", link);
-      const valid = !!(link && username && password);
-
-      // console.log("Val", valid);
-      return valid;
+      const credentials = await getStoredSkywardCredentials();
+      return !!(credentials?.username && credentials.password);
     } catch (err) {
-      console.error('[SkywardAuth] Error checking credentials:', err);
+      logger.error(Modules.AUTH, 'Error checking credentials', err);
       return false;
     }
   }

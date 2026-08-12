@@ -1,17 +1,8 @@
 module.exports = {
-  testEnvironment: 'node',
+  preset: 'jest-expo',
   roots: ['<rootDir>'],
   testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
-  transform: {
-    '^.+\\.(ts|tsx)$': ['ts-jest', {
-      tsconfig: {
-        jsx: 'react',
-        esModuleInterop: true,
-        allowSyntheticDefaultImports: true,
-      },
-    }],
-  },
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },

@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Text, View } from 'react-native';
 import { useScreenDimensions } from '@/hooks/useScreenDimensions';
+import { formatGPAValue } from '@/lib/utils/gpa-values';
 
 interface GPAData {
   unweighted: number;
@@ -40,11 +41,11 @@ export const GpaCard = ({ label, data }: GpaCardProps) => {
       <View className="flex-row justify-between">
         <View className="items-start">
           <Text className={`text-secondary ${cardStyles.subLabelSize}`}>Unweighted</Text>
-          <Text className={`text-main ${cardStyles.valueSize} font-bold`}>{data.unweighted === 0 ? '--' : data.unweighted.toFixed(2)}</Text>
+          <Text className={`text-main ${cardStyles.valueSize} font-bold`}>{formatGPAValue(data.unweighted)}</Text>
         </View>
         <View className="items-end">
           <Text className={`text-secondary ${cardStyles.subLabelSize}`}>Weighted</Text>
-          <Text className={`text-main ${cardStyles.valueSize} font-bold`}>{data.weighted === 0 ? '--' : data.weighted.toFixed(2)}</Text>
+          <Text className={`text-main ${cardStyles.valueSize} font-bold`}>{formatGPAValue(data.weighted)}</Text>
         </View>
       </View>
     </View>
@@ -79,11 +80,11 @@ export const GpaSoloCard = ({ label, data }: GpaCardProps) => {
       <View className="flex-row items-center space-x-6">
         <View className="items-center">
           <Text className={`text-secondary ${cardStyles.subLabelSize} mr-3`}>Unweighted</Text>
-          <Text className={`text-main ${cardStyles.valueSize} font-bold`}>{data.unweighted === 0 ? '--' : data.unweighted.toFixed(2)}</Text>
+          <Text className={`text-main ${cardStyles.valueSize} font-bold`}>{formatGPAValue(data.unweighted)}</Text>
         </View>
         <View className="items-center">
           <Text className={`text-secondary ${cardStyles.subLabelSize}`}>Weighted</Text>
-          <Text className={`text-main ${cardStyles.valueSize} font-bold`}>{data.weighted === 0 ? '--' : data.weighted.toFixed(2)}</Text>
+          <Text className={`text-main ${cardStyles.valueSize} font-bold`}>{formatGPAValue(data.weighted)}</Text>
         </View>
       </View>
     </View>

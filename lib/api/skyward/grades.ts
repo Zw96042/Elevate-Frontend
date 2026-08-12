@@ -61,9 +61,14 @@ export async function fetchGradeInfo(
       throw new Error('Invalid response received');
     }
 
-    // Extract HTML from CDATA section
-    const match = rawResponse.match(/<output><!\[CDATA\[(.*)\]\]><\/output>/s);
-    const html = match && match[1] ? match[1] : rawResponse;
+    // Loader responses must contain a complete output envelope. Some district
+    // variants return direct HTML, which remains supported.
+    let html = rawResponse;
+    if (/<output\b/i.test(rawResponse)) {
+      const match = rawResponse.match(/<output><!\[CDATA\[([\s\S]*?)\]\]><\/output>/i);
+      if (!match?.[1]) throw new Error('Skyward grade response was incomplete');
+      html = match[1];
+    }
 
     const result = parseGradeInfoHTML(html);
     const duration = Date.now() - startTime;
@@ -82,7 +87,7 @@ export async function fetchGradeInfo(
 /**
  * Parse grade info HTML into structured data
  */
-function parseGradeInfoHTML(html: string): GradeInfoResult {
+export function parseGradeInfoHTML(html: string): GradeInfoResult {
   // Check for session expiration
   if (typeof html === 'string' && html.match(/<data><!\[CDATA\[\s*\]\]><\/data>/)) {
     const err = new Error('Session expired');
@@ -91,15 +96,38 @@ function parseGradeInfoHTML(html: string): GradeInfoResult {
   }
 
   const root = parse(html);
+
+  // A legitimate empty gradebook still has all three structural anchors.
+  // Login, maintenance, and schema-drift pages must never become cacheable
+  // empty academic data.
+  if (!root.querySelector('h2.gb_heading')) {
+    throw new Error('Skyward grade response had no gradebook heading');
+  }
+  if (
+    !root.querySelector("table[id^='grid_stuTermSummaryGrid']") &&
+    !root.querySelector("div[id*='stuTermSummaryGrid']")
+  ) {
+    throw new Error('Skyward grade response had no term grid');
+  }
+  if (
+    !root.querySelector("table[id^='grid_stuAssignmentSummaryGrid']") &&
+    !root.querySelector("div[id*='stuAssignmentSummaryGrid']")
+  ) {
+    throw new Error('Skyward grade response had no assignment grid');
+  }
   
   const clean = (txt = "") => txt.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
   const toInt = (txt: string) => {
-    const m = clean(txt).match(/^-?\d+/);
-    return m ? parseInt(m[0], 10) : null;
+    const m = clean(txt).match(/^([+-]?\d+)(?:\s*%)?$/);
+    if (!m) return null;
+    const value = Number(m[1]);
+    return Number.isSafeInteger(value) && Math.abs(value) <= 1_000_000_000 ? value : null;
   };
   const toFloat = (txt: string) => {
-    const m = clean(txt).match(/-?\d+(?:\.\d+)?/);
-    return m ? parseFloat(m[0]) : null;
+    const m = clean(txt).match(/^([+-]?\d+(?:\.\d+)?)(?:\s*%)?$/);
+    if (!m) return null;
+    const value = Number(m[1]);
+    return Number.isFinite(value) && Math.abs(value) <= 1_000_000_000 ? value : null;
   };
 
   // Extract course info
@@ -123,6 +151,9 @@ function parseGradeInfoHTML(html: string): GradeInfoResult {
   
   const litHeaderText = clean(litHeader?.childNodes?.[0]?.textContent || litHeader?.textContent || "");
   const litName = litHeaderText.replace(/Grade\s*$/, "").trim();
+  if (!course || !litName) {
+    throw new Error('Skyward grade response was missing course identity');
+  }
   const dateMatch = (litHeader?.querySelector("span")?.textContent || "").match(/(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}\/\d{2}\/\d{4})/);
   
   const lit = {
@@ -186,19 +217,27 @@ function parseGradebook(root: any): any[] {
 
   const clean = (txt = "") => txt.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
   const toInt = (txt: string) => {
-    const m = clean(txt).match(/^-?\d+/);
-    return m ? parseInt(m[0], 10) : null;
+    const m = clean(txt).match(/^([+-]?\d+)(?:\s*%)?$/);
+    if (!m) return null;
+    const value = Number(m[1]);
+    return Number.isSafeInteger(value) && Math.abs(value) <= 1_000_000_000 ? value : null;
   };
   const toFloat = (txt: string) => {
-    const m = clean(txt).match(/-?\d+(?:\.\d+)?/);
-    return m ? parseFloat(m[0]) : null;
+    const m = clean(txt).match(/^([+-]?\d+(?:\.\d+)?)(?:\s*%)?$/);
+    if (!m) return null;
+    const value = Number(m[1]);
+    return Number.isFinite(value) && Math.abs(value) <= 1_000_000_000 ? value : null;
   };
 
   rows.forEach((row: any) => {
     if (row.classList.contains("sf_Section") && row.classList.contains("cat")) {
       const cells = row.querySelectorAll("td");
+      if (cells.length < 2) {
+        throw new Error('Skyward grade category row was malformed');
+      }
       const nameNode = cells[1]?.childNodes?.[0];
       const rawName = clean(nameNode?.textContent || cells[1]?.textContent || "");
+      if (!rawName) throw new Error('Skyward grade category name was missing');
       
       const styleAttr = cells[1]?.getAttribute("style") || "";
       const isBold = /font-weight:\s*bold/i.test(styleAttr);
@@ -223,8 +262,8 @@ function parseGradebook(root: any): any[] {
         };
         afterBoldCategory = true;
         if (weightMatch) {
-          lastMainCategory.weight = parseFloat(weightMatch[1]);
-          lastMainCategory.adjustedWeight = weightMatch[2] ? parseFloat(weightMatch[2]) : null;
+          lastMainCategory.weight = toFloat(weightMatch[1]);
+          lastMainCategory.adjustedWeight = weightMatch[2] ? toFloat(weightMatch[2]) : null;
         }
         gradebook.push(lastMainCategory);
         currentCategory = lastMainCategory;
@@ -233,16 +272,16 @@ function parseGradebook(root: any): any[] {
 
       if (/RC\d/i.test(rawName) && afterBoldCategory) {
         if (/RC1/i.test(rawName) && weightMatch && lastMainCategory && lastMainCategory.weight == null) {
-          lastMainCategory.weight = parseFloat(weightMatch[1]);
-          lastMainCategory.adjustedWeight = weightMatch[2] ? parseFloat(weightMatch[2]) : null;
+          lastMainCategory.weight = toFloat(weightMatch[1]);
+          lastMainCategory.adjustedWeight = weightMatch[2] ? toFloat(weightMatch[2]) : null;
         }
         return;
       }
 
       currentCategory = {
         category: rawName,
-        weight: weightMatch ? parseFloat(weightMatch[1]) : null,
-        adjustedWeight: weightMatch && weightMatch[2] ? parseFloat(weightMatch[2]) : null,
+        weight: weightMatch ? toFloat(weightMatch[1]) : null,
+        adjustedWeight: weightMatch && weightMatch[2] ? toFloat(weightMatch[2]) : null,
         assignments: [],
       };
       gradebook.push(currentCategory);
@@ -253,6 +292,7 @@ function parseGradebook(root: any): any[] {
     const link = row.querySelector("a#showAssignmentInfo");
     if (link && currentCategory) {
       const cells = row.querySelectorAll("td");
+      if (cells.length < 5) throw new Error('Skyward assignment row was malformed');
       const date = clean(cells[0]?.textContent || "");
       const name = clean(link.textContent || "");
       const assignmentGrade = toInt(cells[2]?.textContent || "");
@@ -260,9 +300,11 @@ function parseGradebook(root: any): any[] {
       const pointsText = clean(cells[4]?.textContent || "");
       
       let points: { earned: number; total: number } | null = null;
-      const pm = pointsText.match(/(-?\d+(?:\.\d+)?)\s*out of\s*(-?\d+(?:\.\d+)?)/i);
+      const pm = pointsText.match(/^([+-]?\d+(?:\.\d+)?)\s*out of\s*([+-]?\d+(?:\.\d+)?)$/i);
       if (pm) {
-        points = { earned: parseFloat(pm[1]), total: parseFloat(pm[2]) };
+        const earned = toFloat(pm[1]);
+        const total = toFloat(pm[2]);
+        points = earned === null || total === null ? null : { earned, total };
       }
       
       const meta: { type: string; note: string }[] = [];
@@ -294,6 +336,16 @@ function parseGradebook(root: any): any[] {
         points,
         meta,
       });
+    } else if (link) {
+      throw new Error('Skyward assignment row had no category');
+    } else {
+      const rowText = clean(row.textContent || '').toLowerCase();
+      const isKnownEmpty =
+        !rowText ||
+        rowText.includes('no assignments') ||
+        rowText.includes('no records') ||
+        rowText.includes('nothing to display');
+      if (!isKnownEmpty) throw new Error('Skyward grade response had an unrecognized row');
     }
   });
 

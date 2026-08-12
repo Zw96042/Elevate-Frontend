@@ -1,12 +1,9 @@
-import { View, Text, TouchableOpacity, useColorScheme, DeviceEventEmitter } from 'react-native'
+import { View, Text, TouchableOpacity, DeviceEventEmitter } from 'react-native'
 import React, { useEffect, useState, useMemo } from 'react'
-import { Link } from 'expo-router'
 import formatClassName from '@/utils/formatClassName'
 import { useScreenDimensions } from '@/hooks/useScreenDimensions'
-import PieChart from 'react-native-pie-chart'
 import Swipeable from 'react-native-gesture-handler/Swipeable';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MotiView } from 'moti'
+import { getAccountScopedItem, setAccountScopedItem } from '@/lib/utils/account-scoped-storage';
 
 type TermLabel =
   | "Q1 Grades"
@@ -102,7 +99,7 @@ const ClassCard2Sem = ({
         style={{ height: cardHeight }}
       >
         <View className="flex-1 mr-3">
-          {courseLevel != "Regular" && (
+          {courseLevel !== "Regular" && (
             <View className={`self-start rounded-md bg-highlight px-2`}>
               <Text className="text-sm text-highlightText font-bold">{courseLevel}</Text>
             </View>
@@ -146,11 +143,15 @@ const ClassCard2Sem = ({
           style={{ height: cardHeight }}
           onPress={async () => {
             const key = `savedClasses-${gradeLevel}`;
-            const existingRaw = await AsyncStorage.getItem(key);
+            const existingRaw = await getAccountScopedItem(key);
             const existing = existingRaw ? JSON.parse(existingRaw) : [];
 
-            const updated = existing.filter((c: any) => c.className !== name);
-            await AsyncStorage.setItem(key, JSON.stringify(updated));
+            const updated = existing.filter((c: any) => {
+              const storedName = c.className ?? c.courseName ?? c.name;
+              return String(storedName ?? '').trim().toLocaleLowerCase()
+                !== name.trim().toLocaleLowerCase();
+            });
+            await setAccountScopedItem(key, JSON.stringify(updated));
 
             DeviceEventEmitter.emit('classDeleted');
           }}

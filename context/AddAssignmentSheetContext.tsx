@@ -2,7 +2,7 @@ import React, { createContext, useContext, useRef, useState, ReactNode } from 'r
 import { Keyboard } from 'react-native';
 import AddSheet from '@gorhom/bottom-sheet';
 import formatClassName from '@/utils/formatClassName';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAccountScopedItem, setAccountScopedItem } from '@/lib/utils/account-scoped-storage';
 import { generateUniqueId, ensureUniqueAssignmentIds } from '@/utils/uniqueId';
 
 type TermData = {
@@ -142,20 +142,20 @@ export const AddSheetProvider = ({ children }: { children: ReactNode }) => {
     const allAssignments = ensureUniqueAssignmentIds([...artificial, ...filteredReal]);
     modalData.setFilteredAssignments(allAssignments);
 
-    const existing = JSON.parse(await AsyncStorage.getItem("artificialAssignments") ?? "{}");
+    const existing = JSON.parse(await getAccountScopedItem("artificialAssignments") ?? "{}");
   // Use a stable key for artificial assignments that includes the term
   // Fallback to empty string if any identifier is missing
   const storageKey = `${modalData.className || ''}_${modalData.corNumId || ''}_${modalData.section || ''}_${modalData.gbId || ''}_${modalData.selectedCategory.split(" ")[0]}`;
     if (updatedArtificial.length === 0) {
       // Remove the key if no assignments left
       delete existing[storageKey];
-      await AsyncStorage.setItem("artificialAssignments", JSON.stringify(existing));
+      await setAccountScopedItem("artificialAssignments", JSON.stringify(existing));
     } else {
       const updated = {
         ...existing,
         [storageKey]: ensureUniqueAssignmentIds(updatedArtificial),
       };
-      await AsyncStorage.setItem("artificialAssignments", JSON.stringify(updated));
+      await setAccountScopedItem("artificialAssignments", JSON.stringify(updated));
     }
     
     // Clear form data immediately

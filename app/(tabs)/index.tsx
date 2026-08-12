@@ -5,106 +5,14 @@ import ClassCard from '@/components/ClassCard';
 import SkeletonClassCard from '@/components/SkeletonClassCard';
 import ErrorDisplay from '@/components/ErrorDisplay';
 import LoginPrompt from '@/components/LoginPrompt';
-import { SkywardAuth, UnifiedCourseData } from '@/lib';
+import { SkywardAuth } from '@/lib';
 import { useBottomSheet, BottomSheetProvider } from '@/context/BottomSheetContext'
 import { useSettingSheet } from '@/context/SettingSheetContext';
 import { useUnifiedData } from '@/context/UnifiedDataContext';
 import { useGradeLevel } from '@/hooks/useGradeLevel';
 import { logger, Modules } from '@/lib/utils/logger';
+import { shouldBlockCourseError, transformCourseData } from '@/lib/utils/course-card-transform';
 
-
-// Default categories and weights (to be replaced by different API later)
-const DEFAULT_CATEGORIES = {
-  names: ["Daily", "Labs", "Major"],
-  weights: [10, 30, 60],
-};
-
-// Transform unified course data to component format
-const transformCourseData = (unifiedCourses: UnifiedCourseData[]) => {
-  return unifiedCourses.filter(course => {
-    // Only include courses that have the required parameters for API calls
-    const hasRequiredParams = !!(course.courseName && course.stuId && course.corNumId && course.section && course.gbId);
-    if (!hasRequiredParams) {
-      logger.debug(Modules.PAGE_HOME, 'Filtering out course with missing params', {
-        courseName: course.courseName,
-        stuId: course.stuId,
-        corNumId: course.corNumId,
-        section: course.section,
-        gbId: course.gbId,
-        courseId: course.courseId
-      });
-    }
-    return hasRequiredParams;
-  }).map(course => {
-    logger.debug(Modules.PAGE_HOME, 'Transforming course', {
-      courseName: course.courseName,
-      hasCurrentScores: !!course.currentScores,
-      currentScoresLength: course.currentScores?.length || 0
-    });
-    
-    // Create score map from current scores
-    const scoreMap: { [key: string]: number } = {};
-    course.currentScores?.forEach((score: any) => {
-      const bucketKey = score.bucket?.toLowerCase();
-      scoreMap[bucketKey] = score.score;
-    });
-
-    // Helper function to get score with fallback to historical data
-    const getScore = (historicalKey: string, ...currentKeys: string[]) => {
-      // First try current scores with multiple key variations
-      for (const key of currentKeys) {
-        if (scoreMap[key] !== undefined && scoreMap[key] !== null) {
-          return scoreMap[key];
-        }
-      }
-      
-      // Fall back to historical grades
-      const historicalValue = course.historicalGrades[historicalKey as keyof typeof course.historicalGrades];
-      
-      if (historicalValue && historicalValue !== '' && !isNaN(Number(historicalValue))) {
-        return Number(historicalValue);
-      }
-      
-      return "--";
-    };
-
-    return {
-      name: course.courseName?.toUpperCase().replace(/\s+/g, '_') || 'UNKNOWN_COURSE',
-      teacher: course.instructor?.toUpperCase().replace(/\s+/g, '_') || 'UNKNOWN_INSTRUCTOR',
-      /* Use corNumId if available, otherwise fall back to courseId, but both should be populated at this point due to filtering */
-      corNumId: course.corNumId || course.courseId || '',
-      stuId: course.stuId,
-      section: course.section,
-      gbId: course.gbId,
-      period: course.period,
-      semester: course.semester,
-      t1: {
-        categories: DEFAULT_CATEGORIES,
-        total: getScore('rc1', 'term 3', 'quarter 1', 'rc1')
-      },
-      t2: {
-        categories: DEFAULT_CATEGORIES,
-        total: getScore('rc2', 'term 6', 'quarter 2', 'rc2')
-      },
-      s1: {
-        categories: DEFAULT_CATEGORIES,
-        total: getScore('sm1', 'sem 1', 'semester 1', 'sm1')
-      },
-      t3: {
-        categories: DEFAULT_CATEGORIES,
-        total: getScore('rc3', 'term 9', 'quarter 3', 'rc3')
-      },
-      t4: {
-        categories: DEFAULT_CATEGORIES,
-        total: getScore('rc4', 'term 12', 'quarter 4', 'rc4')
-      },
-      s2: {
-        categories: DEFAULT_CATEGORIES,
-        total: getScore('sm2', 'sem 2', 'semester 2', 'sm2')
-      },
-    };
-  });
-};
 
 const filterCoursesBySemester = (courses: any[], selectedTerm: string) => {
   // Map display terms to semester filtering terms
@@ -188,19 +96,21 @@ export default function Index() {
   // Listen for credential updates
   useEffect(() => {
     const credentialsListener = DeviceEventEmitter.addListener('credentialsAdded', async () => {
-      logger.info(Modules.PAGE_HOME, 'Credentials added, refreshing courses');
+      logger.info(Modules.PAGE_HOME, 'Credentials added');
       setLocalError(null);
       setHasCredentials(true);
-      // Small delay to ensure AsyncStorage writes have completed
-      setTimeout(async () => {
-        await refreshCourses(true);
-      }, 100);
+    });
+    const invalidCredentialsListener = DeviceEventEmitter.addListener('credentialsInvalid', () => {
+      setHasCredentials(false);
+      setFilteredCourses([]);
+      setLocalError(null);
     });
 
     return () => {
       credentialsListener.remove();
+      invalidCredentialsListener.remove();
     };
-  }, [refreshCourses]);
+  }, []);
 
   // No need for local loadCourses, use refreshCourses from context
 
@@ -237,7 +147,9 @@ export default function Index() {
       };
       const gradeYear = gradeMap[currentGradeLevel as keyof typeof gradeMap];
       
-      filteredRawCourses = coursesData.filter((c: any) => c.gradeYear === gradeYear);
+      filteredRawCourses = currentGradeLevel === 'Current'
+        ? coursesData.filter((c: any) => c.gradeYear == null)
+        : coursesData.filter((c: any) => c.gradeYear === gradeYear);
       logger.debug(Modules.PAGE_HOME, `Filtered to ${filteredRawCourses.length} courses for grade ${gradeYear}`);
     }
     
@@ -245,28 +157,13 @@ export default function Index() {
     const transformedCourses = transformCourseData(filteredRawCourses);
     const filtered = filterCoursesBySemester(transformedCourses, selectedCategory);
     
-    // Create a map to associate transformed courses with their original data
-    const courseDataMap = new Map();
-    filteredRawCourses.forEach((originalCourse, index) => {
-      if (index < transformedCourses.length) {
-        const transformedCourse = transformedCourses[index];
-        courseDataMap.set(transformedCourse.name, originalCourse);
-      }
-    });
-    
-    // Add courseData to each filtered course
-    const filteredWithCourseData = filtered.map(course => ({
-      ...course,
-      courseData: courseDataMap.get(course.name)
-    }));
-    
-    logger.debug(Modules.PAGE_HOME, `After semester filter: ${filteredWithCourseData.length} courses`);
+    logger.debug(Modules.PAGE_HOME, `After semester filter: ${filtered.length} courses`);
     console.log('✅ [Index] Filter complete:', {
-      filteredCount: filteredWithCourseData.length,
+      filteredCount: filtered.length,
       settingHasFilteredOnce: true,
       forGradeLevel: currentGradeLevel
     });
-    setFilteredCourses(filteredWithCourseData);
+    setFilteredCourses(filtered);
     setLastFilteredGradeLevel(currentGradeLevel);
     setHasFilteredOnce(true);
   }, [coursesData, selectedCategory, currentGradeLevel]);
@@ -317,7 +214,13 @@ export default function Index() {
   }
 
   // Show error display for non-credential errors (only when not loading and we have checked credentials)
-  if (error && !loading && hasCheckedCredentials && !error.includes('credentials') && !error.includes('Missing credentials')) {
+  if (shouldBlockCourseError({
+    error,
+    localError,
+    loading,
+    checkedCredentials: hasCheckedCredentials,
+    hasCourseSnapshot: coursesData !== null,
+  })) {
     return (
       <View className="flex-1 bg-primary">
         <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
@@ -356,8 +259,10 @@ export default function Index() {
     'Senior': 12
   };
   const currentGradeYear = gradeMap[currentGradeLevel as keyof typeof gradeMap];
-  const hasMatchingGradeInData = currentGradeLevel === 'All Time' || 
-    (coursesData?.some((c: any) => c.gradeYear === currentGradeYear) ?? false);
+  const hasMatchingGradeInData = currentGradeLevel === 'All Time' ||
+    (currentGradeLevel === 'Current'
+      ? (coursesData?.some((c: any) => c.gradeYear == null) ?? false)
+      : (coursesData?.some((c: any) => c.gradeYear === currentGradeYear) ?? false));
   
   // Check if filter is stale (grade level changed but filter hasn't run yet)
   const isFilterStale = hasFilteredOnce && lastFilteredGradeLevel !== currentGradeLevel;
@@ -396,7 +301,7 @@ export default function Index() {
   });
 
   // Show error display for non-credential errors
-  if (localError) {
+  if (localError && !coursesData) {
     return (
       <View className="flex-1 bg-primary">
         <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
@@ -439,6 +344,16 @@ export default function Index() {
           }
           ListHeaderComponent={
             <>
+              {(error || localError) && coursesData && (
+                <View
+                  accessibilityRole="alert"
+                  className="mx-5 mt-3 rounded-xl bg-amber-100 px-4 py-3"
+                >
+                  <Text className="text-sm font-medium text-amber-900">
+                    Couldn&apos;t refresh. Showing your last saved grades.
+                  </Text>
+                </View>
+              )}
               <Text className="text-slate-500 font-bold mt-3 text-sm px-5">Term</Text>
               <View className="my-2 px-5">
                 <TouchableOpacity

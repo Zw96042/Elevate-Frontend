@@ -2,15 +2,15 @@
   "expo": {
     "name": "Elevate",
     "slug": "elevate",
-    "version": "1.0.0",
+    "version": "2.0.4",
     "orientation": "portrait",
-    "icon": "./assets/images/ElevateOrganicLight.png",
     "scheme": "elevate",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.zachwilson.elevate",
+      "buildNumber": "2",
       "icon": "./assets/icon_themed.icon"
     },
     "plugins": [
@@ -29,7 +29,16 @@
         }
       ],
       "expo-secure-store",
-      "expo-build-properties"
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ],
+      "expo-font",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
@@ -40,13 +49,13 @@
         "projectId": "2f8bf76b-e1cb-42e0-82af-08f39690b834"
       }
     },
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "updates": {
       "url": "https://u.expo.dev/2f8bf76b-e1cb-42e0-82af-08f39690b834"
     },
-    "expo": {
-      "jsEngine": "hermes"
-    },
+    "jsEngine": "hermes",
     "android": {
       "package": "com.anonymous.elevate"
     }

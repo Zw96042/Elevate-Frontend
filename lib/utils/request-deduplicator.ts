@@ -23,8 +23,10 @@ export class RequestDeduplicator {
     const promise = requestFn()
       .finally(() => {
         // Clean up after request completes
-        this.pendingRequests.delete(key);
-        logger.debug(Modules.DEDUP, `Request completed: ${key}`);
+        if (this.pendingRequests.get(key) === promise) {
+          this.pendingRequests.delete(key);
+          logger.debug(Modules.DEDUP, `Request completed: ${key}`);
+        }
       });
 
     this.pendingRequests.set(key, promise);

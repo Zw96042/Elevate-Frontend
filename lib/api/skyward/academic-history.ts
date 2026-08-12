@@ -2,6 +2,7 @@
 import axios from 'axios';
 import { parse } from 'node-html-parser';
 import { SkywardSessionCodes } from '../../types/api';
+import { parseJavaScriptLiteral } from '../../utils/javascript-literal-parser';
 import { logger, Modules, log } from '../../utils/logger';
 
 /**
@@ -17,7 +18,7 @@ export async function fetchAcademicHistory(
   try {
     const html = await scrapeAcademicHistoryHTML(baseUrl, sessionCodes);
     const gridObjects = parseAcademicHistoryHTML(html);
-    const result = condenseAcademicHistory(gridObjects);
+    const result = gridObjects === null ? {} : condenseAcademicHistory(gridObjects);
     
     const duration = Date.now() - startTime;
     const yearCount = Object.keys(result).filter(k => k !== 'alt').length;
@@ -54,7 +55,7 @@ export async function fetchGradebookHTML(
       },
       timeout: 10000,
       maxRedirects: 2,
-      validateStatus: (status) => status < 500,
+      validateStatus: (status) => status >= 200 && status < 300,
     });
 
     const htmlData = response.data;
@@ -94,26 +95,36 @@ export async function parseGradebookHTML(htmlData: string): Promise<any> {
   }
 
   if (!scriptContent) {
-    return { data: [], raw: htmlData };
+    throw new Error('Skyward gradebook response had no grid data');
   }
 
   const results = /\$\.extend\(\(sff\.getValue\('sf_gridObjects'\) \|\| {}\), ([\s\S]*)\)\);/g.exec(scriptContent);
 
   if (!results) {
-    return { data: [], raw: htmlData };
+    throw new Error('Skyward gradebook response had an invalid grid script');
   }
 
-  const parsedData = new Function(`return ${results[1]}`)();
+  const parsedData = parseJavaScriptLiteral(results[1]);
+  if (!parsedData || typeof parsedData !== 'object' || Array.isArray(parsedData)) {
+    throw new Error('Skyward gradebook data had an invalid format');
+  }
   const values = Object.entries(parsedData);
   const targetPair = values.find(([key]) => /stuGradesGrid_\d+_\d+/.test(key));
 
   if (!targetPair) {
-    return { data: [], raw: htmlData };
+    throw new Error('Skyward gradebook response had no compatible student grid');
   }
 
   const gridData = targetPair[1] as any;
-  if (!gridData.tb || !gridData.tb.r) {
-    return { data: [], raw: htmlData };
+  if (!gridData.tb || !Array.isArray(gridData.tb.r)) {
+    throw new Error('Skyward gradebook response had an incomplete student grid');
+  }
+  const rows = gridData.tb.r;
+  const courseRows = rows.filter(
+    (row: any) => Array.isArray(row?.c) && row.c.length > 0 && row.c[0]?.cId
+  );
+  if (rows.length > 0 && courseRows.length === 0) {
+    throw new Error('Skyward gradebook contained unrecognized populated rows');
   }
 
   // Extract course details
@@ -155,8 +166,7 @@ export async function parseGradebookHTML(htmlData: string): Promise<any> {
   });
 
   // Process grade data
-  const courses = gridData.tb.r
-    .filter((row: any) => row.c && row.c.length > 0 && row.c[0].cId)
+  const courses = courseRows
     .map((row: any) => {
       const courseData: any[] = [];
       let courseNumber: number | null = null;
@@ -171,7 +181,6 @@ export async function parseGradebookHTML(htmlData: string): Promise<any> {
             const course = Number(element.getAttribute('data-cni'));
             const bucket = element.getAttribute('data-bkt');
             const scoreText = element.text?.trim() || '';
-            const score = Number(scoreText);
 
             if (course && !gbID) {
               const gId = element.getAttribute('data-gid');
@@ -182,7 +191,8 @@ export async function parseGradebookHTML(htmlData: string): Promise<any> {
 
             if (course && bucket) {
               courseNumber = course;
-              if (!isNaN(score)) {
+              const score = Number(scoreText);
+              if (scoreText.length > 0 && Number.isFinite(score)) {
                 courseData.push({ bucket, score });
               }
             }
@@ -208,7 +218,7 @@ export async function parseGradebookHTML(htmlData: string): Promise<any> {
         };
       }
 
-      return null;
+      throw new Error('Skyward gradebook course row was structurally incomplete');
     })
     .filter((course: any) => course !== null);
 
@@ -218,20 +228,36 @@ export async function parseGradebookHTML(htmlData: string): Promise<any> {
 /**
  * Combine academic history with current gradebook data
  */
-export function combineAcademicData(academicHistory: any, gradebookData: any): any {
+export function combineAcademicData(
+  academicHistory: any,
+  gradebookData: any,
+  fallbackGrade?: number
+): any {
   if (!gradebookData || !gradebookData.data || gradebookData.data.length === 0) {
     return academicHistory;
   }
 
   const yearKeys = Object.keys(academicHistory).filter(k => k !== 'alt');
+  let latestYear: string;
+  let yearData: any;
+
   if (yearKeys.length === 0) {
-    return academicHistory;
+    latestYear = 'current';
+    yearData = { grade: fallbackGrade, courses: {} };
+  } else {
+    const existingLatestYear = yearKeys.sort().reverse()[0];
+    const existingYearData = academicHistory[existingLatestYear];
+    if (fallbackGrade !== undefined && existingYearData?.grade !== fallbackGrade) {
+      latestYear = nextAcademicYearKey(existingLatestYear, new Set(yearKeys));
+      yearData = { grade: fallbackGrade, courses: {} };
+    } else {
+      latestYear = existingLatestYear;
+      yearData = existingYearData;
+    }
   }
 
-  const latestYear = yearKeys.sort().reverse()[0];
-  const yearData = academicHistory[latestYear];
   if (!yearData || !yearData.courses) {
-    return academicHistory;
+    throw new Error('Skyward academic history had an incomplete current year');
   }
 
   const academicCourses = yearData.courses;
@@ -243,12 +269,25 @@ export function combineAcademicData(academicHistory: any, gradebookData: any): a
     'SEM 1': 'sm1', 'SEM 2': 'sm2',
   };
 
-  const newCourses: any = {};
+  const mergedCourses: any = { ...academicCourses };
+  const claimedAcademicKeys = new Set<string>();
 
   for (const gradebookCourse of gradebookData.data) {
-    const lookupKey = gradebookCourse.courseName.trim().toUpperCase();
-    const academicKey = Object.keys(academicCourses).find(k => k.trim().toUpperCase() === lookupKey);
+    const lookupKey = normalizeCourseName(gradebookCourse.courseName);
+    const academicKey = Object.keys(academicCourses).find(k => {
+      if (claimedAcademicKeys.has(k)) return false;
+      const course = academicCourses[k];
+      if (
+        gradebookCourse.corNumId !== undefined &&
+        String(course.corNumId ?? '') === String(gradebookCourse.corNumId) &&
+        String(course.section ?? '') === String(gradebookCourse.section ?? '')
+      ) {
+        return true;
+      }
+      return normalizeCourseName(course.courseName || k) === lookupKey;
+    });
     const baseCourse = academicKey ? academicCourses[academicKey] : null;
+    if (academicKey) claimedAcademicKeys.add(academicKey);
 
     const courseObj = baseCourse ? { ...baseCourse } : {
       terms: gradebookCourse.semester === 'both' ? '1 - 4' : '',
@@ -283,11 +322,57 @@ export function combineAcademicData(academicHistory: any, gradebookData: any): a
       courseObj.ex2 = baseCourse.ex2;
     }
 
-    newCourses[gradebookCourse.courseName] = courseObj;
+    courseObj.courseName = gradebookCourse.courseName;
+    const storageKey = academicKey || uniqueCourseKey(
+      gradebookCourse.courseName,
+      new Set(Object.keys(mergedCourses))
+    );
+    mergedCourses[storageKey] = courseObj;
   }
 
-  academicHistory[latestYear].courses = newCourses;
-  return academicHistory;
+  return {
+    ...academicHistory,
+    [latestYear]: { ...yearData, courses: mergedCourses },
+  };
+}
+
+function normalizeCourseName(name: string): string {
+  return String(name || '').replace(/_\d+$/, '').trim().toUpperCase();
+}
+
+function uniqueCourseKey(courseName: string, existingKeys: Set<string>): string {
+  if (!existingKeys.has(courseName)) return courseName;
+  let suffix = 2;
+  while (existingKeys.has(`${courseName}_${suffix}`)) suffix += 1;
+  return `${courseName}_${suffix}`;
+}
+
+function nextAcademicYearKey(latestYear: string, existingKeys: Set<string>): string {
+  const match = /^(\d{4})-(\d{4})$/.exec(latestYear);
+  if (!match) {
+    let suffix = 1;
+    let candidate = 'current';
+    while (existingKeys.has(candidate)) {
+      suffix += 1;
+      candidate = `current-${suffix}`;
+    }
+    return candidate;
+  }
+
+  let start = Number(match[2]);
+  let candidate = `${start}-${start + 1}`;
+  while (existingKeys.has(candidate)) {
+    start += 1;
+    candidate = `${start}-${start + 1}`;
+  }
+  return candidate;
+}
+
+export function inferGradeLevelFromHTML(html: string): number | undefined {
+  const text = parse(html).text;
+  const match = /\bGrade\s*(9|10|11|12)\b/i.exec(text)
+    || /\b(9|10|11|12)(?:st|nd|rd|th)\s+Grade\b/i.exec(text);
+  return match ? Number(match[1]) : undefined;
 }
 
 /**
@@ -300,56 +385,23 @@ export async function fetchCombinedAcademicData(
   const startTime = Date.now();
   logger.info(Modules.API_HISTORY, 'Fetching combined academic data (parallel)');
   
-  // Parallel requests with stagger
-  const academicHistoryPromise = fetchAcademicHistory(baseUrl, sessionCodes);
-
-  const gradebookPromise = new Promise<string>((resolve, reject) => {
-    setTimeout(async () => {
-      try {
-        const result = await fetchGradebookHTML(baseUrl, sessionCodes);
-        resolve(result);
-      } catch (error) {
-        reject(error);
-      }
-    }, 50);
-  });
-
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('PARALLEL_TIMEOUT')), 8000);
-  });
-
   try {
-    const [academicHistory, gradebookHtml] = await Promise.race([
-      Promise.all([academicHistoryPromise, gradebookPromise]),
-      timeoutPromise,
+    const [academicHistory, gradebookHtml] = await Promise.all([
+      fetchAcademicHistory(baseUrl, sessionCodes),
+      fetchGradebookHTML(baseUrl, sessionCodes),
     ]);
-
-
     const gradebookData = await parseGradebookHTML(gradebookHtml);
-    // console.log("BBB", gradebookData);
-    const result = combineAcademicData(academicHistory, gradebookData);
-    // console.log("BBB", result, "BBB");
+    const result = combineAcademicData(
+      academicHistory,
+      gradebookData,
+      inferGradeLevelFromHTML(gradebookHtml)
+    );
     
     const duration = Date.now() - startTime;
     logger.success(Modules.API_HISTORY, `Combined academic data loaded (${duration}ms)`);
     
     return result;
   } catch (error: any) {
-    if (error.message === 'PARALLEL_TIMEOUT') {
-      logger.warn(Modules.API_HISTORY, 'Parallel fetch timed out, falling back to sequential');
-      
-      // Fallback to sequential
-      const academicHistory = await fetchAcademicHistory(baseUrl, sessionCodes);
-      const gradebookHtml = await fetchGradebookHTML(baseUrl, sessionCodes);
-      const gradebookData = await parseGradebookHTML(gradebookHtml);
-      const result = combineAcademicData(academicHistory, gradebookData);
-      
-      const duration = Date.now() - startTime;
-      logger.success(Modules.API_HISTORY, `Combined academic data loaded sequentially (${duration}ms)`);
-      
-      return result;
-    }
-    
     const duration = Date.now() - startTime;
     logger.error(Modules.API_HISTORY, `Failed to fetch combined data (${duration}ms)`, error);
     throw error;
@@ -379,7 +431,7 @@ function scrapeAcademicHistoryHTML(baseUrl: string, sessionCodes: SkywardSession
     },
     timeout: 10000,
     maxRedirects: 2,
-    validateStatus: (status) => status < 500,
+    validateStatus: (status) => status >= 200 && status < 300,
   }).then(response => {
     const html = response.data;
     if (
@@ -395,7 +447,7 @@ function scrapeAcademicHistoryHTML(baseUrl: string, sessionCodes: SkywardSession
   });
 }
 
-function parseAcademicHistoryHTML(responseData: string): any {
+function parseAcademicHistoryHTML(responseData: string): any | null {
   if (!responseData || typeof responseData !== 'string') {
     throw new Error('Invalid response data');
   }
@@ -409,6 +461,16 @@ function parseAcademicHistoryHTML(responseData: string): any {
 
   const scripts = root.querySelectorAll('script');
 
+  const pageText = root.querySelector('body')?.text || root.text;
+  const hasVerifiedEmptyMarker = /\bno\s+(?:academic\s+history\s+)?records?(?:\s+(?:found|available|to\s+display))?\b/i.test(pageText);
+  if (
+    !responseData.includes('sf_gridObjects') &&
+    /Academic History/i.test(title) &&
+    hasVerifiedEmptyMarker
+  ) {
+    return null;
+  }
+
   for (const script of scripts) {
     const scriptContent = script.innerHTML;
 
@@ -418,7 +480,7 @@ function parseAcademicHistoryHTML(responseData: string): any {
       if (sffMatch) {
         try {
           const gridObjectsString = sffMatch[1];
-          return new Function(`return ${gridObjectsString}`)();
+          return parseJavaScriptLiteral(gridObjectsString);
         } catch (e: any) {
           throw new Error(`Failed to parse grid objects: ${e.message}`);
         }
@@ -431,17 +493,23 @@ function parseAcademicHistoryHTML(responseData: string): any {
 
 function condenseAcademicHistory(gridObjects: any): any {
   if (!gridObjects || typeof gridObjects !== 'object') {
-    return {};
+    throw new Error('Skyward academic history data had an invalid format');
   }
 
   const values = Object.entries(gridObjects);
   const targetPairs = values.filter(([key]) => /gradeGrid_\d+_\d+_\d+/.test(key));
 
   if (targetPairs.length === 0) {
-    return {};
+    throw new Error('Skyward academic history response had no compatible grade grid');
   }
 
-  const targetGrids = targetPairs.map(([, value]) => value);
+  const targetGrids = targetPairs.map(([, value]) => {
+    const grid = value as any;
+    if (!grid?.tb || !Array.isArray(grid.tb.r)) {
+      throw new Error('Skyward academic history grade grid was incomplete');
+    }
+    return grid;
+  });
   const academicYears: any = {};
 
   const isValidCourse = (courseData: any) => {
@@ -463,7 +531,8 @@ function condenseAcademicHistory(gridObjects: any): any {
   };
 
   const parseCourseRow = (row: any) => {
-    if (!row.c || row.c.length === 0) return null;
+    if (!Array.isArray(row?.c) || row.c.length < 18) return null;
+    if (row.c.some((cell: any) => typeof cell?.h !== 'string')) return null;
 
     const columns = row.c.map((cell: any) => {
       const cellRoot = parse(cell.h || '');
@@ -473,6 +542,8 @@ function condenseAcademicHistory(gridObjects: any): any {
     const isAltCourse = row.c && row.c.length > 0 && row.c[0].h &&
       typeof row.c[0].h === 'string' &&
       !(row.c[0].h.includes('<a ') || row.c[0].h.includes('<a>'));
+
+    if (!columns[0]) return null;
 
     return {
       courseName: columns[0] || '',
@@ -498,7 +569,6 @@ function condenseAcademicHistory(gridObjects: any): any {
     const finalGrade = semester2Grade || semester1Grade ||
       grades.rc4 || grades.rc3 || grades.rc2 || grades.rc1;
 
-    console.log("Course:", courseName, "Final Grade Ex1:", grades.ex1);
     return {
       courseName, terms, finalGrade, isAltCourse,
       semester1: semester1Grade, semester2: semester2Grade,
@@ -522,13 +592,19 @@ function condenseAcademicHistory(gridObjects: any): any {
       const yearMatch = /(\d{4})\s*-\s*(\d{4}).*Grade\s+(\d+)/.exec(yearText);
 
       if (yearMatch) {
+        const begin = Number(yearMatch[1]);
+        const end = Number(yearMatch[2]);
+        const grade = Number(yearMatch[3]);
+        if (end !== begin + 1 || grade < 1 || grade > 12) {
+          throw new Error('Skyward academic history had an invalid year header');
+        }
         if (currentSection) {
           yearSections.push(currentSection);
         }
         currentSection = {
           begin: yearMatch[1],
           end: yearMatch[2],
-          grade: parseInt(yearMatch[3], 10),
+          grade,
           startIndex: index,
           rows: [],
         };
@@ -541,11 +617,30 @@ function condenseAcademicHistory(gridObjects: any): any {
       yearSections.push(currentSection);
     }
 
+    if (rows.length > 0 && yearSections.length === 0) {
+      throw new Error('Skyward academic history contained unrecognized populated rows');
+    }
+
     yearSections.forEach(section => {
-      const courses = section.rows
-        .map(parseCourseRow)
+      const parsedRows = section.rows.map(parseCourseRow);
+      const recognizedEmptyRows = section.rows.filter((row: any) => {
+        if (!Array.isArray(row?.c)) return false;
+        const text = row.c.map((cell: any) => parse(cell?.h || '').text).join(' ');
+        return /\bno\s+(?:academic\s+history\s+)?records?\b/i.test(text);
+      }).length;
+      const structurallyUnknownRows = parsedRows.filter((row: any) => row === null).length
+        - recognizedEmptyRows;
+      const courses = parsedRows
         .filter((courseData: any) => courseData && isValidCourse(courseData))
         .map(organizeCourseData);
+
+      if (section.rows.length > 0 && courses.length === 0 && structurallyUnknownRows > 0) {
+        throw new Error('Skyward academic history contained malformed populated rows');
+      }
+
+      // Skyward can include legitimate pre-high-school credit sections. Parse
+      // and validate them, but keep the product's unified transcript at 9-12.
+      if (section.grade < 9) return;
 
       const regularCourses = courses.filter((course: any) => !course.isAltCourse);
       const altCourses = courses.filter((course: any) => course.isAltCourse);

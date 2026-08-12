@@ -1,7 +1,5 @@
-import React, { useCallback, useEffect, useRef, useMemo } from 'react';
-import {
-  View, Text, FlatList, ActivityIndicator, TouchableOpacity, DeviceEventEmitter
-} from 'react-native';
+import React, { useCallback, useRef, useMemo } from 'react';
+import { View, Text, FlatList, ActivityIndicator, TouchableOpacity, useColorScheme } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import he from 'he';
@@ -10,7 +8,6 @@ import SkeletonMessage from '@/components/SkeletonMessage';
 import ErrorDisplay from '@/components/ErrorDisplay';
 import LoginPrompt from '@/components/LoginPrompt';
 import { useSettingSheet } from '@/context/SettingSheetContext';
-import { useColorScheme } from 'react-native';
 import { useInboxCache } from '@/hooks/useInboxCache';
 import { logger, Modules } from '@/lib/utils/logger';
 
@@ -34,19 +31,6 @@ const Inbox = () => {
   // Memoize theme-dependent values
   const indicatorColor = useMemo(() => 
     colorScheme === 'dark' ? '#ffffff' : '#000000', [colorScheme]);
-
-  // Listen for credential updates
-  useEffect(() => {
-    const credentialsListener = DeviceEventEmitter.addListener('credentialsAdded', async () => {
-      logger.info(Modules.PAGE_INBOX, 'Credentials added, refreshing messages');
-      setError(null);
-      await loadMessagesWithCache(false);
-    });
-
-    return () => {
-      credentialsListener.remove();
-    };
-  }, []);
 
   const fetchMessages = useCallback(async () => {
     setError(null);

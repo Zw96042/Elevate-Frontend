@@ -1,8 +1,9 @@
 // Hook for Skyward authentication using the new services layer
 import { useState } from 'react';
-import { AuthService, SessionManager } from '@/lib/services';
+import { AuthService } from '@/lib/services';
 import { authenticateWithSkyward } from '@/lib/api';
 import { SkywardSessionCodes } from '@/lib/types/api';
+import { SessionManager } from '@/lib/utils/session-manager';
 
 export function useSkywardAuth() {
   const [loading, setLoading] = useState(false);

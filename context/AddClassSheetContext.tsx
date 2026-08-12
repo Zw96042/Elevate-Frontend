@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useRef, useState, ReactNode } from 'react';
 import AddClass from '@gorhom/bottom-sheet';
 import formatClassName from '@/utils/formatClassName';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAccountScopedItem, setAccountScopedItem } from '@/lib/utils/account-scoped-storage';
 
 type TermData = {
   categories: {
@@ -122,13 +122,13 @@ export const AddClassSheetProvider = ({ children }: { children: ReactNode }) => 
 
     modalData.setFilteredAssignments([...artificial, ...filteredReal]);
 
-    const existing = JSON.parse(await AsyncStorage.getItem("artificialAssignments") ?? "{}");
+    const existing = JSON.parse(await getAccountScopedItem("artificialAssignments") ?? "{}");
     const updated = {
       ...existing,
       [modalData.className]: updatedArtificial,
     };
 
-    await AsyncStorage.setItem("artificialAssignments", JSON.stringify(updated));
+    await setAccountScopedItem("artificialAssignments", JSON.stringify(updated));
     addClassRef.current?.close();
   };
 

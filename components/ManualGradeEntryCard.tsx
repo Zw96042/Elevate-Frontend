@@ -1,28 +1,52 @@
-import React, { useEffect, useState } from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useCallback, useEffect, useState } from 'react';
+import { DeviceEventEmitter, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { getAccountScopedItem } from '@/lib/utils/account-scoped-storage';
 
 const ManualGradeEntryCard = ({ selectedGrade, minimized = false, rawCourses = null }: { selectedGrade: string; minimized?: boolean; rawCourses?: any[] | null }) => {
   const router = useRouter();
   const [savedClasses, setSavedClasses] = useState<any[]>([]); // You can replace any[] with your class type if defined
+  const loadIDRef = React.useRef(0);
 
-  useFocusEffect(() => {
-    const loadSavedClasses = async () => {
+  const loadSavedClasses = useCallback(async (active?: { current: boolean }) => {
+      const loadID = ++loadIDRef.current;
       try {
         const storageKey = `savedClasses-${selectedGrade}`;
-        const stored = await AsyncStorage.getItem(storageKey);
+        const stored = await getAccountScopedItem(storageKey);
         const parsed = stored ? JSON.parse(stored) : [];
-        setSavedClasses(parsed);
+        if ((!active || active.current) && loadID === loadIDRef.current) setSavedClasses(parsed);
       } catch (error) {
         console.error('Failed to load saved classes:', error);
       }
-    };
+  }, [selectedGrade]);
 
-      loadSavedClasses();
-  });
+  useFocusEffect(useCallback(() => {
+    const active = { current: true };
+    void loadSavedClasses(active);
+    return () => { active.current = false; };
+  }, [loadSavedClasses]));
+
+  useEffect(() => {
+    const listener = DeviceEventEmitter.addListener('manualGradesChanged', () => {
+      void loadSavedClasses();
+    });
+    return () => listener.remove();
+  }, [loadSavedClasses]);
+
+  useEffect(() => {
+    const invalid = DeviceEventEmitter.addListener('credentialsInvalid', () => {
+      loadIDRef.current += 1;
+      setSavedClasses([]);
+    });
+    const added = DeviceEventEmitter.addListener('credentialsAdded', () => {
+      void loadSavedClasses();
+    });
+    return () => {
+      invalid.remove();
+      added.remove();
+    };
+  }, [loadSavedClasses]);
   
 
   return (

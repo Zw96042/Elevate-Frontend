@@ -5,6 +5,7 @@ import { authenticateWithSkyward } from '../api';
 import { SessionManager } from '../utils/session-manager';
 import { RequestDeduplicator } from '../utils/request-deduplicator';
 import { logger, Modules, log } from '../utils/logger';
+import { SkywardSessionCodes } from '../types/api';
 
 export interface AuthResult {
   success: boolean;
@@ -12,10 +13,8 @@ export interface AuthResult {
 }
 
 const AUTH_REQUEST_KEY = 'skyward_auth';
-const MIN_AUTH_INTERVAL = 2000; // 2 seconds
-
-let lastAuthTime = 0;
-let lastAuthResult: AuthResult | null = null;
+let authGeneration = 0;
+let sessionMutation: Promise<void> = Promise.resolve();
 
 export class AuthService {
   /**
@@ -23,29 +22,19 @@ export class AuthService {
    * Uses request deduplication to prevent concurrent auth requests
    */
   static async authenticate(): Promise<AuthResult> {
-    const now = Date.now();
-
-    // Use cached result if recent and successful
-    if (now - lastAuthTime < MIN_AUTH_INTERVAL && lastAuthResult?.success) {
-      log.cache.hit(Modules.AUTH, 'auth_result');
-      return lastAuthResult;
-    }
-
     const endTimer = logger.time(Modules.AUTH, 'authenticate');
 
     // Use request deduplication
-    const result = await RequestDeduplicator.deduplicate(AUTH_REQUEST_KEY, async () => {
+    const authentication = RequestDeduplicator.deduplicate(AUTH_REQUEST_KEY, async () => {
       try {
         const authResult = await this.performAuthentication();
-        lastAuthResult = authResult;
-        if (authResult.success) {
-          lastAuthTime = Date.now();
-        }
         return authResult;
       } catch (error: any) {
         return { success: false, error: error.message || 'Authentication failed' };
       }
     });
+
+    const result = await authentication;
 
     endTimer();
     
@@ -62,28 +51,14 @@ export class AuthService {
    * Perform the actual authentication
    */
   private static async performAuthentication(): Promise<AuthResult> {
+    const generation = authGeneration;
+
     try {
       const authInfo = await SkywardAuth.get();
 
       if (!authInfo?.link || !authInfo?.username || !authInfo?.password) {
         logger.warn(Modules.AUTH, 'Missing credentials');
         return { success: false, error: 'Missing credentials' };
-      }
-
-      // Development credentials
-      if (authInfo.username === "dev-test" && authInfo.password === "fgx") {
-        logger.info(Modules.AUTH, 'Using development credentials');
-        await SessionManager.saveSessionCodes(
-          {
-            dwd: "dev",
-            wfaacl: "dev",
-            encses: "dev",
-            'User-Type': "dev",
-            sessionid: "dev",
-          },
-          authInfo.link
-        );
-        return { success: true };
       }
 
       // Real Skyward authentication
@@ -105,16 +80,19 @@ export class AuthService {
         }
 
         log.api.success(Modules.AUTH, 'skyward/login', duration);
-        await SessionManager.saveSessionCodes(sessionCodes, authInfo.link);
+        if (!(await this.saveSessionIfCurrent(generation, authInfo, sessionCodes))) {
+          return { success: false, error: 'Credentials changed during authentication' };
+        }
         return { success: true };
       } catch (err: any) {
         logger.error(Modules.AUTH, 'Skyward login failed', err);
-        
-        // Clear invalid session
-        await SessionManager.clearSessionCodes();
-        
-        // Emit event for invalid credentials
-        DeviceEventEmitter.emit('credentialsInvalid');
+
+        if (generation === authGeneration && isConfirmedCredentialRejection(err)) {
+          // Offline, timeout, and server failures must preserve the last-known
+          // session/data. Only Skyward's explicit credential rejection signs out.
+          await SessionManager.clearSessionCodes();
+          DeviceEventEmitter.emit('credentialsInvalid');
+        }
         
         return { success: false, error: err.message || 'Authentication failed' };
       }
@@ -135,9 +113,48 @@ export class AuthService {
    * Clear session (logout)
    */
   static async clearSession(): Promise<void> {
-    await SessionManager.clearSessionCodes();
-    lastAuthResult = null;
-    lastAuthTime = 0;
+    authGeneration += 1;
     RequestDeduplicator.clearKey(AUTH_REQUEST_KEY);
+
+    await this.mutateSession(() => SessionManager.clearSessionCodes());
   }
+
+  private static async saveSessionIfCurrent(
+    generation: number,
+    original: { link: string; username: string; password: string },
+    sessionCodes: SkywardSessionCodes
+  ): Promise<boolean> {
+    let saved = false;
+    await this.mutateSession(async () => {
+      if (!(await this.isAuthenticationCurrent(generation, original))) return;
+      await SessionManager.saveSessionCodes(sessionCodes, original.link);
+      saved = generation === authGeneration;
+    });
+    return saved;
+  }
+
+  private static async mutateSession(mutation: () => Promise<void>): Promise<void> {
+    const queued = sessionMutation.then(mutation, mutation);
+    sessionMutation = queued.catch(() => undefined);
+    await queued;
+  }
+
+  private static async isAuthenticationCurrent(
+    generation: number,
+    original: { link: string; username: string; password: string }
+  ): Promise<boolean> {
+    if (generation !== authGeneration) return false;
+
+    const current = await SkywardAuth.get();
+    return (
+      generation === authGeneration &&
+      current?.link === original.link &&
+      current.username === original.username &&
+      current.password === original.password
+    );
+  }
+}
+
+function isConfirmedCredentialRejection(error: unknown): boolean {
+  return error instanceof Error && error.message === 'Invalid username or password';
 }

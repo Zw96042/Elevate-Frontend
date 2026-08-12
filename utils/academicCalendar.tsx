@@ -59,106 +59,34 @@ export const ACADEMIC_CALENDAR: TermDateRange[] = [
  * Determines the current academic year based on the current date
  * Academic year starts in August and ends in July of the following calendar year
  */
-export const getCurrentAcademicYear = (): number => {
-  const now = new Date();
-  const currentMonth = now.getMonth(); // 0-indexed
-  
-  if (currentMonth >= 7) { // August or later
-    return now.getFullYear();
-  } else { // January through July
-    return now.getFullYear() - 1;
-  }
-};
+const getAcademicYearForDate = (date: Date): number =>
+  date.getMonth() >= 7 ? date.getFullYear() : date.getFullYear() - 1;
+
+export const getCurrentAcademicYear = (): number =>
+  getAcademicYearForDate(new Date());
 
 /**
  * Determines the current term based on the current date
  */
-export const getCurrentTerm = (): TermLabel => {
-  const now = new Date();
-  const academicYear = getCurrentAcademicYear();
-  
-  // Helper function to check if current date is within a range
-  const isDateInRange = (range: TermDateRange) => {
-    const startDate = new Date(academicYear, range.start.month, range.start.day);
-    let endDate = new Date(academicYear, range.end.month, range.end.day);
-    
-    // Handle ranges that cross calendar years (like SM1 Grade and terms in spring)
-    if (range.end.month < range.start.month || 
-        (range.start.month >= 7 && range.end.month <= 6)) {
-      endDate = new Date(academicYear + 1, range.end.month, range.end.day);
-    }
-    
-    // Special handling for terms that start in the next calendar year
-    if (range.start.month <= 6 && range.start.month < 7) {
-      const adjustedStartDate = new Date(academicYear + 1, range.start.month, range.start.day);
-      const adjustedEndDate = new Date(academicYear + 1, range.end.month, range.end.day);
-      
-      if (now >= adjustedStartDate && now <= adjustedEndDate) {
-        return true;
-      }
-    }
-    
-    return now >= startDate && now <= endDate;
-  };
-  
-  // Check if current date falls within any term range
-  for (const range of ACADEMIC_CALENDAR) {
-    if (isDateInRange(range)) {
-      console.log(`📅 Current date ${now.toLocaleDateString()} falls in ${range.term} (${range.description})`);
-      return range.term;
-    }
-  }
-  
-  // Fallback logic for dates not covered (summer break, etc.)
-  const currentMonth = now.getMonth();
-  if (currentMonth >= 6 && currentMonth <= 7) { // July - early August
-    console.log('📅 Summer break detected, defaulting to Q1 Grades for upcoming academic year');
-    return 'Q1 Grades';
-  }
-  
-  // Default fallback
-  console.log('📅 No specific term detected, defaulting to Q1 Grades');
-  return 'Q1 Grades';
-};
+export const getCurrentTerm = (): TermLabel => getTermForDate(new Date());
 
 /**
  * Gets the term that should be active for a specific date
  */
 export const getTermForDate = (date: Date): TermLabel => {
-  const academicYear = getCurrentAcademicYear();
-  
-  // Helper function to check if given date is within a range
-  const isDateInRange = (range: TermDateRange, checkDate: Date) => {
-    const startDate = new Date(academicYear, range.start.month, range.start.day);
-    let endDate = new Date(academicYear, range.end.month, range.end.day);
-    
-    // Handle ranges that cross calendar years
-    if (range.end.month < range.start.month || 
-        (range.start.month >= 7 && range.end.month <= 6)) {
-      endDate = new Date(academicYear + 1, range.end.month, range.end.day);
-    }
-    
-    // Special handling for terms that start in the next calendar year
-    if (range.start.month <= 6 && range.start.month < 7) {
-      const adjustedStartDate = new Date(academicYear + 1, range.start.month, range.start.day);
-      const adjustedEndDate = new Date(academicYear + 1, range.end.month, range.end.day);
-      
-      if (checkDate >= adjustedStartDate && checkDate <= adjustedEndDate) {
-        return true;
-      }
-    }
-    
-    return checkDate >= startDate && checkDate <= endDate;
-  };
-  
-  // Check if date falls within any term range
+  const academicYear = getAcademicYearForDate(date);
+
   for (const range of ACADEMIC_CALENDAR) {
-    if (isDateInRange(range, date)) {
+    const startYear = range.start.month >= 7 ? academicYear : academicYear + 1;
+    const endYear = range.end.month >= 7 ? academicYear : academicYear + 1;
+    const startDate = new Date(startYear, range.start.month, range.start.day);
+    const endDate = new Date(endYear, range.end.month, range.end.day, 23, 59, 59, 999);
+
+    if (date >= startDate && date <= endDate) {
       return range.term;
     }
   }
-  
-  // Default fallback
+
   return 'Q1 Grades';
 };
 

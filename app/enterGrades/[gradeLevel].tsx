@@ -1,10 +1,26 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ActivityIndicator, RefreshControl } from 'react-native';
+import {
+  View,
+  Text,
+  ActivityIndicator,
+  RefreshControl,
+  TextInput,
+  TouchableOpacity,
+  DeviceEventEmitter,
+} from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import ClassCard2Sem from '@/components/ClassCard2Sem';
-import { DataService, UnifiedCourseData, UnifiedGPAManager } from '@/lib';
+import { DataService, type UnifiedCourseData } from '@/lib';
 import { ensureUniqueCourseIds } from '@/utils/uniqueId';
+import { logger, Modules } from '@/lib/utils/logger';
+import {
+  loadManualClasses,
+  normalizeManualClass,
+  saveManualClass,
+  type HistoricalGradeLevel,
+  type SavedManualClass,
+} from '@/lib/utils/manual-gpa';
 
 interface CourseData {
   terms: string;
@@ -27,16 +43,6 @@ interface CourseData {
   ex2: string;
 }
 
-interface YearData {
-  grade: number;
-  courses: Record<string, CourseData>;
-}
-
-interface AcademicHistoryData {
-  [year: string]: YearData;
-  alt?: any;
-}
-
 const getGradeLevelName = (gradeNumber: number): string => {
   switch (gradeNumber) {
     case 9: return 'Freshman';
@@ -47,14 +53,6 @@ const getGradeLevelName = (gradeNumber: number): string => {
   }
 };
 
-// Helper function to get course level
-// Helper to get current grade level from academic data
-function getCurrentGradeLevelFromData(academicData: AcademicHistoryData): number {
-  const yearKeys = Object.keys(academicData).filter(k => k !== 'alt');
-  if (yearKeys.length === 0) return 12; // fallback
-  const latestYear = yearKeys.sort().reverse()[0];
-  return academicData[latestYear]?.grade ?? 12;
-}
 const getCourseLevel = (className: string): "AP" | "Honors" | "Regular" => {
   if (!className || typeof className !== 'string' || className.trim() === '') {
     return "Regular";
@@ -134,9 +132,23 @@ const AcademicHistoryView = () => {
   const { gradeLevel, preloadedClasses, unifiedCourses: unifiedCoursesParam } = useLocalSearchParams();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [academicData, setAcademicData] = useState<AcademicHistoryData | null>(null);
   const [unifiedCourses, setUnifiedCourses] = useState<UnifiedCourseData[] | null>(null);
+  const [manualClasses, setManualClasses] = useState<SavedManualClass[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [className, setClassName] = useState('');
+  const [fallGrade, setFallGrade] = useState('');
+  const [springGrade, setSpringGrade] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const acceptPreloadedRef = React.useRef(true);
+  const manualLoadIDRef = React.useRef(0);
+
+  const selectedGradeLevel = React.useMemo<HistoricalGradeLevel>(() => {
+    const value = Array.isArray(gradeLevel) ? gradeLevel[0] : gradeLevel;
+    return ['Freshman', 'Sophomore', 'Junior', 'Senior'].includes(value ?? '')
+      ? value as HistoricalGradeLevel
+      : 'Freshman';
+  }, [gradeLevel]);
 
   // Get grade level number from route parameter
   const gradeNumber = React.useMemo(() => {
@@ -146,315 +158,196 @@ const AcademicHistoryView = () => {
       'Junior': 11,
       'Senior': 12
     };
-    return gradeMap[gradeLevel.toString()] || 9;
-  }, [gradeLevel]);
+    return gradeMap[selectedGradeLevel];
+  }, [selectedGradeLevel]);
 
   // Parse preloaded classes if they exist
   const preloadedCourses = React.useMemo(() => {
     if (preloadedClasses && typeof preloadedClasses === 'string') {
       try {
-        const parsed = JSON.parse(preloadedClasses);
-        return parsed;
+        const parsed: unknown = JSON.parse(preloadedClasses);
+        return Array.isArray(parsed)
+          ? parsed.flatMap(row => {
+              const normalized = normalizeManualClass(row);
+              return normalized ? [normalized] : [];
+            })
+          : [];
       } catch (error) {
-        console.error('Failed to parse preloaded classes:', error);
+        logger.error(Modules.PAGE_GPA, 'Failed to parse preloaded classes', error);
       }
     }
-    return null;
+    return [];
   }, [preloadedClasses]);
 
   // Parse unified courses if they exist
   const passedUnifiedCourses = React.useMemo(() => {
     if (unifiedCoursesParam && typeof unifiedCoursesParam === 'string') {
       try {
-        const parsed = JSON.parse(unifiedCoursesParam);
-        // console.log('📊 Parsed unified courses from params:', parsed.length, 'courses');
-        return parsed;
+        const parsed: unknown = JSON.parse(unifiedCoursesParam);
+        return Array.isArray(parsed) ? parsed as UnifiedCourseData[] : null;
       } catch (error) {
-        console.error('Failed to parse unified courses:', error);
+        logger.error(Modules.PAGE_GPA, 'Failed to parse unified courses', error);
       }
     }
     return null;
-  }, [preloadedClasses]);
+  }, [unifiedCoursesParam]);
+
+  const loadManualData = useCallback(async () => {
+    const loadID = ++manualLoadIDRef.current;
+    const stored = await loadManualClasses(selectedGradeLevel);
+    if (loadID === manualLoadIDRef.current) {
+      setManualClasses(stored.length > 0 || !acceptPreloadedRef.current ? stored : preloadedCourses);
+    }
+  }, [preloadedCourses, selectedGradeLevel]);
 
   const loadData = useCallback(async (forceRefresh = false) => {
     try {
-      console.log(`📱 [GradeLevel ${gradeLevel}] loadData called with forceRefresh:`, forceRefresh);
-      console.log(`📚 Grade number: ${gradeNumber}`);
-      
       setError(null);
       if (forceRefresh) setRefreshing(true);
       else setLoading(true);
 
-      // First get unified data to determine current grade level
-      console.log('🔄 Fetching unified data to determine current grade...');
       const unifiedResult = await DataService.getCombinedData(forceRefresh);
-      console.log('📊 Unified result:', {
-        success: unifiedResult.success,
-        coursesCount: unifiedResult.courses?.length || 0,
-        error: unifiedResult.error,
-        lastUpdated: unifiedResult.lastUpdated
-      });
-      
-      let currentGrade = 12; // Default
-      // If academicData is available, use it to get current grade
-      if (unifiedResult.success && unifiedResult.courses && typeof unifiedResult.courses === 'object' && !Array.isArray(unifiedResult.courses)) {
-        currentGrade = getCurrentGradeLevelFromData(unifiedResult.courses);
-        console.log('🎯 Current grade level detected (from academic data):', currentGrade);
+      if (unifiedResult.success && unifiedResult.courses) {
+        setUnifiedCourses(unifiedResult.courses);
       } else {
-        // fallback to default
-        currentGrade = 12;
-      }
-      const isCurrent = gradeNumber === currentGrade;
-      console.log(`🔍 Is current grade level? ${isCurrent} (page: ${gradeNumber}, current: ${currentGrade})`);
-
-      if (isCurrent) {
-        console.log('✅ Using current grade level path - unified data');
-        // Use unified data for current grade level (combines scrape report + academic history)
-        if (unifiedResult.success && unifiedResult.courses) {
-          console.log('📝 Setting unified courses:', unifiedResult.courses.length);
-          setUnifiedCourses(unifiedResult.courses);
-          setAcademicData(null); // Only set academicData with object format
-          if (unifiedResult.error) {
-            setError(`Note: ${unifiedResult.error}`);
-          }
-        } else {
-          console.log('⚠️ Unified data failed, falling back to GPA manager...');
-          // Fallback to GPA manager for academic history only
-          const gpaResult = await UnifiedGPAManager.getGPAData('All Time', forceRefresh);
-          console.log('📊 GPA fallback result:', { success: gpaResult.success, error: gpaResult.error });
-          
-          if (gpaResult.success && gpaResult.rawCourses) {
-            // Only set academicData if rawCourses is an object (not array)
-            if (typeof gpaResult.rawCourses === 'object' && !Array.isArray(gpaResult.rawCourses)) {
-              setAcademicData(gpaResult.rawCourses);
-              setUnifiedCourses(null);
-            } else {
-              setUnifiedCourses(gpaResult.rawCourses);
-              setAcademicData(null);
-            }
-            setError(`Using academic history fallback: ${unifiedResult.error}`);
-          } else {
-            setError(`Failed to load any data: ${unifiedResult.error || gpaResult.error}`);
-          }
-        }
-      } else {
-        console.log('📚 Using historical grade level path - academic data only');
-        // Use GPA manager for past grade levels (academic history only)
-        const gradeLevel = getGradeLevelName(gradeNumber) as 'Freshman' | 'Sophomore' | 'Junior' | 'Senior' | 'All Time';
-        console.log('🔄 Fetching GPA data for grade level:', gradeLevel);
-        
-        const gpaResult = await UnifiedGPAManager.getGPAData(gradeLevel, forceRefresh);
-        console.log('📊 Historical GPA result:', { 
-          success: gpaResult.success, 
-          rawCoursesCount: gpaResult.rawCourses?.length || 0,
-          error: gpaResult.error 
-        });
-        
-        if (gpaResult.success && gpaResult.rawCourses) {
-          // Only set academicData if rawCourses is an object (not array)
-          if (typeof gpaResult.rawCourses === 'object' && !Array.isArray(gpaResult.rawCourses)) {
-            console.log('📚 Academic format for historical data:', Object.keys(gpaResult.rawCourses));
-            setAcademicData(gpaResult.rawCourses);
-            setUnifiedCourses(null); // Clear unified data when using academic history
-          } else {
-            setUnifiedCourses(gpaResult.rawCourses);
-            setAcademicData(null);
-          }
-          if (gpaResult.error) {
-            setError(`Note: ${gpaResult.error}`);
-          }
-        } else {
-          console.log('❌ Failed to load historical data');
-          setError(gpaResult.error || 'Failed to load historical data');
-          setAcademicData(null);
-          setUnifiedCourses(null);
-        }
+        setError(unifiedResult.error || 'Failed to load historical data');
+        setUnifiedCourses([]);
       }
     } catch (error) {
-      console.error('❌ Failed to load data in [gradeLevel].tsx:', error);
+      logger.error(Modules.PAGE_GPA, 'Failed to load grade-level data', error);
       setError(error instanceof Error ? error.message : 'Failed to load data');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [gradeNumber]);
+  }, []);
 
   useEffect(() => {
-    // Priority 1: If we have passed unified courses data from GPA page, use it directly
-    if (passedUnifiedCourses && passedUnifiedCourses.length > 0) {
-      // console.log('🎯 Using passed unified courses data:', passedUnifiedCourses.length, 'courses');
+    void loadManualData();
+
+    // If the GPA tab passed its current snapshot, use it without another request.
+    if (passedUnifiedCourses) {
       setUnifiedCourses(passedUnifiedCourses);
-      setAcademicData(null); // Clear academic data when using unified
       setLoading(false);
       return;
     }
 
-    // Priority 2: If we have preloaded classes, use them and don't load from API
-    if (preloadedCourses && preloadedCourses.length > 0) {
-      console.log('💾 Using preloaded courses data:', preloadedCourses.length, 'courses');
+    // Manual history remains usable offline and without Skyward credentials.
+    if (preloadedCourses.length > 0) {
+      setUnifiedCourses([]);
       setLoading(false);
       return;
     }
-    
-    // Priority 3: Load data from API
-    console.log('🔄 Loading data from API...');
-    loadData();
-  }, [loadData, preloadedCourses, passedUnifiedCourses]);
+
+    void loadData();
+  }, [loadData, loadManualData, preloadedCourses, passedUnifiedCourses]);
+
+  useEffect(() => {
+    const listener = DeviceEventEmitter.addListener('classDeleted', () => {
+      void loadManualData();
+      DeviceEventEmitter.emit('manualGradesChanged');
+    });
+    return () => listener.remove();
+  }, [loadManualData]);
+
+  useEffect(() => {
+    const invalid = DeviceEventEmitter.addListener('credentialsInvalid', () => {
+      acceptPreloadedRef.current = false;
+      manualLoadIDRef.current += 1;
+      setManualClasses([]);
+    });
+    const added = DeviceEventEmitter.addListener('credentialsAdded', () => {
+      // Never fall back to route data captured under the previous account.
+      acceptPreloadedRef.current = false;
+      void loadManualData();
+    });
+    return () => {
+      invalid.remove();
+      added.remove();
+    };
+  }, [loadManualData]);
 
   const onRefresh = useCallback(() => {
-    loadData(true);
-  }, [loadData]);
+    void Promise.all([loadData(true), loadManualData()]);
+  }, [loadData, loadManualData]);
 
-  // Determine if this is the current grade level
-  const isCurrent = React.useMemo(() => {
-    // You are currently in 10th grade
-    return gradeNumber === 10;
-  }, [gradeNumber]);
+  const currentGradeNumber = React.useMemo(() => {
+    const years = (unifiedCourses ?? [])
+      .map(course => course.gradeYear)
+      .filter((year): year is number => Number.isInteger(year));
+    return years.length > 0 ? Math.max(...years) : null;
+  }, [unifiedCourses]);
+  const isCurrent = currentGradeNumber === gradeNumber;
 
-  // Filter courses for the specific grade level
-  const gradeData = React.useMemo(() => {
-    // If we have unified courses data, create a synthetic gradeData structure
-    if (unifiedCourses && unifiedCourses.length > 0) {
-      // console.log('📊 Creating synthetic gradeData from unified courses');
-      const coursesRecord: Record<string, CourseData> = {};
-      
-      unifiedCourses.forEach(course => {
-        const bucketNames = course.currentScores?.map(s => s.bucket) || [];
-        // console.log('🔍 DEEP ANALYSIS OF COURSE:', course.courseName, {
-        //   fullCourse: JSON.stringify(course, null, 2),
-        //   possibleBuckets: bucketNames
-        // });
-        
-        // For current grade, use the numerical percentage scores for display (as strings)
-        if (isCurrent && course.currentScores && Array.isArray(course.currentScores) && course.currentScores.length > 0) {
-          // Get current scores by bucket (numerical)
-          const getScoreByBucket = (bucket: string): string => {
-            const scoreObj = course.currentScores?.find(s => s.bucket === bucket);
-            return scoreObj && typeof scoreObj.score === 'number' ? String(scoreObj.score) : '';
-          };
+  const handleAddClass = useCallback(async () => {
+    const parseGrade = (value: string): number | null => {
+      if (!value.trim()) return -1;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) && parsed >= 0 && parsed <= 110 ? parsed : null;
+    };
+    const sm1 = parseGrade(fallGrade);
+    const sm2 = parseGrade(springGrade);
+    if (!className.trim()) {
+      setFormError('Enter a class name.');
+      return;
+    }
+    if (sm1 === null || sm2 === null) {
+      setFormError('Grades must be between 0 and 110.');
+      return;
+    }
+    if (sm1 < 0 && sm2 < 0) {
+      setFormError('Enter at least one semester grade.');
+      return;
+    }
 
-          // console.log('🔄 Using currentScores as numerical grades for:', course.courseName, {
-          //   currentScoresLength: course.currentScores.length,
-          //   currentScores: course.currentScores,
-          //   sample: course.currentScores[0],
-          //   sm1: getScoreByBucket('S1'),
-          //   sm2: getScoreByBucket('S2'),
-          //   rc1: getScoreByBucket('TERM 3'),
-          //   rc2: getScoreByBucket('TERM 6'),
-          //   rc3: getScoreByBucket('TERM 9'),
-          //   rc4: getScoreByBucket('TERM 12'),
-          // });
-
-          coursesRecord[course.courseName] = {
-            terms: course.termLength || 'unknown',
-            finalGrade: '', // Current courses don't have final grades yet
-            sm1: getScoreByBucket('S1'),
-            sm2: getScoreByBucket('S2'),
-            pr1: '',
-            pr2: '',
-            pr3: '',
-            pr4: '',
-            pr5: '',
-            pr6: '',
-            pr7: '',
-            pr8: '',
-            rc1: getScoreByBucket('TERM 3'),
-            rc2: getScoreByBucket('TERM 6'),
-            rc3: getScoreByBucket('TERM 9'),
-            rc4: getScoreByBucket('TERM 12'),
-            ex1: '',
-            ex2: ''
-          };
-        } else {
-          // For historical grades or when currentScores is not an array, use the historical data
-          console.log('🔄 Using historical grades for:', course.courseName, {
-            hasCurrentScores: !!course.currentScores,
-            currentScoresType: typeof course.currentScores,
-            currentScoresValue: course.currentScores,
-            isArray: Array.isArray(course.currentScores),
-            isCurrent
-          });
-          
-          coursesRecord[course.courseName] = {
-            terms: course.termLength || 'unknown',
-            finalGrade: course.historicalGrades?.finalGrade || '',
-            sm1: course.historicalGrades?.sm1 || '',
-            sm2: course.historicalGrades?.sm2 || '',
-            pr1: course.historicalGrades?.pr1 || '',
-            pr2: course.historicalGrades?.pr2 || '',
-            pr3: course.historicalGrades?.pr3 || '',
-            pr4: course.historicalGrades?.pr4 || '',
-            pr5: course.historicalGrades?.pr5 || '',
-            pr6: course.historicalGrades?.pr6 || '',
-            pr7: course.historicalGrades?.pr7 || '',
-            pr8: course.historicalGrades?.pr8 || '',
-            rc1: course.historicalGrades?.rc1 || '',
-            rc2: course.historicalGrades?.rc2 || '',
-            rc3: course.historicalGrades?.rc3 || '',
-            rc4: course.historicalGrades?.rc4 || '',
-            ex1: '',
-            ex2: ''
-          };
-        }
+    setSaving(true);
+    setFormError(null);
+    try {
+      const updated = await saveManualClass(selectedGradeLevel, {
+        className: className.trim(),
+        sm1,
+        sm2,
       });
-      
-      // console.log('📊 Sample course data created:', Object.keys(coursesRecord).length > 0 ? {
-      //   courseName: Object.keys(coursesRecord)[0],
-      //   courseData: coursesRecord[Object.keys(coursesRecord)[0]]
-      // } : 'No courses');
-      
-      return {
-        grade: gradeNumber,
-        courses: coursesRecord
-      };
+      setManualClasses(updated);
+      setClassName('');
+      setFallGrade('');
+      setSpringGrade('');
+      DeviceEventEmitter.emit('manualGradesChanged');
+    } catch (saveError) {
+      logger.error(Modules.PAGE_GPA, 'Failed to save manual class', saveError);
+      setFormError('Could not save this class. Please try again.');
+    } finally {
+      setSaving(false);
     }
-    
-    // Otherwise, use academicData as before
-    if (!academicData) return null;
-    // Find the year data that matches our target grade level
-    const yearEntry = Object.entries(academicData).find(([year, data]) => {
-      return year !== 'alt' && data.grade === gradeNumber;
-    });
-    if (yearEntry) {
-      console.log(`[AcademicHistory] Filtering for grade: ${gradeNumber}, yearKey: ${yearEntry[0]}, yearData:`, yearEntry[1]);
-    } else {
-      console.log(`[AcademicHistory] No year entry found for grade: ${gradeNumber}`);
-    }
-    return yearEntry ? yearEntry[1] : null;
-  }, [academicData, gradeNumber, unifiedCourses, isCurrent]);
+  }, [className, fallGrade, selectedGradeLevel, springGrade]);
 
   const courses = React.useMemo(() => {
-    let coursesArray: Array<{
+    let coursesArray: {
       courseName: string;
       courseData: CourseData;
       savedLevel: string | null;
-    }> = [];
-    
-    // First priority: Use unified courses data
-    const isAllTime = gradeLevel === 'All Time' || gradeLevel === 'all' || gradeLevel === 'ALL';
+      isManual: boolean;
+    }[] = [];
+
+    const text = (value: unknown): string => value == null ? '' : String(value);
     if (unifiedCourses && unifiedCourses.length > 0) {
       coursesArray = unifiedCourses
-        .filter(course => isAllTime || course.gradeYear === gradeNumber)
+        .filter(course => course.gradeYear === gradeNumber)
         .sort((a, b) => a.courseName.localeCompare(b.courseName))
         .map(course => {
           if (isCurrent && course.currentScores && course.currentScores.length > 0) {
-            const s1Score = course.currentScores.find(score => score.bucket === 'S1')?.score || -1;
-            const s2Score = course.currentScores.find(score => score.bucket === 'S2')?.score || -1;
-            const q1Score = course.currentScores.find(score => score.bucket === 'Q1')?.score || -1;
-            const q2Score = course.currentScores.find(score => score.bucket === 'Q2')?.score || -1;
-            const q3Score = course.currentScores.find(score => score.bucket === 'Q3')?.score || -1;
-            const q4Score = course.currentScores.find(score => score.bucket === 'Q4')?.score || -1;
+            const score = (bucket: string): string => {
+              const value = course.currentScores.find(item => item.bucket === bucket)?.score;
+              return typeof value === 'number' && Number.isFinite(value) ? String(value) : '';
+            };
             return {
               courseName: course.courseName,
               courseData: {
                 terms: course.termLength || 'unknown',
                 finalGrade: '',
-                sm1: s1Score !== -1 ? String(s1Score) : '',
-                sm2: s2Score !== -1 ? String(s2Score) : '',
-                pr1: q1Score !== -1 ? String(q1Score) : '',
-                pr2: q2Score !== -1 ? String(q2Score) : '',
-                pr3: q3Score !== -1 ? String(q3Score) : '',
-                pr4: q4Score !== -1 ? String(q4Score) : '',
+                sm1: score('S1'), sm2: score('S2'),
+                pr1: score('Q1'), pr2: score('Q2'),
+                pr3: score('Q3'), pr4: score('Q4'),
                 pr5: '',
                 pr6: '',
                 pr7: '',
@@ -467,93 +360,57 @@ const AcademicHistoryView = () => {
                 ex2: ''
               },
               savedLevel: null,
-              id: `course_${course.courseName.replace(/\s+/g, '').toLowerCase()}_${isAllTime ? 'all' : gradeNumber}`
+              isManual: false,
             };
           } else {
+            const history = course.historicalGrades ?? {};
             return {
               courseName: course.courseName,
               courseData: {
                 terms: course.termLength || 'unknown',
-                finalGrade: course.historicalGrades.finalGrade || '',
-                sm1: course.historicalGrades.sm1 || '',
-                sm2: course.historicalGrades.sm2 || '',
-                pr1: course.historicalGrades.pr1 || '',
-                pr2: course.historicalGrades.pr2 || '',
-                pr3: course.historicalGrades.pr3 || '',
-                pr4: course.historicalGrades.pr4 || '',
-                pr5: course.historicalGrades.pr5 || '',
-                pr6: course.historicalGrades.pr6 || '',
-                pr7: course.historicalGrades.pr7 || '',
-                pr8: course.historicalGrades.pr8 || '',
-                rc1: course.historicalGrades.rc1 || '',
-                rc2: course.historicalGrades.rc2 || '',
-                rc3: course.historicalGrades.rc3 || '',
-                rc4: course.historicalGrades.rc4 || '',
-                ex1: '',
-                ex2: ''
+                finalGrade: text(history.finalGrade),
+                sm1: text(history.sm1), sm2: text(history.sm2),
+                pr1: text(history.pr1), pr2: text(history.pr2),
+                pr3: text(history.pr3), pr4: text(history.pr4),
+                pr5: text(history.pr5), pr6: text(history.pr6),
+                pr7: text(history.pr7), pr8: text(history.pr8),
+                rc1: text(history.rc1), rc2: text(history.rc2),
+                rc3: text(history.rc3), rc4: text(history.rc4),
+                ex1: text(history.ex1), ex2: text(history.ex2),
               },
               savedLevel: null,
-              id: `course_${course.courseName.replace(/\s+/g, '').toLowerCase()}_${isAllTime ? 'all' : gradeNumber}`
+              isManual: false,
             };
           }
         });
     }
-    // Second priority: Use academic history data for past grade levels
-    else if (gradeData) {
-      const filteredCourses = Object.entries(gradeData.courses)
-        .filter(([courseName, courseData]) => {
-          // Filter out courses with no meaningful data
-          return courseData.finalGrade !== "P" && (
-            courseData.sm1 || 
-            courseData.sm2 || 
-            courseData.finalGrade
-          );
-        })
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([courseName, courseData]) => ({
-          courseName,
-          courseData,
-          savedLevel: null // No saved level for API data
-        }));
-      console.log(`[AcademicHistory] Filtered courses for grade ${gradeData.grade}:`, filteredCourses);
-      coursesArray = filteredCourses;
-    }
-    // Last priority: Use preloaded classes from AsyncStorage
-    else if (preloadedCourses && Array.isArray(preloadedCourses)) {
-      // Convert from our saved format to the expected format
-      coursesArray = preloadedCourses.map(course => ({
-        courseName: course.name,
-        courseData: {
-          terms: course.terms,
-          finalGrade: course.grades.finalGrade,
-          sm1: course.grades.sm1,
-          sm2: course.grades.sm2,
-          pr1: course.grades.pr1,
-          pr2: course.grades.pr2,
-          pr3: course.grades.pr3,
-          pr4: course.grades.pr4,
-          pr5: course.grades.pr5,
-          pr6: course.grades.pr6,
-          pr7: course.grades.pr7,
-          pr8: course.grades.pr8,
-          rc1: course.grades.rc1,
-          rc2: course.grades.rc2,
-          rc3: course.grades.rc3,
-          rc4: course.grades.rc4,
-          ex1: course.grades.ex1 || '',
-          ex2: course.grades.ex2 || ''
-        },
-        savedLevel: course.level // Use saved level from AsyncStorage
-      })).sort((a, b) => a.courseName.localeCompare(b.courseName));
-    }
-    
-    // Ensure all courses have unique IDs
-    return ensureUniqueCourseIds(coursesArray, gradeLevel.toString());
-  }, [unifiedCourses, gradeData, preloadedCourses, gradeLevel]);
 
-  // console.log("GRADE DATA: ", gradeData);
-  // console.log("UNIFIED COURSES: ", unifiedCourses?.length || 0, "courses");
-  // console.log("ACADEMIC DATA: ", academicData ? Object.keys(academicData) : "null");
+    const serverNames = new Set(coursesArray.map(course => course.courseName.trim().toLocaleLowerCase()));
+    const manualRows = manualClasses
+      .filter(course => !serverNames.has(course.className.trim().toLocaleLowerCase()))
+      .map(course => ({
+        courseName: course.className,
+        courseData: {
+          terms: '1 - 4',
+          finalGrade: '',
+          sm1: course.sm1 >= 0 ? String(course.sm1) : '',
+          sm2: course.sm2 >= 0 ? String(course.sm2) : '',
+          pr1: '', pr2: '', pr3: '', pr4: '',
+          pr5: '', pr6: '', pr7: '', pr8: '',
+          rc1: text(course.rc1), rc2: text(course.rc2),
+          rc3: text(course.rc3), rc4: text(course.rc4),
+          ex1: '', ex2: '',
+        },
+        savedLevel: course.level ?? null,
+        isManual: true,
+      }));
+
+    return ensureUniqueCourseIds(
+      [...coursesArray, ...manualRows].sort((a, b) => a.courseName.localeCompare(b.courseName)),
+      selectedGradeLevel
+    );
+  }, [gradeNumber, isCurrent, manualClasses, selectedGradeLevel, unifiedCourses]);
+
 
   if (loading && !refreshing) {
     return (
@@ -578,7 +435,7 @@ const AcademicHistoryView = () => {
     );
   }
 
-  if (error) {
+  if (error && courses.length === 0 && manualClasses.length === 0) {
     return (
       <>
         <Stack.Screen
@@ -607,43 +464,6 @@ const AcademicHistoryView = () => {
       </>
     );
   }
-
-  if (courses.length === 0) {
-    return (
-      <>
-        <Stack.Screen
-          options={{
-            title: `${getGradeLevelName(gradeNumber)} Academic History`,
-            headerStyle: { backgroundColor: '#2563eb' },
-            headerTintColor: '#fff',
-            headerTitleStyle: {
-              fontWeight: 'bold',
-              fontSize: 18,
-            },
-            headerBackTitle: 'GPA',
-          }}
-        />
-        <ScrollView 
-          className="flex-1 bg-primary"
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-        >
-          <View className="mx-6 mt-6">
-            <View className="bg-cardColor rounded-2xl p-6 border border-dashed border-accent shadow-md">
-              <Text className="text-main text-lg mb-3 text-center">
-                No academic history found for {getGradeLevelName(gradeNumber)} year.
-              </Text>
-              <Text className="text-accent text-center">
-                This could mean you haven't completed this grade level yet, or the data hasn't been updated in Skyward.
-              </Text>
-            </View>
-          </View>
-        </ScrollView>
-      </>
-    );
-  }
-  // console.log(JSON.stringify(courses, null, 2));
 
   return (
     <>
@@ -679,12 +499,60 @@ const AcademicHistoryView = () => {
           
           </View>
         </View>
-        {/* Course List */}
-        
 
-        {/* Course List */}
+        <View className="mx-6 mb-5 rounded-2xl bg-cardColor p-4">
+          <Text className="text-main text-lg font-semibold mb-3">Add a class</Text>
+          <TextInput
+            className="border border-accent rounded-xl px-4 py-3 text-main bg-primary mb-3"
+            placeholder="Class name"
+            placeholderTextColor="#94a3b8"
+            value={className}
+            onChangeText={setClassName}
+            autoCorrect={false}
+          />
+          <View className="flex-row gap-3">
+            <TextInput
+              className="flex-1 border border-accent rounded-xl px-4 py-3 text-main bg-primary"
+              placeholder="Fall %"
+              placeholderTextColor="#94a3b8"
+              value={fallGrade}
+              onChangeText={setFallGrade}
+              keyboardType="decimal-pad"
+            />
+            <TextInput
+              className="flex-1 border border-accent rounded-xl px-4 py-3 text-main bg-primary"
+              placeholder="Spring %"
+              placeholderTextColor="#94a3b8"
+              value={springGrade}
+              onChangeText={setSpringGrade}
+              keyboardType="decimal-pad"
+            />
+          </View>
+          {formError && <Text className="text-red-500 mt-2">{formError}</Text>}
+          <TouchableOpacity
+            className={`rounded-xl py-3 mt-3 ${saving ? 'bg-accent' : 'bg-highlight'}`}
+            disabled={saving}
+            onPress={() => void handleAddClass()}
+          >
+            <Text className="text-highlightText text-center font-bold">
+              {saving ? 'Saving…' : 'Add Class'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {courses.length === 0 && (
+          <View className="mx-6 mb-5 bg-cardColor rounded-2xl p-6 border border-dashed border-accent">
+            <Text className="text-main text-lg mb-2 text-center">
+              No classes yet for {selectedGradeLevel} year.
+            </Text>
+            <Text className="text-accent text-center">
+              Add your semester grades above. They stay available offline on this account.
+            </Text>
+          </View>
+        )}
+
         {courses.map((course) => {
-          const { courseName, courseData, savedLevel } = course;
+          const { courseName, courseData, savedLevel, isManual } = course;
           // Use saved level if available, otherwise calculate it
           const courseLevel = savedLevel || getCourseLevel(courseName);
           
@@ -698,17 +566,17 @@ const AcademicHistoryView = () => {
             if (unifiedCourse && unifiedCourse.currentScores) {
               const s1Score = unifiedCourse.currentScores.find(score => score.bucket === 'S1');
               const s2Score = unifiedCourse.currentScores.find(score => score.bucket === 'S2');
-              sm1Grade = s1Score?.score !== undefined ? s1Score.score : -1;
-              sm2Grade = s2Score?.score !== undefined ? s2Score.score : -1;
+              sm1Grade = typeof s1Score?.score === 'number' && Number.isFinite(s1Score.score)
+                ? s1Score.score : -1;
+              sm2Grade = typeof s2Score?.score === 'number' && Number.isFinite(s2Score.score)
+                ? s2Score.score : -1;
             }
           } else {
             // For historical grades, parse the letter grades or percentages
-            sm1Grade = courseData.sm1 && courseData.sm1 !== "" && courseData.sm1 !== "P" && courseData.sm1 !== "X" 
-              ? Number(courseData.sm1) 
-              : -1;
-            sm2Grade = courseData.sm2 && courseData.sm2 !== "" && courseData.sm2 !== "P" && courseData.sm2 !== "X" 
-              ? Number(courseData.sm2) 
-              : -1;
+            const parsedSM1 = Number(courseData.sm1);
+            const parsedSM2 = Number(courseData.sm2);
+            sm1Grade = courseData.sm1 !== '' && Number.isFinite(parsedSM1) ? parsedSM1 : -1;
+            sm2Grade = courseData.sm2 !== '' && Number.isFinite(parsedSM2) ? parsedSM2 : -1;
           }
 
           return (
@@ -719,9 +587,9 @@ const AcademicHistoryView = () => {
               s1={{ categories: { names: [], weights: [] }, total: sm1Grade }}
               s2={{ categories: { names: [], weights: [] }, total: sm2Grade }}
               term="SM1 Grade"
-              gradeLevel={gradeLevel.toString()}
+              gradeLevel={selectedGradeLevel}
               courseLevel={courseLevel}
-              showDeleteAction={false}
+              showDeleteAction={isManual}
               termLabels={{ s1: "Fall", s2: "Spring" }}
             />
           );

@@ -7,11 +7,14 @@ import BottomSheet, { BottomSheetBackdrop, BottomSheetModalProvider, BottomSheet
 import { colors } from '@/utils/colorTheme'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { AuthService } from '@/lib/services'
+import { AuthService, DataService } from '@/lib/services'
+import { getStoredSkywardCredentials, saveStoredSkywardCredentials } from '@/lib/utils/secure-skyward-storage'
 import * as Burnt from "burnt";
 import { shouldEnableShowoffMode } from '@/utils/showoffMode';
+import { useUnifiedData } from '@/context/UnifiedDataContext';
 
 const InnerLayout = () => {
+  const { clearCache: clearAcademicCache } = useUnifiedData();
   const [gradeLevel, setGradeLevel] = useState('');
   const [currentSnapPosition, setCurrentSnapPosition] = useState<'hidden' | '35%' | '75%'>('hidden');
   const [modalClosedByOutsideTap, setModalClosedByOutsideTap] = useState(false);
@@ -70,26 +73,31 @@ const InnerLayout = () => {
   };
   useEffect(() => {
     const loadInfo = async () => {
-      const storedLink = await AsyncStorage.getItem('skywardLink');
-      const storedUser = await AsyncStorage.getItem('skywardUser');
-      const storedPass = await AsyncStorage.getItem('skywardPass');
-      const storedGrade = await AsyncStorage.getItem('gradeLevel');
-      const storedShowoffMode = await AsyncStorage.getItem('showoffMode');
+      try {
+        const [storedLink, storedCredentials, storedGrade, storedShowoffMode] = await Promise.all([
+          AsyncStorage.getItem('skywardLink'),
+          getStoredSkywardCredentials(),
+          AsyncStorage.getItem('gradeLevel'),
+          AsyncStorage.getItem('showoffMode'),
+        ]);
 
-      if (storedLink) setLink(storedLink);
-      if (storedUser) setUsername(storedUser);
-      if (storedPass) setPassword(storedPass);
-      if (storedGrade) setGradeLevel(storedGrade);
-      if (storedShowoffMode) setShowoffMode(storedShowoffMode === 'true');
+        if (storedLink) setLink(storedLink);
+        if (storedCredentials?.username) setUsername(storedCredentials.username);
+        if (storedCredentials?.password) setPassword(storedCredentials.password);
+        if (storedGrade) setGradeLevel(storedGrade);
+        if (storedShowoffMode) setShowoffMode(storedShowoffMode === 'true');
 
-      // Store loaded credentials in lastSaved
-      lastSaved.current = {
-        link: storedLink || '',
-        username: storedUser || '',
-        password: storedPass || '',
-        gradeLevel: storedGrade || '',
-        showoffMode: storedShowoffMode === 'true',
-      };
+        // Store loaded credentials in lastSaved
+        lastSaved.current = {
+          link: storedLink || '',
+          username: storedCredentials?.username || '',
+          password: storedCredentials?.password || '',
+          gradeLevel: storedGrade || '',
+          showoffMode: storedShowoffMode === 'true',
+        };
+      } catch (error) {
+        console.error('Failed to load credentials', error);
+      }
     };
 
     loadInfo();
@@ -99,23 +107,40 @@ const InnerLayout = () => {
 
 
   const saveInfo = async () => {
-    const changed =
-      // link !== lastSaved.current.link ||
+    const credentialsChanged =
       username !== lastSaved.current.username ||
-      password !== lastSaved.current.password ||
+      password !== lastSaved.current.password;
+    const preferencesChanged =
       gradeLevel !== lastSaved.current.gradeLevel ||
       showoffMode !== lastSaved.current.showoffMode;
 
-    if (!changed) return;
+    if (!credentialsChanged && !preferencesChanged) return;
 
     try {
-      await AsyncStorage.setItem('skywardUser', username);
-      await AsyncStorage.setItem('skywardPass', password);
-      await AsyncStorage.setItem('skywardLink', "https://skyward-eisdprod.iscorp.com/scripts/wsisa.dll/WService=wsedueanesisdtx/"); // TODO: Change back to add more districts
-      await AsyncStorage.setItem('gradeLevel', gradeLevel);
-      await AsyncStorage.setItem('showoffMode', showoffMode.toString());
+      if (credentialsChanged) {
+        await Promise.all([
+          AuthService.clearSession(),
+          DataService.clearCache(),
+        ]);
+        DeviceEventEmitter.emit('credentialsInvalid');
+        await saveStoredSkywardCredentials({ username, password });
+        // Publishing the new Keychain identity is the account boundary. Advance
+        // both generations again immediately so work that began during the
+        // secure write cannot commit old-account sessions or academic data.
+        await Promise.all([
+          AuthService.clearSession(),
+          DataService.clearCache(),
+        ]);
+      }
+      await AsyncStorage.multiSet([
+        ['skywardLink', "https://skyward-eisdprod.iscorp.com/scripts/wsisa.dll/WService=wsedueanesisdtx/"], // TODO: Change back to add more districts
+        ['gradeLevel', gradeLevel],
+        ['showoffMode', showoffMode.toString()],
+      ]);
 
       lastSaved.current = { link, username, password, gradeLevel, showoffMode };
+
+      if (!credentialsChanged) return;
 
       const authResult = await AuthService.authenticate();
 
@@ -196,23 +221,8 @@ const InnerLayout = () => {
               <BottomSheetView className="bg-cardColor px-8 rounded-2xl">
                 <Pressable
                   onLongPress={async () => {
-                    
-                    // Preserve credentials
-                    const savedUser = await AsyncStorage.getItem('skywardUser');
-                    const savedPass = await AsyncStorage.getItem('skywardPass');
-                    const savedLink = await AsyncStorage.getItem('skywardLink');
-                    
-                    await AsyncStorage.clear();
-                    
-                    // Restore credentials
-                    if (savedUser) await AsyncStorage.setItem('skywardUser', savedUser);
-                    if (savedPass) await AsyncStorage.setItem('skywardPass', savedPass);
-                    if (savedLink) await AsyncStorage.setItem('skywardLink', savedLink);
-                    
-                    setGradeLevel('');
-                    setShowoffMode(false);
-                    lastSaved.current = { ...lastSaved.current, gradeLevel: '', showoffMode: false };
-                    
+                    await clearAcademicCache();
+
                     Burnt.toast({
                       title: 'Cache Cleared',
                       preset: 'done',
@@ -237,7 +247,7 @@ const InnerLayout = () => {
                     />
                   </View>
                   <TouchableOpacity onPress={() => Linking.openURL("https://docs.google.com/forms/d/e/1FAIpQLSdqtqDEwLQY03KHS_LZDpjOjTcP_j8MCIizaMRMHTS6T5tOzQ/viewform?usp=dialog")} className='self-start'>
-                    <Text className='text-blue-400 decoration-solid text-sm font-semibold mt-1'>Don't see your district?</Text>
+                    <Text className='text-blue-400 decoration-solid text-sm font-semibold mt-1'>Don&apos;t see your district?</Text>
                   </TouchableOpacity>
                 </View>
                 {/* Grade Level block */}

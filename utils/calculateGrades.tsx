@@ -77,19 +77,11 @@ export function calculateGradeSummary(
     weight: number;
   }> = {};
 
-  console.log('🔍 calculateGradeSummary called with finalExamGrade:', finalExamGrade, 'selectedCategory:', selectedCategory);
   // Filter out "no count" assignments before calculations
   const countableAssignments = assignments.filter(assignment => {
     const isNoCount = assignment.meta?.some(m => m.type === 'noCount');
     return !isNoCount;
   });
-
-  // Debug: Log all terms and categories to see what we're working with
-  const allCategories = [...new Set(countableAssignments.map(a => a.category))];
-  const allTerms = [...new Set(countableAssignments.map(a => a.term))];
-  console.log('🔍 All assignment categories:', allCategories);
-  console.log('🔍 All assignment terms:', allTerms);
-  console.log('🔍 Selected category:', selectedCategory);
 
   // Sum up points per category for countable assignments only
   for (const a of countableAssignments) {
@@ -114,18 +106,13 @@ export function calculateGradeSummary(
     const q1Data = termMap['Q1 Grades'];
     const q2Data = termMap['Q2 Grades'];
     
-    console.log('🔍 Q1 Data:', q1Data);
-    console.log('🔍 Q2 Data:', q2Data);
-    
     // Use the totals directly from Q1 and Q2 data (these are already calculated RC grades)
     if (q1Data && typeof q1Data.total === 'number') {
       rcGrades.rc1 = Math.round(q1Data.total);
-      console.log('🔍 RC1 (Q1) - Raw total:', q1Data.total, 'Rounded:', rcGrades.rc1);
     }
     
     if (q2Data && typeof q2Data.total === 'number') {
       rcGrades.rc2 = Math.round(q2Data.total);
-      console.log('🔍 RC2 (Q2) - Raw total:', q2Data.total, 'Rounded:', rcGrades.rc2);
     }
     
     // Calculate SM1 from rounded RC1, RC2, and Final Exam (40% + 40% + 20%)
@@ -133,18 +120,14 @@ export function calculateGradeSummary(
       if (finalExamGrade !== undefined && finalExamGrade !== null) {
         // Use weighted calculation: 40% RC1 + 40% RC2 + 20% Final Exam
         semesterAverages.sm1 = (rcGrades.rc1 * 0.4) + (rcGrades.rc2 * 0.4) + (finalExamGrade * 0.2);
-        console.log('🔍 SM1 calculated with final exam (40% RC1 + 40% RC2 + 20% Exam):', semesterAverages.sm1);
       } else {
         // No final exam, use equal weighting of RC1 and RC2
         semesterAverages.sm1 = (rcGrades.rc1 + rcGrades.rc2) / 2;
-        console.log('🔍 SM1 calculated from RC1 and RC2 (no exam):', semesterAverages.sm1);
       }
     } else if (rcGrades.rc1 !== undefined) {
       semesterAverages.sm1 = rcGrades.rc1;
-      console.log('🔍 SM1 using only RC1:', semesterAverages.sm1);
     } else if (rcGrades.rc2 !== undefined) {
       semesterAverages.sm1 = rcGrades.rc2;
-      console.log('🔍 SM1 using only RC2:', semesterAverages.sm1);
     }
     
   } else if (selectedCategory === 'SM2 Grades' && termMap) {
@@ -152,18 +135,13 @@ export function calculateGradeSummary(
     const q3Data = termMap['Q3 Grades'];
     const q4Data = termMap['Q4 Grades'];
     
-    console.log('🔍 Q3 Data:', q3Data);
-    console.log('🔍 Q4 Data:', q4Data);
-    
     // Use the totals directly from Q3 and Q4 data
     if (q3Data && typeof q3Data.total === 'number') {
       rcGrades.rc3 = Math.round(q3Data.total);
-      console.log('🔍 RC3 (Q3) - Raw total:', q3Data.total, 'Rounded:', rcGrades.rc3);
     }
     
     if (q4Data && typeof q4Data.total === 'number') {
       rcGrades.rc4 = Math.round(q4Data.total);
-      console.log('🔍 RC4 (Q4) - Raw total:', q4Data.total, 'Rounded:', rcGrades.rc4);
     }
     
     // Calculate SM2 from rounded RC3, RC4, and Final Exam (40% + 40% + 20%)
@@ -171,18 +149,14 @@ export function calculateGradeSummary(
       if (finalExamGrade !== undefined && finalExamGrade !== null) {
         // Use weighted calculation: 40% RC3 + 40% RC4 + 20% Final Exam
         semesterAverages.sm2 = (rcGrades.rc3 * 0.4) + (rcGrades.rc4 * 0.4) + (finalExamGrade * 0.2);
-        console.log('🔍 SM2 calculated with final exam (40% RC3 + 40% RC4 + 20% Exam):', semesterAverages.sm2);
       } else {
         // No final exam, use equal weighting of RC3 and RC4
         semesterAverages.sm2 = (rcGrades.rc3 + rcGrades.rc4) / 2;
-        console.log('🔍 SM2 calculated from RC3 and RC4 (no exam):', semesterAverages.sm2);
       }
     } else if (rcGrades.rc3 !== undefined) {
       semesterAverages.sm2 = rcGrades.rc3;
-      console.log('🔍 SM2 using only RC3:', semesterAverages.sm2);
     } else if (rcGrades.rc4 !== undefined) {
       semesterAverages.sm2 = rcGrades.rc4;
-      console.log('🔍 SM2 using only RC4:', semesterAverages.sm2);
     }
   }
 
@@ -205,28 +179,20 @@ export function calculateGradeSummary(
     };
   }
 
-  console.log('🔍 RC Grades:', rcGrades);
-  console.log('🔍 Calculated semester averages:', semesterAverages);
-
   // Calculate course total - use semester average if available, otherwise use weighted calculation
   let courseTotal: string;
   
   if (selectedCategory === 'SM1 Grade' && semesterAverages.sm1 !== undefined) {
     courseTotal = semesterAverages.sm1.toString();
-    console.log('🔍 Using SM1 semester average as course total:', courseTotal);
   } else if (selectedCategory === 'SM2 Grades' && semesterAverages.sm2 !== undefined) {
     courseTotal = semesterAverages.sm2.toString();
-    console.log('🔍 Using SM2 semester average as course total:', courseTotal);
   } else {
     // Use original weighted calculation for non-semester views
     const weightedTotal = (totalWeight > 0 ? weightedSum / totalWeight : 0) === Number(0)
       ? '*'
       : parseFloat((totalWeight > 0 ? weightedSum / totalWeight : 0).toFixed(2)).toString();
     courseTotal = weightedTotal;
-    console.log('🔍 Using weighted calculation as course total:', courseTotal);
   }
-    
-  console.log('🔍 Final course total:', courseTotal, 'from weightedSum:', weightedSum, 'totalWeight:', totalWeight);
     
   return {
     courseTotal: courseTotal,

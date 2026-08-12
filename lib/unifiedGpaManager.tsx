@@ -2,8 +2,8 @@
 // GPA calculation service using the new DataService
 import { DataService, UnifiedCourseData } from './services';
 import { calculateTermGPAs, getCourseLevel } from '@/utils/gpaCalculator';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { shouldEnableShowoffMode } from '@/utils/showoffMode';
+import { getAccountScopedItem } from './utils/account-scoped-storage';
 
 export interface GPAData {
   unweighted: number;
@@ -31,6 +31,12 @@ const getGradeNumber = (gradeLevel: GradeLevel): number | undefined => {
     case 'All Time': return undefined;
     default: return undefined;
   }
+};
+
+const finiteGrade = (value: unknown): number | null => {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 };
 
 export class UnifiedGPAManager {
@@ -139,17 +145,18 @@ export class UnifiedGPAManager {
           let gradeStr = course.historicalGrades[term.toLowerCase() as keyof typeof course.historicalGrades];
           
           // RC rounding logic
-          if (['RC1', 'RC2', 'RC3', 'RC4'].includes(term) && gradeStr && !isNaN(Number(gradeStr))) {
-            gradeStr = Math.round(Number(gradeStr)).toString();
+          const parsedGrade = finiteGrade(gradeStr);
+          if (['RC1', 'RC2', 'RC3', 'RC4'].includes(term) && parsedGrade !== null) {
+            gradeStr = Math.round(parsedGrade).toString();
           }
           
           // Calculate semester averages if missing
-          if (['SM1', 'SM2'].includes(term) && (!gradeStr || gradeStr === '')) {
+          if (['SM1', 'SM2'].includes(term) && finiteGrade(gradeStr) === null) {
             gradeStr = this.calculateSemesterAverage(course, term);
           }
           
-          if (gradeStr && !isNaN(Number(gradeStr))) {
-            const score = Number(gradeStr);
+          const score = finiteGrade(gradeStr);
+          if (score !== null) {
             totalUnweighted += score;
             
             const courseLevel = getCourseLevel(course.courseName);
@@ -183,9 +190,11 @@ export class UnifiedGPAManager {
     const { rc1, rc2, rc3, rc4, ex1, ex2 } = course.historicalGrades;
     
     if (term === 'SM1') {
-      const roundedRC1 = rc1 && !isNaN(Number(rc1)) ? Math.round(Number(rc1)) : null;
-      const roundedRC2 = rc2 && !isNaN(Number(rc2)) ? Math.round(Number(rc2)) : null;
-      const examGrade = ex1 && !isNaN(Number(ex1)) ? Number(ex1) : null;
+      const rc1Grade = finiteGrade(rc1);
+      const rc2Grade = finiteGrade(rc2);
+      const roundedRC1 = rc1Grade === null ? null : Math.round(rc1Grade);
+      const roundedRC2 = rc2Grade === null ? null : Math.round(rc2Grade);
+      const examGrade = finiteGrade(ex1);
       
       if (roundedRC1 !== null && roundedRC2 !== null && examGrade !== null) {
         return (roundedRC1 * 0.4 + roundedRC2 * 0.4 + examGrade * 0.2).toString();
@@ -197,9 +206,11 @@ export class UnifiedGPAManager {
         return roundedRC2.toString();
       }
     } else if (term === 'SM2') {
-      const roundedRC3 = rc3 && !isNaN(Number(rc3)) ? Math.round(Number(rc3)) : null;
-      const roundedRC4 = rc4 && !isNaN(Number(rc4)) ? Math.round(Number(rc4)) : null;
-      const examGrade = ex2 && !isNaN(Number(ex2)) ? Number(ex2) : null;
+      const rc3Grade = finiteGrade(rc3);
+      const rc4Grade = finiteGrade(rc4);
+      const roundedRC3 = rc3Grade === null ? null : Math.round(rc3Grade);
+      const roundedRC4 = rc4Grade === null ? null : Math.round(rc4Grade);
+      const examGrade = finiteGrade(ex2);
       
       if (roundedRC3 !== null && roundedRC4 !== null && examGrade !== null) {
         return (roundedRC3 * 0.4 + roundedRC4 * 0.4 + examGrade * 0.2).toString();
@@ -247,7 +258,7 @@ export class UnifiedGPAManager {
   private static async getFallbackGPAData(gradeLevel: GradeLevel): Promise<UnifiedGPAResult> {
     try {
       const key = `savedClasses-${gradeLevel}`;
-      const data = await AsyncStorage.getItem(key);
+      const data = await getAccountScopedItem(key);
       
       if (!data) {
         return {
@@ -280,14 +291,9 @@ export class UnifiedGPAManager {
    */
   static async clearGPACache(): Promise<void> {
     try {
+      // savedClasses-* contains user-entered GPA history, not disposable cache.
       await DataService.clearCache();
-      
-      const gradeLevels: GradeLevel[] = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'All Time'];
-      await Promise.all(
-        gradeLevels.map(level => AsyncStorage.removeItem(`savedClasses-${level}`))
-      );
-      
-      console.log('✅ GPA cache cleared');
+      console.log('✅ Server-derived GPA cache cleared');
     } catch (error) {
       console.error('❌ Error clearing GPA cache:', error);
     }

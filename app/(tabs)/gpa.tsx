@@ -1,5 +1,5 @@
 import { useSettingSheet } from '@/context/SettingSheetContext';
-import { SkywardAuth, UnifiedGPAManager, GPAData } from '@/lib';
+import { SkywardAuth, UnifiedGPAManager, type GPAData, type UnifiedCourseData } from '@/lib';
 import { Ionicons } from '@expo/vector-icons';
 import { MotiView } from 'moti';
 import React, { JSX, useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -16,8 +16,22 @@ import { useGradeLevel } from '@/hooks/useGradeLevel';
 import { useUnifiedData } from '@/context/UnifiedDataContext';
 import { useColorScheme } from 'nativewind';
 import { shouldEnableShowoffMode } from '@/utils/showoffMode';
+import { logger, Modules } from '@/lib/utils/logger';
+import { useFocusEffect } from 'expo-router';
+import {
+  loadAvailableManualGradeLevels,
+  loadManualCoursesForSelection,
+  mergeAcademicCourses,
+  type HistoricalGradeLevel,
+} from '@/lib/utils/manual-gpa';
+import {
+  averageSemesterGPA,
+  formatGPAValue,
+  isFiniteGPA,
+  shouldShowGPALogin,
+} from '@/lib/utils/gpa-values';
 
-type GradeLevel = 'Freshman' | 'Sophomore' | 'Junior' | 'Senior' | 'All Time';
+type GradeLevel = 'Current' | 'Freshman' | 'Sophomore' | 'Junior' | 'Senior' | 'All Time';
 
 const gpaScale = 100; // Change this to 4, 5, etc. as needed
 
@@ -29,6 +43,13 @@ const GRADE_MAP: Record<string, number> = {
   'Senior': 12
 };
 
+const coursesForGrade = (courses: UnifiedCourseData[], grade: GradeLevel): UnifiedCourseData[] => {
+  if (grade === 'All Time') return courses;
+  if (grade === 'Current') return courses.filter(course => course.gradeYear == null);
+  const gradeNumber = GRADE_MAP[grade];
+  return courses.filter(course => course.gradeYear === gradeNumber);
+};
+
 const GPA = () => {
   // Use coursesData from context instead of local allRawCourses
   const { settingSheetRef, username, showoffMode } = useSettingSheet();
@@ -36,12 +57,12 @@ const GPA = () => {
   const [hasCheckedCredentials, setHasCheckedCredentials] = useState(false);
   
   // Use extracted hook for current grade level and available grade levels
-  const { currentGradeLevel, availableGradeLevels, isLoading: gradeLevelLoading, debugCacheState,loadGradeFromCourseData } = useGradeLevel();
+  const { currentGradeLevel, availableGradeLevels, isLoading: gradeLevelLoading, loadGradeFromCourseData } = useGradeLevel();
 
   // Move useColorScheme to top level to avoid hook order violations
   const { colorScheme } = useColorScheme();
   
-  console.log('🎨 GPA Component - Grade level data:', {
+  logger.debug(Modules.PAGE_GPA, 'Grade-level data changed', {
     currentGradeLevel,
     availableGradeLevels,
     gradeLevelLoading
@@ -50,38 +71,73 @@ const GPA = () => {
   // Initialize selectedGrade with currentGradeLevel instead of 'Freshman'
   const [selectedGrade, setSelectedGrade] = useState<GradeLevel>(currentGradeLevel);
   
-  console.log('🎨 GPA Component - selectedGrade state:', selectedGrade);
-  
-  // Debug cache state on mount
-  useEffect(() => {
-    console.log('🔍 GPA Component mounted, debugging cache state...');
-    debugCacheState();
-  }, [debugCacheState]);
+  logger.debug(Modules.PAGE_GPA, 'Selected grade changed', { selectedGrade });
   
   // Removed console logging for selectedGrade changes
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [isGraphAnimating, setIsGraphAnimating] = useState(false);
-  const [savedClasses] = useState<any[] | null>(null);
+  const [savedClasses, setSavedClasses] = useState<UnifiedCourseData[]>([]);
+  const [manualGradeLevels, setManualGradeLevels] = useState<HistoricalGradeLevel[]>([]);
+  const [manualLoading, setManualLoading] = useState(true);
+  const manualLoadIDRef = useRef(0);
   const [gpaData, setGpaData] = useState<Record<string, GPAData>>({});
-  const { coursesData, loading, refreshCourses, clearCache } = useUnifiedData();
+  const { coursesData, loading, refreshCourses } = useUnifiedData();
   
   // Update grade levels when course data becomes available (only once per data change)
   useEffect(() => {
-    if (coursesData && coursesData.length > 0 && !gradeLevelLoading) {
-      console.log('📊 Course data available, updating grade levels...', {
+    if (coursesData && coursesData.length > 0) {
+      logger.debug(Modules.PAGE_GPA, 'Updating grade levels from course data', {
         coursesCount: coursesData.length,
-        gradeLevelLoading
       });
       loadGradeFromCourseData(coursesData);
     }
-  }, [coursesData?.length, gradeLevelLoading]); // Remove loadGradeFromCourseData dependency to prevent infinite loop
+  }, [coursesData, loadGradeFromCourseData]);
   const [refreshing, setRefreshing] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const isInteractingWithGraph = useRef(false);
   const hasInitializedGradeRef = useRef(false);
   const userHasManuallySelectedGradeRef = useRef(false); // Track if user manually selected a grade
   const [error, setError] = useState<string | null>(null);
+
+  const loadManualData = useCallback(async () => {
+    const loadID = ++manualLoadIDRef.current;
+    setManualLoading(true);
+    try {
+      const [manualCourses, levels] = await Promise.all([
+        loadManualCoursesForSelection(selectedGrade),
+        loadAvailableManualGradeLevels(),
+      ]);
+      if (loadID === manualLoadIDRef.current) {
+        setSavedClasses(manualCourses);
+        setManualGradeLevels(levels);
+      }
+    } catch (loadError) {
+      logger.error(Modules.PAGE_GPA, 'Failed to load manual GPA history', loadError);
+      if (loadID === manualLoadIDRef.current) setSavedClasses([]);
+    } finally {
+      if (loadID === manualLoadIDRef.current) setManualLoading(false);
+    }
+  }, [selectedGrade]);
+
+  useFocusEffect(useCallback(() => {
+    void loadManualData();
+  }, [loadManualData]));
+
+  useEffect(() => {
+    let active = true;
+    void SkywardAuth.hasCredentials()
+      .then(result => {
+        if (active) setHasCredentials(result);
+      })
+      .catch(checkError => {
+        logger.warn(Modules.PAGE_GPA, 'Unable to check stored credentials', checkError);
+      })
+      .finally(() => {
+        if (active) setHasCheckedCredentials(true);
+      });
+    return () => { active = false; };
+  }, []);
 
   // Listen for credential updates
   useEffect(() => {
@@ -91,25 +147,38 @@ const GPA = () => {
       setIsInitialized(false);
       userHasManuallySelectedGradeRef.current = false; // Reset manual selection flag
       hasInitializedGradeRef.current = false; // Reset initialization flag
+      setHasCredentials(true);
+      setHasCheckedCredentials(true);
+      void loadManualData();
       // Small delay to ensure AsyncStorage writes have completed
       setTimeout(async () => {
         try {
           await refreshCourses(true);
         } catch (error) {
-          console.error('Error refreshing after credentials update:', error);
+          logger.error(Modules.PAGE_GPA, 'Failed to refresh after credentials update', error);
           setError('Unable to load GPA data. Please try again.');
         }
       }, 100);
     });
+    const invalidCredentialsListener = DeviceEventEmitter.addListener('credentialsInvalid', () => {
+      manualLoadIDRef.current += 1;
+      setHasCredentials(false);
+      setHasCheckedCredentials(true);
+      setSavedClasses([]);
+      setManualGradeLevels([]);
+      setGpaData({});
+      setManualLoading(false);
+    });
 
     return () => {
       credentialsListener.remove();
+      invalidCredentialsListener.remove();
     };
-  }, [refreshCourses]);
+  }, [loadManualData, refreshCourses]);
   
   // Update selectedGrade when currentGradeLevel changes, but only on initial load
   useEffect(() => {
-    console.log('🔄 useEffect for grade sync - currentGradeLevel changed:', {
+    logger.debug(Modules.PAGE_GPA, 'Evaluating selected-grade synchronization', {
       currentGradeLevel,
       selectedGrade,
       hasInitializedGradeRef: hasInitializedGradeRef.current,
@@ -120,7 +189,7 @@ const GPA = () => {
     // Only auto-update selectedGrade if user hasn't manually selected a grade
     // and the grade level data has finished loading
     if (!userHasManuallySelectedGradeRef.current && !gradeLevelLoading && currentGradeLevel !== selectedGrade) {
-      console.log('🔄 Auto-updating selectedGrade to match currentGradeLevel:', currentGradeLevel);
+      logger.debug(Modules.PAGE_GPA, 'Synchronizing selected grade', { currentGradeLevel });
       setSelectedGrade(currentGradeLevel);
       hasInitializedGradeRef.current = true;
     }
@@ -128,11 +197,25 @@ const GPA = () => {
   
   const allLabels = useMemo(() => ['PR1','PR2','RC1','PR3','PR4','RC2','PR5','PR6','RC3','PR7','PR8','RC4'], []);
 
+  const displayedGradeLevels = useMemo<GradeLevel[]>(() => {
+    const levels = new Set<GradeLevel>(availableGradeLevels);
+    manualGradeLevels.forEach(level => levels.add(level));
+    const ordered: GradeLevel[] = ['Current', 'Freshman', 'Sophomore', 'Junior', 'Senior'];
+    const result = ordered.filter(level => levels.has(level));
+    if (result.length > 1 || levels.has('All Time')) result.push('All Time');
+    return result.length > 0 ? result : [currentGradeLevel];
+  }, [availableGradeLevels, currentGradeLevel, manualGradeLevels]);
+
+  const selectedCourses = useMemo(() => mergeAcademicCourses(
+    coursesForGrade(coursesData ?? [], selectedGrade),
+    savedClasses
+  ), [coursesData, savedClasses, selectedGrade]);
+
   // Memoize valid labels calculation
   const validLabels = useMemo(() => {
     return allLabels.filter(label => {
       const gpaValue = gpaData[label];
-      return gpaValue !== undefined && gpaValue.weighted > 0;
+      return isFiniteGPA(gpaValue);
     });
   }, [allLabels, gpaData]);
 
@@ -146,30 +229,12 @@ const GPA = () => {
     const wasInteracting = isInteractingWithGraph.current;
     isInteractingWithGraph.current = false;
     try {
-      // Clear the shared cache to ensure fresh data
-      await clearCache();
-      // Clear GPA-specific cache as well
-      await UnifiedGPAManager.clearGPACache();
-      // Refresh courses data with force=true
+      // A forced fetch already bypasses the cache. Keep the current snapshot so
+      // an offline refresh cannot erase the last useful GPA view.
       await refreshCourses(true);
-      // After refresh, recalculate GPA data
-      if (coursesData && coursesData.length > 0) {
-        const gradeNumber = GRADE_MAP[selectedGrade] || null;
-        let filteredCourses = coursesData;
-        if (gradeNumber) {
-          filteredCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
-        }
-        const newGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses, showoffMode && shouldEnableShowoffMode(username), username);
-        console.log('🔄 Setting gpaData in handleRefresh:', {
-          selectedGrade,
-          filteredCoursesCount: filteredCourses.length,
-          newGpaDataKeys: Object.keys(newGpaData),
-          newGpaDataCount: Object.keys(newGpaData).length
-        });
-        setGpaData(newGpaData);
-      }
+      await loadManualData();
     } catch (error) {
-      console.error('❌ Error during refresh:', error);
+      logger.error(Modules.PAGE_GPA, 'Failed to refresh GPA data', error);
       setError('Unable to refresh GPA data. Please check your connection and try again.');
     } finally {
       setRefreshing(false);
@@ -177,107 +242,21 @@ const GPA = () => {
     }
   };
 
-  // Initial load when component mounts (only once)
+  // Calculate from both Skyward and account-scoped manual history. This also
+  // initializes a manual-only GPA without waiting for a network login.
   useEffect(() => {
-    let isMounted = true;
-    const initializeData = async () => {
-      if (isInitialized) return;
-      if (!isMounted) return;
-      
-      // Wait for grade level to finish loading before initializing GPA data
-      if (gradeLevelLoading) {
-        console.log('⏳ Waiting for grade level to load before initializing GPA data...');
-        return;
-      }
-
-      try {
-        setError(null);
-
-        // If coursesData is already loaded in context, use it
-        if (coursesData && coursesData.length > 0) {
-          const gradeNumber = GRADE_MAP[selectedGrade] || null;
-          let initialCourses = coursesData;
-          if (gradeNumber) {
-            initialCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
-          }
-          const initialGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(initialCourses, showoffMode && shouldEnableShowoffMode(username), username);
-          console.log('🚀 Initial gpaData setup:', {
-            selectedGrade,
-            initialCoursesCount: initialCourses.length,
-            initialGpaDataKeys: Object.keys(initialGpaData),
-            initialGpaDataCount: Object.keys(initialGpaData).length
-          });
-          setGpaData(initialGpaData);
-          setIsInitialized(true);
-          return;
-        }
-
-        // Otherwise, check credentials and fetch from API
-        const result = await SkywardAuth.hasCredentials();
-        if (!isMounted) return;
-        setHasCredentials(result);
-        setHasCheckedCredentials(true);
-        
-        if (result) {
-          const gpaResult = await UnifiedGPAManager.getGPAData('All Time', false);
-          if (gpaResult.success && gpaResult.rawCourses) {
-            let initialCourses = gpaResult.rawCourses;
-            const gradeNumber = GRADE_MAP[selectedGrade] || null;
-            if (gradeNumber) {
-              initialCourses = gpaResult.rawCourses.filter(c => c.gradeYear === gradeNumber);
-            }
-            const fallbackGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(initialCourses, showoffMode && shouldEnableShowoffMode(username), username);
-            console.log('💾 Fallback gpaData setup:', {
-              selectedGrade,
-              fallbackCoursesCount: initialCourses.length,
-              fallbackGpaDataKeys: Object.keys(fallbackGpaData),
-              fallbackGpaDataCount: Object.keys(fallbackGpaData).length
-            });
-            setGpaData(fallbackGpaData);
-          } else {
-            throw new Error('Failed to load GPA data');
-          }
-          if (isMounted) {
-            setIsInitialized(true);
-          }
-        }
-      } catch (error) {
-        console.error('Error initializing GPA data:', error);
-        if (isMounted) {
-          setError('Unable to load GPA data. Please check your connection and try again.');
-        }
-      }
-    };
-    initializeData();
-    return () => {
-      isMounted = false;
-    };
-  }, [coursesData, isInitialized, gradeLevelLoading]);
-
-  // Recalculate GPA data when selectedGrade changes (after initialization)
-  useEffect(() => {
-    if (!isInitialized || !coursesData || coursesData.length === 0 || gradeLevelLoading) {
-      return;
-    }
-
-    const gradeNumber = GRADE_MAP[selectedGrade] || null;
-    let filteredCourses = coursesData;
-    if (gradeNumber) {
-      filteredCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
-    }
-    const newGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses, showoffMode && shouldEnableShowoffMode(username), username);
-    console.log('🔄 Recalculating GPA data for grade change:', {
-      selectedGrade,
-      filteredCoursesCount: filteredCourses.length,
-      newGpaDataKeys: Object.keys(newGpaData),
-      newGpaDataCount: Object.keys(newGpaData).length
-    });
-    setGpaData(newGpaData);
-  }, [selectedGrade, isInitialized, coursesData, gradeLevelLoading, showoffMode, username]);
+    if (gradeLevelLoading || manualLoading) return;
+    setGpaData(UnifiedGPAManager.calculateCurrentGradeGPA(
+      selectedCourses,
+      showoffMode && shouldEnableShowoffMode(username),
+      username
+    ));
+    setIsInitialized(true);
+  }, [gradeLevelLoading, manualLoading, selectedCourses, showoffMode, username]);
 
   // Handle grade selection changes
   const handleGradeChange = useCallback((newGrade: GradeLevel) => {
-    console.log('👆 Grade selection changed:', {
+    logger.debug(Modules.PAGE_GPA, 'Grade selection changed', {
       from: selectedGrade,
       to: newGrade
     });
@@ -285,22 +264,7 @@ const GPA = () => {
     setSelectedGrade(newGrade);
     setActivePointIndex(null);
     setHoverX(null);
-    if (coursesData) {
-      const gradeNumber = GRADE_MAP[newGrade] || null;
-      let filteredCourses = coursesData;
-      if (gradeNumber) {
-        filteredCourses = coursesData.filter(c => c.gradeYear === gradeNumber);
-      }
-      const newGpaData = UnifiedGPAManager.calculateCurrentGradeGPA(filteredCourses, showoffMode && shouldEnableShowoffMode(username), username);
-      console.log('📊 Grade change gpaData update:', {
-        newGrade,
-        filteredCoursesCount: filteredCourses.length,
-        newGpaDataKeys: Object.keys(newGpaData),
-        newGpaDataCount: Object.keys(newGpaData).length
-      });
-      setGpaData(newGpaData);
-    }
-  }, [coursesData, showoffMode, username]);
+  }, [selectedGrade]);
 
   const renderGPAGraph = useCallback(() => {
     const screenWidth = Dimensions.get('window').width;
@@ -522,7 +486,7 @@ const GPA = () => {
                   textAlign: 'center',
                 }}
               >
-                {`${validLabels[safeIndex]}: ${gpaPoints[safeIndex] === 0 ? '--' : gpaPoints[safeIndex].toFixed(2)}`}
+                {`${validLabels[safeIndex]}: ${formatGPAValue(gpaPoints[safeIndex])}`}
               </Text>
             </View>
           );
@@ -532,9 +496,7 @@ const GPA = () => {
   }, [validLabels, gpaData, hoverX, activePointIndex, isGraphAnimating, colorScheme]);
 
 
-  const renderGPADisplay = (showPrs : Boolean) => {
-    console.log('📊 renderGPADisplay called with showPrs:', showPrs);
-    
+  const renderGPADisplay = (showPrs: boolean) => {
     // Function to determine if we should show specific PR pairs
     const shouldShowPRPair = (prPair: string[]) => {
       // Check if we have data for the PR pair
@@ -545,7 +507,6 @@ const GPA = () => {
       // Check if FIN card exists (both SM1 and SM2 have data)
       const hasFINCard = gpaData['SM1'] !== undefined && gpaData['SM2'] !== undefined;
       if (hasFINCard) {
-        console.log(`🔍 shouldShowPRPair for [${prPair.join(', ')}]: FIN card exists, hiding PR cards`);
         return false; // Don't show PR cards if FIN card exists
       }
       
@@ -561,13 +522,6 @@ const GPA = () => {
       
       // Check if we DON'T have data for the periods that come after the RC/SM
       const hasNextPeriodData = nextPeriods.some(period => gpaData[period]);
-      
-      console.log(`🔍 shouldShowPRPair for [${prPair.join(', ')}]:`, {
-        hasPRData,
-        nextPeriods,
-        hasNextPeriodData,
-        shouldShow: !hasNextPeriodData
-      });
       
       // Show PRs only if we have PR data but NO data for what comes after the RC/SM
       return !hasNextPeriodData;
@@ -660,7 +614,7 @@ const GPA = () => {
                     textAlign: 'center',
                   }}
                 >
-                  {`${validLabels[activePointIndex]}: ${gpaPoints[activePointIndex] === 0 ? '--' : gpaPoints[activePointIndex].toFixed(2)}`}
+                  {`${validLabels[activePointIndex]}: ${formatGPAValue(gpaPoints[activePointIndex])}`}
                 </Text>
               </View>
             );
@@ -736,8 +690,6 @@ const GPA = () => {
                       <GpaSoloCard key={prList[0]} label={prList[0]} data={getLabelData(prList[0])} />
                     );
                   }
-                  // console.log(prList.length);
-                  // console.log(prList)
                   if (prList.length === 2 && 
                     (
                       (
@@ -749,7 +701,6 @@ const GPA = () => {
                         prList.includes("PR8")
                       )
                     )) {
-                      console.log(rcLabels);
                     rows.push(
                       <View className="flex-row justify-between mb-3" key={`${rcLabels[0]}-${rcLabels[1]}`}>
                         <GpaCard label={rcLabels[0]} data={getLabelData(rcLabels[0])} />
@@ -757,13 +708,8 @@ const GPA = () => {
                       </View>
                     );
                     handledRCs.add(rcLabels[idx]);
-                    console.log(getLabelData(prList[0]));
-                    console.log(getLabelData(prList[1]));
-                    console.log('Legacy showPrs:', showPrs);
-                    
                     // Use the new logic for this specific PR pair
                     const shouldShowThisPRPair = shouldShowPRPair(prList);
-                    console.log('Should show this PR pair:', shouldShowThisPRPair);
                     
                     if (shouldShowThisPRPair) {
                       rows.push(
@@ -813,22 +759,7 @@ const GPA = () => {
               }
             });
 
-            const sm1 = exists('SM1') ? getLabelData('SM1') : fallback;
-            const sm2 = exists('SM2') ? getLabelData('SM2') : fallback;
-            // Only calculate average if at least one semester has data
-            const validSemesters = [sm1, sm2].filter(sem => sem.weighted > 0);
-            let finUnweighted, finWeighted;
-            
-            if (validSemesters.length === 0) {
-              finUnweighted = 0;
-              finWeighted = 0;
-            } else if (validSemesters.length === 1) {
-              finUnweighted = validSemesters[0].unweighted;
-              finWeighted = validSemesters[0].weighted;
-            } else {
-              finUnweighted = (sm1.unweighted + sm2.unweighted) / 2;
-              finWeighted = (sm1.weighted + sm2.weighted) / 2;
-            }
+            const finalGPA = averageSemesterGPA(gpaData.SM1, gpaData.SM2) ?? fallback;
 
             if (exists('SM1') && exists('SM2')) {
               rows.push(
@@ -836,17 +767,20 @@ const GPA = () => {
                   key="FIN"
                   label="FIN"
                   data={{
-                    unweighted: finUnweighted,
-                    weighted: finWeighted,
+                    unweighted: finalGPA.unweighted,
+                    weighted: finalGPA.weighted,
                   }}
                 />
               );
             }
-            if (!showPrs) {
+            if (!showPrs && selectedGrade !== 'Current' && selectedGrade !== 'All Time') {
               rows.push(
                 <ManualGradeEntryCard
                   key={`MANCARD-${selectedGrade}`}
-                 selectedGrade={selectedGrade} minimized={!!(Object.keys(gpaData).length > 0 || (savedClasses && savedClasses.length > 0))} rawCourses={coursesData} />
+                  selectedGrade={selectedGrade}
+                  minimized={Object.keys(gpaData).length > 0 || savedClasses.length > 0}
+                  rawCourses={coursesData}
+                />
               );
             }
 
@@ -871,7 +805,7 @@ const GPA = () => {
   }, [isGraphAnimating]);
 
   // Show error display if there's an error
-  if (error) {
+  if (error && !coursesData && savedClasses.length === 0) {
     return (
       <View className="flex-1 bg-primary">
         <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
@@ -888,7 +822,7 @@ const GPA = () => {
               setIsInitialized(false);
               try {
                 await refreshCourses(true);
-              } catch (error) {
+              } catch {
                 setError('Unable to load GPA data. Please try again.');
               }
             }}
@@ -900,7 +834,13 @@ const GPA = () => {
   }
 
   // Show login prompt if credentials are not set (but only after we've checked)
-  if (hasCheckedCredentials && !hasCredentials && !loading && !coursesData) {
+  if (shouldShowGPALogin({
+    checkedCredentials: hasCheckedCredentials,
+    hasCredentials,
+    loadingCourses: loading,
+    hasCourseSnapshot: coursesData !== null,
+    manualYearCount: manualGradeLevels.length,
+  })) {
     return (
       <View className="flex-1 bg-primary">
         <View className="bg-blue-600 pt-14 pb-4 px-5 flex-row items-center justify-between">
@@ -919,14 +859,9 @@ const GPA = () => {
     );
   }
 
-    // console.log(!(Object.keys(gpaData).length > 0 || (savedClasses && savedClasses.length > 0)));
-
-    // console.log("AA" + (Object.keys(gpaData).length > 0));
-
-    // console.log("BB" + !(savedClasses && savedClasses.length > 0));
-
   // Show loading state while initializing or loading data
-  const isLoadingState = loading || gradeLevelLoading || !hasCheckedCredentials || (!isInitialized && hasCredentials);
+  const isLoadingState = (loading && !coursesData && savedClasses.length === 0)
+    || gradeLevelLoading || manualLoading || !isInitialized;
 
   return (
     <View className="flex-1 bg-primary">
@@ -942,7 +877,7 @@ const GPA = () => {
           <SkeletonGradeLevelSelector />
         ) : (
           <GradeLevelSelector
-            grades={availableGradeLevels}
+            grades={displayedGradeLevels}
             selectedGrade={selectedGrade}
             onSelectGrade={handleGradeChange}
           />
@@ -954,22 +889,11 @@ const GPA = () => {
           <View className="flex-1 justify-center items-center">
             <Text className="text-main text-lg">Loading academic history...</Text>
           </View>
-        ) : (selectedGrade === 'All Time' || selectedGrade === currentGradeLevel || (Object.keys(gpaData).length > 0 || (savedClasses && savedClasses.length > 0))) ? (
+        ) : (selectedGrade === 'All Time' || selectedGrade === currentGradeLevel || (Object.keys(gpaData).length > 0 || savedClasses.length > 0)) ? (
           (() => {
             const hasGpaData = Object.keys(gpaData).length > 0;
-            const hasSavedClasses = !!(savedClasses && savedClasses.length > 0);
+            const hasSavedClasses = savedClasses.length > 0;
             const showPrsValue = !(hasGpaData || hasSavedClasses);
-            
-            console.log('🔍 showPrs Debug Info:');
-            console.log('  - gpaData keys count:', Object.keys(gpaData).length);
-            console.log('  - gpaData keys:', Object.keys(gpaData));
-            console.log('  - hasGpaData:', hasGpaData);
-            console.log('  - savedClasses:', savedClasses);
-            console.log('  - savedClasses length:', savedClasses?.length || 0);
-            console.log('  - hasSavedClasses:', hasSavedClasses);
-            console.log('  - showPrs calculated value:', showPrsValue);
-            console.log('  - selectedGrade:', selectedGrade);
-            console.log('  - currentGradeLevel:', currentGradeLevel);
             
             return renderGPADisplay(showPrsValue);
           })()
@@ -977,7 +901,7 @@ const GPA = () => {
           <ManualGradeEntryCard
             key={`MANCARD-${selectedGrade}`}
             selectedGrade={selectedGrade}
-            minimized={!!(Object.keys(gpaData).length > 0 || (savedClasses && savedClasses.length > 0))}
+            minimized={!!(Object.keys(gpaData).length > 0 || savedClasses.length > 0)}
             rawCourses={coursesData}
           />
         )}

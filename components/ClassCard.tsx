@@ -3,12 +3,13 @@ import React, { useCallback, useEffect, useState, useMemo } from 'react'
 import { Link, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons';
 import formatClassName from '@/utils/formatClassName';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { calculateGradeSummary } from '@/utils/calculateGrades';
 import { generateUniqueId } from '@/utils/uniqueId';
 import { useScreenDimensions } from '@/hooks/useScreenDimensions';
 import PieChart from 'react-native-pie-chart'
 import { UnifiedCourseData } from '@/lib/services';
+import { getAccountScopedItem } from '@/lib/utils/account-scoped-storage';
+import { hasPostedGrade } from '@/lib/utils/grade-values';
 
 type TermLabel =
   | "Q1 Grades"
@@ -81,7 +82,7 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
 
     const fetchArtificialAssignments = useCallback(async () => {
       if (!name) return;
-      const data = await AsyncStorage.getItem("artificialAssignments");
+      const data = await getAccountScopedItem("artificialAssignments");
       let all: Assignment[] = [];
       if (data) {
         const parsed = JSON.parse(data);
@@ -132,7 +133,7 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
   useFocusEffect(
     useCallback(() => {
       const loadShowCalculated = async () => {
-        const value = await AsyncStorage.getItem('showCalculated');
+        const value = await getAccountScopedItem('showCalculated');
         if (value !== null) {
           setIsEnabled(value === 'true');
         }
@@ -163,7 +164,7 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
 
   // Calculate display grade
   const displayGrade = useMemo(() => {
-    return currTerm.total > 0 
+    return hasPostedGrade(currTerm.total)
       ? currTerm.total 
       : courseSummary.courseTotal === '*'
         ? 100
@@ -216,7 +217,7 @@ const ClassCard = ({ name, teacher, corNumId, stuId, section, gbId, t1, t2, s1, 
                           />
                           <View className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 justify-center items-center">
                             <Text className="text-highlightText font-bold text-sm">
-                              {currTerm.total > 0
+                              {hasPostedGrade(currTerm.total)
                                 ? currTerm.total === 100
                                   ? '100%'
                                   : `${currTerm.total.toFixed(0)}%`
