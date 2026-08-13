@@ -59,6 +59,15 @@ describe('Skyward authentication response parsing', () => {
       /unsupported authentication response/
     );
   });
+
+  it.each(['session-one', 'session-two', 'guardian'])(
+    'rejects a response with an empty required %s field',
+    field => {
+      expect(() => parseAuthResponse(authResponse().replace(field, ''))).toThrow(
+        /extract session codes/
+      );
+    }
+  );
 });
 
 describe('Skyward request deadlines', () => {

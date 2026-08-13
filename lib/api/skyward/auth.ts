@@ -81,15 +81,17 @@ export function parseAuthResponse(postResponse: string): SkywardSessionCodes | n
   }
 
   const dwd = toks[offset];
+  const sessionPart1 = toks[offset + 1];
+  const sessionPart2 = toks[offset + 2];
   const wfaacl = toks[offset + 3];
-  const encses = toks[offset + 14];
   const userType = toks[offset + 6];
-  const sessionid = `${toks[offset + 1]}\x15${toks[offset + 2]}`;
+  const encses = toks[offset + 14];
 
-  // Validate we got the essential codes
-  if (!dwd || !wfaacl || !encses) {
+  if (!dwd || !sessionPart1 || !sessionPart2 || !wfaacl || !userType || !encses) {
     throw new Error('Failed to extract session codes from Skyward response');
   }
+
+  const sessionid = `${sessionPart1}\x15${sessionPart2}`;
 
   return {
     dwd,
