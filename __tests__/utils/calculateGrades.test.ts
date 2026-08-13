@@ -98,7 +98,44 @@ describe('calculateGrades', () => {
 
       const result = calculateGradeSummary(assignments, defaultCategoryWeights);
 
-      expect(result.categories['Tests'].average).toBe(0);
+      expect(result.categories['Tests']).toBeUndefined();
+      expect(result.courseTotal).toBe('*');
+    });
+
+    it('preserves a legitimate calculated zero', () => {
+      const result = calculateGradeSummary([
+        createAssignment({ grade: '0', outOf: 100 }),
+      ], defaultCategoryWeights);
+
+      expect(result.courseTotal).toBe('0');
+    });
+
+    it.each(['Infinity', 'NaN', '-1'])(
+      'ignores invalid grade input %s instead of poisoning the summary',
+      grade => {
+        const result = calculateGradeSummary([
+          createAssignment({ grade, outOf: 100 }),
+        ], defaultCategoryWeights);
+
+        expect(result.courseTotal).toBe('*');
+        expect(result.categories).toEqual({});
+      }
+    );
+
+    it('ignores non-finite term and final-exam inputs', () => {
+      const result = calculateGradeSummary(
+        [],
+        defaultCategoryWeights,
+        {
+          'Q1 Grades': { total: Number.NaN },
+          'Q2 Grades': { total: 90 },
+        },
+        'SM1 Grade',
+        Number.POSITIVE_INFINITY
+      );
+
+      expect(result.rcGrades?.rc1).toBeUndefined();
+      expect(result.semesterAverages?.sm1).toBe(90);
     });
 
     it('should calculate multiple categories correctly', () => {

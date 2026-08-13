@@ -500,7 +500,7 @@ const GPA = () => {
     // Function to determine if we should show specific PR pairs
     const shouldShowPRPair = (prPair: string[]) => {
       // Check if we have data for the PR pair
-      const hasPRData = prPair.every(pr => gpaData[pr]);
+      const hasPRData = prPair.every(pr => isFiniteGPA(gpaData[pr]));
       
       if (!hasPRData) return false; // Don't show if we don't have PR data
       
@@ -521,7 +521,7 @@ const GPA = () => {
       }
       
       // Check if we DON'T have data for the periods that come after the RC/SM
-      const hasNextPeriodData = nextPeriods.some(period => gpaData[period]);
+      const hasNextPeriodData = nextPeriods.some(period => isFiniteGPA(gpaData[period]));
       
       // Show PRs only if we have PR data but NO data for what comes after the RC/SM
       return !hasNextPeriodData;

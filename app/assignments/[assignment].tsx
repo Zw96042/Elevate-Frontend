@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import formatClassName from '@/utils/formatClassName';
 import { generateUniqueId } from '@/utils/uniqueId';
 import { getAccountScopedItem, setAccountScopedItem } from '@/lib/utils/account-scoped-storage';
+import { parseEditablePoints } from '@/lib/utils/grade-values';
 
 const AssignmentDetails = () => {
   const router = useRouter();
@@ -25,21 +26,28 @@ const AssignmentDetails = () => {
   }, [meta]);
 
   // Memoize initial values to prevent unnecessary recalculations
-  const initialGradeValue = useMemo(() => 
-    grade === '*' ? '*' : !isNaN(Number(grade)) ? Number(grade).toFixed(2) : '', [grade]);
-  const initialOutOfValue = useMemo(() => 
-    !isNaN(Number(outOf)) ? Number(outOf).toFixed(2) : '', [outOf]);
+  const initialGradeValue = useMemo(() => {
+    const parsed = parseEditablePoints(grade);
+    return grade === '*' ? '*' : parsed === null ? '' : parsed.toFixed(2);
+  }, [grade]);
+  const initialOutOfValue = useMemo(() => {
+    const parsed = parseEditablePoints(outOf, false);
+    return parsed === null ? '' : parsed.toFixed(2);
+  }, [outOf]);
 
   const [gradeValue, setGradeValue] = useState(initialGradeValue);
   const [outOfValue, setOutOfValue] = useState(initialOutOfValue);
+  const [inputError, setInputError] = useState<string | null>(null);
 
   const gradeInputRef = useRef<TextInput>(null);
   const outOfInputRef = useRef<TextInput>(null);
 
   // Memoize initial percentage calculation
   const initialPercentage = useMemo(() => {
-    if (!isNaN(Number(grade)) && !isNaN(Number(outOf)) && Number(outOf) !== 0) {
-      return ((Number(grade) / Number(outOf)) * 100).toFixed(2);
+    const parsedGrade = parseEditablePoints(grade);
+    const parsedOutOf = parseEditablePoints(outOf, false);
+    if (parsedGrade !== null && parsedOutOf !== null) {
+      return ((parsedGrade / parsedOutOf) * 100).toFixed(2);
     }
     if (grade === '*') return '*';
     return '0.00';
@@ -51,11 +59,12 @@ const AssignmentDetails = () => {
   const calculatedPercentage = useMemo(() => {
     if (gradeValue === '*') {
       return '*';
-    } else if (!isNaN(Number(gradeValue)) && !isNaN(Number(outOfValue)) && Number(outOfValue) !== 0) {
-      return ((Number(gradeValue) / Number(outOfValue)) * 100).toFixed(2);
-    } else {
-      return '0.00';
     }
+    const parsedGrade = parseEditablePoints(gradeValue);
+    const parsedOutOf = parseEditablePoints(outOfValue, false);
+    return parsedGrade !== null && parsedOutOf !== null
+      ? ((parsedGrade / parsedOutOf) * 100).toFixed(2)
+      : '--';
   }, [gradeValue, outOfValue]);
 
   React.useEffect(() => {
@@ -69,6 +78,12 @@ const AssignmentDetails = () => {
     const sectionParam = section?.toString() || '';
     const gbIdParam = gbId?.toString() || '';
     
+    const parsedGrade = gradeValue === '*' ? '*' : parseEditablePoints(gradeValue);
+    if (parsedGrade === null) {
+      setInputError('Grade must be a finite, non-negative number.');
+      return false;
+    }
+
     // Special handling for final exam grades
     if (category?.toString() === "Final Exam") {
       const examKey = `${className}_${corNumIdParam}_${sectionParam}_${gbIdParam}`;
@@ -79,18 +94,22 @@ const AssignmentDetails = () => {
         existing[examKey] = {};
       }
       
-      const formattedGrade = gradeValue === '*' ? '*' : parseFloat(Number(gradeValue).toFixed(2));
+      const formattedGrade = parsedGrade === '*' ? '*' : Number(parsedGrade.toFixed(2));
       existing[examKey][examType] = formattedGrade.toString();
       await setAccountScopedItem("finalExamGrades", JSON.stringify(existing));
-      return;
+      setInputError(null);
+      return true;
     }
     
     // Regular assignment handling
     const existing = JSON.parse(await getAccountScopedItem('artificialAssignments') ?? '{}');
-    const formattedGrade = gradeValue === '*' ? '*' : parseFloat(Number(gradeValue).toFixed(2));
-    const formattedOutOf = Number(outOfValue);
+    const formattedGrade = parsedGrade === '*' ? '*' : Number(parsedGrade.toFixed(2));
+    const formattedOutOf = parseEditablePoints(outOfValue, false);
 
-    if (isNaN(formattedOutOf)) return;
+    if (formattedOutOf === null) {
+      setInputError('Total points must be a finite number greater than zero.');
+      return false;
+    }
     
     const updatedAssignment = {
       id: assignmentId || generateUniqueId(), // Ensure assignment has an ID
@@ -99,7 +118,7 @@ const AssignmentDetails = () => {
       category,
       dueDate,
       grade: formattedGrade,
-      outOf: parseFloat(formattedOutOf.toFixed(2)),
+      outOf: Number(formattedOutOf.toFixed(2)),
       artificial: true,
       term: term,
       meta: parsedMeta // Preserve meta data for artificial assignments
@@ -127,14 +146,20 @@ const AssignmentDetails = () => {
       updated[storageKey] = updatedClassList;
     }
     await setAccountScopedItem('artificialAssignments', JSON.stringify(updated));
+    setInputError(null);
+    return true;
   }, [gradeValue, outOfValue, assignmentId, name, category, dueDate, parsedMeta, classParam, classId, corNumId, section, gbId, term]);
 
   const saveAndUpdate = useCallback(async () => {
     await handleSave();
     if (gradeValue === '*') {
       setPercentage('*');
-    } else if (!isNaN(Number(gradeValue)) && !isNaN(Number(outOfValue)) && Number(outOfValue) !== 0) {
-      setPercentage(((Number(gradeValue) / Number(outOfValue)) * 100).toFixed(2));
+    } else {
+      const parsedGrade = parseEditablePoints(gradeValue);
+      const parsedOutOf = parseEditablePoints(outOfValue, false);
+      if (parsedGrade !== null && parsedOutOf !== null) {
+        setPercentage(((parsedGrade / parsedOutOf) * 100).toFixed(2));
+      }
     }
   }, [handleSave, gradeValue, outOfValue]);
 
@@ -187,10 +212,13 @@ const AssignmentDetails = () => {
                                 className='text-base text-main leading-[1.15rem] py-[0.175rem]'
                                 keyboardType='phone-pad'
                                 value={gradeValue}
-                                onChangeText={setGradeValue}
+                                onChangeText={value => {
+                                  setInputError(null);
+                                  setGradeValue(value);
+                                }}
                                 onBlur={() => {
-                                  const num = Number(gradeValue);
-                                  if (!isNaN(num)) setGradeValue(num.toFixed(2));
+                                  const parsed = parseEditablePoints(gradeValue);
+                                  if (parsed !== null) setGradeValue(parsed.toFixed(2));
                                 }}
                                 onSubmitEditing={saveAndUpdate}
                                 returnKeyType="done"
@@ -212,10 +240,13 @@ const AssignmentDetails = () => {
                                 className='text-base text-main leading-[1.15rem] py-[0.175rem]'
                                 keyboardType='numeric'
                                 value={outOfValue}
-                                onChangeText={setOutOfValue}
+                                onChangeText={value => {
+                                  setInputError(null);
+                                  setOutOfValue(value);
+                                }}
                                 onBlur={() => {
-                                  const num = Number(outOfValue);
-                                  if (!isNaN(num)) setOutOfValue(num.toFixed(2));
+                                  const parsed = parseEditablePoints(outOfValue, false);
+                                  if (parsed !== null) setOutOfValue(parsed.toFixed(2));
                                 }}
                                 onSubmitEditing={saveAndUpdate}
                                 returnKeyType="done"
@@ -226,6 +257,9 @@ const AssignmentDetails = () => {
                         </Pressable>
                     </View>
                 </View>
+                {inputError && (
+                  <Text className='text-red-500 px-4 mt-3'>{inputError}</Text>
+                )}
                 {parsedMeta.length > 0 && (
                 <View className='mt-4 px-4'>
                     <Text className='text-accent font-bold text-sm mb-4'>Assignment Status</Text>

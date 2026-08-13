@@ -85,15 +85,22 @@ export function calculateGradeSummary(
 
   // Sum up points per category for countable assignments only
   for (const a of countableAssignments) {
+    const grade = Number(a.grade);
+    const outOf = Number(a.outOf);
+    if (!Number.isFinite(grade) || grade < 0 || !Number.isFinite(outOf) || outOf <= 0) {
+      continue;
+    }
     if (!categories[a.category]) {
       categories[a.category] = {
         rawPoints: 0,
         rawTotal: 0,
-        weight: categoryWeights[a.category] ?? 0,
+        weight: Number.isFinite(categoryWeights[a.category]) && categoryWeights[a.category] > 0
+          ? categoryWeights[a.category]
+          : 0,
       };
     }
-    categories[a.category].rawPoints += Number(a.grade);
-    categories[a.category].rawTotal += a.outOf;
+    categories[a.category].rawPoints += grade;
+    categories[a.category].rawTotal += outOf;
   }
 
   // Calculate RC grades based on the selected category
@@ -107,17 +114,17 @@ export function calculateGradeSummary(
     const q2Data = termMap['Q2 Grades'];
     
     // Use the totals directly from Q1 and Q2 data (these are already calculated RC grades)
-    if (q1Data && typeof q1Data.total === 'number') {
+    if (q1Data && typeof q1Data.total === 'number' && Number.isFinite(q1Data.total)) {
       rcGrades.rc1 = Math.round(q1Data.total);
     }
     
-    if (q2Data && typeof q2Data.total === 'number') {
+    if (q2Data && typeof q2Data.total === 'number' && Number.isFinite(q2Data.total)) {
       rcGrades.rc2 = Math.round(q2Data.total);
     }
     
     // Calculate SM1 from rounded RC1, RC2, and Final Exam (40% + 40% + 20%)
     if (rcGrades.rc1 !== undefined && rcGrades.rc2 !== undefined) {
-      if (finalExamGrade !== undefined && finalExamGrade !== null) {
+      if (finalExamGrade !== undefined && finalExamGrade !== null && Number.isFinite(finalExamGrade)) {
         // Use weighted calculation: 40% RC1 + 40% RC2 + 20% Final Exam
         semesterAverages.sm1 = (rcGrades.rc1 * 0.4) + (rcGrades.rc2 * 0.4) + (finalExamGrade * 0.2);
       } else {
@@ -136,17 +143,17 @@ export function calculateGradeSummary(
     const q4Data = termMap['Q4 Grades'];
     
     // Use the totals directly from Q3 and Q4 data
-    if (q3Data && typeof q3Data.total === 'number') {
+    if (q3Data && typeof q3Data.total === 'number' && Number.isFinite(q3Data.total)) {
       rcGrades.rc3 = Math.round(q3Data.total);
     }
     
-    if (q4Data && typeof q4Data.total === 'number') {
+    if (q4Data && typeof q4Data.total === 'number' && Number.isFinite(q4Data.total)) {
       rcGrades.rc4 = Math.round(q4Data.total);
     }
     
     // Calculate SM2 from rounded RC3, RC4, and Final Exam (40% + 40% + 20%)
     if (rcGrades.rc3 !== undefined && rcGrades.rc4 !== undefined) {
-      if (finalExamGrade !== undefined && finalExamGrade !== null) {
+      if (finalExamGrade !== undefined && finalExamGrade !== null && Number.isFinite(finalExamGrade)) {
         // Use weighted calculation: 40% RC3 + 40% RC4 + 20% Final Exam
         semesterAverages.sm2 = (rcGrades.rc3 * 0.4) + (rcGrades.rc4 * 0.4) + (finalExamGrade * 0.2);
       } else {
@@ -188,10 +195,9 @@ export function calculateGradeSummary(
     courseTotal = semesterAverages.sm2.toString();
   } else {
     // Use original weighted calculation for non-semester views
-    const weightedTotal = (totalWeight > 0 ? weightedSum / totalWeight : 0) === Number(0)
-      ? '*'
-      : parseFloat((totalWeight > 0 ? weightedSum / totalWeight : 0).toFixed(2)).toString();
-    courseTotal = weightedTotal;
+    courseTotal = totalWeight > 0 && Number.isFinite(weightedSum)
+      ? Number((weightedSum / totalWeight).toFixed(2)).toString()
+      : '*';
   }
     
   return {
