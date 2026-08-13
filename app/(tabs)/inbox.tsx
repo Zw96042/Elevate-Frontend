@@ -69,7 +69,7 @@ const Inbox = () => {
     />
   ), []);
 
-  const keyExtractor = useCallback((item: any, i: number) => `${item.subject}-${i}`, []);
+  const keyExtractor = useCallback((item: any) => item.messageRowId, []);
 
   const ItemSeparatorComponent = useCallback(() => <View className="h-4" />, []);
 
