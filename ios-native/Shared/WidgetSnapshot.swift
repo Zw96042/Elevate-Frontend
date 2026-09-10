@@ -48,6 +48,25 @@ struct WidgetSnapshot: Codable {
         var name: String
         var gradeText: String            // "94" or "18/20"; empty for missing work
         var date: String                 // "M/d/yy" as Skyward reports it
+        // Optional so snapshots written by older releases still decode.
+        var courseID: String? = nil
+        var termRawValue: String? = nil
+        var assignmentID: String? = nil
+        var accountScope: String? = nil
+
+        var assignmentURL: URL? {
+            guard let courseID, let termRawValue, let assignmentID, let accountScope else { return nil }
+            var components = URLComponents()
+            components.scheme = "com.zacharywilson.elevate"
+            components.host = "assignment"
+            components.queryItems = [
+                URLQueryItem(name: "scope", value: accountScope),
+                URLQueryItem(name: "courseID", value: courseID),
+                URLQueryItem(name: "term", value: termRawValue),
+                URLQueryItem(name: "assignmentID", value: assignmentID),
+            ]
+            return components.url
+        }
     }
 
     struct MessageItem: Codable, Hashable {
