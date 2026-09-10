@@ -159,17 +159,97 @@ struct ColorPalette: Identifiable, Hashable {
         )
     )
 
+    /// Ivory stationery with sepia ink and a claret pen. At night a warm
+    /// graphite page holds parchment buttons and plum marks.
+    static let rose = ColorPalette(
+        id: "rose", name: "Paper",
+        summary: "Ivory stationery, sepia ink, and a claret pen.",
+        light: Tones(
+            background: 0xFAF5E8, ink: 0x2A1E18, muted: 0x6B5A4E, hairline: 0xE5DAC6,
+            action: 0x861E4E, buttonFill: 0x2A1E18, onButton: 0xFAF5E8,
+            selection: 0xF1DCE2, pressed: 0xEFE7D6,
+            chartLine: 0x9C2A5C, chartFill: 0.12,
+            attention: 0xAC3508, warning: 0x735C00
+        ),
+        dark: Tones(
+            background: 0x22201D, ink: 0xF4ECDF, muted: 0xB5A794, hairline: 0x34302B,
+            action: 0xE68AAE, buttonFill: 0xF4ECDF, onButton: 0x22201D,
+            selection: 0x3A2A2E, pressed: 0x2C2925,
+            chartLine: 0xEA92B4, chartFill: 0.18,
+            attention: 0xFF9466, warning: 0xD9C46A
+        )
+    )
+
+    /// Sage-mint with spruce ink and teal actions. At night a deep spruce
+    /// page keeps the same calm hue, with saturated teal buttons.
+    static let forest = ColorPalette(
+        id: "forest", name: "Field",
+        summary: "Sage and spruce, calm for long reads.",
+        light: Tones(
+            background: 0xE9F3EE, ink: 0x11221D, muted: 0x4C6059, hairline: 0xCEDDD5,
+            action: 0x106456, buttonFill: 0x0C4A3F, onButton: 0xFFFFFF,
+            selection: 0xCFE5DB, pressed: 0xDDEAE4,
+            chartLine: 0x18806B, chartFill: 0.14,
+            attention: 0xB3261E, warning: 0x8A4B00
+        ),
+        dark: Tones(
+            background: 0x0F211D, ink: 0xE5F0EB, muted: 0x9DB5AC, hairline: 0x1F332D,
+            action: 0x4DBFAE, buttonFill: 0x12665A, onButton: 0xFFFFFF,
+            selection: 0x1A352E, pressed: 0x172C27,
+            chartLine: 0x5CCFB8, chartFill: 0.22,
+            attention: 0xFF8A7A, warning: 0xEDB466
+        )
+    )
+
+    /// Apricot clay with red-brown ink by day. Ember orange sits on a
+    /// wine-dark page at night; crimson attention remains distinct.
+    static let sunset = ColorPalette(
+        id: "sunset", name: "Ember",
+        summary: "Apricot clay by day, ember orange on a wine-dark night.",
+        light: Tones(
+            background: 0xFCEEE4, ink: 0x2B1710, muted: 0x6B5142, hairline: 0xEBD5C6,
+            action: 0x9E390C, buttonFill: 0x7A2A08, onButton: 0xFFFFFF,
+            selection: 0xF5D5C2, pressed: 0xF3DFD2,
+            chartLine: 0xC2531A, chartFill: 0.18,
+            attention: 0xA8123C, warning: 0x5E5A00
+        ),
+        dark: Tones(
+            background: 0x22131A, ink: 0xF9ECE6, muted: 0xC2A39C, hairline: 0x3A2229,
+            action: 0xFF8F4F, buttonFill: 0xA33C0C, onButton: 0xFFFFFF,
+            selection: 0x3E2420, pressed: 0x2E1C24,
+            chartLine: 0xFF9A55, chartFill: 0.28,
+            attention: 0xFF7D95, warning: 0xD4CB6A
+        )
+    )
+
+    static let all: [ColorPalette] = [.classicBlue, .graphite, .violet, .rose, .forest, .sunset]
+
+    /// A neutral stone base, neither warm nor cool, so any color sits on it.
+    /// The person's color is used for links and the GPA line, deepened when
+    /// needed so it stays readable on the page, the well, and the selection,
+    /// and a step deeper again for button fills. At night a soft charcoal
+    /// with the color lifted.
     static func custom(_ accent: UInt32) -> ColorPalette {
-        let accessibleAccent = accessibleLightAccent(accent)
+        let lightAction = accessibleLightAccent(accent)
+        let darkAction = accessibleDarkAccent(accent)
+        let lightButton = darkened(lightAction, toLuminance: 0.075)
         return ColorPalette(
-            id: "custom", name: "Custom", accent: accessibleAccent,
-            accentDark: blend(accent, with: 0xFFFFFF, amount: 0.60),
-            ringLight: blend(accent, with: 0xFFFFFF, amount: 0.84),
-            ringDark: blend(accent, with: 0x000000, amount: 0.48),
-            textLight: accessibleLightAccent(accent),
-            textDark: blend(accent, with: 0xFFFFFF, amount: 0.58),
-            cardLight: blend(accent, with: 0xFFFFFF, amount: 0.96),
-            cardDark: blend(accent, with: 0x000000, amount: 0.78),
+            id: "custom", name: "Custom",
+            summary: "A neutral base around your color.",
+            light: Tones(
+                background: 0xF6F6F4, ink: 0x161618, muted: 0x5E5E62, hairline: 0xDCDCD8,
+                action: lightAction, buttonFill: lightButton, onButton: 0xFFFFFF,
+                selection: blend(0xF6F6F4, with: lightAction, amount: 0.12), pressed: 0xEBEBE8,
+                chartLine: lightAction, chartFill: 0.16,
+                attention: 0xB3261E, warning: 0x855000
+            ),
+            dark: Tones(
+                background: 0x19191C, ink: 0xF1F1EF, muted: 0xA3A3A8, hairline: 0x2E2E32,
+                action: darkAction, buttonFill: darkAction, onButton: 0x19191C,
+                selection: blend(0x19191C, with: darkAction, amount: 0.14), pressed: 0x232327,
+                chartLine: darkAction, chartFill: 0.26,
+                attention: 0xFF8C80, warning: 0xF0B860
+            ),
             rawAccent: accent
         )
     }
@@ -178,6 +258,16 @@ struct ColorPalette: Identifiable, Hashable {
         all.first { $0.id == id } ?? .classicBlue
     }
 
+    // MARK: Derived tones
+
+    /// Non-text glyphs such as disclosure chevrons.
+    var faintLight: UInt32 { Self.blend(light.ink, with: light.background, amount: 0.55) }
+    var faintDark: UInt32 { Self.blend(dark.ink, with: dark.background, amount: 0.55) }
+
+    // MARK: Color math
+
+    /// Deepened until it reads at 4.5:1 on the light well and selection,
+    /// not only on the page.
     private static func accessibleLightAccent(_ color: UInt32) -> UInt32 {
         var amount = 0.0
         var candidate = color
