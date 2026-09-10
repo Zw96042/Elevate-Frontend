@@ -162,7 +162,7 @@ enum AcademicScoreValue {
 enum UnifiedCourseTransformer {
     static func transform(history: AcademicHistory) -> [UnifiedCourseData] {
         var courses: [UnifiedCourseData] = []
-        for (_, yearData) in history {
+        for (academicYear, yearData) in history {
             for (storageKey, course) in yearData.courses {
                 let courseName = course.courseName ?? storageKey
                 let scores: [BucketScore] = [
@@ -186,32 +186,66 @@ enum UnifiedCourseTransformer {
                     termLength: course.terms,
                     gradeYear: yearData.grade,
                     currentScores: scores,
-                    historicalGrades: HistoricalGrades(
-                        pr1: clean(course.pr1), pr2: clean(course.pr2),
-                        pr3: clean(course.pr3), pr4: clean(course.pr4),
-                        pr5: clean(course.pr5), pr6: clean(course.pr6),
-                        pr7: clean(course.pr7), pr8: clean(course.pr8),
-                        rc1: clean(course.rc1), rc2: clean(course.rc2),
-                        rc3: clean(course.rc3), rc4: clean(course.rc4),
-                        ex1: clean(course.ex1), ex2: clean(course.ex2),
-                        sm1: clean(course.sm1), sm2: clean(course.sm2),
-                        finalGrade: clean(course.finalGrade)
-                    )
+                    historicalGrades: historicalGrades(for: course),
+                    academicYear: academicYear,
+                    historyRowKey: storageKey,
+                    academicYearIsVerified: yearData.academicYearIsVerified
+                        ?? (AcademicYearKey.startYear(academicYear) != nil),
+                    isTranscriptRecord: course.isTranscriptRecord,
+                    postedHistoricalGrades: course.postedHistoricalGrades,
+                    isCurrentEnrollment: course.isCurrentEnrollment,
+                    currentEnrollmentSemester: course.currentEnrollmentSemester,
+                    currentEnrollmentGradeYear: course.currentEnrollmentGradeYear,
+                    currentEnrollmentObservedAt: course.currentEnrollmentObservedAt,
+                    catalogCourseCode: course.catalogCourseCode
                 ))
             }
         }
-        return courses.sorted {
+        courses = courses.sorted {
             if $0.gradeYear != $1.gradeYear { return ($0.gradeYear ?? 0) < ($1.gradeYear ?? 0) }
             if $0.period != $1.period { return ($0.period ?? 99) < ($1.period ?? 99) }
             return $0.courseName < $1.courseName
         }
+        let planning = history.keys.sorted().flatMap { history[$0]?.planningTranscriptCourses ?? [] }
+        if history.values.contains(where: { $0.planningTranscriptCourses != nil }) {
+            if !courses.isEmpty {
+                // The whole immutable projection is attached once to a stable
+                // existing record. It remains in the account's course cache.
+                let index = courses.indices.min { courses[$0].id < courses[$1].id }!
+                courses[index].planningTranscriptCourses = planning
+            } else {
+                // Internal transport only. AppStore strips this carrier before
+                // publishing official courses; it has no grade or enrollment.
+                courses.append(UnifiedCourseData(
+                    courseId: nil, corNumId: "", stuId: "", section: "", gbId: "",
+                    courseName: "", semester: .unknown, termLength: "", gradeYear: nil,
+                    currentScores: [], historicalGrades: HistoricalGrades(), isTranscriptRecord: false,
+                    planningTranscriptCourses: planning, isPlanningOnly: true
+                ))
+            }
+        }
+        return courses
     }
 
     private static func clean(_ value: String?) -> String? {
         AcademicScoreValue.sanitizedGradeText(value)
     }
 
-    private static func inferSemester(_ terms: String) -> Semester {
+    static func historicalGrades(for course: HistoryCourse) -> HistoricalGrades {
+        HistoricalGrades(
+            pr1: clean(course.pr1), pr2: clean(course.pr2),
+            pr3: clean(course.pr3), pr4: clean(course.pr4),
+            pr5: clean(course.pr5), pr6: clean(course.pr6),
+            pr7: clean(course.pr7), pr8: clean(course.pr8),
+            rc1: clean(course.rc1), rc2: clean(course.rc2),
+            rc3: clean(course.rc3), rc4: clean(course.rc4),
+            ex1: clean(course.ex1), ex2: clean(course.ex2),
+            sm1: clean(course.sm1), sm2: clean(course.sm2),
+            finalGrade: clean(course.finalGrade)
+        )
+    }
+
+    static func inferSemester(_ terms: String) -> Semester {
         switch terms.replacingOccurrences(of: " ", with: "") {
         case "1-4": return .both
         case "1-2": return .fall
@@ -240,9 +274,44 @@ struct UnifiedCourseData: Codable, Hashable, Identifiable {
     var gradeYear: Int?
     var currentScores: [BucketScore]
     var historicalGrades: HistoricalGrades
+    /// Source year and row identity are optional for caches saved before history browsing.
+    var academicYear: String? = nil
+    var historyRowKey: String? = nil
+    /// False for a year manufactured by the existing live-gradebook merge.
+    var academicYearIsVerified: Bool? = nil
+    /// Requires independent current-school-year evidence; matching the latest
+    /// transcript year by grade level or course name does not establish it.
+    var currentAcademicYearIsVerified: Bool? = nil
+    var isTranscriptRecord: Bool? = nil
+    /// Source grades before the live merge, separate from the existing GPA data.
+    var postedHistoricalGrades: HistoricalGrades? = nil
+    var planningTranscriptCourses: [PlanningTranscriptCourse]? = nil
+    /// Internal cache/transport carrier, never an official course/enrollment.
+    var isPlanningOnly: Bool? = nil
+    /// Independent membership in a successfully parsed live gradebook snapshot.
+    /// These fields do not date, reclassify or modify the historical source row.
+    var isCurrentEnrollment: Bool? = nil
+    var currentEnrollmentSemester: Semester? = nil
+    var currentEnrollmentGradeYear: Int? = nil
+    var currentEnrollmentObservedAt: Date? = nil
+
+    /// Verified same-course catalog metadata; independent of the source title and identity.
+    var catalogCourseCode: String? = nil
+
+    var courseLevel: CourseLevel {
+        CourseLevelDetector.level(for: courseName, catalogCourseCode: catalogCourseCode)
+    }
+
+    var postedGrades: HistoricalGrades { postedHistoricalGrades ?? historicalGrades }
 
     var id: String {
-        [
+        // Keep live gradebook IDs unchanged for assignments, local edits and
+        // viewed-grade tracking. Only transcript-only rows gain source identity.
+        if courseId == nil, corNumId.isEmpty,
+           let academicYear, let historyRowKey {
+            return "history:\(academicYear.count):\(academicYear)\(historyRowKey.count):\(historyRowKey)"
+        }
+        return [
             stuId,
             corNumId,
             section,
@@ -254,7 +323,18 @@ struct UnifiedCourseData: Codable, Hashable, Identifiable {
     }
 
     var hasGradebookParams: Bool {
-        !courseName.isEmpty && !stuId.isEmpty && !corNumId.isEmpty && !section.isEmpty && !gbId.isEmpty
+        isPlanningOnly != true && !courseName.isEmpty && !stuId.isEmpty && !corNumId.isEmpty && !section.isEmpty && !gbId.isEmpty
+    }
+
+    /// A semester class has its own gradebook, assignments and local edits.
+    /// Switching terms must never query the other semester on this identity.
+    var availableTerms: [TermLabel] {
+        if isPlanningOnly == true { return [] }
+        switch semester {
+        case .fall: return [.q1, .q2, .sm1]
+        case .spring: return [.q3, .q4, .sm2]
+        case .both, .unknown: return TermLabel.allCases
+        }
     }
 }
 
