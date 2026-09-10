@@ -269,9 +269,27 @@ struct ColorPalette: Identifiable, Hashable {
     /// Deepened until it reads at 4.5:1 on the light well and selection,
     /// not only on the page.
     private static func accessibleLightAccent(_ color: UInt32) -> UInt32 {
+        darkened(color, toLuminance: 0.12)
+    }
+
+    /// Lifted until it reads at 4.5:1 on the dark selection fill.
+    private static func accessibleDarkAccent(_ color: UInt32) -> UInt32 {
         var amount = 0.0
         var candidate = color
-        while relativeLuminance(candidate) > 0.18 && amount < 0.85 {
+        while relativeLuminance(candidate) < 0.40 && amount < 0.9 {
+            amount += 0.05
+            candidate = blend(color, with: 0xFFFFFF, amount: amount)
+        }
+        return candidate
+    }
+
+    /// Blended toward black in 5% steps until no brighter than `limit`.
+    /// Button fills use 0.075, which keeps a white label at 4.5:1 even on
+    /// the pressed fill at 78% opacity.
+    private static func darkened(_ color: UInt32, toLuminance limit: Double) -> UInt32 {
+        var amount = 0.0
+        var candidate = color
+        while relativeLuminance(candidate) > limit && amount < 0.9 {
             amount += 0.05
             candidate = blend(color, with: 0x000000, amount: amount)
         }
@@ -311,37 +329,67 @@ final class ThemeManager {
     private static let customAccentKey = "theme.customAccent"
     private static let appearanceKey = "theme.appearance"
     @ObservationIgnored private var widgetReloadTask: Task<Void, Never>?
+    /// Set while adopting saved values, which are already stored and must
+    /// not ask the widgets to reload again.
+    @ObservationIgnored private var isReadingSavedTheme = false
 
     var palette: ColorPalette {
         didSet {
+            guard !isReadingSavedTheme else { return }
             AppGroup.defaults.set(palette.id, forKey: Self.paletteKey)
             if palette.id == "custom" {
                 AppGroup.defaults.set(Int(palette.rawAccent ?? palette.accent), forKey: Self.customAccentKey)
             }
-            widgetReloadTask?.cancel()
-            widgetReloadTask = Task {
-                try? await Task.sleep(nanoseconds: 350_000_000)
-                guard !Task.isCancelled else { return }
-                WidgetCenter.shared.reloadAllTimelines()
-            }
+            scheduleWidgetReload()
         }
     }
 
     var appearance: AppearanceMode {
-        didSet { AppGroup.defaults.set(appearance.rawValue, forKey: Self.appearanceKey) }
+        didSet {
+            guard !isReadingSavedTheme else { return }
+            AppGroup.defaults.set(appearance.rawValue, forKey: Self.appearanceKey)
+            scheduleWidgetReload()
+        }
     }
 
     private init() {
-        if AppGroup.defaults.string(forKey: Self.paletteKey) == "custom" {
-            if let savedAccent = AppGroup.defaults.object(forKey: Self.customAccentKey) as? NSNumber {
-                palette = .custom(savedAccent.uint32Value)
-            } else {
-                palette = .custom(ColorPalette.classicBlue.accent)
-            }
-        } else {
-            palette = ColorPalette.named(AppGroup.defaults.string(forKey: Self.paletteKey))
+        palette = Self.savedPalette()
+        appearance = Self.savedAppearance()
+    }
+
+    /// Adopts the theme last saved by the app. The widget extension can stay
+    /// alive across a change in Settings, so it calls this before each render.
+    func reloadSavedTheme() {
+        isReadingSavedTheme = true
+        defer { isReadingSavedTheme = false }
+        let savedPalette = Self.savedPalette()
+        if savedPalette != palette { palette = savedPalette }
+        let savedAppearance = Self.savedAppearance()
+        if savedAppearance != appearance { appearance = savedAppearance }
+    }
+
+    /// One reload after a run of changes, such as dragging through colors.
+    private func scheduleWidgetReload() {
+        widgetReloadTask?.cancel()
+        widgetReloadTask = Task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled else { return }
+            WidgetCenter.shared.reloadAllTimelines()
         }
-        appearance = AppearanceMode(rawValue: AppGroup.defaults.string(forKey: Self.appearanceKey) ?? "") ?? .system
+    }
+
+    private static func savedPalette() -> ColorPalette {
+        guard AppGroup.defaults.string(forKey: paletteKey) == "custom" else {
+            return ColorPalette.named(AppGroup.defaults.string(forKey: paletteKey))
+        }
+        if let savedAccent = AppGroup.defaults.object(forKey: customAccentKey) as? NSNumber {
+            return .custom(savedAccent.uint32Value)
+        }
+        return .custom(ColorPalette.classicBlue.accent)
+    }
+
+    private static func savedAppearance() -> AppearanceMode {
+        AppearanceMode(rawValue: AppGroup.defaults.string(forKey: appearanceKey) ?? "") ?? .system
     }
 }
 
@@ -356,27 +404,43 @@ extension Color {
         )
     }
 
-    static func dynamic(light: UInt32, dark: UInt32) -> Color {
+    static func dynamic(light: UInt32, dark: UInt32, lightAlpha: Double = 1, darkAlpha: Double = 1) -> Color {
         Color(uiColor: UIColor { traits in
-            let hex = traits.userInterfaceStyle == .dark ? dark : light
+            let isDark = traits.userInterfaceStyle == .dark
+            let hex = isDark ? dark : light
             return UIColor(
                 red: CGFloat((hex >> 16) & 0xFF) / 255,
                 green: CGFloat((hex >> 8) & 0xFF) / 255,
                 blue: CGFloat(hex & 0xFF) / 255,
-                alpha: 1
+                alpha: CGFloat(isDark ? darkAlpha : lightAlpha)
             )
         })
     }
 
-    @MainActor static var themeAccent: Color {
-        let p = ThemeManager.shared.palette
-        return dynamic(light: p.accent, dark: p.accentDark)
+    @MainActor private static var palette: ColorPalette { ThemeManager.shared.palette }
+
+    private struct ToneKey: Hashable {
+        var light: UInt32
+        var dark: UInt32
+        var lightAlpha: Double
+        var darkAlpha: Double
     }
 
-    /// Dark fill used behind white text. Kept separate from the adaptive tint:
-    /// a bright dark-mode link color cannot also be a legible button fill.
-    @MainActor static var prominentFill: Color {
-        Color(hex: ThemeManager.shared.palette.accent)
+    @MainActor private static var tones: [ToneKey: Color] = [:]
+
+    /// A dynamic color made once per value. Each new dynamic color is a new
+    /// UIColor, which SwiftUI can't tell is unchanged, so it would lay out
+    /// again every Text using it on every update, a pinch's every frame
+    /// included. Reusing one keeps unchanged views unchanged.
+    @MainActor private static func shared(light: UInt32, dark: UInt32, lightAlpha: Double = 1, darkAlpha: Double = 1) -> Color {
+        let key = ToneKey(light: light, dark: dark, lightAlpha: lightAlpha, darkAlpha: darkAlpha)
+        if let color = tones[key] { return color }
+        let color = dynamic(light: light, dark: dark, lightAlpha: lightAlpha, darkAlpha: darkAlpha)
+        // Themes use a few dozen; dragging a custom accent makes new ones
+        // on every step, so start over rather than keep them all.
+        if tones.count >= 256 { tones.removeAll(keepingCapacity: true) }
+        tones[key] = color
+        return color
     }
 
     static var onProminentFill: Color {
