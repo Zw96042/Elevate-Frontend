@@ -99,48 +99,65 @@ struct ColorPalette: Identifiable, Hashable {
     /// Cool white and navy ink, with cobalt actions and a brighter GPA line.
     /// At night the page becomes navy, with deep blue buttons and white labels.
     static let classicBlue = ColorPalette(
-        id: "classicBlue", name: "Blue", accent: 0x1769D2, accentDark: 0x67A9FF,
-        ringLight: 0xDDEBFF, ringDark: 0x203D63,
-        textLight: 0x185DAF, textDark: 0xA8CEFF,
-        cardLight: 0xF7FAFF, cardDark: 0x141D29
+        id: "classicBlue", name: "Classic",
+        summary: "Navy ink and cobalt on cool white, like a printed report card.",
+        light: Tones(
+            background: 0xF2F6FD, ink: 0x0E1A30, muted: 0x4C5B75, hairline: 0xD6DEEB,
+            action: 0x1F57D1, buttonFill: 0x163A8C, onButton: 0xFFFFFF,
+            selection: 0xD9E5FA, pressed: 0xE5ECF8,
+            chartLine: 0x2A62E0, chartFill: 0.14,
+            attention: 0xB42318, warning: 0x8F5200
+        ),
+        dark: Tones(
+            background: 0x0E1A33, ink: 0xEAF0FA, muted: 0x9DADC9, hairline: 0x213052,
+            action: 0x6AA2FF, buttonFill: 0x2654C8, onButton: 0xFFFFFF,
+            selection: 0x1C2F55, pressed: 0x172644,
+            chartLine: 0x74AAFF, chartFill: 0.24,
+            attention: 0xFF8A80, warning: 0xF2B65C
+        )
     )
 
-    static let violet = ColorPalette(
-        id: "violet", name: "Indigo", accent: 0x5856B9, accentDark: 0x9B98FF,
-        ringLight: 0xE6E5F7, ringDark: 0x38375E,
-        textLight: 0x504E9F, textDark: 0xC2C0FF,
-        cardLight: 0xF9F9FD, cardDark: 0x1C1B29
-    )
-
-    static let rose = ColorPalette(
-        id: "rose", name: "Pink", accent: 0xC12A67, accentDark: 0xFF82AE,
-        ringLight: 0xF6E1EA, ringDark: 0x5B3042,
-        textLight: 0xA72D5D, textDark: 0xFFB1CB,
-        cardLight: 0xFDF9FA, cardDark: 0x26191F
-    )
-
-    static let forest = ColorPalette(
-        id: "forest", name: "Teal", accent: 0x087B75, accentDark: 0x63D4CE,
-        ringLight: 0xDCEFED, ringDark: 0x254B49,
-        textLight: 0x216B67, textDark: 0xA0E5E1,
-        cardLight: 0xF7FBFA, cardDark: 0x142220
-    )
-
-    static let sunset = ColorPalette(
-        id: "sunset", name: "Orange", accent: 0xC45113, accentDark: 0xFF9F52,
-        ringLight: 0xF6E5DA, ringDark: 0x5B3C2A,
-        textLight: 0xA44B1B, textDark: 0xFFC29E,
-        cardLight: 0xFDF9F7, cardDark: 0x261C17
-    )
-
+    /// Pure white and black ink by day; graphite and soft white at night.
+    /// The monochrome roles leave color to attention and warning signals.
     static let graphite = ColorPalette(
-        id: "graphite", name: "Slate", accent: 0x526276, accentDark: 0xAAB8C9,
-        ringLight: 0xE3E8EE, ringDark: 0x37424F,
-        textLight: 0x526276, textDark: 0xCAD3DE,
-        cardLight: 0xF8F9FA, cardDark: 0x1B1E23
+        id: "graphite", name: "Lab",
+        summary: "Black on white, with color saved for grades that need it.",
+        light: Tones(
+            background: 0xFFFFFF, ink: 0x0A0A0B, muted: 0x5B5B60, hairline: 0xE2E2E5,
+            action: 0x0A0A0B, buttonFill: 0x0A0A0B, onButton: 0xFFFFFF,
+            selection: 0xEAEAED, pressed: 0xF1F1F3,
+            chartLine: 0x0A0A0B, chartFill: 0.06,
+            attention: 0xC8102E, warning: 0x8A5A00
+        ),
+        dark: Tones(
+            background: 0x1C1C1E, ink: 0xF2F2F4, muted: 0x9C9CA2, hairline: 0x313135,
+            action: 0xBDBDC3, buttonFill: 0xF2F2F4, onButton: 0x1C1C1E,
+            selection: 0x2E2E32, pressed: 0x262629,
+            chartLine: 0xF2F2F4, chartFill: 0.10,
+            attention: 0xFF7272, warning: 0xE3AB40
+        )
     )
 
-    static let all: [ColorPalette] = [.classicBlue, .violet, .rose, .forest, .sunset, .graphite]
+    /// Lilac with aubergine ink by day, deep indigo with orchid marks
+    /// at night. Indigo buttons stay saturated in both appearances.
+    static let violet = ColorPalette(
+        id: "violet", name: "Dusk",
+        summary: "Lilac by day, deep indigo with an orchid glow by night.",
+        light: Tones(
+            background: 0xF0ECFB, ink: 0x1F1838, muted: 0x5A5380, hairline: 0xD9D1EC,
+            action: 0x5536CC, buttonFill: 0x3B2799, onButton: 0xFFFFFF,
+            selection: 0xDCD2F6, pressed: 0xE5DFF5,
+            chartLine: 0x8A3FD1, chartFill: 0.20,
+            attention: 0xA8221B, warning: 0x7D4B00
+        ),
+        dark: Tones(
+            background: 0x1A1433, ink: 0xEEEAFB, muted: 0xA9A1D0, hairline: 0x2C2550,
+            action: 0xA88EFF, buttonFill: 0x5B3BD6, onButton: 0xFFFFFF,
+            selection: 0x2F2560, pressed: 0x241D45,
+            chartLine: 0xC9A0FF, chartFill: 0.32,
+            attention: 0xFF8E7E, warning: 0xF4C066
+        )
+    )
 
     static func custom(_ accent: UInt32) -> ColorPalette {
         let accessibleAccent = accessibleLightAccent(accent)
