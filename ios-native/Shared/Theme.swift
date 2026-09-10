@@ -31,38 +31,73 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Color palettes
+// MARK: - Themes
+//
+// A theme is a composed set rather than an accent swap. Each one names every
+// role separately for light and for dark: the page, text, secondary text,
+// hairlines, the action color for links and toggles, the fill behind primary
+// buttons, selected and pressed fills, the GPA line and the strength of the
+// wash below it, and the attention and warning colors tuned to that page.
+//
+// The themes differ in structure as well as hue. Some fill buttons with the
+// action color and some with ink; the dark pages are each their own night
+// (navy, graphite, indigo, warm graphite, spruce, wine) rather than one
+// black. Tinted pages and ink carry each theme through the content. Attention is
+// always a red set apart from the theme's action color, and warning is an
+// amber, ochre, or olive set apart from both, so neither the accent nor the
+// chart ever reads as a grade signal.
+//
+// Every theme keeps the same layout, type, and navigation; only color moves.
+// Targets, on the page and on the well and selection fills: text at least
+// 12:1 on the page, secondary, action, attention, and warning text at least
+// 4.5:1, the GPA line at least 3:1 on the page, hairlines about 1.25:1, and
+// button labels at least 4.5:1 on the fill, including the pressed fill at
+// 78% opacity.
+//
+// Theme IDs are persisted and shared with the widget, so they must never
+// change.
 
 struct ColorPalette: Identifiable, Hashable {
-    let id: String
-    let name: String
-    let accent: UInt32
-    let accentDark: UInt32
-    let ringLight: UInt32, ringDark: UInt32
-    let textLight: UInt32, textDark: UInt32
-    let cardLight: UInt32, cardDark: UInt32
-    let rawAccent: UInt32?
-
-    init(
-        id: String, name: String, accent: UInt32, accentDark: UInt32,
-        ringLight: UInt32, ringDark: UInt32,
-        textLight: UInt32, textDark: UInt32,
-        cardLight: UInt32, cardDark: UInt32,
-        rawAccent: UInt32? = nil
-    ) {
-        self.id = id
-        self.name = name
-        self.accent = accent
-        self.accentDark = accentDark
-        self.ringLight = ringLight
-        self.ringDark = ringDark
-        self.textLight = textLight
-        self.textDark = textDark
-        self.cardLight = cardLight
-        self.cardDark = cardDark
-        self.rawAccent = rawAccent
+    /// The colors of one theme in one appearance.
+    struct Tones: Hashable {
+        /// The page every screen is set on.
+        var background: UInt32
+        var ink: UInt32
+        /// Secondary text and metadata.
+        var muted: UInt32
+        /// Separators and the lines of the few relation tables.
+        var hairline: UInt32
+        /// Links, toggles, checkmarks, and what-if markers.
+        var action: UInt32
+        /// Fill behind the one primary button on a screen.
+        var buttonFill: UInt32
+        var onButton: UInt32
+        /// Fill behind a chosen option.
+        var selection: UInt32
+        /// Fill behind a row while it is pressed, and behind input wells.
+        var pressed: UInt32
+        var chartLine: UInt32
+        /// Opacity of the chart color at the top of the wash below the line.
+        var chartFill: Double
+        /// Below-passing grades and failures.
+        var attention: UInt32
+        /// Absences and soft warnings.
+        var warning: UInt32
     }
 
+    let id: String
+    let name: String
+    /// One sentence describing how the theme is composed.
+    let summary: String
+    let light: Tones
+    let dark: Tones
+    var rawAccent: UInt32? = nil
+
+    /// The light-mode action color. Persisted for custom themes.
+    var accent: UInt32 { light.action }
+
+    /// Cool white and navy ink, with cobalt actions and a brighter GPA line.
+    /// At night the page becomes navy, with deep blue buttons and white labels.
     static let classicBlue = ColorPalette(
         id: "classicBlue", name: "Blue", accent: 0x1769D2, accentDark: 0x67A9FF,
         ringLight: 0xDDEBFF, ringDark: 0x203D63,
