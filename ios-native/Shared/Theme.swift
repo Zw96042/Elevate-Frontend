@@ -443,30 +443,79 @@ extension Color {
         return color
     }
 
-    static var onProminentFill: Color {
-        .white
+    @MainActor private static func tone(_ role: KeyPath<ColorPalette.Tones, UInt32>) -> Color {
+        shared(light: palette.light[keyPath: role], dark: palette.dark[keyPath: role])
     }
 
-    /// Neutral page canvas; palette color is reserved for controls and status.
-    static var appBackground: Color {
-        Color(uiColor: .systemBackground)
+    /// Links, toggles, checkmarks, and what-if markers. Read by the widgets.
+    @MainActor static var themeAccent: Color { tone(\.action) }
+
+    /// The page every screen is set on.
+    @MainActor static var appBackground: Color { tone(\.background) }
+
+    /// Primary text.
+    @MainActor static var ink: Color { tone(\.ink) }
+
+    /// Secondary text and metadata.
+    @MainActor static var muted: Color { tone(\.muted) }
+
+    /// Decorative glyphs that carry no meaning on their own.
+    @MainActor static var faint: Color {
+        shared(light: palette.faintLight, dark: palette.faintDark)
     }
 
-    @MainActor static var ringHighlight: Color {
-        let p = ThemeManager.shared.palette
-        return dynamic(light: p.ringLight, dark: p.ringDark)
+    /// Hairline separators.
+    @MainActor static var rule: Color { tone(\.hairline) }
+
+    /// Fill behind a chosen option.
+    @MainActor static var selection: Color { tone(\.selection) }
+
+    /// Fill behind a pressed row.
+    @MainActor static var pressed: Color { tone(\.pressed) }
+
+    /// Text-field wells; the same step off the page as a pressed row.
+    @MainActor static var well: Color { tone(\.pressed) }
+
+    /// Fill behind primary buttons.
+    @MainActor static var prominentFill: Color { tone(\.buttonFill) }
+
+    /// Text on `prominentFill`.
+    @MainActor static var onProminentFill: Color { tone(\.onButton) }
+
+    @MainActor static var chartLine: Color { tone(\.chartLine) }
+
+    /// The chart color at the top of the wash under the GPA line, with the
+    /// theme's opacity for each appearance.
+    @MainActor static var chartFill: Color {
+        shared(
+            light: palette.light.chartLine, dark: palette.dark.chartLine,
+            lightAlpha: palette.light.chartFill, darkAlpha: palette.dark.chartFill
+        )
     }
 
-    @MainActor static var highlightText: Color {
-        let p = ThemeManager.shared.palette
-        return dynamic(light: p.textLight, dark: p.textDark)
+    /// The fill behind a calendar day number, by how much the day holds:
+    /// the action color at one of three strengths on the page, so the
+    /// shade reads by intensity alone in every theme. Level 0 is clear.
+    /// The busy shade behind a day's number, one of four strengths of the
+    /// action color for one, two, three or four, and five or more
+    /// assignments due. Intensity only, never another hue.
+    @MainActor static func dayLoad(level: Int) -> Color {
+        let step = max(0, min(level, 4))
+        guard step > 0 else { return .clear }
+        let light: [Double] = [0, 0.16, 0.32, 0.56, 0.86]
+        let dark: [Double] = [0, 0.24, 0.42, 0.64, 0.90]
+        return shared(light: palette.light.action, dark: palette.dark.action,
+                      lightAlpha: light[step], darkAlpha: dark[step])
     }
 
-    static var subtleBorder: Color {
-        Color(uiColor: .separator).opacity(0.22)
+    /// The day number's color on its shade: the strongest shade takes the
+    /// button label color, so it stays readable.
+    @MainActor static func dayLoadInk(level: Int) -> Color {
+        level >= 4 ? onProminentFill : ink
     }
 
-    static var skeletonFill: Color {
-        dynamic(light: 0xE3E9F1, dark: 0x263142)
-    }
+    /// Below-passing grade signal (district passing threshold is 70).
+    @MainActor static var gradeAttention: Color { tone(\.attention) }
+
+    @MainActor static var gradeWarning: Color { tone(\.warning) }
 }
