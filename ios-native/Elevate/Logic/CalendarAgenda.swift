@@ -187,3 +187,111 @@ struct CalendarMonth: Hashable, Comparable, Identifiable, Sendable {
     }
 }
 
+/// Seven days starting on the calendar's first weekday.
+struct CalendarWeek: Hashable, Identifiable, Sendable {
+    var days: [CalendarDay]
+
+    var id: String { firstDay.iso }
+    var firstDay: CalendarDay { days[0] }
+    var lastDay: CalendarDay { days[6] }
+
+    static func containing(_ day: CalendarDay, calendar: Calendar) -> CalendarWeek {
+        let weekday = calendar.component(.weekday, from: day.date(calendar: calendar))
+        let offset = (weekday - calendar.firstWeekday + 7) % 7
+        let first = day.adding(-offset, calendar: calendar)
+        return CalendarWeek(days: (0..<7).map { first.adding($0, calendar: calendar) })
+    }
+
+    func adding(_ weeks: Int, calendar: Calendar) -> CalendarWeek {
+        CalendarWeek.containing(firstDay.adding(weeks * 7, calendar: calendar), calendar: calendar)
+    }
+
+    func contains(_ day: CalendarDay) -> Bool {
+        firstDay <= day && day <= lastDay
+    }
+
+    /// The weeks touching the range, in order: the first week may begin
+    /// before the range and the last may end after it.
+    static func weeks(in range: ClosedRange<CalendarMonth>, calendar: Calendar) -> [CalendarWeek] {
+        var weeks: [CalendarWeek] = []
+        var week = containing(range.lowerBound.firstDay, calendar: calendar)
+        let last = range.upperBound.lastDay
+        while week.firstDay <= last {
+            weeks.append(week)
+            week = week.adding(1, calendar: calendar)
+        }
+        return weeks
+    }
+}
+
+/// Which Skyward quarter's gradebook holds the work due on a school day.
+/// The verified district schedule and its break policy live in
+/// `AcademicCalendar`; this never adds a second copy of the dates. Days in
+/// a break keep the preceding quarter and semester reviews map to their
+/// semester's second quarter, as the automatic quarter selection does.
+enum CalendarQuarterMap {
+    private static var chicago: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Chicago")!
+        return calendar
+    }
+
+    static func quarter(for day: CalendarDay) -> TermLabel {
+        let noon = chicago.date(from: DateComponents(year: day.year, month: day.month, day: day.day, hour: 12)) ?? Date()
+        return SchoolCalendar.quarter(for: AcademicCalendar.currentTerm(for: noon))
+    }
+
+    /// The quarters needed to show these days, in school order, each once.
+    static func quarters(for days: some Sequence<CalendarDay>) -> [TermLabel] {
+        let needed = Set(days.map(quarter(for:)))
+        return SchoolCalendar.quarters.filter { needed.contains($0) }
+    }
+}
+
+/// How busy a day is with Skyward work: every assignment due that day,
+/// graded or not, so the shade reads as load, not progress. Levels: none,
+/// one, two, three or four, five or more. Personal events and attendance
+/// have their own marks and never change the shade.
+enum CalendarDayLoad {
+    static let maximumLevel = 4
+
+    static func level(assignmentsDue count: Int) -> Int {
+        switch count {
+        case ...0: return 0
+        case 1: return 1
+        case 2: return 2
+        case 3...4: return 3
+        default: return maximumLevel
+        }
+    }
+}
+
+/// Source entries keyed by valid school date, in source order. Entries
+/// without one are kept apart rather than dropped.
+struct CalendarDayIndex {
+    var attendance: [CalendarDay: [AttendanceRecord]] = [:]
+    var assignments: [CalendarDay: [CalendarAssignment]] = [:]
+    var undatedAttendance: [AttendanceRecord] = []
+    var undatedAssignments: [CalendarAssignment] = []
+
+    init(attendance records: [AttendanceRecord], assignments list: [CalendarAssignment]) {
+        for record in records {
+            if let day = CalendarDay(iso: record.date) {
+                attendance[day, default: []].append(record)
+            } else {
+                undatedAttendance.append(record)
+            }
+        }
+        for assignment in list {
+            if let day = CalendarDay(iso: assignment.date) {
+                assignments[day, default: []].append(assignment)
+            } else {
+                undatedAssignments.append(assignment)
+            }
+        }
+    }
+
+    var months: Set<CalendarMonth> {
+        Set(attendance.keys.map(\.calendarMonth)).union(assignments.keys.map(\.calendarMonth))
+    }
+}
