@@ -184,3 +184,56 @@ struct AssignmentLink: Equatable {
     var term: TermLabel
     var assignmentID: String
 
+    static func assignmentToken(for sourceID: String) -> String {
+        SHA256.hash(data: Data(sourceID.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Match only the official gradebook from the validated request. Calendar's
+    /// source token survives point-total changes; old detail reminders used
+    /// CalcAssignment identities, supported by their opaque token as well.
+    static func calcAssignmentID(for token: String, course: UnifiedCourseData,
+                                 term: TermLabel, gradeInfo: GradeInfoResult) -> String? {
+        guard SchoolCalendar.quarters.contains(term), course.hasGradebookParams,
+              course.availableTerms.contains(term), isHex(token, count: 64) else { return nil }
+        let source = CalendarAssignment.sourceAssignments(course: course, term: term, gradeInfo: gradeInfo)
+        let calculated = AssignmentGradeEdits.assignments(from: gradeInfo, className: course.courseName, term: term)
+        return zip(source, calculated).first {
+            $0.0.routeID == token || assignmentToken(for: $0.1.id) == token
+        }?.1.id
+    }
+
+    /// New reminders retain the source identity so they agree with Calendar.
+    /// A hypothetical assignment has no counterpart in this official data.
+    static func sourceAssignmentID(for calcID: String, course: UnifiedCourseData,
+                                   term: TermLabel, gradeInfo: GradeInfoResult) -> String? {
+        guard SchoolCalendar.quarters.contains(term), course.hasGradebookParams,
+              course.availableTerms.contains(term) else { return nil }
+        let source = CalendarAssignment.sourceAssignments(course: course, term: term, gradeInfo: gradeInfo)
+        let calculated = AssignmentGradeEdits.assignments(from: gradeInfo, className: course.courseName, term: term)
+        return zip(source, calculated).first { $0.1.id == calcID }?.0.id
+    }
+
+    private static func isHex(_ value: String, count: Int) -> Bool {
+        value.utf8.count == count && value.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
+    }
+
+    init?(url: URL) {
+        guard url.scheme == "com.zacharywilson.elevate", url.host == "assignment",
+              url.path.isEmpty, url.fragment == nil, url.user == nil, url.password == nil, url.port == nil,
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let items = components.queryItems, items.count == 4 else { return nil }
+        let allowed = Set(["scope", "courseID", "term", "assignmentID"])
+        guard Set(items.map(\.name)) == allowed,
+              items.allSatisfy({ $0.value?.isEmpty == false }) else { return nil }
+        func value(_ key: String) -> String? { items.first { $0.name == key }?.value }
+        guard let scope = value("scope"), scope == "sample" || Self.isHex(scope, count: 24),
+              let courseID = value("courseID"), Self.isHex(courseID, count: 64),
+              let rawTerm = value("term"), let term = TermLabel(rawValue: rawTerm),
+              SchoolCalendar.quarters.contains(term),
+              let assignmentID = value("assignmentID"), Self.isHex(assignmentID, count: 64) else { return nil }
+        self.scope = scope
+        self.courseID = courseID
+        self.term = term
+        self.assignmentID = assignmentID
+    }
+}
