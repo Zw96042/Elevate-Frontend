@@ -340,7 +340,7 @@ struct UnifiedCourseData: Codable, Hashable, Identifiable {
 
 // MARK: - Terms
 
-enum TermLabel: String, Codable, CaseIterable, Identifiable {
+enum TermLabel: String, Codable, CaseIterable, Identifiable, Sendable {
     case q1 = "Q1 Grades"
     case q2 = "Q2 Grades"
     case sm1 = "SM1 Grade"
