@@ -95,3 +95,95 @@ struct CalendarDay: Hashable, Comparable, Identifiable, Sendable {
         return date.formatted(.dateTime.month(.wide).day().year())
     }
 
+    static func < (lhs: CalendarDay, rhs: CalendarDay) -> Bool {
+        (lhs.year, lhs.month, lhs.day) < (rhs.year, rhs.month, rhs.day)
+    }
+}
+
+struct CalendarMonth: Hashable, Comparable, Identifiable, Sendable {
+    var year: Int
+    /// 1 through 12.
+    var month: Int
+
+    var id: String { String(format: "%04d-%02d", year, month) }
+
+    init(year: Int, month: Int) {
+        self.year = year
+        self.month = month
+    }
+
+    /// A page id as produced by `id`; anything else is no month.
+    init?(id: String) {
+        let parts = id.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 2, let year = Int(parts[0]), let month = Int(parts[1]),
+              (1...12).contains(month), (1...9999).contains(year) else { return nil }
+        self.init(year: year, month: month)
+    }
+
+    func adding(_ months: Int) -> CalendarMonth {
+        let index = year * 12 + (month - 1) + months
+        return CalendarMonth(year: index / 12, month: index % 12 + 1)
+    }
+
+    var firstDay: CalendarDay { CalendarDay(year: year, month: month, day: 1) }
+    var lastDay: CalendarDay { CalendarDay(year: year, month: month, day: dayCount) }
+
+    var dayCount: Int {
+        let leap = year.isMultiple(of: 4) && (!year.isMultiple(of: 100) || year.isMultiple(of: 400))
+        return [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+    }
+
+    var days: [CalendarDay] { (1...dayCount).map { CalendarDay(year: year, month: month, day: $0) } }
+
+    func title(calendar: Calendar) -> String {
+        firstDay.date(calendar: calendar).formatted(.dateTime.month(.wide).year())
+    }
+
+    /// Whole weeks of day cells; nil pads the days outside this month.
+    func cells(calendar: Calendar) -> [CalendarDay?] {
+        let weekday = calendar.component(.weekday, from: firstDay.date(calendar: calendar))
+        let leading = (weekday - calendar.firstWeekday + 7) % 7
+        var cells: [CalendarDay?] = Array(repeating: nil, count: leading)
+        cells.append(contentsOf: days)
+        cells.append(contentsOf: Array(repeating: nil, count: (7 - cells.count % 7) % 7))
+        return cells
+    }
+
+    func clamped(to range: ClosedRange<CalendarMonth>) -> CalendarMonth {
+        min(max(self, range.lowerBound), range.upperBound)
+    }
+
+    /// The school year containing today, August through July, widened to
+    /// every month holding a dated entry so no source entry is out of reach.
+    static func browseRange(today: CalendarDay, entryMonths: Set<CalendarMonth>) -> ClosedRange<CalendarMonth> {
+        let current = today.calendarMonth
+        var lower = CalendarMonth(year: current.month >= 8 ? current.year : current.year - 1, month: 8)
+        var upper = lower.adding(11)
+        for month in entryMonths {
+            lower = min(lower, month)
+            upper = max(upper, month)
+        }
+        return lower...upper
+    }
+
+    /// Every month of the range, in order.
+    static func months(in range: ClosedRange<CalendarMonth>) -> [CalendarMonth] {
+        var months: [CalendarMonth] = []
+        var month = range.lowerBound
+        while month <= range.upperBound {
+            months.append(month)
+            month = month.adding(1)
+        }
+        return months
+    }
+
+    /// Every day of the range, in order.
+    static func days(in range: ClosedRange<CalendarMonth>) -> [CalendarDay] {
+        months(in: range).flatMap(\.days)
+    }
+
+    static func < (lhs: CalendarMonth, rhs: CalendarMonth) -> Bool {
+        (lhs.year, lhs.month) < (rhs.year, rhs.month)
+    }
+}
+
