@@ -96,3 +96,119 @@ struct GPAConversionReport {
     }
 }
 
+enum GPAConversionCalculator {
+    static func calculate(
+        courses: [UnifiedCourseData],
+        manualClassesByYear: [Int: [ManualClass]] = [:],
+        gradeYears: Set<Int>? = nil,
+        policy: GPAConversionPolicy,
+        completedOnly: Bool = false,
+        asOf: Date = Date()
+    ) -> GPAConversionReport {
+        struct Candidate {
+            var id: String
+            var name: String
+            var year: Int?
+            var semester: TermLabel
+            var grade: String?
+            var source: GPAConversionSource
+            var level: CourseLevel
+            var isCompleted: Bool
+        }
+        let completion = GPAConversionCompletionContext(courses: courses, asOf: asOf)
+        var candidates: [Candidate] = []
+        for course in courses {
+            let grades = course.isTranscriptRecord == true ? course.postedGrades : course.historicalGrades
+            for semester in [TermLabel.sm1, .sm2] where course.availableTerms.contains(semester) {
+                // A source year separates otherwise identical older cached identities.
+                let identity = "\(course.id)|\(course.academicYear ?? "")|\(semester.historicalKey)"
+                candidates.append(Candidate(
+                    id: identity, name: course.courseName, year: course.gradeYear,
+                    semester: semester, grade: grades[semester.historicalKey],
+                    source: course.isTranscriptRecord == true ? .transcript : .skyward,
+                    level: course.courseLevel,
+                    isCompleted: completion.isCompleted(course: course, semester: semester)
+                ))
+            }
+        }
+        let realYears = Set(courses.compactMap(\.gradeYear))
+        for year in manualClassesByYear.keys.sorted() where !realYears.contains(year) {
+            for course in manualClassesByYear[year] ?? [] {
+                for semester in [TermLabel.sm1, .sm2] {
+                    let grade = semester == .sm1 ? course.sm1 : course.sm2
+                    candidates.append(Candidate(
+                        id: "manual|\(year)|\(course.id)|\(semester.historicalKey)",
+                        name: course.className, year: year, semester: semester,
+                        grade: grade.map { String($0) }, source: .manual,
+                        level: CourseLevelDetector.level(for: course.className),
+                        isCompleted: completion.isCompleted(manualGradeYear: year, semester: semester)
+                    ))
+                }
+            }
+        }
+        var report = GPAConversionReport(policy: policy, includedRecords: [], skippedRecords: [], completedOnly: completedOnly)
+        func skip(_ candidate: Candidate, reason: GPAConversionSkipReason, index: Int) {
+            report.skippedRecords.append(GPAConversionSkippedRecord(
+                id: "\(candidate.id)|skip|\(index)", courseName: candidate.name,
+                gradeYear: candidate.year, semester: candidate.semester, reason: reason
+            ))
+        }
+        // Process identities in source order; conflicting numeric values never
+        // pick an arbitrary winner. Missing duplicate rows may yield to a posted row.
+        let groups = Dictionary(grouping: candidates, by: \.id)
+        var processed: Set<String> = []
+        for first in candidates where processed.insert(first.id).inserted {
+            let group = groups[first.id] ?? [first]
+            // An ongoing duplicate cannot conflict with or replace a completed
+            // source record. Retain original offsets for stable diagnostic IDs.
+            let eligible = group.enumerated().filter { index, candidate in
+                if completedOnly && !candidate.isCompleted {
+                    skip(candidate, reason: .inProgress, index: index)
+                    return false
+                }
+                return true
+            }
+            let numericValues = Set(eligible.compactMap { AcademicScoreValue.finiteDouble($0.element.grade) })
+            if numericValues.count > 1 {
+                for (index, candidate) in eligible {
+                    skip(candidate, reason: .conflictingDuplicate, index: index)
+                }
+                continue
+            }
+            let selectedIndex = eligible.first {
+                AcademicScoreValue.finiteDouble($0.element.grade) != nil
+            }?.offset ?? eligible.first?.offset
+            for (index, candidate) in eligible {
+                guard index == selectedIndex else {
+                    skip(candidate, reason: .duplicateRecord, index: index)
+                    continue
+                }
+                guard let year = candidate.year else {
+                    skip(candidate, reason: .unknownYear, index: index); continue
+                }
+                guard (9...12).contains(year) else {
+                    skip(candidate, reason: .outsideHighSchool, index: index); continue
+                }
+                if let gradeYears, !gradeYears.contains(year) {
+                    skip(candidate, reason: .outsideSelectedYears, index: index); continue
+                }
+                guard let text = candidate.grade?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+                    skip(candidate, reason: .missingGrade, index: index); continue
+                }
+                guard let percentage = Double(text) else {
+                    skip(candidate, reason: .nonnumericGrade, index: index); continue
+                }
+                guard let points = policy.points(for: percentage, level: candidate.level) else {
+                    skip(candidate, reason: .invalidGrade, index: index); continue
+                }
+                report.includedRecords.append(GPAConversionRecord(
+                    id: candidate.id, courseName: candidate.name, gradeYear: year,
+                    semester: candidate.semester, percentage: percentage,
+                    points: points, source: candidate.source, courseLevel: candidate.level
+                ))
+            }
+        }
+        return report
+    }
+}
+
