@@ -212,3 +212,72 @@ enum GPAConversionCalculator {
     }
 }
 
+/// Completion evidence is independent of the GPA screen's selected term/year.
+/// Undated records need an immutable transcript snapshot or a known live grade
+/// year; a numeric semester field alone does not prove a semester has ended.
+private struct GPAConversionCompletionContext {
+    let schoolYearStart: Int
+    let term: TermLabel
+    let currentGradeYear: Int?
+
+    init(courses: [UnifiedCourseData], asOf: Date) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Chicago")!
+        let year = calendar.component(.year, from: asOf)
+        schoolYearStart = calendar.component(.month, from: asOf) >= 8 ? year : year - 1
+        term = AcademicCalendar.currentTerm(for: asOf)
+        let start = schoolYearStart
+        currentGradeYear = courses.filter { course in
+            guard course.hasGradebookParams else { return false }
+            if let sourceStart = course.academicYear.flatMap(AcademicYearKey.startYear) {
+                if sourceStart > start { return false }
+                // combine() can attach an unmatched live row to the latest
+                // prior transcript bucket when the live grade is unknown.
+                // Its inherited year does not date that live enrollment.
+                if course.isTranscriptRecord == false { return true }
+                if course.academicYearIsVerified != false { return sourceStart == start }
+            }
+            // A fabricated bucket is not evidence of a completed prior year.
+            return true
+        }.compactMap(\.gradeYear).filter { (9...12).contains($0) }.max()
+    }
+
+    func isCompleted(course: UnifiedCourseData, semester: TermLabel) -> Bool {
+        if course.isTranscriptRecord == false {
+            // A live-only overlay has no immutable transcript semester. The
+            // containing history bucket may be older than this enrollment.
+            if let sourceStart = course.academicYear.flatMap(AcademicYearKey.startYear),
+               sourceStart > schoolYearStart { return false }
+            return currentSemesterHasEnded(semester)
+        }
+        if let sourceStart = course.academicYear.flatMap(AcademicYearKey.startYear) {
+            // Even an unverified future bucket cannot establish completion.
+            if sourceStart > schoolYearStart { return false }
+            if sourceStart == schoolYearStart { return currentSemesterHasEnded(semester) }
+            if course.academicYearIsVerified != false { return true }
+        }
+        if let year = course.gradeYear, let currentGradeYear {
+            if year > currentGradeYear { return false }
+            if year == currentGradeYear { return currentSemesterHasEnded(semester) }
+            if !course.hasGradebookParams { return true }
+        }
+        // Only the immutable source snapshot establishes completion without a
+        // trustworthy date. Merged historicalGrades may be midsemester values.
+        return course.isTranscriptRecord == true && course.postedHistoricalGrades != nil
+    }
+
+    func isCompleted(manualGradeYear: Int, semester: TermLabel) -> Bool {
+        guard let currentGradeYear else { return false }
+        if manualGradeYear < currentGradeYear { return true }
+        if manualGradeYear == currentGradeYear { return currentSemesterHasEnded(semester) }
+        return false
+    }
+
+    private func currentSemesterHasEnded(_ semester: TermLabel) -> Bool {
+        switch semester {
+        case .sm1: return [.sm1, .q3, .q4, .sm2].contains(term)
+        case .sm2: return term == .sm2
+        default: return false
+        }
+    }
+}
