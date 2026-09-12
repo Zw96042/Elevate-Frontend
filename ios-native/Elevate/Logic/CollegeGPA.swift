@@ -122,3 +122,111 @@ enum CollegeGPACalculator {
         return level.isAPOrIB
     }
 
+    private static func academicCoreResult(profile: CollegeProfile, report: GPAConversionReport) -> CollegeGPAResult {
+        var result = CollegeGPAResult(profile: profile, records: [], skipped: report.skippedRecords)
+        var unknownCount = 0
+        var hasUnverifiedArtHistory = false
+        var uncertainBonusCount = 0
+        for source in report.includedRecords {
+            let classification = CollegeCourseClassification(source.courseName)
+            let eligibility = classification.eligibility(for: profile.method)
+            guard eligibility == .included else {
+                result.omittedRecords.append(source)
+                if eligibility == .unknown {
+                    unknownCount += 1
+                    hasUnverifiedArtHistory = hasUnverifiedArtHistory || classification.isArtHistory
+                }
+                continue
+            }
+            var record = source
+            let bonus = classification.bonus(for: profile.method)
+            if bonus > 0, record.percentage < 70 {
+                if profile.method != .fsuWeighted { uncertainBonusCount += 1 }
+            } else {
+                record.points += bonus
+            }
+            result.records.append(record)
+        }
+        let excludedCount = result.omittedRecords.count - unknownCount
+        result.calculationNotes.append("Course names identify subjects and levels approximately. Each completed semester counts equally; credits and official course classifications are unavailable.")
+        if excludedCount > 0 {
+            result.calculationNotes.append("\(excludedCount) completed semester record\(excludedCount == 1 ? " is" : "s are") outside this method's recognized subjects and omitted.")
+        }
+        if unknownCount > 0 {
+            result.calculationNotes.append("College subject eligibility for \(unknownCount) completed semester record\(unknownCount == 1 ? " is" : "s is") unverified. Elevate cannot calculate this estimate until course eligibility is known.")
+            if hasUnverifiedArtHistory {
+                result.calculationNotes.append("Elevate has not verified whether this college counts Art History as academic core. The estimate is unavailable; its grades have not been silently included or excluded from an average.")
+            }
+            result.unavailableReason = "Course eligibility is unverified."
+        }
+        if uncertainBonusCount > 0 {
+            result.calculationNotes.append("Elevate has not verified bonus treatment for \(uncertainBonusCount) eligible semester grade\(uncertainBonusCount == 1 ? "" : "s") below C. The estimate is unavailable; these grades have not been dropped from the average.")
+            result.unavailableReason = "Bonus treatment for lower grades is unverified."
+        }
+        return result
+    }
+}
+
+/// Course titles are evidence for a labelled estimate, not official subject codes.
+/// Keep college recognition independent of the district's advanced-course bonuses.
+private struct CollegeCourseClassification {
+    enum Eligibility { case included, excluded, unknown }
+    let tokens: [String]
+    let name: String
+    let isPreLevel: Bool
+    let isAP: Bool
+    let isAPOrIB: Bool
+    let isAICE: Bool
+    let isDualEnrollment: Bool
+    let isHonors: Bool
+    let catalogKey: String
+    let subjectName: String
+
+    init(_ title: String) {
+        tokens = title.uppercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        name = tokens.joined(separator: " ")
+        catalogKey = TranscriptCreditCalculator.equivalenceKey(for: title)
+        subjectName = Self.catalogSubjects[catalogKey] ?? name
+        // A compact AP code is evidence only when the complete title
+        // resolves to an existing exact district alias, never a substring guess.
+        let matchedAlias = catalogKey != TranscriptCreditCalculator.normalize(title)
+        let apCodes: Set<String> = ["APENG3", "APENGLAN", "APENG4", "APENGLIT", "APSTATS", "APCALCAB", "APCALCBC",
+            "APBIO2", "APCHEM2", "APPHYS1", "APPHYS2", "APPHYSC", "APENVIR", "APHUMGEO", "APWHIST",
+            "APUSH", "APUSHIST", "APUSGOVT", "APMACECO", "APMICECO", "APHISART", "APCSP", "APTACSA"]
+        let codedAP = matchedAlias && tokens.first.map(apCodes.contains) == true
+        isPreLevel = tokens.contains(where: { ["PREAP", "PREIB", "PREAICE"].contains($0) })
+            || name.contains("PRE AP") || name.contains("PRE IB") || name.contains("PRE AICE")
+        isAP = !isPreLevel && (tokens.first == "AP" || tokens.last == "AP" || codedAP
+            || APCapstoneCourse.matching(title) != nil || name.hasPrefix("ADVANCED PLACEMENT "))
+        isAPOrIB = isAP || (!isPreLevel && (tokens.first == "IB" || tokens.last == "IB"
+            || name.hasPrefix("INTERNATIONAL BACCALAUREATE ")))
+        isAICE = !isPreLevel && (tokens.first == "AICE" || tokens.last == "AICE")
+        isDualEnrollment = name.contains("DUAL ENROLLMENT") || name.contains("DUAL CREDIT")
+            || tokens.first == "DE" || tokens.last == "DE" || tokens.first == "DC" || tokens.last == "DC"
+        isHonors = tokens.contains(where: { ["HONORS", "HONOR", "HON"].contains($0) }) || tokens.last == "H"
+    }
+
+    /// Reuse the catalog's exact alias resolution, but apply college subject
+    /// policy here. Texas science/elective credit never establishes college core.
+    private static let catalogSubjects: [String: String] = [
+        "english1": "ENGLISH", "english2": "ENGLISH", "english3": "ENGLISH", "english4": "ENGLISH",
+        "algebra1": "ALGEBRA", "algebra2": "ALGEBRA", "geometry": "GEOMETRY", "mathmodels": "MATH",
+        "precalculus": "PRECALCULUS", "statistics": "STATISTICS", "apstatistics": "STATISTICS",
+        "statistics2": "STATISTICS", "calculus": "CALCULUS", "calculusab": "CALCULUS", "calculusbc": "CALCULUS",
+        "multivariable": "CALCULUS", "linearalgebra": "ALGEBRA",
+        "biology": "BIOLOGY", "biology2": "BIOLOGY", "chemistry": "CHEMISTRY", "chemistry2": "CHEMISTRY",
+        "physics": "PHYSICS", "physics1": "PHYSICS", "physics2": "PHYSICS", "physics12": "PHYSICS",
+        "physicsc": "PHYSICS", "ipc": "PHYSICS CHEMISTRY", "environmentalsystems": "ENVIRONMENTAL SCIENCE",
+        "environmentalscience": "ENVIRONMENTAL SCIENCE", "earthspace": "EARTH SCIENCE",
+        "astronomy": "ASTRONOMY", "organicchemistry": "CHEMISTRY", "anatomy": "ANATOMY",
+        "worldgeography": "GEOGRAPHY", "worldhistory": "HISTORY", "ushistory": "HISTORY",
+        "government": "GOVERNMENT", "economics": "ECONOMICS", "macro": "MACROECONOMICS", "micro": "MICROECONOMICS",
+        "arthistory": "ART HISTORY", "artmethods": "ART", "artmethods2": "ART", "musictheory": "MUSIC THEORY",
+        "guitar": "GUITAR", "appliedmusic": "MUSIC", "health": "HEALTH", "healthscience": "HEALTH",
+        "outdooreducation": "PHYSICAL EDUCATION", "peerpartners": "PEER PARTNERS", "maps": "MAPS",
+        "officeaide": "OFFICE AIDE", "csp": "COMPUTER SCIENCE", "csa": "COMPUTER SCIENCE",
+        "cs2": "COMPUTER SCIENCE", "cs3": "COMPUTER SCIENCE", "csind": "COMPUTER SCIENCE",
+        "robotics1": "ROBOTICS", "robotics2": "ROBOTICS", "robotics3": "ROBOTICS",
+        "engineering": "ENGINEERING", "appliedengineering": "ENGINEERING", "financialliteracy": "FINANCIAL LITERACY",
+    ]
+
