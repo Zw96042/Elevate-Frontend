@@ -94,3 +94,114 @@ enum CoursePlanLevel: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum CoursePlanPath: String, Codable, CaseIterable, Identifiable {
+    case westlakeDistinguished
+    var id: String { rawValue }
+    var title: String { "Westlake distinguished pathway" }
+    var detail: String { "Foundation + Multidisciplinary Endorsement with Distinguished Level of Achievement" }
+    var totalRequired: Double { 26 }
+    var source: CoursePlanSource { .westlakeRequirements }
+    var requirements: [(subject: CoursePlanSubject, credits: Double)] {
+        [(.english, 4), (.math, 4), (.science, 4), (.socialStudies, 4),
+         (.worldLanguage, 2), (.physicalEducation, 1), (.health, 0.5),
+         (.fineArts, 1), (.elective, 5.5)]
+    }
+}
+
+struct CoursePlanSource: Identifiable {
+    var id: String { url }
+    var title: String
+    var url: String
+    var checkedOn: String
+    var scope: String
+    static let westlakeRequirements = CoursePlanSource(
+        title: "Westlake graduation requirements",
+        url: "https://whs.eanesisd.net/coursecatalog/info/graduation-requirements",
+        checkedOn: "2026-10-04",
+        scope: "Current online catalog linked by 2026–27 course selection resources; confirm your entering cohort with a counselor."
+    )
+    static let texasToolkit = CoursePlanSource(
+        title: "TEA 2025 Graduation Toolkit",
+        url: "https://tea.texas.gov/about-tea/newsroom/brochures/tea-graduation-toolkit-2025.pdf",
+        checkedOn: "2026-10-04",
+        scope: "Pages 4–7 and 9: state credits, endorsements, additional requirements and distinguished achievement; cohort rules may vary."
+    )
+    static let courseSelection = CoursePlanSource(
+        title: "Westlake 2026–27 course selection resources",
+        url: "https://sites.google.com/eanesisd.net/westlakecounseling/course-selection/course-selection-resources",
+        checkedOn: "2026-10-04",
+        scope: "2026–27 selection resources link the online course catalog and require the separate Skyward Career Plan."
+    )
+    static let athleticsCatalog = CoursePlanSource(
+        title: "Westlake athletics course credits",
+        url: "https://whs.eanesisd.net/coursecatalog/courses/health-and-physical-education/athletics",
+        checkedOn: "2026-10-06",
+        scope: "Sports course names and codes; Athletic Training/Sports Medicine earns elective credit and does not satisfy the state PE requirement."
+    )
+}
+
+/// Personal confirmations only. The calculator does not verify these against
+/// student records, and checking every item never certifies graduation.
+enum CoursePlanChecklistItem: String, Codable, CaseIterable, Identifiable {
+    case cohortAndCreditEligibility, requiredCourseSequence, sameWorldLanguage
+    case algebraII, multidisciplinaryEndorsement, endOfCourseExams
+    case speech, cprAndAED, peaceOfficerInstruction, financialAid
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .cohortAndCreditEligibility: return "Counselor confirmed cohort rules and credit eligibility"
+        case .requiredCourseSequence: return "Required named courses and substitutions reviewed"
+        case .sameWorldLanguage: return "Two credits in the same world language reviewed"
+        case .algebraII: return "Algebra II completion reviewed"
+        case .multidisciplinaryEndorsement: return "Multidisciplinary endorsement requirements reviewed"
+        case .endOfCourseExams: return "EOC exams or approved alternatives reviewed"
+        case .speech: return "Speech proficiency requirement reviewed"
+        case .cprAndAED: return "CPR and applicable AED instruction reviewed"
+        case .peaceOfficerInstruction: return "Peace officer interaction instruction reviewed"
+        case .financialAid: return "Financial aid application or applicable opt-out reviewed"
+        }
+    }
+}
+
+struct CoursePlanRequirementProgress: Identifiable {
+    var subject: CoursePlanSubject
+    var required: Double
+    var earned: Double
+    var planned: Double
+    var current: Double = 0
+    var id: String { subject.rawValue }
+    var combined: Double { earned + current + planned }
+    var earnedRemaining: Double { max(0, required - earned) }
+    var remaining: Double { max(0, required - combined) }
+}
+
+enum CoursePlanGPAPolicy: String, CaseIterable, Identifiable {
+    case districtPercentage, districtWeightedPercentage, generic4Point, generic5Point
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .districtPercentage: return "District unweighted percentage"
+        case .districtWeightedPercentage: return "District weighted percentage"
+        case .generic4Point: return "Generic 4.0 unweighted"
+        case .generic5Point: return "Generic 5.0 weighted"
+        }
+    }
+    var explanation: String {
+        switch self {
+        case .districtPercentage: return "Average of semester percentages, using Elevate's district calculation policy."
+        case .districtWeightedPercentage: return "Average of semester percentages with +10 AP-level or +5 Honors, capped at 110 per record, using Elevate's district calculation policy."
+        case .generic4Point: return GPAConversionPolicy.unweighted4Point.explanation
+        case .generic5Point: return GPAConversionPolicy.weighted5Point.explanation
+        }
+    }
+    func points(score: Double, level: CourseLevel) -> Double? {
+        guard score.isFinite, score >= 0, score <= AcademicScoreValue.magnitudeLimit else { return nil }
+        switch self {
+        case .districtPercentage: return score
+        case .districtWeightedPercentage: return min(score + level.gpaBonus, 110)
+        case .generic4Point: return GPAConversionPolicy.unweighted4Point.points(for: score, level: level)
+        case .generic5Point: return GPAConversionPolicy.weighted5Point.points(for: score, level: level)
+        }
+    }
+}
+
