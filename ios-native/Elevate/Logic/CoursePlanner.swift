@@ -275,3 +275,130 @@ enum CoursePlanner {
         return start > ongoing
     }
 
+    static func calculate(plan: CoursePlan, officialCourses: [UnifiedCourseData],
+                          planningTranscriptCourses: [PlanningTranscriptCourse]? = nil, asOf: Date = Date()) -> CoursePlanReport {
+        let transcript = TranscriptCreditCalculator.calculate(courses: officialCourses,
+            planningTranscriptCourses: planningTranscriptCourses, overrides: plan.creditOverrides, asOf: asOf)
+        let official = GPAConversionCalculator.calculate(courses: officialCourses.filter { $0.isPlanningOnly != true }, policy: .unweighted4Point,
+                                                        completedOnly: true, asOf: asOf)
+        let current = TranscriptCreditCalculator.currentCourses(courses: officialCourses, earned: transcript, asOf: asOf)
+        let all = plan.earnedCourses + plan.plannedCourses
+        let duplicateIDs = Set(Dictionary(grouping: all, by: \.id).filter { $0.value.count > 1 }.keys)
+        var issues: [CoursePlanIssue] = []
+        func validCourses(_ records: [CoursePlanCourse], planned: Bool) -> [CoursePlanCourse] {
+            records.enumerated().compactMap { index, record in
+                let reason: CoursePlanIssueReason?
+                if duplicateIDs.contains(record.id) { reason = .duplicateID }
+                else if record.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { reason = .emptyName }
+                else if !record.credits.isFinite || record.credits <= 0 || record.credits > 4 { reason = .invalidCredits }
+                else if record.academicYear.map({ AcademicYearKey.startYear($0) == nil }) == true || record.semester?.isSemester == false { reason = .invalidScope }
+                else { reason = nil }
+                if let reason {
+                    issues.append(CoursePlanIssue(id: "\(planned)|\(index)|\(reason.rawValue)", courseID: record.id,
+                                                  courseName: record.name, isPlanned: planned, reason: reason))
+                    return nil
+                }
+                return record
+            }
+        }
+        let validEarned = validCourses(plan.earnedCourses, planned: false)
+        let earned = validEarned.filter { record in
+            if current.contains(where: {
+                TranscriptCreditCalculator.equivalenceKey(for: $0.name) == TranscriptCreditCalculator.equivalenceKey(for: record.name)
+            }) { return false }
+            if transcript.records.isEmpty { return true }
+            guard record.isSupplemental == true else { return false }
+            // Even an explicitly supplemental entry cannot re-add a recognized
+            // source course already present under a catalog-equivalent alias.
+            return !transcript.records.contains {
+                TranscriptCreditCalculator.equivalenceKey(for: $0.name) == TranscriptCreditCalculator.equivalenceKey(for: record.name)
+            }
+        }
+        let earnedIDs = Set(earned.map(\.id))
+        let manualReview = validEarned.filter { !earnedIDs.contains($0.id) }
+        let validPlanned = validCourses(plan.plannedCourses, planned: true)
+        let plannedReview = validPlanned.filter { record in
+            current.contains { enrollment in
+                guard TranscriptCreditCalculator.equivalenceKey(for: enrollment.name) == TranscriptCreditCalculator.equivalenceKey(for: record.name) else { return false }
+                if let year = record.academicYear {
+                    if let currentYear = enrollment.academicYear, year != currentYear { return false }
+                    if enrollment.academicYear == nil, isFutureAcademicYear(year, asOf: asOf) { return false }
+                }
+                if let semester = record.semester, !enrollment.semesters.isEmpty, !enrollment.semesters.contains(semester) { return false }
+                return true
+            }
+        }
+        for record in plannedReview {
+            issues.append(CoursePlanIssue(id: "current-overlap|\(record.id)", courseID: record.id,
+                courseName: record.name, isPlanned: true, reason: .currentEnrollmentOverlap))
+        }
+        let plannedReviewIDs = Set(plannedReview.map(\.id))
+        let planned = validPlanned.filter { !plannedReviewIDs.contains($0.id) }
+        let gpaCourses = planned.enumerated().compactMap { index, record -> CoursePlanCourse? in
+            let reason: CoursePlanIssueReason?
+            if record.excludedFromGPA { reason = .excludedFromGPA }
+            else if let score = record.score {
+                reason = CoursePlanGPAPolicy.districtPercentage.points(score: score, level: record.level.courseLevel) == nil ? .invalidScore : nil
+            } else { reason = .missingScore }
+            if let reason {
+                issues.append(CoursePlanIssue(id: "gpa|\(index)|\(reason.rawValue)", courseID: record.id,
+                                              courseName: record.name, isPlanned: true, reason: reason))
+                return nil
+            }
+            return record
+        }
+        let projections = CoursePlanGPAPolicy.allCases.map { policy in
+            let baselinePoints = official.includedRecords.compactMap {
+                policy.points(score: $0.percentage, level: CourseLevelDetector.level(for: $0.courseName))
+            }
+            let futurePoints = gpaCourses.compactMap { record in
+                record.score.flatMap { policy.points(score: $0, level: record.level.courseLevel) }
+            }
+            func average(_ values: [Double]) -> Double? {
+                values.isEmpty ? nil : values.reduce(0, +) / Double(values.count)
+            }
+            return CoursePlanGPAProjection(policy: policy, officialBaseline: average(baselinePoints),
+                                           projected: average(baselinePoints + futurePoints), officialCount: baselinePoints.count,
+                                           plannedCount: futurePoints.count, skippedPlannedCount: plan.plannedCourses.count - futurePoints.count)
+        }
+        let rawEarned = Dictionary(uniqueKeysWithValues: CoursePlanSubject.allCases.map { subject in
+            (subject, transcript.credits(for: subject) + earned.filter { $0.subject == subject }.reduce(0) { $0 + $1.credits })
+        })
+        let rawCurrent = Dictionary(uniqueKeysWithValues: CoursePlanSubject.allCases.map { subject in
+            (subject, current.filter { $0.subject == subject }.reduce(0) { $0 + $1.credits })
+        })
+        let rawPlanned = Dictionary(uniqueKeysWithValues: CoursePlanSubject.allCases.map { subject in
+            (subject, planned.filter { $0.subject == subject }.reduce(0) { $0 + $1.credits })
+        })
+        // Preserve course subjects and provenance. Only requirement allocation
+        // moves surplus into electives, filling earned credits before prospective
+        // current and planned credits so the same capacity is never used twice.
+        var remainingBySubject = Dictionary(uniqueKeysWithValues: plan.path.requirements.map { ($0.subject, $0.credits) })
+        func allocate(_ raw: [CoursePlanSubject: Double]) -> [CoursePlanSubject: Double] {
+            var allocated: [CoursePlanSubject: Double] = [.elective: raw[.elective, default: 0]]
+            for subject in CoursePlanSubject.allCases where subject != .elective {
+                let credits = raw[subject, default: 0]
+                let subjectCredits = min(credits, remainingBySubject[subject, default: 0])
+                allocated[subject] = subjectCredits
+                remainingBySubject[subject, default: 0] -= subjectCredits
+                allocated[.elective, default: 0] += credits - subjectCredits
+            }
+            return allocated
+        }
+        let earnedAllocation = allocate(rawEarned)
+        let currentAllocation = allocate(rawCurrent)
+        let plannedAllocation = allocate(rawPlanned)
+        let requirements = plan.path.requirements.map { requirement in
+            CoursePlanRequirementProgress(subject: requirement.subject, required: requirement.credits,
+                earned: earnedAllocation[requirement.subject, default: 0],
+                planned: plannedAllocation[requirement.subject, default: 0],
+                current: currentAllocation[requirement.subject, default: 0])
+        }
+        return CoursePlanReport(path: plan.path, requirements: requirements,
+            earnedTotal: transcript.total + earned.reduce(0) { $0 + $1.credits }, plannedTotal: planned.reduce(0) { $0 + $1.credits },
+            currentTotal: current.reduce(0) { $0 + $1.credits }, currentCourses: current, manualPlannedReviewCourses: plannedReview,
+            gpa: projections, issues: issues, officialSkippedCount: official.skippedCount,
+            checkedRequirements: plan.checkedRequirements, transcriptCredits: transcript,
+            manualEarnedCourses: earned, manualReviewCourses: manualReview)
+    }
+}
