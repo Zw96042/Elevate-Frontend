@@ -205,3 +205,73 @@ enum CoursePlanGPAPolicy: String, CaseIterable, Identifiable {
     }
 }
 
+struct CoursePlanGPAProjection: Identifiable {
+    var policy: CoursePlanGPAPolicy
+    var officialBaseline: Double?
+    var projected: Double?
+    var officialCount: Int
+    var plannedCount: Int
+    var skippedPlannedCount: Int
+    var id: String { policy.rawValue }
+}
+
+enum CoursePlanIssueReason: String {
+    case invalidCredits = "Credits must be finite, greater than zero and no more than 4 per record."
+    case emptyName = "Course name is required."
+    case duplicateID = "Duplicate planning identity; all matching records are excluded."
+    case invalidScore = "Expected grade is invalid and excluded from GPA."
+    case missingScore = "No expected semester grade; excluded from GPA."
+    case excludedFromGPA = "Excluded from projected GPA by your choice."
+    case currentEnrollmentOverlap = "This planned course matches current enrollment. Confirm a different future school year or semester before counting it again."
+    case invalidScope = "Use a verified school-year format and a semester for the planned course scope."
+}
+
+struct CoursePlanIssue: Identifiable {
+    var id: String
+    var courseID: UUID
+    var courseName: String
+    var isPlanned: Bool
+    var reason: CoursePlanIssueReason
+}
+
+struct CoursePlanReport {
+    var path: CoursePlanPath
+    var requirements: [CoursePlanRequirementProgress]
+    var earnedTotal: Double
+    var plannedTotal: Double
+    var currentTotal: Double
+    var currentCourses: [CurrentCourseCredit]
+    var manualPlannedReviewCourses: [CoursePlanCourse]
+    var gpa: [CoursePlanGPAProjection]
+    var issues: [CoursePlanIssue]
+    var officialSkippedCount: Int
+    var checkedRequirements: Set<CoursePlanChecklistItem>
+    var transcriptCredits: TranscriptCreditReport
+    var manualEarnedCourses: [CoursePlanCourse]
+    var manualReviewCourses: [CoursePlanCourse]
+    var combinedTotal: Double { earnedTotal + currentTotal + plannedTotal }
+    var remainingTotal: Double { max(0, path.totalRequired - combinedTotal) }
+    var earnedRemainingTotal: Double { max(0, path.totalRequired - earnedTotal) }
+    /// Numeric planning status only; named courses/checklist are independent.
+    var creditTargetsCovered: Bool { remainingTotal == 0 && requirements.allSatisfy { $0.remaining == 0 } }
+    var uncheckedRequirements: [CoursePlanChecklistItem] {
+        CoursePlanChecklistItem.allCases.filter { !checkedRequirements.contains($0) }
+    }
+    var sources: [CoursePlanSource] { [path.source, .athleticsCatalog, .texasToolkit, .courseSelection] }
+    var creditExplanation: String {
+        "Earned credits are estimated automatically from posted transcript semesters and the district course catalog, with your corrections and confirmed missing-course additions. The endpoint does not supply awarded credit values. Unknown or conflicting records need review. Current and planned credits assume successful completion and eligibility; current enrollment is separate from earned credit. Credit totals do not establish required course sequences, an endorsement, or graduation eligibility."
+    }
+    var gpaExplanation: String {
+        "Baseline uses completed posted high-school semester grades. Projected GPA adds only planned semester grades; each record counts equally, regardless of credits. Enter each semester separately. Manual earned entries count credits only, preventing them from duplicating imported grades. Missing, invalid and excluded planned grades are skipped. These are local estimates, not an official GPA or college admissions calculation."
+    }
+}
+
+enum CoursePlanner {
+    private static func isFutureAcademicYear(_ year: String, asOf: Date) -> Bool {
+        guard let start = AcademicYearKey.startYear(year) else { return false }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Chicago")!
+        let ongoing = calendar.component(.year, from: asOf) - (calendar.component(.month, from: asOf) < 8 ? 1 : 0)
+        return start > ongoing
+    }
+
