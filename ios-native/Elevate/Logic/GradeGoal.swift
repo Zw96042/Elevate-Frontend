@@ -81,3 +81,126 @@ enum GradeGoalSolver {
         return solve(target: target, possible: 100, maximumPercentage: maximumPercentage, evaluate: evaluate)
     }
 
+    /// Solves one counted score, holding every other included score fixed.
+    /// A new category participates even at zero earned points, so its weight
+    /// activation and all category renormalization occur before searching.
+    static func assignment(
+        target: Double,
+        assignments: [CalcAssignment],
+        categories: [GradeCategory],
+        choice: GradeGoalAssignmentChoice,
+        ungradedPolicy: GradeGoalUngradedPolicy,
+        maximumPercentage: Double? = 100
+    ) -> GradeGoalResult {
+        guard valid(target), validMaximum(maximumPercentage),
+              assignments.count <= 10_000, categories.count <= 1_000 else {
+            return .unavailable(.invalidInput)
+        }
+        var scenario = assignments
+        let selected: Int
+        switch choice {
+        case let .new(category, possible):
+            selected = scenario.count
+            scenario.append(CalcAssignment(
+                id: "grade-goal", className: "", name: "", term: "", category: category,
+                grade: 0, outOf: possible, dueDate: "", artificial: true, meta: []
+            ))
+        case let .existingIndex(index):
+            guard scenario.indices.contains(index) else { return .unavailable(.assignmentNotFound) }
+            selected = index
+        case let .existingID(id):
+            let matches = scenario.indices.filter { scenario[$0].id == id }
+            guard matches.count == 1, let index = matches.first else { return .unavailable(.assignmentNotFound) }
+            selected = index
+        }
+        let subject = scenario[selected]
+        guard !subject.isNoCount, subject.category != "Final Exam" else { return .unavailable(.excludedAssignment) }
+        guard valid(subject.outOf), subject.outOf > 0, !subject.category.isEmpty,
+              subject.grade.map(valid) ?? true else {
+            return .unavailable(.invalidInput)
+        }
+        // Replace only the chosen score. Other ungraded values remain absent.
+        scenario[selected].grade = 0
+        let included = scenario.filter { !$0.isNoCount && $0.category != "Final Exam" }
+        guard included.allSatisfy({ valid($0.outOf) && ($0.grade.map(valid) ?? true) }) else {
+            return .unavailable(.invalidInput)
+        }
+        if ungradedPolicy == .requireAllGraded, included.contains(where: { $0.grade == nil }) {
+            return .unavailable(.unresolvedAssignments)
+        }
+        guard Set(categories.map(\.category)).count == categories.count,
+              categories.allSatisfy({ $0.weight.map(valid) ?? true }) else {
+            return .unavailable(.invalidWeights)
+        }
+        let weighted = categories.contains { $0.weight != nil }
+        if weighted {
+            guard let weight = categories.first(where: { $0.category == subject.category })?.weight,
+                  weight > 0 else { return .unavailable(.noEffectiveCategory) }
+        }
+        return solve(target: target, possible: subject.outOf, maximumPercentage: maximumPercentage) { earned in
+            var evaluated = scenario
+            evaluated[selected].grade = earned
+            let countable = evaluated.filter { !$0.isNoCount && $0.category != "Final Exam" }
+            if !weighted { return GradeCalculator.pointsTotal(assignments: countable) }
+            let weights = GradeCalculator.normalizedWeights(categories: categories, assignments: countable)
+            return GradeCalculator.summary(
+                assignments: countable, categoryWeights: weights, sourceCategories: categories
+            ).courseTotal
+        }
+    }
+
+    private static func valid(_ value: Double) -> Bool {
+        value.isFinite && value >= 0 && value <= scoreLimit
+    }
+
+    private static func validMaximum(_ value: Double?) -> Bool { value.map(valid) ?? true }
+
+    private static func solve(
+        target: Double,
+        possible: Double,
+        maximumPercentage: Double?,
+        evaluate: (Double) -> Double?
+    ) -> GradeGoalResult {
+        guard let lowest = evaluate(0), lowest.isFinite else { return .unavailable(.noEffectiveCategory) }
+        let maximumGrade = maximumPercentage.flatMap { evaluate(possible * ($0 / 100)) }
+        if lowest >= target {
+            return GradeGoalResult(
+                status: .alreadyGuaranteed, requiredEarned: 0, requiredPercentage: 0,
+                resultingGrade: lowest, maximumGrade: maximumGrade, targetMet: true
+            )
+        }
+        // Search the representable score grid directly: this is equivalent to
+        // rounding a mathematical threshold upward, without rounding a binary
+        // approximation of an exact decimal boundary to an unnecessary cent.
+        var lower = 0
+        var upper = min(maximumCents, max(1, Int(ceil(possible * 100))))
+        while true {
+            guard let grade = evaluate(Double(upper) / 100), grade.isFinite else {
+                return .unavailable(.invalidInput)
+            }
+            if grade >= target { break }
+            guard upper < maximumCents else { return .unavailable(.searchLimit) }
+            lower = upper
+            upper = min(maximumCents, upper * 2)
+        }
+        while lower + 1 < upper {
+            let middle = lower + (upper - lower) / 2
+            guard let grade = evaluate(Double(middle) / 100), grade.isFinite else {
+                return .unavailable(.invalidInput)
+            }
+            if grade >= target { upper = middle } else { lower = middle }
+        }
+        let earned = Double(upper) / 100
+        guard let resultingGrade = evaluate(earned), resultingGrade.isFinite, resultingGrade >= target else {
+            return .unavailable(.searchLimit)
+        }
+        let percentage = earned / possible * 100
+        guard percentage.isFinite else { return .unavailable(.searchLimit) }
+        let aboveMaximum = maximumPercentage.map { earned > possible * ($0 / 100) } ?? false
+        return GradeGoalResult(
+            status: aboveMaximum ? .aboveMaximum : .required,
+            requiredEarned: earned, requiredPercentage: percentage,
+            resultingGrade: resultingGrade, maximumGrade: maximumGrade, targetMet: true
+        )
+    }
+}
