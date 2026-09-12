@@ -92,3 +92,101 @@ enum CourseHistoryDisplay {
     ] }
     private static var sourceSlots: [WritableKeyPath<HistoricalGrades, String?>] { fallSlots + springSlots }
 
+    static func postedValue(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// This list is a semester archive. Quarter/progress-only source records
+    /// remain in the report and GPA inputs but have no semester grade to show.
+    static func hasPostedSemesterGrades(_ grades: HistoricalGrades) -> Bool {
+        postedValue(grades.sm1) != nil || postedValue(grades.sm2) != nil
+    }
+
+    static func entries(courses: [UnifiedCourseData]) -> [CourseHistoryDisplayEntry] {
+        var occurrences: [String: Int] = [:]
+        let visible = courses.filter { $0.isTranscriptRecord != false && hasPostedSemesterGrades($0.postedGrades) }.map { course in
+            let source = sourceIdentity(course)
+            let occurrence = occurrences[source, default: 0]
+            occurrences[source] = occurrence + 1
+            let id = "source:\(source):\(occurrence)"
+            return CourseHistoryDisplayEntry(id: id, course: course, sourceRowIDs: [id])
+        }
+        struct Group: Hashable {
+            var name: String
+            var year: String?
+            var gradeYear: Int?
+        }
+        let groups = Dictionary(grouping: visible) {
+            Group(name: $0.course.courseName, year: $0.course.academicYear, gradeYear: $0.course.gradeYear)
+        }
+        return groups.values.flatMap { rows -> [CourseHistoryDisplayEntry] in
+            guard rows.count == 2, let combined = combine(rows[0], rows[1]) else { return rows }
+            return [combined]
+        }.sorted {
+            if $0.course.courseName != $1.course.courseName { return $0.course.courseName < $1.course.courseName }
+            return $0.id < $1.id
+        }
+    }
+
+    private static func combine(_ first: CourseHistoryDisplayEntry,
+                                _ second: CourseHistoryDisplayEntry) -> CourseHistoryDisplayEntry? {
+        let a = first.course, b = second.course
+        guard let year = a.academicYear, AcademicYearKey.startYear(year) != nil,
+              a.academicYearIsVerified != false, b.academicYearIsVerified != false,
+              a.isTranscriptRecord != false, b.isTranscriptRecord != false,
+              a.historyRowKey != nil, b.historyRowKey != nil,
+              a.historyRowKey != b.historyRowKey else { return nil }
+        if !a.corNumId.isEmpty, !b.corNumId.isEmpty, a.corNumId != b.corNumId { return nil }
+        if !a.stuId.isEmpty, !b.stuId.isEmpty, a.stuId != b.stuId { return nil }
+        if a.corNumId.isEmpty, b.corNumId.isEmpty,
+           let aID = a.courseId, let bID = b.courseId, aID != bID { return nil }
+
+        func isOnlyFall(_ grades: HistoricalGrades) -> Bool {
+            postedValue(grades.sm1) != nil && springSlots.allSatisfy { postedValue(grades[keyPath: $0]) == nil }
+        }
+        func isOnlySpring(_ grades: HistoricalGrades) -> Bool {
+            postedValue(grades.sm2) != nil && fallSlots.allSatisfy { postedValue(grades[keyPath: $0]) == nil }
+        }
+        let fall: UnifiedCourseData, spring: UnifiedCourseData
+        if isOnlyFall(a.postedGrades), isOnlySpring(b.postedGrades) {
+            fall = a; spring = b
+        } else if isOnlyFall(b.postedGrades), isOnlySpring(a.postedGrades) {
+            fall = b; spring = a
+        } else {
+            return nil
+        }
+        var grades = fall.postedGrades
+        for slot in sourceSlots {
+            let existing = postedValue(grades[keyPath: slot])
+            let incoming = postedValue(spring.postedGrades[keyPath: slot])
+            if let existing, let incoming, existing != incoming { return nil }
+            if existing == nil, incoming != nil { grades[keyPath: slot] = spring.postedGrades[keyPath: slot] }
+        }
+        // finalGrade is derived by the parser from the last posted semester or
+        // quarter, not a separate transcript column. Retain the spring source.
+        grades.finalGrade = postedValue(spring.postedGrades.finalGrade) != nil
+            ? spring.postedGrades.finalGrade : fall.postedGrades.finalGrade
+        let sourceIDs = (first.sourceRowIDs + second.sourceRowIDs).sorted()
+        var course = first.id < second.id ? a : b
+        course.postedHistoricalGrades = grades
+        course.semester = .both
+        return CourseHistoryDisplayEntry(id: "combined:" + lengthPrefixed(sourceIDs),
+                                         course: course, sourceRowIDs: sourceIDs)
+    }
+
+    private static func sourceIdentity(_ course: UnifiedCourseData) -> String {
+        if let year = course.academicYear, let row = course.historyRowKey {
+            return lengthPrefixed([year, row])
+        }
+        // Older caches may lack row keys; source values distinguish their rows
+        // without depending on randomized hash values or current list position.
+        let values = (sourceSlots + [\.finalGrade]).map { course.postedGrades[keyPath: $0] ?? "" }
+        return lengthPrefixed([course.id] + values)
+    }
+
+    private static func lengthPrefixed(_ values: [String]) -> String {
+        values.map { "\($0.utf8.count):\($0)" }.joined()
+    }
+}
