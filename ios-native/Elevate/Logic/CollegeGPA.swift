@@ -230,3 +230,62 @@ private struct CollegeCourseClassification {
         "engineering": "ENGINEERING", "appliedengineering": "ENGINEERING", "financialliteracy": "FINANCIAL LITERACY",
     ]
 
+    /// These exclusions are narrower than academic core: arts and academic
+    /// electives may satisfy UC A–G, so their district category cannot exclude them.
+    var isKnownNonAcademic: Bool {
+        let words = Set((name + " " + subjectName).split(separator: " ").map(String.init))
+        let excluded: Set<String> = ["ATHLETICS", "PE", "FOOTBALL", "BASKETBALL", "VOLLEYBALL",
+            "TENNIS", "WRESTLING", "AEROBICS", "SOCCER", "BASEBALL", "SOFTBALL", "TRACK", "GOLF",
+            "SWIMMING", "CHEERLEADING", "YOGA", "MAPS"]
+        let phrases = ["PHYSICAL EDUCATION", "PERSONAL FITNESS", "TEAM SPORTS", "CROSS COUNTRY",
+            "SKILL BASED LIFETIME ACTIVITIES", "LIFETIME FITNESS", "LIFETIME RECREATION",
+            "OUTDOOR EDUCATION", "OFFICE AIDE", "TEACHER AIDE", "PEER PARTNERS", "EXCUSED PERIOD"]
+        // Health education is excluded; a health-science elective could be
+        // A–G approved and must retain the general eligibility caveat.
+        return catalogKey == "health" || !excluded.isDisjoint(with: words)
+            || phrases.contains { name.contains($0) || subjectName.contains($0) }
+    }
+
+    func bonus(for method: CollegeGPAMethod) -> Double {
+        if method == .ugaWeighted { return isAPOrIB ? 1 : 0 }
+        if isAPOrIB || isAICE || isDualEnrollment { return 1 }
+        return isHonors || isPreLevel ? 0.5 : 0
+    }
+
+    var isArtHistory: Bool { catalogKey == "arthistory" || name.contains("ART HISTORY") }
+
+    func eligibility(for method: CollegeGPAMethod) -> Eligibility {
+        let subjectTokens = Set(subjectName.split(separator: " ").map(String.init))
+        if method == .ufWeighted, isAPOrIB || isAICE { return .included }
+        // UGA explicitly lists Art History as social science. UF's AP/IB/AICE
+        // elective rule above is also explicit. A school fine-arts label alone
+        // cannot resolve the other colleges' admissions classification.
+        if isArtHistory { return method == .ugaWeighted ? .included : .unknown }
+        if method == .ugaWeighted, isAP,
+           subjectTokens.contains("ART") || subjectName.contains("MUSIC THEORY") { return .included }
+        if isKnownNonAcademic { return .excluded }
+
+        // Exclusions precede broad subject words: Business Math is not Math;
+        // Computer Science is not an inferred natural-science course.
+        let excludedPhrases = ["COMPUTER SCIENCE", "FOOD SCIENCE", "AGRICULTURAL SCIENCE", "BUSINESS MATH",
+            "FINANCIAL LITERACY", "REMEDIAL MATH", "BUSINESS LAW", "CRIMINAL JUSTICE", "HOME ECONOMICS",
+            "CONSUMER ECONOMICS", "PHYSICAL EDUCATION"]
+        let excludedWords: Set<String> = ["DEBATE", "JOURNALISM", "YEARBOOK", "SPEECH", "READING", "ACCOUNTING",
+            "HEALTH", "ETHICS", "ATHLETICS", "PE", "BAND", "ORCHESTRA", "CHOIR", "DANCE", "THEATRE", "THEATER",
+            "ROBOTICS", "ENGINEERING", "CYBERSECURITY", "GUITAR"]
+        if excludedPhrases.contains(where: { name.contains($0) || subjectName.contains($0) })
+            || !excludedWords.isDisjoint(with: tokens) || !excludedWords.isDisjoint(with: subjectTokens) { return .excluded }
+
+        let coreWords: Set<String> = ["ENGLISH", "LITERATURE", "COMPOSITION", "WRITING", "ALGEBRA", "GEOMETRY",
+            "CALCULUS", "PRECALCULUS", "STATISTICS", "STATS", "TRIGONOMETRY", "MATH", "MATHEMATICS",
+            "BIOLOGY", "BIOCHEMISTRY", "CHEMISTRY", "PHYSICS", "ANATOMY", "ASTRONOMY", "BOTANY", "ECOLOGY",
+            "ENTOMOLOGY", "GEOLOGY", "GENETICS", "MICROBIOLOGY", "OCEANOGRAPHY", "ZOOLOGY", "SCIENCE",
+            "HISTORY", "GOVERNMENT", "CIVICS", "ECONOMICS", "MACROECONOMICS", "MICROECONOMICS", "PSYCHOLOGY", "SOCIOLOGY", "GEOGRAPHY",
+            "ANTHROPOLOGY", "PHILOSOPHY", "SPANISH", "FRENCH", "GERMAN", "LATIN", "MANDARIN", "CHINESE",
+            "JAPANESE", "ITALIAN", "RUSSIAN", "ARABIC", "HEBREW", "KOREAN", "ASL"]
+        if !coreWords.isDisjoint(with: subjectTokens) || !coreWords.isDisjoint(with: tokens) || name.contains("DIFFERENTIAL EQUATIONS")
+            || name.contains("SIGN LANGUAGE") || name.contains("SOCIAL STUDIES") { return .included }
+        if subjectTokens.contains("ART") || subjectTokens.contains("MUSIC") { return .excluded }
+        return .unknown
+    }
+}
