@@ -127,3 +127,99 @@ struct GradeJournal: Codable, Sendable {
         return added
     }
 
+    mutating func clearHistory() {
+        events = []; averages = [:]; assignmentBaselines = [:]
+    }
+
+    private struct Snapshot {
+        var values: [String: Assignment]
+        var ambiguous: Set<String>
+    }
+
+    private static func snapshot(_ result: GradeInfoResult) -> Snapshot? {
+        guard validScore(result.score), result.gradebook.count <= maximumAssignments else { return nil }
+        var values: [String: Assignment] = [:], ambiguous: Set<String> = []
+        var count = 0
+        for category in result.gradebook {
+            guard validText(category.category) else { return nil }
+            for assignment in category.assignments {
+                count += 1
+                guard count <= maximumAssignments, validIdentity(assignment.name), validText(assignment.date),
+                      validScore(assignment.score), validScore(assignment.pointsEarned), validScore(assignment.pointsTotal),
+                      assignment.meta.count <= 50, assignment.meta.allSatisfy({ validText($0.type) }) else { return nil }
+                let id = identity([category.category, assignment.name, assignment.date])
+                let value = GradeJournalAssignmentValue(
+                    score: assignment.score, pointsEarned: assignment.pointsEarned,
+                    pointsPossible: assignment.pointsTotal,
+                    statuses: Array(Set(assignment.meta.map { $0.type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })).sorted())
+                if values[id] != nil || ambiguous.contains(id) {
+                    values.removeValue(forKey: id); ambiguous.insert(id)
+                } else {
+                    values[id] = Assignment(name: assignment.name, date: assignment.date, category: category.category, value: value)
+                }
+            }
+        }
+        return Snapshot(values: values, ambiguous: ambiguous)
+    }
+
+    private mutating func append(_ added: [GradeJournalEvent], at date: Date) {
+        events.append(contentsOf: added)
+        let latestDate = max(date, events.map(\.observedAt).max() ?? date)
+        let cutoff = latestDate.addingTimeInterval(-Double(retentionDays) * 86_400)
+        events.removeAll { $0.observedAt < cutoff }
+        events.sort { $0.observedAt == $1.observedAt ? $0.id < $1.id : $0.observedAt > $1.observedAt }
+        if events.count > maximumEvents { events.removeLast(events.count - maximumEvents) }
+    }
+
+    private mutating func trimBaselines() {
+        let averageKeys = averages.keys.sorted {
+            averages[$0]!.observedAt == averages[$1]!.observedAt ? $0 < $1 : averages[$0]!.observedAt > averages[$1]!.observedAt
+        }
+        for key in averageKeys.dropFirst(maximumScopes) { averages.removeValue(forKey: key) }
+        let assignmentKeys = assignmentBaselines.keys.sorted {
+            assignmentBaselines[$0]!.observedAt == assignmentBaselines[$1]!.observedAt ? $0 < $1 : assignmentBaselines[$0]!.observedAt > assignmentBaselines[$1]!.observedAt
+        }
+        for key in assignmentKeys.dropFirst(maximumScopes) { assignmentBaselines.removeValue(forKey: key) }
+    }
+
+    private static func identity(_ parts: [String]) -> String {
+        parts.map { "\($0.utf8.count):\($0)" }.joined()
+    }
+    private static func eventID(scope: String, assignmentID: String?, at date: Date) -> String {
+        identity([scope, assignmentID ?? "average", String(date.timeIntervalSince1970.bitPattern)])
+    }
+    private static func valid(_ date: Date) -> Bool { date.timeIntervalSince1970.isFinite }
+    private static func validText(_ text: String) -> Bool { text.utf8.count <= maximumText }
+    private static func validIdentity(_ text: String) -> Bool { !text.isEmpty && validText(text) }
+    private static func validScore(_ score: Double?) -> Bool {
+        score.map { $0.isFinite && abs($0) <= AcademicScoreValue.magnitudeLimit } ?? true
+    }
+
+    /// Validate decoded storage before allowing it to become a comparison base.
+    fileprivate var isValid: Bool {
+        guard (1...2_000).contains(maximumEvents), (1...500).contains(maximumScopes),
+              (1...365).contains(retentionDays), events.count <= maximumEvents,
+              averages.count <= maximumScopes, assignmentBaselines.count <= maximumScopes,
+              Set(events.map(\.id)).count == events.count else { return false }
+        func validValue(_ value: GradeJournalAssignmentValue) -> Bool {
+            Self.validScore(value.score) && Self.validScore(value.pointsEarned) && Self.validScore(value.pointsPossible)
+                && value.statuses.count <= 50 && value.statuses.allSatisfy(Self.validText)
+                && value.statuses == Array(Set(value.statuses)).sorted()
+        }
+        return averages.allSatisfy { !$0.key.isEmpty && $0.key.utf8.count <= 4_096 && Self.valid($0.value.observedAt) && Self.validScore($0.value.score) }
+            && assignmentBaselines.allSatisfy { entry in
+                !entry.key.isEmpty && entry.key.utf8.count <= 4_096 && Self.valid(entry.value.observedAt)
+                    && entry.value.values.count + entry.value.ambiguous.count <= Self.maximumAssignments
+                    && entry.value.values.allSatisfy {
+                        Self.validIdentity($0.value.name) && Self.validText($0.value.date) && Self.validText($0.value.category)
+                            && $0.key == Self.identity([$0.value.category, $0.value.name, $0.value.date]) && validValue($0.value.value)
+                    }
+            }
+            && events.allSatisfy {
+                Self.valid($0.observedAt) && Self.validIdentity($0.courseID) && Self.validText($0.courseName)
+                    && Self.validScore($0.previousScore) && Self.validScore($0.currentScore)
+                    && ($0.previousAssignment.map(validValue) ?? true) && ($0.currentAssignment.map(validValue) ?? true)
+            }
+    }
+}
+
