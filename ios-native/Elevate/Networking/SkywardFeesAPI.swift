@@ -133,3 +133,76 @@ enum SkywardFeesAPI {
         return records
     }
 
+    private static func isCompleteFeesPage(_ root: HTMLNode, html: String) -> Bool {
+        let title = normalizedHeader(root.querySelector("title")?.text ?? "")
+        return ["feemanagement", "fees"].contains(title)
+            && html.range(of: #"</title\s*>"#, options: [.regularExpression, .caseInsensitive]) != nil
+            && html.range(of: #"</body\s*>"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    private static func containsStaticMarker(_ root: HTMLNode, markers: Set<String>) -> Bool {
+        guard let body = root.querySelector("body") else { return false }
+        let nodes = [body] + body.descendants().filter { ["p", "div", "span", "td"].contains($0.tagName) }
+        return nodes.contains { node in
+            let ownerID = nearestTable(node)?.id ?? ""
+            let ownedByRecordGrid = ownerID.range(of: feesSchema.idPattern, options: .regularExpression) != nil
+                || ownerID.range(of: paymentsSchema.idPattern, options: .regularExpression) != nil
+            return !ownedByRecordGrid && node.querySelector("a") == nil && node.querySelector("script") == nil
+                && node.querySelector("style") == nil && markers.contains(normalizedMarker(node.text))
+        }
+    }
+
+    private static func nearestTable(_ node: HTMLNode) -> HTMLNode? {
+        var ancestor = node.parent
+        while let current = ancestor {
+            if current.tagName == "table" { return current }
+            ancestor = current.parent
+        }
+        return nil
+    }
+
+    private static func normalizedHeader(_ text: String) -> String {
+        text.filter { !$0.isWhitespace }.lowercased()
+    }
+
+    private static func normalizedMarker(_ text: String) -> String {
+        trimmed(text).trimmingCharacters(in: CharacterSet(charactersIn: ".")).lowercased()
+    }
+
+    private static func trimmed(_ text: String) -> String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private static func optionalText(_ text: String) -> String? { text.isEmpty ? nil : text }
+
+    /// Explicit row/cell/table closure, with the portal's legal omitted tbody
+    /// close accepted immediately before an explicit table close.
+    private static func requireCompleteTable(_ html: String, tableID: String) throws {
+        let noise = #"<!--[\s\S]*?-->|<script\b[^>]*>[\s\S]*?</script\s*>|<style\b[^>]*>[\s\S]*?</style\s*>"#
+        let source = html.replacingOccurrences(of: noise, with: "", options: [.regularExpression, .caseInsensitive])
+        let pattern = #"<\s*(/?)\s*([a-z][a-z0-9:-]*)\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>"#
+        let regex = try NSRegularExpression(pattern: pattern, options: .caseInsensitive)
+        var stack: [String] = []
+        var found = false
+        for match in regex.matches(in: source, range: NSRange(source.startIndex..., in: source)) {
+            guard let tagRange = Range(match.range, in: source), let nameRange = Range(match.range(at: 2), in: source) else { continue }
+            let name = source[nameRange].lowercased()
+            let closing = match.range(at: 1).length > 0
+            guard ["table", "thead", "tbody", "tfoot", "tr", "td", "th"].contains(name) else { continue }
+            if !found {
+                guard name == "table", !closing,
+                      MiniHTML.parse(String(source[tagRange]) + "</table>").querySelector("table")?.id == tableID else { continue }
+                found = true
+                stack.append(name)
+                continue
+            }
+            if closing {
+                if name == "table", stack.last == "tbody" { stack.removeLast() }
+                guard stack.last == name else { throw SkywardError.invalidResponse("fees table structure is incomplete") }
+                stack.removeLast()
+                if stack.isEmpty { return }
+            } else {
+                guard !source[tagRange].hasSuffix("/>") else { throw SkywardError.invalidResponse("fees table structure is incomplete") }
+                stack.append(name)
+            }
+        }
+        throw SkywardError.invalidResponse("fees table is truncated")
+    }
+}
