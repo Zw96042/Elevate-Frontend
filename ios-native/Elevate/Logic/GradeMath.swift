@@ -281,7 +281,7 @@ enum GradeCalculator {
 
         var sm1: Double? = nil
         var sm2: Double? = nil
-        var courseTotal: Double? = totalWeight > 0 ? weightedSum / totalWeight : nil
+        var courseTotal: Double? = totalWeight > 0 ? double(weightedTotal) : nil
 
         if let selectedTerm, selectedTerm.isSemester, let quarterTotals {
             let semester = semesterTotal(
@@ -294,6 +294,37 @@ enum GradeCalculator {
         }
 
         return GradeSummary(courseTotal: courseTotal, categories: categories, sm1: sm1, sm2: sm2)
+    }
+
+    private static func decimal(_ value: Double) -> Decimal? {
+        guard value.isFinite else { return nil }
+        return Decimal(string: String(value), locale: Locale(identifier: "en_US_POSIX"))
+    }
+
+    private static func double(_ value: Decimal) -> Double {
+        // Decimal's direct doubleValue conversion can land one ULP above the
+        // nearest Double (for example 92.02). Parse its decimal representation.
+        let number = NSDecimalNumber(decimal: value)
+        return Double(number.stringValue) ?? number.doubleValue
+    }
+
+    private static func roundedHundredths(_ value: Decimal) -> Decimal {
+        var value = value
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &value, 2, .plain)
+        return rounded
+    }
+
+    /// Points-based gradebooks can omit category weights, including an empty
+    /// quarter to which the student adds hypothetical work.
+    static func pointsTotal(assignments: [CalcAssignment]) -> Double? {
+        let counted = assignments.filter {
+            !$0.isNoCount && $0.category != "Final Exam" && $0.grade?.isFinite == true
+                && $0.outOf.isFinite && $0.outOf > 0
+        }
+        let possible = counted.reduce(0) { $0 + $1.outOf }
+        guard possible > 0 else { return nil }
+        return counted.reduce(0) { $0 + ($1.grade ?? 0) } / possible * 100
     }
 
     /// District semester policy. Quarter grades are rounded before the 40/40/20
@@ -377,7 +408,7 @@ enum GPACalculator {
             var totalWeighted = 0.0
             var count = 0
 
-            for course in courses {
+            for course in courses where course.isPlanningOnly != true {
                 var gradeStr = course.historicalGrades[term.lowercased()]
 
                 if ["RC1", "RC2", "RC3", "RC4"].contains(term),
@@ -395,7 +426,7 @@ enum GPACalculator {
 
                 guard let g = gradeStr, let score = Double(g), score.isFinite else { continue }
                 totalUnweighted += score
-                let weighted = score + CourseLevelDetector.level(for: course.courseName).gpaBonus
+                let weighted = score + course.courseLevel.gpaBonus
                 totalWeighted += min(weighted, 110)
                 count += 1
             }
@@ -434,13 +465,32 @@ enum GPACalculator {
 // MARK: - Academic calendar (port of academicCalendar.tsx)
 
 enum AcademicCalendar {
-    /// The term the given date falls in. Academic year runs Aug–Jul.
+    /// Uses the district's Gregorian school day even when the device travels.
     static func currentTerm(for date: Date = Date()) -> TermLabel {
-        let calendar = Calendar.current
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Chicago")!
+        let year = calendar.component(.year, from: date)
         let month = calendar.component(.month, from: date)   // 1-based
         let day = calendar.component(.day, from: date)
         let dayOfYearKey = month * 100 + day
 
+        // Eanes 2026–27 Student Calendar, specific to this school year:
+        // https://resources.finalsite.net/images/v1772560663/eanesisdnet/upu1dn8wbinzko3qfhub/2026-27STUDENTCALENDAR.pdf
+        // Q1 starts Aug 13 and ends Oct 8; Q2 starts Oct 13. Keep Q1 during
+        // preseason and the intervening break, and Q3 through spring break.
+        // Preserve semester review after each semester's final school day.
+        switch year * 10_000 + dayOfYearKey {
+        case 20260801...20261012: return .q1
+        case 20261013...20261218: return .q2
+        case 20261219...20270104: return .sm1
+        case 20270105...20270321: return .q3
+        case 20270322...20270521: return .q4
+        case 20270522...20270731: return .sm2
+        default: break
+        }
+
+        // Approximate legacy dates for other academic years. The dated district
+        // schedule above is not assumed to repeat in past or future years.
         switch dayOfYearKey {
         case 815...1025: return .q1
         case 1026...1222: return .q2
