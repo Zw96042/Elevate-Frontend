@@ -101,3 +101,99 @@ enum SkywardDocumentsAPI {
             allowedMIMETypes: ["application/pdf", "application/octet-stream", "image/jpeg", "image/png", "image/gif"])
     }
 
+    /// Both verified download forms require no signature. Server-supplied queue
+    /// arguments remain transient and are sent only after a document is opened.
+    private static func downloadHandlers(_ root: HTMLNode) throws -> [String: DownloadAction] {
+        let scalar = "(?:" + quoted + "|true|false|[0-9]+)"
+        let arguments = "((?:false|true)\\s*,\\s*(?:false|true)\\s*,\\s*" + quoted + "(?:\\s*,\\s*" + quoted + "){2,4})"
+        let pattern = "sff\\.aee\\(\\s*" + scalar + "\\s*,\\s*" + scalar + "\\s*,\\s*function\\s*\\([^)]*\\)\\s*\\{\\s*sfportfolio\\.eSignCheck\\(" + arguments + "\\)\\s*;?\\s*\\}\\s*,\\s*(" + quoted + ")\\s*\\)\\s*;"
+        let regex = try NSRegularExpression(pattern: pattern)
+        var handlers: [String: DownloadAction] = [:]
+        var registered: Set<String> = []
+        for script in root.querySelectorAll("script") where script.attribute("src") == nil {
+            let text = script.text
+            let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+            guard matches.count <= 10_000 else { throw invalid("handler limit exceeded") }
+            for match in matches {
+                guard let argRange = Range(match.range(at: 1), in: text), let idRange = Range(match.range(at: 2), in: text),
+                      let values = try? JavaScriptLiteralParser.parse("[" + text[argRange] + "]") as? [Any],
+                      let selector = try? JavaScriptLiteralParser.parse(String(text[idRange])) as? String else { throw invalid("handler data is malformed") }
+                // aee's final argument is a delegated CSS selector, not an ID.
+                guard selector.range(of: #"^#[A-Za-z_][A-Za-z0-9_-]*$"#, options: .regularExpression) != nil else { continue }
+                let anchorID = String(selector.dropFirst())
+                guard registered.insert(anchorID).inserted else { throw invalid("handler scope is ambiguous") }
+                guard (values[0] as? Bool) == false, (values[1] as? Bool) == false,
+                      let type = values[3] as? String, let location = values[4] as? String else { continue }
+                if values.count == 5, type == "blobLink" {
+                    handlers[anchorID] = .blob(location)
+                } else if values.count == 7, type == "addToQueue",
+                          let program = values[5] as? String, let parameters = values[6] as? String,
+                          !location.isEmpty, location.utf8.count <= 16_000,
+                          program.utf8.count <= 4_000,
+                          program.range(of: #"^[A-Za-z0-9_./-]+$"#, options: .regularExpression) != nil,
+                          !program.contains(".."), !parameters.isEmpty, parameters.utf8.count <= 512_000 {
+                    handlers[anchorID] = .report(description: location, program: program, parameters: parameters)
+                }
+
+            }
+        }
+        return handlers
+    }
+
+    private static func isBlobLocation(_ path: String) -> Bool {
+        guard let url = URL(string: path), url.lastPathComponent.range(of: #"^qdirconfig\d+\.p$"#, options: .regularExpression) != nil,
+              let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+              items.contains(where: { $0.name == "blobid" && !($0.value ?? "").isEmpty }),
+              !items.contains(where: { $0.name == "StuPic" }) else { return false }
+        return true
+    }
+
+    private static func nearestTable(_ node: HTMLNode) -> HTMLNode? {
+        var parent = node.parent
+        while let value = parent { if value.tagName == "table" { return value }; parent = value.parent }
+        return nil
+    }
+
+    /// MiniHTML tolerates incomplete HTML; source validation prevents caching a
+    /// malformed response as a valid partial or empty document list.
+    private static func requireCompleteTable(_ html: String, id: String) throws {
+        let noise = #"<!--[\s\S]*?-->|<script\b[^>]*>[\s\S]*?</script\s*>|<style\b[^>]*>[\s\S]*?</style\s*>"#
+        let source = html.replacingOccurrences(of: noise, with: "", options: [.regularExpression, .caseInsensitive])
+        let regex = try NSRegularExpression(pattern: #"<\s*(/?)\s*([a-z][a-z0-9:-]*)\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>"#, options: .caseInsensitive)
+        var stack: [String] = []
+        var found = false
+        for match in regex.matches(in: source, range: NSRange(source.startIndex..., in: source)) {
+            guard let range = Range(match.range, in: source), let nameRange = Range(match.range(at: 2), in: source) else { continue }
+            let name = source[nameRange].lowercased()
+            let closing = match.range(at: 1).length > 0
+            guard ["table", "thead", "tbody", "tfoot", "tr", "td", "th"].contains(name) else { continue }
+            if !found {
+                guard name == "table", !closing,
+                      MiniHTML.parse(String(source[range]) + "</table>").querySelector("table")?.id == id else { continue }
+                guard !source[range].hasSuffix("/>") else { throw invalid("table is incomplete") }
+                found = true
+                stack.append(name)
+                continue
+            }
+            if closing {
+                // Skyward legally omits </tbody> immediately before </table>.
+                // All row/cell closures must still be explicit and in order.
+                if name == "table", stack.last == "tbody" { stack.removeLast() }
+                guard stack.last == name else { throw invalid("table structure is incomplete") }
+                stack.removeLast()
+                if stack.isEmpty { return }
+            } else {
+                let parent = stack.last ?? ""
+                let valid = ["thead", "tbody", "tfoot"].contains(name) ? parent == "table"
+                    : name == "tr" ? ["thead", "tbody", "tfoot"].contains(parent)
+                    : ["td", "th"].contains(name) ? parent == "tr" : false
+                guard valid, !source[range].hasSuffix("/>") else { throw invalid("table structure is incomplete") }
+                stack.append(name)
+            }
+        }
+        throw invalid("table is truncated")
+    }
+
+    private static func clean(_ text: String) -> String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private static func invalid(_ reason: String) -> SkywardError { .invalidResponse("documents " + reason) }
+}
