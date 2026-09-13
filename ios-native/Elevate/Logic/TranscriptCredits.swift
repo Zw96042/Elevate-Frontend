@@ -441,3 +441,137 @@ enum TranscriptCreditCalculator {
         return semester == .sm1 ? [.sm1, .q3, .q4, .sm2].contains(term) : term == .sm2
     }
 
+    private static func nonempty(_ raw: String?) -> String? {
+        guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+        return value
+    }
+
+    /// Mechanical typography/rigor normalization for bounded aliases. There is
+    /// deliberately no substring match on “history”, “art”, or “science”.
+    static func normalize(_ name: String) -> String {
+        let words = name.lowercased().replacingOccurrences(of: "&", with: " and ")
+            .replacingOccurrences(of: "pre-ap", with: "honors").replacingOccurrences(of: "pre ap", with: "honors")
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        let numbers = ["i": "1", "ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6"]
+        return words.filter { !["honors", "honor", "h", "advanced", "preap"].contains($0) }
+            .map { numbers[$0] ?? $0 }.joined(separator: " ")
+    }
+
+    static func equivalenceKey(for name: String) -> String {
+        definition(for: name)?.key ?? normalize(name)
+    }
+
+    private static func definition(for name: String) -> Definition? {
+        // Catalog display titles can include a trailing department code and
+        // short-name annotation. Remove that bounded suffix, then still require
+        // the entire remaining title to match a catalog course or roster alias.
+        let titleName = name.replacingOccurrences(
+            of: #"(?i)\s*(?:[-–—:]|\s)\s*(?:LA|MA|SC|SS|FL|VA|PA|TC|AT|PE)\s*\d{3}[A-Z]*(?:/[A-Z]+)?\*?(?:\s*\([^)]*\))?\s*$"#,
+            with: "", options: .regularExpression)
+        let normalized = normalize(titleName)
+        if let exact = definitions[normalized] { return exact }
+        // Athletics titles vary by gender, team and grade. Strip only bounded
+        // roster qualifiers, then require a complete known PE title. A phrase
+        // merely containing a sport (for example Football History) cannot match.
+        let qualifiers: Set<String> = ["boys", "girls", "boy", "girl", "and", "varsity", "junior", "jv",
+            "freshman", "freshmen", "grade", "9th", "10th", "11th", "12th", "9", "10", "11", "12",
+            "1", "2", "3", "4", "athletic", "athletics", "ath"]
+        let words = normalized.split(separator: " ").map(String.init)
+        let title = words.filter { !qualifiers.contains($0) }.joined(separator: " ")
+        if title.isEmpty, words.contains(where: { ["athletic", "athletics", "ath"].contains($0) }) {
+            return definitions["athletics"]
+        }
+        guard let athletics = definitions[title], athletics.subject == .physicalEducation else { return nil }
+        return athletics
+    }
+
+    private static let definitions: [String: Definition] = {
+        var result: [String: Definition] = [:]
+        func add(_ key: String, _ subject: CoursePlanSubject, _ names: [String], credits: Double = 1,
+                 semesterOnly: Bool = false, middle: Bool = false, repeatable: Bool = false) {
+            let definition = Definition(key: key, subject: subject, credits: credits, semesterOnly: semesterOnly,
+                middleSchoolEligible: middle, repeatable: repeatable)
+            for name in names {
+                result[normalize(name)] = definition
+                result[normalize("AP " + name)] = definition
+                result[normalize(name + " AP")] = definition
+            }
+        }
+        // Primary district catalog: la/courses, math, science/science-courses,
+        // science/electives and social-studies/social-studies-courses.
+        add("english1", .english, ["English I", "English 1", "ENG1"])
+        add("english2", .english, ["English II", "English 2", "ENG2"])
+        add("english3", .english, ["English III", "English 3", "English Language and Composition", "English Language 3", "English 3 Language and Composition", "Language and Composition", "Language and Composition English III", "AP Language and Composition (AP English III)", "ENG3", "APENG3", "APENGLAN"])
+        add("english4", .english, ["English IV", "English 4", "English Literature and Composition", "English 4 Literature and Composition", "English Literature and Composition English IV", "AP English Literature and Composition (AP English IV)", "ENG4", "APENG4", "APENGLIT"])
+        add("algebra1", .math, ["Algebra I", "Algebra 1", "ALG1", "ALG1H", "ALG I", "ALG 1"], middle: true)
+        add("geometry", .math, ["Geometry", "GEOM", "GEOMH", "GEOMP", "GEO"], middle: true)
+        add("algebra2", .math, ["Algebra II", "Algebra 2", "ALG2", "ALG2H", "ALG II", "ALG 2"], middle: true)
+        add("mathmodels", .math, ["Mathematical Models with Applications", "Math Models with Applications", "MTHMOD"])
+        add("precalculus", .math, ["Precalculus", "Pre Calculus", "PRECALC"])
+        add("statistics", .math, ["Statistics", "STATS", "UT OnRamps Statistics"])
+        add("apstatistics", .math, ["AP Statistics", "APSTATS"])
+        add("statistics2", .math, ["Stats 2: Beyond AP Statistics", "Statistics 2", "Statistics 2 Beyond Statistics", "Statistics 2 Beyond AP Statistics"])
+        add("calculus", .math, ["Calculus"])
+        add("calculusab", .math, ["Calculus AB", "APCALCAB"])
+        add("calculusbc", .math, ["Calculus BC", "APCALCBC"])
+        add("multivariable", .math, ["Multivariable Calculus", "MUTLCAL"], credits: 1, semesterOnly: true)
+        add("linearalgebra", .math, ["Linear Algebra", "LINALG"], credits: 0.5, semesterOnly: true)
+        add("biology", .science, ["Biology", "Biology I", "BIO"])
+        add("biology2", .science, ["Biology 2", "Biology II", "APBIO2", "AP Biology", "AP BIO"])
+        add("chemistry", .science, ["Chemistry", "Chemistry I", "CHEM"])
+        add("chemistry2", .science, ["Chemistry 2", "Chemistry II", "APCHEM2", "AP Chemistry", "AP CHEM"])
+        add("physics", .science, ["Physics", "PHYS"])
+        add("physics1", .science, ["Physics 1", "Physics I", "APPHYS1"])
+        add("physics2", .science, ["Physics 2", "Physics II", "APPHYS2"])
+        add("physics12", .science, ["Physics 1&2", "Physics I & 2", "Physics 1 and 2"], credits: 2)
+        add("physicsc", .science, ["Physics C", "APPHYSC"], credits: 2)
+        add("ipc", .science, ["IPC", "Integrated Physics and Chemistry"])
+        add("environmentalsystems", .science, ["Environmental Systems"])
+        add("environmentalscience", .science, ["Environmental Science", "APENVIR"])
+        add("earthspace", .science, ["Earth and Space Science", "Earth Systems Science"])
+        add("astronomy", .science, ["Astronomy"])
+        add("organicchemistry", .science, ["Organic Chemistry"])
+        add("anatomy", .science, ["Anatomy & Physiology", "Anatomy and Physiology"])
+        add("biotechnology", .science, ["Biotechnology"])
+        add("robotics3", .science, ["Robotics III", "Robotics 3"])
+        add("engineering", .science, ["Engineering"])
+        add("worldgeography", .socialStudies, ["World Geography", "Human Geography", "WHGEO", "APHUMGEO"])
+        add("worldhistory", .socialStudies, ["World History", "World History Modern", "WHIST", "APWHIST"])
+        add("ushistory", .socialStudies, ["United States History", "U.S. History", "US History", "APUSH", "APUSHIST"])
+        add("government", .socialStudies, ["United States Government", "U.S. Government", "US Government", "Government", "US Government and Politics", "U.S. Government and Politics", "GOVT", "APUSGOVT"], credits: 0.5, semesterOnly: true)
+        add("economics", .socialStudies, ["Economics", "ECO FE"], credits: 0.5, semesterOnly: true)
+        add("macro", .socialStudies, ["Macroeconomics", "APMACECO"], credits: 0.5, semesterOnly: true)
+        add("micro", .socialStudies, ["Microeconomics", "APMICECO"], credits: 0.5, semesterOnly: true)
+        add("financialliteracy", .socialStudies, ["Personal Financial Literacy"], credits: 0.5, semesterOnly: true)
+        // Fine-arts placement has precedence because every entry is exact.
+        add("arthistory", .fineArts, ["Art History", "APHISART"])
+        add("artmethods", .fineArts, ["Art Historical Methods", "Art Historical Methods 1", "HUMANIT2"])
+        add("artmethods2", .fineArts, ["Art Historical Methods II", "Art Historical Methods 2", "RESHUM"])
+        for level in 1...4 { add("art\(level)", .fineArts, ["Art \(level)"], repeatable: false) }
+        for name in ["Band", "Choir", "Orchestra", "Jazz Band", "Dance", "Color Guard", "Theatre Arts", "Technical Theatre"] {
+            add(normalize(name), .fineArts, [name], repeatable: true)
+            for level in 1...4 { add("\(normalize(name))\(level)", .fineArts, ["\(name) \(level)"], repeatable: true) }
+        }
+        add("musictheory", .fineArts, ["Music Theory"])
+        add("guitar", .fineArts, ["Beginning Guitar", "MUS1GTR"])
+        add("appliedmusic", .fineArts, ["Applied Music", "MUS1APL", "MUS2APL"], repeatable: true)
+        // A posted MS Course 8 is the Level-I transcript grade; Course 7 alone
+        // is not a high-school credit. Never count both as separate credits.
+        let languageCodes: [String: [String]] = ["Spanish": ["SPAN", "SPN"], "French": ["FREN", "FRN"],
+            "Latin": ["LAT"], "Chinese": ["CHIN"], "American Sign Language": ["ASL"], "ASL": ["ASL"]]
+        for language in ["Spanish", "French", "Latin", "Chinese", "American Sign Language", "ASL"] {
+            for level in 1...6 {
+                let keyLanguage = language == "ASL" ? "American Sign Language" : language
+                var aliases = ["\(language) \(level)", "\(language) Level \(level)"]
+                for code in languageCodes[language, default: []] { aliases += ["\(code)\(level)", "\(code)\(level)H", "\(code) \(level)"] }
+                if level == 1 && ["Spanish", "French", "Latin"].contains(language) { aliases.append("\(language) 8") }
+                add("\(normalize(keyLanguage))\(level)", .worldLanguage, aliases, middle: level == 1)
+            }
+            add("\(normalize(language))7", .worldLanguage, ["\(language) 7"], credits: 0)
+        }
+        add("health", .health, ["Health", "Health 1", "Health1", "Health Education", "Health Ed", "HLTH ED", "HLTH", "HLTH1", "PE800", "Health Education - PE800 (HLTH ED)"], credits: 0.5, semesterOnly: true, middle: true)
+        add("healthscience", .health, ["Principles of Health Science", "PRINHLSC", "TC770"])
+        add("outdooreducation", .physicalEducation, ["Outdoor Education", "Lifetime Recreation and Outdoor Pursuits", "PE802"], credits: 0.5, semesterOnly: true, repeatable: true)
+        for name in ["Physical Education", "PE", "Personal Fitness", "Team Sports", "PE Personal Fitness and Team Sports", "Skill Based Lifetime Activities", "Lifetime Fitness and Wellness Pursuits", "PE Yoga", "Yoga"] {
+            add(normalize(name), .physicalEducation, [name], repeatable: true)
+        }
