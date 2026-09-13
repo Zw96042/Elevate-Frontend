@@ -346,3 +346,98 @@ enum TranscriptCreditCalculator {
                 record.detail = "This pre-high-school enrollment is not a recognized high-school credit course."
                 records.append(record)
                 continue
+            }
+            guard let definition else {
+                record.detail = "Course subject or credit value is not recognized in the district catalog."
+                records.append(record)
+                continue
+            }
+            guard let gradeYear = enrollmentGrade, (6...12).contains(gradeYear),
+                  group.allSatisfy({ (verifiedYear == nil ? $0.currentEnrollmentGradeYear : $0.gradeYear) == gradeYear }) else {
+                record.detail = "Source grade level is unavailable or conflicting."
+                records.append(record)
+                continue
+            }
+            if definition.credits == 0 || (gradeYear < 9 && !eligibleMiddleSchool(definition, gradeYear: gradeYear)) {
+                record.status = .excluded
+                record.detail = "This course is not a recognized credit-bearing course for the source grade level."
+                records.append(record)
+                continue
+            }
+            // Scope repeatable classes to this year, matching earned-credit rules.
+            // Corrections remain earned, but cannot also create prospective credit.
+            let earnedEquivalent = earned.records.filter {
+                $0.credits > 0 && equivalenceKey(for: $0.name) == definition.key
+                    && (!definition.repeatable || AcademicYearKey.startYear($0.academicYear) == ongoingYear)
+            }
+            let scope = definition.repeatable ? "observed-year-\(ongoingYear)" : "allYears"
+            let awardKey = "\(scope)|\(definition.key)"
+            let alreadyEarned = earnedEquivalent.reduce(0) { $0 + $1.credits }
+            var available = max(0, definition.credits - alreadyEarned - allocatedByDefinition[awardKey, default: 0])
+            let eligibleTerms = (verifiedYear == nil ? terms.filter { $0 == activeSemester } : terms).filter {
+                !semesterCompleted(year: "\(ongoingYear)-\(ongoingYear + 1)", semester: $0, asOf: asOf)
+            }
+            for term in eligibleTerms {
+                let unit = "\(awardKey)|\(definition.semesterOnly ? "course" : term.historicalKey)"
+                guard !allocatedUnits.contains(unit),
+                      !earnedEquivalent.contains(where: { definition.semesterOnly || $0.semester == term }) else { continue }
+                let credit = min(available, definition.semesterOnly ? definition.credits : definition.credits / 2)
+                guard credit > 0 else { continue }
+                allocatedUnits.insert(unit)
+                record.credits += credit
+                available -= credit
+            }
+            if definition.subject == .physicalEducation {
+                record.credits = min(record.credits, max(0, 4 - physicalEducationCredits))
+                physicalEducationCredits += record.credits
+            }
+            allocatedByDefinition[awardKey, default: 0] += record.credits
+            if record.credits > 0 {
+                record.semesters = eligibleTerms
+                record.status = .expected
+                record.detail = verifiedYear == nil
+                    ? "Expected credit for the observed current semester if passed. The school year and full course duration are unverified, so no upcoming semester is added. Live grades do not award credit."
+                    : "Expected credit for the enrolled, unfinished semester(s), including an upcoming semester in this school year. Assumes passing completion and eligibility; live grades do not award credit."
+            } else {
+                record.status = .excluded
+                record.detail = "The enrolled semesters have ended or equivalent catalog credits have already been counted."
+            }
+            records.append(record)
+        }
+        return records.sorted {
+            if $0.name != $1.name { return $0.name < $1.name }
+            return $0.id < $1.id
+        }
+    }
+
+    private static func eligibleMiddleSchool(_ definition: Definition, gradeYear: Int) -> Bool {
+        guard definition.middleSchoolEligible else { return false }
+        switch definition.key {
+        case "algebra1": return (6...8).contains(gradeYear)
+        case "geometry": return (7...8).contains(gradeYear)
+        case "algebra2", "health", "ipc": return gradeYear == 8
+        default: return definition.subject == .worldLanguage && gradeYear == 8
+        }
+    }
+
+    private static func mayRecoverFall(_ candidate: Candidate, fallScore: Double, allCandidates: [Candidate]) -> Bool {
+        let spring = allCandidates.filter {
+            $0.course.academicYear == candidate.course.academicYear && $0.semester == .sm2
+                && $0.definition?.key == candidate.definition?.key
+        }
+        let values = Set(spring.compactMap { AcademicScoreValue.finiteDouble($0.grade) })
+        guard values.count == 1, let score = values.first, score >= 70 else { return false }
+        return (fallScore + score) / 2 >= 70
+    }
+
+    private static func semesterCompleted(year: String, semester: TermLabel, asOf: Date) -> Bool {
+        guard let start = AcademicYearKey.startYear(year) else { return false }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Chicago")!
+        let current = calendar.component(.year, from: asOf) - (calendar.component(.month, from: asOf) < 8 ? 1 : 0)
+        if start < current { return true }
+        if start > current { return false }
+        let term = AcademicCalendar.currentTerm(for: asOf)
+        return semester == .sm1 ? [.sm1, .q3, .q4, .sm2].contains(term) : term == .sm2
+    }
+
