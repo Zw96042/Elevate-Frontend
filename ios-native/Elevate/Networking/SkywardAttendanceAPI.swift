@@ -109,3 +109,71 @@ enum SkywardAttendanceAPI {
         return AttendanceData(records: records)
     }
 
+    private static func nearestTable(_ node: HTMLNode) -> HTMLNode? {
+        var ancestor = node.parent
+        while let current = ancestor {
+            if current.tagName == "table" { return current }
+            ancestor = current.parent
+        }
+        return nil
+    }
+
+    private static func isEmptyMarker(_ row: HTMLNode, cells: [HTMLNode]) -> Bool {
+        guard cells.count == 1, cells[0].attribute("colspan") == "4",
+              row.querySelector("a") == nil else { return false }
+        return ["no attendance records", "no records to display", "no absences or tardies were found."].contains(clean(cells[0].text).lowercased())
+    }
+
+    private static func clean(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    private static func optionalText(_ text: String) -> String? {
+        let value = clean(text)
+        return value.isEmpty ? nil : value
+    }
+
+    /// MiniHTML is intentionally tolerant. Check explicit structural closing
+    /// tags so a truncated response cannot be accepted as an empty/partial feed.
+    private static func requireCompleteTable(_ html: String, tableID: String) throws {
+        let noise = #"<!--[\s\S]*?-->|<script\b[^>]*>[\s\S]*?</script\s*>|<style\b[^>]*>[\s\S]*?</style\s*>"#
+        let source = html.replacingOccurrences(of: noise, with: "", options: [.regularExpression, .caseInsensitive])
+        // Consume every tag so table-like strings inside a link's quoted
+        // attributes cannot be mistaken for structural tags.
+        let pattern = #"<\s*(/?)\s*([a-z][a-z0-9:-]*)\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>"#
+        let regex = try NSRegularExpression(pattern: pattern, options: .caseInsensitive)
+        var stack: [String] = []
+        var found = false
+        for match in regex.matches(in: source, range: NSRange(source.startIndex..., in: source)) {
+            guard let tagRange = Range(match.range, in: source),
+                  let nameRange = Range(match.range(at: 2), in: source) else { continue }
+            let name = source[nameRange].lowercased()
+            let closing = match.range(at: 1).length > 0
+            guard ["table", "thead", "tbody", "tfoot", "tr", "td", "th"].contains(name) else { continue }
+            if !found {
+                guard name == "table", !closing,
+                      MiniHTML.parse(String(source[tagRange]) + "</table>").querySelector("table")?.id == tableID else { continue }
+                found = true
+                stack.append(name)
+                continue
+            }
+            if closing {
+                // The verified portal omits </tbody> immediately before
+                // </table>, a valid HTML omission. Rows and cells still need
+                // explicit closure, and the table itself must be complete.
+                if name == "table", stack.last == "tbody" { stack.removeLast() }
+                guard stack.last == name else {
+                    throw SkywardError.invalidResponse("attendance history structure is incomplete")
+                }
+                stack.removeLast()
+                if stack.isEmpty { return }
+            } else {
+                guard !source[tagRange].hasSuffix("/>") else {
+                    throw SkywardError.invalidResponse("attendance history structure is incomplete")
+                }
+                stack.append(name)
+            }
+        }
+        throw SkywardError.invalidResponse("attendance history table is truncated")
+    }
+}
