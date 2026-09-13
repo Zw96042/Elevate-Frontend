@@ -217,3 +217,59 @@ struct GradeNotificationLedger: Codable, Sendable {
         return pendingEvents.filter { $0.term == term && scores.keys.contains($0.courseID) }
     }
 
+    mutating func markSchedulingAccepted(eventID: String, at date: Date = Date()) {
+        finish(eventID: eventID, delivery: .accepted(at: date))
+    }
+
+    mutating func consumeWithoutAlert(eventID: String) {
+        finish(eventID: eventID, delivery: .consumed)
+    }
+
+    mutating func markSchedulingFailed(eventID: String) {
+        guard let index = entries.firstIndex(where: { $0.event.id == eventID }), Self.isPending(entries[index].delivery) else { return }
+        entries[index].delivery = .retry
+    }
+
+    /// Foreground suppression isn't successful delivery. Requeue only the
+    /// request's still-current unseen values, preserving actual-view decisions.
+    mutating func deferSuppressedRequest(_ requestID: String) {
+        let unseenIDs = Set(unseenEvents(forRequest: requestID).map(\.id))
+        for index in entries.indices where unseenIDs.contains(entries[index].event.id) {
+            let event = entries[index].event
+            if case .accepted = entries[index].delivery {
+                observations[event.term.rawValue]?[event.courseID]?.alertBaseline = event.previousScore
+            }
+            entries[index].delivery = .retry
+            entries[index].requestID = nil
+        }
+    }
+
+    private mutating func finish(eventID: String, delivery: GradeNotificationDelivery) {
+        guard let index = entries.firstIndex(where: { $0.event.id == eventID }), Self.isPending(entries[index].delivery) else { return }
+        let event = entries[index].event
+        entries[index].delivery = delivery
+        observations[event.term.rawValue]?[event.courseID]?.alertBaseline = event.currentScore
+    }
+
+    private static func isPending(_ delivery: GradeNotificationDelivery) -> Bool {
+        switch delivery { case .pending, .retry: true; case .accepted, .consumed: false }
+    }
+
+    private mutating func trimObservations() {
+        let all = observations.flatMap { term, values in values.map { (term, $0.key, $0.value.observedAt) } }
+            .sorted { $0.2 < $1.2 }
+        var excess = all.count - maximumEntries
+        for (term, courseID, _) in all where excess > 0 {
+            guard !entries.contains(where: { $0.event.term.rawValue == term && $0.event.courseID == courseID && Self.isPending($0.delivery) }) else { continue }
+            observations[term]?.removeValue(forKey: courseID)
+            viewedGrades[term]?.removeValue(forKey: courseID)
+            if observations[term]?.isEmpty == true { observations.removeValue(forKey: term) }
+            excess -= 1
+        }
+        let viewed = viewedGrades.flatMap { term, values in values.map { (term, $0.key, $0.value.sourceDate) } }
+            .sorted { $0.2 < $1.2 }
+        for (term, courseID, _) in viewed.prefix(max(0, viewed.count - maximumEntries)) {
+            viewedGrades[term]?.removeValue(forKey: courseID)
+        }
+    }
+}
