@@ -223,3 +223,84 @@ struct GradeJournal: Codable, Sendable {
     }
 }
 
+/// Serializes reload/compare/save across foreground and background instances.
+/// Corrupt/unsupported saved data is preserved until explicit history clearing.
+final class GradeJournalStore: @unchecked Sendable {
+    private struct Saved: Codable {
+        let version: Int
+        let journal: GradeJournal
+    }
+    private static let lock = NSLock()
+    private let defaults: UserDefaults
+    let accountIdentifier: String
+    private let storageKey: String
+    private static let maximumStorageBytes = 8 * 1_024 * 1_024
+
+    init(accountIdentifier: String, defaults: UserDefaults = .standard) {
+        self.accountIdentifier = accountIdentifier
+        self.defaults = defaults
+        storageKey = "account.\(accountIdentifier).gradeJournal.v1"
+    }
+
+    var events: [GradeJournalEvent] { locked { accountIdentifier.isEmpty ? [] : load()?.events ?? [] } }
+    var hasUnreadableHistory: Bool { locked { defaults.object(forKey: storageKey) != nil && load() == nil } }
+
+    @discardableResult
+    func observeCourseAverages(courses: [UnifiedCourseData], source: GradeObservationSource = .freshValidated,
+                               at date: Date = Date(), expectedAccountIdentifier: String) -> [GradeJournalEvent] {
+        update(expectedAccountIdentifier: expectedAccountIdentifier) { journal in
+            var added: [GradeJournalEvent] = []
+            let courses = GradeNotificationLedger.eligibleCourses(in: courses)
+            let duplicateIDs = Set(Dictionary(grouping: courses, by: \.id).filter { $0.value.count > 1 }.keys)
+            for course in courses where !duplicateIDs.contains(course.id) {
+                for term in course.availableTerms {
+                    let bucket = term.isSemester ? (term == .sm1 ? "S1" : "S2") : term.shortName
+                    let scores = course.currentScores.filter { $0.bucket == bucket }
+                    guard scores.count <= 1 else { continue }
+                    added += journal.observeAverage(scores.first?.score, courseID: course.id, courseName: course.courseName,
+                                                     term: term, source: source, at: date)
+                }
+            }
+            return added
+        }
+    }
+
+    @discardableResult
+    func observeAssignments(_ result: GradeInfoResult, courseID: String, courseName: String, term: TermLabel,
+                            source: GradeObservationSource = .freshValidated, at date: Date = Date(),
+                            expectedAccountIdentifier: String) -> [GradeJournalEvent] {
+        update(expectedAccountIdentifier: expectedAccountIdentifier) {
+            $0.observeAssignments(result, courseID: courseID, courseName: courseName, term: term, source: source, at: date)
+        }
+    }
+
+    func clearHistory(expectedAccountIdentifier: String) {
+        guard !accountIdentifier.isEmpty, expectedAccountIdentifier == accountIdentifier else { return }
+        locked { defaults.removeObject(forKey: storageKey) }
+    }
+
+    private func update(expectedAccountIdentifier: String, _ observe: (inout GradeJournal) -> [GradeJournalEvent]) -> [GradeJournalEvent] {
+        guard !accountIdentifier.isEmpty, expectedAccountIdentifier == accountIdentifier else { return [] }
+        return locked {
+            guard var journal = load() else { return [] }
+            let added = observe(&journal)
+            guard journal.isValid, let data = try? JSONEncoder().encode(Saved(version: 1, journal: journal)),
+                  data.count <= Self.maximumStorageBytes else { return [] }
+            defaults.set(data, forKey: storageKey)
+            return added
+        }
+    }
+
+    private func load() -> GradeJournal? {
+        guard defaults.object(forKey: storageKey) != nil else { return GradeJournal() }
+        guard let data = defaults.data(forKey: storageKey), data.count <= Self.maximumStorageBytes,
+              let saved = try? JSONDecoder().decode(Saved.self, from: data),
+              saved.version == 1, saved.journal.isValid else { return nil }
+        return saved.journal
+    }
+
+    private func locked<T>(_ body: () -> T) -> T {
+        Self.lock.lock(); defer { Self.lock.unlock() }
+        return body()
+    }
+}
