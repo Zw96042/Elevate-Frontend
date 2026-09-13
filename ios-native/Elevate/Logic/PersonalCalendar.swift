@@ -181,3 +181,89 @@ enum PersonalEventDays {
         return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
     }
 
+    /// An event ending exactly at midnight doesn't reach the next day.
+    static func lastInstant(_ event: PersonalEvent) -> Date {
+        event.end > event.start ? event.end.addingTimeInterval(-1) : event.start
+    }
+
+    /// Every day the event touches, in order, within `interval` when given:
+    /// a long event that began months earlier still marks the month on screen.
+    static func days(for event: PersonalEvent, calendar: Calendar,
+                     within interval: DateInterval? = nil) -> [String] {
+        var first = calendar.startOfDay(for: event.start)
+        var last = calendar.startOfDay(for: lastInstant(event))
+        if let interval {
+            first = max(first, calendar.startOfDay(for: interval.start))
+            last = min(last, calendar.startOfDay(for: interval.end.addingTimeInterval(-1)))
+        }
+        var days: [String] = []
+        var day = first
+        while day <= last, days.count < maximumDays {
+            days.append(iso(day, calendar: calendar))
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        return days
+    }
+
+    static func span(of event: PersonalEvent, on day: String, calendar: Calendar) -> PersonalEventSpan {
+        if event.isAllDay { return .allDay }
+        let first = iso(event.start, calendar: calendar)
+        let last = iso(lastInstant(event), calendar: calendar)
+        if first == last { return .timed(start: event.start, end: event.end) }
+        if day == first { return .starts(event.start) }
+        // Ending at midnight means it runs to the end of its last day.
+        if day == last, calendar.startOfDay(for: event.end) != event.end { return .ends(event.end) }
+        return .allDay
+    }
+
+    /// Events by day: all-day entries first, then by the time each one is
+    /// under way on that day, then by title. Only days within `interval`,
+    /// when given, are indexed.
+    static func index(_ events: [PersonalEvent], calendar: Calendar,
+                      within interval: DateInterval? = nil) -> [String: [PersonalEvent]] {
+        var result: [String: [PersonalEvent]] = [:]
+        for event in events {
+            for day in days(for: event, calendar: calendar, within: interval) {
+                result[day, default: []].append(event)
+            }
+        }
+        for (day, list) in result {
+            result[day] = list.sorted { lhs, rhs in
+                let left = sortKey(lhs, day: day, calendar: calendar)
+                let right = sortKey(rhs, day: day, calendar: calendar)
+                if left.rank != right.rank { return left.rank < right.rank }
+                if left.time != right.time { return left.time < right.time }
+                let order = lhs.title.localizedStandardCompare(rhs.title)
+                return order == .orderedSame ? lhs.id < rhs.id : order == .orderedAscending
+            }
+        }
+        return result
+    }
+
+    private static func sortKey(_ event: PersonalEvent, day: String,
+                                calendar: Calendar) -> (rank: Int, time: Date) {
+        switch span(of: event, on: day, calendar: calendar) {
+        case .allDay: return (0, .distantPast)
+        case .timed(let start, _), .starts(let start): return (1, start)
+        // Already under way at the start of the day.
+        case .ends: return (1, .distantPast)
+        }
+    }
+
+    /// The month as the range EventKit is asked for: its first day through
+    /// the start of the next month.
+    static func monthInterval(year: Int, month: Int, calendar: Calendar) -> DateInterval? {
+        monthsInterval(year: year, month: month, count: 1, calendar: calendar)
+    }
+
+    /// `count` whole months from the first day of the given month through
+    /// the start of the month after the last, so the page can read the one
+    /// or two months its visible days fall in with a single request.
+    static func monthsInterval(year: Int, month: Int, count: Int, calendar: Calendar) -> DateInterval? {
+        guard count >= 1,
+              let start = calendar.date(from: DateComponents(year: year, month: month, day: 1)),
+              let end = calendar.date(byAdding: .month, value: count, to: start), end > start else { return nil }
+        return DateInterval(start: start, end: end)
+    }
+}
