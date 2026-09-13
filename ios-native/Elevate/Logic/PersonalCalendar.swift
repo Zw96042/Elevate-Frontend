@@ -90,3 +90,94 @@ struct PersonalCalendarSelection: Codable, Equatable, Sendable {
 
     init() {}
 
+    private enum CodingKeys: String, CodingKey {
+        case shownIDs, dismissedPrompt
+    }
+
+    init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        dismissedPrompt = try values.decodeIfPresent(Bool.self, forKey: .dismissedPrompt) ?? false
+        let shown = try values.decodeIfPresent([String].self, forKey: .shownIDs) ?? []
+        guard shown.count <= Self.maximumIDs else {
+            throw DecodingError.dataCorruptedError(forKey: .shownIDs, in: values,
+                                                   debugDescription: "Too many calendar identifiers")
+        }
+        shownIDs = Set(shown)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(dismissedPrompt, forKey: .dismissedPrompt)
+        try values.encode(shownIDs.sorted(), forKey: .shownIDs)
+    }
+
+    func isShown(_ calendar: PersonalCalendarInfo) -> Bool {
+        shownIDs.contains(calendar.id)
+    }
+
+    mutating func setShown(_ shown: Bool, for calendar: PersonalCalendarInfo) {
+        if shown {
+            // A calendar can't be added past the bound; it stays hidden.
+            guard shownIDs.count < Self.maximumIDs || shownIDs.contains(calendar.id) else { return }
+            shownIDs.insert(calendar.id)
+        } else {
+            shownIDs.remove(calendar.id)
+        }
+    }
+}
+
+/// Calendars grouped by account for the Calendars sheet.
+struct PersonalCalendarGroup: Hashable, Identifiable, Sendable {
+    var title: String
+    var calendars: [PersonalCalendarInfo]
+    var id: String { title }
+
+    /// Accounts by name, each with its calendars by name.
+    static func groups(_ calendars: [PersonalCalendarInfo]) -> [PersonalCalendarGroup] {
+        let byAccount = Dictionary(grouping: calendars) { calendar -> String in
+            let title = calendar.accountTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            return title.isEmpty ? "Other" : title
+        }
+        return byAccount
+            .map { title, list in
+                PersonalCalendarGroup(title: title, calendars: list.sorted {
+                    let order = $0.title.localizedStandardCompare($1.title)
+                    return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending
+                })
+            }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+}
+
+/// How an event sits on one day of the grid.
+enum PersonalEventSpan: Equatable, Sendable {
+    /// An all-day event, or a middle day of a longer one.
+    case allDay
+    /// Starts and ends on this day.
+    case timed(start: Date, end: Date)
+    /// Starts on this day and ends on a later one.
+    case starts(Date)
+    /// Started on an earlier day and ends on this one.
+    case ends(Date)
+}
+
+/// Places events on calendar days (yyyy-MM-dd in the person's own calendar,
+/// matching the grid). Pure, so the rules are testable without EventKit.
+enum PersonalEventDays {
+    /// A runaway event can't mark more than about two months of days.
+    static let maximumDays = 62
+
+    /// Gregorian days in the person's time zone, matching the grid's school
+    /// dates whatever calendar system the iPhone uses.
+    static var dayCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        calendar.locale = .current
+        return calendar
+    }
+
+    static func iso(_ date: Date, calendar: Calendar) -> String {
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+
