@@ -189,3 +189,70 @@ enum TranscriptCreditCalculator {
                 if definition.credits == 0 {
                     record.status = .excluded
                     record.detail = "The district catalog awards no credit for this course."
+                } else if first.course.gradeYear == nil || !(6...12).contains(first.course.gradeYear!) {
+                    record.detail = "Source grade level is unavailable or outside the supported credit years."
+                } else if definition.key == "physics12", (AcademicYearKey.startYear(first.course.academicYear) ?? 0) < 2020 {
+                    record.detail = "The two-credit Physics 1&2 rule is documented from 2020–21; this older record needs review."
+                } else {
+                    let texts = Set(group.compactMap { nonempty($0.grade) })
+                    let values = Set(texts.compactMap { AcademicScoreValue.finiteDouble($0) })
+                    let hasInvalid = texts.contains { AcademicScoreValue.finiteDouble($0) == nil }
+                    if values.count > 1 || (hasInvalid && !values.isEmpty) {
+                        record.detail = "Equivalent source rows have conflicting posted semester grades."
+                    } else if hasInvalid {
+                        record.detail = "Pass codes and nonnumeric grades do not establish an awarded credit value."
+                    } else if let value = values.first, value >= 0 {
+                        if value >= 70 {
+                            record.credits = definition.semesterOnly ? definition.credits : definition.credits / 2
+                            record.status = .estimated
+                            record.detail = "Passing posted semester grade; catalog credit allocation. Attendance, transfer and award conditions are not verified."
+                        } else if first.semester == .sm1, value >= 65, !definition.semesterOnly,
+                                  mayRecoverFall(first, fallScore: value, allCandidates: candidates) {
+                            record.detail = "Fall grade may qualify for same-year averaging. Summer, correspondence and exam provenance must be reviewed before awarding fall credit."
+                        } else {
+                            record.status = .notEarned
+                            record.detail = "Posted semester grade is below 70. A failing spring grade is not averaged up for credit."
+                        }
+                    } else {
+                        record.detail = texts.isEmpty ? "No posted semester grade is available." : "Posted semester grade is invalid."
+                    }
+                }
+            }
+            if let definition, record.credits > 0 {
+                let scope = definition.repeatable ? first.course.academicYear : "allYears"
+                let unit = "\(scope)|\(definition.key)|\(definition.semesterOnly ? "course" : first.semester.historicalKey)"
+                let awardKey = "\(scope)|\(definition.key)"
+                if countedUnits.contains(unit) {
+                    record.credits = 0
+                    record.status = .excluded
+                    record.detail = "An equivalent course semester has already been counted; a repeat does not add duplicate credit."
+                } else if record.status != .corrected {
+                    let available = max(0, definition.credits - awardedByDefinition[awardKey, default: 0])
+                    record.credits = min(record.credits, available)
+                    if record.credits == 0 {
+                        record.status = .excluded
+                        record.detail = "The catalog credit maximum for this equivalent course has already been counted."
+                    }
+                }
+                if record.credits > 0 {
+                    countedUnits.insert(unit)
+                    awardedByDefinition[awardKey, default: 0] += record.credits
+                }
+            }
+            // The published district cap is four PE credits; music/dance are
+            // allocated once to fine arts here, not also counted as PE.
+            if record.subject == .physicalEducation, record.credits > 0, record.status != .corrected {
+                let allowed = max(0, 4 - physicalEducationCredits)
+                record.credits = min(record.credits, allowed)
+                if record.credits == 0 {
+                    record.status = .excluded
+                    record.detail = "The district maximum of four PE credits has already been counted."
+                }
+            }
+            if record.subject == .physicalEducation { physicalEducationCredits += record.credits }
+            records.append(record)
+        }
+        return TranscriptCreditReport(records: records, usedLegacyFallback: fallback,
+            orphanedOverrideIDs: Set(overrides.map(\.id)).subtracting(usedOverrideIDs).sorted())
+    }
+
