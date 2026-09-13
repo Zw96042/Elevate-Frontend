@@ -96,3 +96,124 @@ struct GradeNotificationLedger: Codable, Sendable {
         trimObservations()
     }
 
+    func wasViewed(_ event: GradeNotificationEvent) -> Bool {
+        guard let viewed = viewedGrades[event.term.rawValue]?[event.courseID] else { return false }
+        return Self.samePostedScore(viewed.score, event.currentScore) || viewed.sourceDate >= event.discoveredAt
+    }
+
+    mutating func associateRequest(_ requestID: String, eventIDs: Set<String>) {
+        for index in entries.indices where eventIDs.contains(entries[index].event.id) {
+            entries[index].requestID = requestID
+        }
+    }
+
+    func unseenEvents(forRequest requestID: String) -> [GradeNotificationEvent] {
+        entries.compactMap { entry in
+            guard entry.requestID == requestID, entry.delivery != .consumed,
+                  !wasViewed(entry.event),
+                  let latest = latestObservedScore(courseID: entry.event.courseID, term: entry.event.term),
+                  Self.samePostedScore(latest, entry.event.currentScore) else { return nil }
+            return entry.event
+        }
+    }
+
+    /// Live gradebook membership is independent of transcript-year provenance.
+    static func eligibleCourses(in courses: [UnifiedCourseData]) -> [UnifiedCourseData] {
+        let live = courses.filter { $0.hasGradebookParams && $0.courseId != nil }
+        let highestGrade = live.compactMap(\.gradeYear).max()
+        return live.filter { highestGrade == nil || $0.gradeYear == highestGrade }
+    }
+
+    var pendingEvents: [GradeNotificationEvent] {
+        entries.compactMap { entry in
+            switch entry.delivery {
+            case .pending, .retry: entry.event
+            case .accepted, .consumed: nil
+            }
+        }
+    }
+
+    func delivery(for eventID: String) -> GradeNotificationDelivery? {
+        entries.first { $0.event.id == eventID }?.delivery
+    }
+
+    func latestObservedScore(courseID: String, term: TermLabel) -> Double? {
+        observations[term.rawValue]?[courseID]?.latestScore
+    }
+
+    @discardableResult
+    mutating func observe(_ scores: [String: Double?], term: TermLabel,
+                          source: GradeObservationSource = .freshValidated,
+                          at date: Date = Date()) -> [GradeNotificationEvent] {
+        guard source == .freshValidated else { return [] }
+        let termKey = term.rawValue
+        for courseID in scores.keys.sorted() {
+            guard !courseID.isEmpty else { continue }
+            let rawScore = scores[courseID] ?? nil
+            // Nonfinite data is invalid, rather than a genuine unavailable grade.
+            if let rawScore, !rawScore.isFinite { continue }
+            guard var observation = observations[termKey]?[courseID] else {
+                observations[termKey, default: [:]][courseID] = Observation(
+                    latestScore: rawScore, alertBaseline: rawScore, observedAt: date)
+                continue
+            }
+            guard date >= observation.observedAt else { continue }
+            if let viewed = viewedGrades[termKey]?[courseID], let score = rawScore {
+                // A display can precede its notification observation. Retain it
+                // for that result, but never suppress a later return to an old grade.
+                if Self.samePostedScore(viewed.score, score),
+                   observation.latestScore.map({ Self.samePostedScore($0, score) }) == true
+                    || viewed.sourceDate >= observation.observedAt {
+                    observation.alertBaseline = score
+                } else if date > viewed.sourceDate {
+                    viewedGrades[termKey]?.removeValue(forKey: courseID)
+                }
+            } else if rawScore == nil {
+                viewedGrades[termKey]?.removeValue(forKey: courseID)
+            }
+            observation.latestScore = rawScore
+            observation.observedAt = date
+            if rawScore == nil {
+                observation.alertBaseline = nil
+                // A disappeared grade invalidates a pending numeric notification.
+                entries.removeAll { $0.event.courseID == courseID && $0.event.term == term && Self.isPending($0.delivery) }
+            }
+            observations[termKey, default: [:]][courseID] = observation
+            guard let score = rawScore else { continue }
+            let pendingIndex = entries.firstIndex { $0.event.courseID == courseID && $0.event.term == term && Self.isPending($0.delivery) }
+            if let previous = observation.alertBaseline,
+               threshold == 0.01 ? Self.samePostedScore(score, previous) : abs(score - previous) < threshold {
+                if let pendingIndex { entries.remove(at: pendingIndex) }
+                continue
+            }
+            if let pendingIndex {
+                // A failed/unaccepted request must describe the latest observation,
+                // rather than alerting an obsolete dip after the grade recovers.
+                let previous = entries[pendingIndex].event
+                entries[pendingIndex].event = GradeNotificationEvent(
+                    id: previous.id, courseID: courseID, term: term,
+                    previousScore: observation.alertBaseline, currentScore: score,
+                    kind: observation.alertBaseline == nil ? .gradeAvailable : .averageChanged,
+                    discoveredAt: date)
+                continue
+            }
+            // Prefer removing completed entries; pending work also remains bounded.
+            if entries.count >= maximumEntries {
+                if let completed = entries.firstIndex(where: { !Self.isPending($0.delivery) }) {
+                    entries.remove(at: completed)
+                } else {
+                    // Preserve existing retries. A later observation can enqueue this change.
+                    continue
+                }
+            }
+            entries.append(Entry(event: GradeNotificationEvent(
+                id: UUID().uuidString, courseID: courseID, term: term,
+                previousScore: observation.alertBaseline, currentScore: score,
+                kind: observation.alertBaseline == nil ? .gradeAvailable : .averageChanged,
+                discoveredAt: date), delivery: .pending))
+        }
+        // Bound history as well as event storage without evicting pending baselines.
+        trimObservations()
+        return pendingEvents.filter { $0.term == term && scores.keys.contains($0.courseID) }
+    }
+
