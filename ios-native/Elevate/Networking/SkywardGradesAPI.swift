@@ -61,6 +61,7 @@ enum SkywardGradesAPI {
     // MARK: - Parsing
 
     static func parseGradeInfoHTML(_ html: String, rawResponse: String) throws -> GradeInfoResult {
+        try SkywardHTTP.checkSessionExpired(rawResponse)
         try SkywardHTTP.checkSessionExpired(html)
 
         // Empty <data> CDATA means the session died.
@@ -70,10 +71,9 @@ enum SkywardGradesAPI {
 
         let root = MiniHTML.parse(html)
 
-        // A legitimate empty gradebook still renders the heading, term-summary
-        // grid, and assignment-summary grid. Login, maintenance, and arbitrary
-        // HTTP 200 pages do not. Validate those structural anchors before an
-        // empty parse can become cacheable data.
+        // Validate course and term identity before an empty parse can become
+        // cacheable data. Skyward omits the assignment grid for ungraded terms;
+        // that specific response shape is checked after the summary below.
         guard root.querySelector("h2.gb_heading") != nil else {
             throw SkywardError.invalidResponse("grade-info heading not found")
         }
@@ -81,10 +81,8 @@ enum SkywardGradesAPI {
                 || root.querySelector("div[id*='stuTermSummaryGrid']") != nil else {
             throw SkywardError.invalidResponse("grade-info term grid not found")
         }
-        guard root.querySelector("table[id^='grid_stuAssignmentSummaryGrid']") != nil
-                || root.querySelector("div[id*='stuAssignmentSummaryGrid']") != nil else {
-            throw SkywardError.invalidResponse("grade-info assignment grid not found")
-        }
+        let hasAssignmentGrid = root.querySelector("table[id^='grid_stuAssignmentSummaryGrid']") != nil
+            || root.querySelector("div[id*='stuAssignmentSummaryGrid']") != nil
 
         // Course / instructor / period from the heading.
         let headingLinks = root.querySelectorAll("h2.gb_heading a")
@@ -112,12 +110,18 @@ enum SkywardGradesAPI {
         }
 
         // Summary score.
-        var summaryRow = root.querySelector("table[id^='grid_stuTermSummaryGrid'] tbody tr[class]:not(.sf_Section)")
-        if summaryRow == nil, let termGrid = root.querySelector("div[id*='stuTermSummaryGrid']") {
-            summaryRow = termGrid.querySelector("tbody tr[class]:not(.sf_Section)") ?? termGrid.querySelector("tbody tr")
-        }
-        let topScore = toDouble(summaryRow?.querySelector("td:last-child")?.text ?? "")
+        let summaryGrid = root.querySelector("table[id^='grid_stuTermSummaryGrid']")
+            ?? root.querySelector("div[id*='stuTermSummaryGrid']")
+        let summaryRows = summaryGrid.map { bodyRows(in: $0).filter { !$0.hasClass("sf_Section") } } ?? []
+        let summaryRow = summaryRows.first { $0.attribute("class") != nil } ?? summaryRows.first
+        let topScore = toDouble(summaryRow?.elements.last(where: { $0.tagName == "td" })?.text ?? "")
         let topGrade = topScore.map { Int($0.rounded()) }
+
+        if !hasAssignmentGrid {
+            guard isCompleteUngradedTerm(root, html: html, rawResponse: rawResponse) else {
+                throw SkywardError.invalidResponse("grade-info assignment grid not found")
+            }
+        }
 
         let gradebook = try parseGradebook(root)
 
@@ -128,14 +132,48 @@ enum SkywardGradesAPI {
         )
     }
 
-    private static func parseGradebook(_ root: HTMLNode) throws -> [GradeCategory] {
-        var rows = root.querySelectorAll("table[id^='grid_stuAssignmentSummaryGrid'] tbody tr")
-        if rows.isEmpty, let grid = root.querySelector("div[id*='stuAssignmentSummaryGrid']") {
-            rows = grid.querySelectorAll("tbody tr")
-            if rows.isEmpty, grid.querySelector("tbody") == nil {
-                rows = grid.querySelectorAll("tr").filter { $0.parent?.tagName != "thead" }
+    /// The verified ungraded-term loader response has one summary row with two
+    /// blank cells and no assignment markup. Missing grids in scored, partial,
+    /// or unknown responses must still fail instead of clearing cached grades.
+    private static func isCompleteUngradedTerm(_ root: HTMLNode, html: String, rawResponse: String) -> Bool {
+        guard extractCDATA(rawResponse, tag: "output") == html,
+              let termGrid = root.querySelector("table[id^='grid_stuTermSummaryGrid']"),
+              let termLabel = termGrid.querySelector("thead th")?.children.first(where: { $0.isText })?.text,
+              !clean(termLabel).isEmpty,
+              root.querySelector("#showAssignmentInfo") == nil,
+              root.querySelector(".sf_Section.cat") == nil else { return false }
+        // Walk direct children: descendant-selector ancestor matching can find
+        // an outer layout tbody and accidentally count this table's header row.
+        let bodies = termGrid.elements.filter { $0.tagName == "tbody" }
+        guard bodies.count == 1 else { return false }
+        let rows = bodies[0].elements
+        guard rows.count == 1, rows[0].tagName == "tr" else { return false }
+        let cells = rows[0].elements
+        return cells.count == 2 && cells.allSatisfy { $0.tagName == "td" && clean($0.text).isEmpty }
+    }
+
+    /// Select rows owned by the grid table, not rows in its headers, layout
+    /// ancestors, or nested tables inside assignment cells. Descendant CSS
+    /// matching can otherwise use an ancestor outside a div-based grid.
+    private static func bodyRows(in grid: HTMLNode) -> [HTMLNode] {
+        let table = grid.tagName == "table" ? grid : grid.querySelector("table")
+        if let table {
+            return table.elements.flatMap { child -> [HTMLNode] in
+                if child.tagName == "tbody" { return child.elements.filter { $0.tagName == "tr" } }
+                return child.tagName == "tr" ? [child] : []
             }
         }
+        // Some grid fragments have body rows without a wrapping table.
+        return grid.elements.flatMap { child -> [HTMLNode] in
+            if child.tagName == "tbody" { return child.elements.filter { $0.tagName == "tr" } }
+            return child.tagName == "tr" ? [child] : []
+        }
+    }
+
+    private static func parseGradebook(_ root: HTMLNode) throws -> [GradeCategory] {
+        let grid = root.querySelector("table[id^='grid_stuAssignmentSummaryGrid']")
+            ?? root.querySelector("div[id*='stuAssignmentSummaryGrid']")
+        let rows = grid.map { bodyRows(in: $0) } ?? []
 
         var gradebook: [GradeCategory] = []
         var currentCategoryIndex: Int? = nil
@@ -144,7 +182,7 @@ enum SkywardGradesAPI {
 
         for row in rows {
             if row.hasClass("sf_Section") && row.hasClass("cat") {
-                let cells = row.querySelectorAll("td")
+                let cells = row.elements.filter { $0.tagName == "td" }
                 guard cells.count > 1 else {
                     throw SkywardError.invalidResponse("grade category row is malformed")
                 }
@@ -195,11 +233,18 @@ enum SkywardGradesAPI {
 
             guard let link = row.querySelectorAll("a").first(where: { $0.id == "showAssignmentInfo" }) else {
                 let rowText = clean(row.text).lowercased()
-                let isKnownEmptyRow = rowText.isEmpty
-                    || rowText.contains("no assignments")
-                    || rowText.contains("no records")
-                    || rowText.contains("nothing to display")
-                guard isKnownEmptyRow else {
+                let cells = row.elements
+                // Skyward uses one spanning cell for an empty assignment grid.
+                // Allow its assignment qualifier (for example, "daily"), but
+                // never accept an empty-looking phrase inside a broken data row.
+                let isEmptyMessage = firstMatch(in: rowText,
+                    pattern: #"^(?:there (?:are|is) )?no (?:[a-z]+ ){0,2}assignments?(?:\s|[.!]|$)"#) != nil
+                    || rowText == "no records"
+                    || rowText == "nothing to display"
+                let isFullWidthEmptyMessage = cells.count == 1 && cells[0].tagName == "td"
+                    && (cells[0].attribute("colspan").flatMap(Int.init) ?? 0) >= 5
+                    && row.querySelectorAll("a").isEmpty && isEmptyMessage
+                guard rowText.isEmpty || isFullWidthEmptyMessage else {
                     throw SkywardError.invalidResponse("unrecognized gradebook row")
                 }
                 continue
@@ -207,7 +252,7 @@ enum SkywardGradesAPI {
             guard let catIndex = currentCategoryIndex else {
                 throw SkywardError.invalidResponse("assignment row has no category")
             }
-            let cells = row.querySelectorAll("td")
+            let cells = row.elements.filter { $0.tagName == "td" }
             guard cells.count >= 5 else {
                 throw SkywardError.invalidResponse("assignment row is malformed")
             }
