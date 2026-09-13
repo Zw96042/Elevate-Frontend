@@ -108,3 +108,96 @@ struct WhatIfScenarioLibrary {
         return scenario
     }
 
+    @discardableResult
+    func rename(id: String, name: String, expectedAccountIdentifier: String) throws -> WhatIfScenario {
+        try requireAccount(expectedAccountIdentifier)
+        let name = try validatedName(name)
+        var all = try readAll()
+        guard let index = all.firstIndex(where: { $0.id == id }) else { throw WhatIfScenarioLibraryError.scenarioNotFound }
+        all[index].name = name
+        try write(all)
+        return all[index]
+    }
+
+    func delete(id: String, expectedAccountIdentifier: String) throws {
+        try requireAccount(expectedAccountIdentifier)
+        var all = try readAll()
+        guard let index = all.firstIndex(where: { $0.id == id }) else { throw WhatIfScenarioLibraryError.scenarioNotFound }
+        all.remove(at: index)
+        try write(all)
+    }
+
+    /// Explicit recovery removes only unreadable scenario storage for this
+    /// account. Valid saved scenarios and all active what-if edits stay intact.
+    func clearUnreadableScenarios(expectedAccountIdentifier: String) throws {
+        try requireAccount(expectedAccountIdentifier)
+        guard hasUnreadableScenarios else { return }
+        defaults.removeObject(forKey: storageKey)
+    }
+
+    private var storageKey: String { "account.\(accountIdentifier).namedWhatIfScenarios" }
+
+    private func requireAccount(_ expected: String) throws {
+        guard !accountIdentifier.isEmpty, expected == accountIdentifier else { throw WhatIfScenarioLibraryError.accountChanged }
+    }
+
+    private func validatedName(_ raw: String) throws -> String {
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.count <= 100 else { throw WhatIfScenarioLibraryError.invalidName }
+        return name
+    }
+
+    private func readAll() throws -> [WhatIfScenario] {
+        guard defaults.object(forKey: storageKey) != nil else { return [] }
+        guard let data = defaults.data(forKey: storageKey),
+              data.count <= Self.maximumEncodedBytes,
+              let all = try? JSONDecoder().decode([WhatIfScenario].self, from: data),
+              all.count <= 500, Set(all.map(\.id)).count == all.count else {
+            throw WhatIfScenarioLibraryError.corruptStorage
+        }
+        var courseCounts: [String: Int] = [:]
+        for scenario in all {
+            courseCounts[scenario.classKey, default: 0] += 1
+            guard !scenario.id.isEmpty, !scenario.classKey.isEmpty,
+                  scenario.createdAt.timeIntervalSinceReferenceDate.isFinite,
+                  (try? validatedName(scenario.name)) == scenario.name,
+                  scenario.snapshot.validationIssue(for: scenario.term) == nil,
+                  courseCounts[scenario.classKey, default: 0] <= 50 else {
+                throw WhatIfScenarioLibraryError.corruptStorage
+            }
+        }
+        return all
+    }
+
+    private func write(_ all: [WhatIfScenario]) throws {
+        let data = try JSONEncoder().encode(all)
+        guard data.count <= Self.maximumEncodedBytes else { throw WhatIfScenarioLibraryError.limitReached }
+        defaults.set(data, forKey: storageKey)
+    }
+}
+
+enum WhatIfScenarioIssue: Equatable {
+    case invalidTermOwnership
+    case differentCourseOrTerm
+    case invalidScore
+    case invalidCategories
+    case assignmentIDCollision
+    case staleAssignmentIDs(quarter: String, count: Int)
+    case unavailableGradebook(quarter: String)
+    case unavailableCategory(quarter: String, category: String)
+    case unavailableCalculation(quarter: String)
+}
+
+/// A missing dictionary entry means source unavailable, while a present empty
+/// gradebook is a verified empty quarter. Posted quarter values survive either
+/// state until an effective edit actually requires recalculation.
+struct WhatIfScenarioSource {
+    var classKey: String
+    var className: String
+    var term: TermLabel
+    var quarterGradebooks: [String: GradeInfoResult]
+    var postedQuarterGrades: [String: Double] = [:]
+    var officialGrade: Double? = nil
+    var officialExamGrade: Double? = nil
+}
+
