@@ -256,3 +256,93 @@ enum TranscriptCreditCalculator {
             orphanedOverrideIDs: Set(overrides.map(\.id)).subtracting(usedOverrideIDs).sorted())
     }
 
+    /// Independent live membership can establish the observed semester without
+    /// claiming a source academic year. Verified year/terms additionally support
+    /// upcoming enrolled semesters. Latest transcript buckets are not proof.
+    static func currentCourses(courses: [UnifiedCourseData], earned: TranscriptCreditReport,
+                               asOf: Date = Date()) -> [CurrentCourseCredit] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Chicago")!
+        let ongoingYear = calendar.component(.year, from: asOf) - (calendar.component(.month, from: asOf) < 8 ? 1 : 0)
+        let live = courses.filter { course in
+            guard course.isPlanningOnly != true, !course.courseName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  course.isCurrentEnrollment == true || course.hasGradebookParams else { return false }
+            // A saved historical gradebook identity does not become enrollment.
+            if course.isCurrentEnrollment != true, let year = course.academicYear, course.academicYearIsVerified != false,
+               let start = AcademicYearKey.startYear(year), start != ongoingYear { return false }
+            return true
+        }
+        let groups = Dictionary(grouping: live) { course in
+            let scope = course.isCurrentEnrollment == true && course.currentAcademicYearIsVerified != true
+                ? "observed-enrollment" : course.academicYear ?? ""
+            return "\(scope)|\(equivalenceKey(for: course.courseName))"
+        }
+        var records: [CurrentCourseCredit] = []
+        var allocatedByDefinition: [String: Double] = [:]
+        var allocatedUnits: Set<String> = []
+        var physicalEducationCredits = earned.credits(for: .physicalEducation)
+        for key in groups.keys.sorted() {
+            let group = groups[key]!.sorted { $0.id < $1.id }
+            let first = group[0]
+            let definition = definition(for: first.courseName)
+            let sourceIDs = Set(group.map(\.id)).sorted()
+            // A different course with incomplete year metadata must not erase
+            // this enrollment's independently verified school-year evidence.
+            let verifiedYear = first.academicYear.flatMap { year -> String? in
+                guard AcademicYearKey.startYear(year) == ongoingYear,
+                      group.allSatisfy({ $0.academicYear == year && $0.academicYearIsVerified != false && $0.currentAcademicYearIsVerified == true }) else { return nil }
+                return year
+            }
+            let activeSemester: TermLabel = AcademicCalendar.currentTerm(for: asOf).isFall ? .sm1 : .sm2
+            let independentEnrollment = group.allSatisfy { course in
+                guard course.isCurrentEnrollment == true,
+                      let observedAt = course.currentEnrollmentObservedAt,
+                      observedAt.timeIntervalSince1970.isFinite, observedAt <= asOf else { return false }
+                let observedYear = calendar.component(.year, from: observedAt) - (calendar.component(.month, from: observedAt) < 8 ? 1 : 0)
+                return observedYear == ongoingYear && AcademicCalendar.currentTerm(for: observedAt).isFall == activeSemester.isFall
+            }
+            var semesters: Set<TermLabel> = []
+            var hasUnknownTerms = false
+            for course in group {
+                if verifiedYear == nil {
+                    switch course.currentEnrollmentSemester {
+                    case .fall: semesters.insert(.sm1)
+                    case .spring: semesters.insert(.sm2)
+                    case .both: semesters.formUnion([.sm1, .sm2])
+                    case .unknown, nil: hasUnknownTerms = true
+                    }
+                    continue
+                }
+                let inferred = UnifiedCourseTransformer.inferSemester(course.termLength)
+                let semester = course.semester == .unknown ? inferred : course.semester
+                if inferred != .unknown && semester != inferred { hasUnknownTerms = true }
+                switch semester {
+                case .fall: semesters.insert(.sm1)
+                case .spring: semesters.insert(.sm2)
+                case .both: semesters.formUnion([.sm1, .sm2])
+                case .unknown: hasUnknownTerms = true
+                }
+            }
+            let terms = [TermLabel.sm1, .sm2].filter { semesters.contains($0) }
+            var record = CurrentCourseCredit(id: "current|\(key.utf8.count):\(key)", course: first,
+                sourceCourseIDs: sourceIDs, name: first.courseName,
+                academicYear: verifiedYear,
+                subject: definition?.subject, semesters: verifiedYear == nil ? terms.filter { $0 == activeSemester } : terms, credits: 0, status: .needsReview,
+                detail: "Current enrollment evidence is unavailable or out of date; this course does not yet count toward expected credit targets.")
+            guard verifiedYear != nil || independentEnrollment else {
+                records.append(record)
+                continue
+            }
+            guard !hasUnknownTerms, !terms.isEmpty else {
+                record.detail = "The enrolled semester is unknown or conflicting. Review the schedule before counting prospective credits."
+                records.append(record)
+                continue
+            }
+            let enrollmentGrade = verifiedYear == nil ? first.currentEnrollmentGradeYear : first.gradeYear
+            if let gradeYear = enrollmentGrade, gradeYear < 9,
+               group.allSatisfy({ (verifiedYear == nil ? $0.currentEnrollmentGradeYear : $0.gradeYear) == gradeYear }),
+               definition.map({ eligibleMiddleSchool($0, gradeYear: gradeYear) }) != true {
+                record.status = .excluded
+                record.detail = "This pre-high-school enrollment is not a recognized high-school credit course."
+                records.append(record)
+                continue
