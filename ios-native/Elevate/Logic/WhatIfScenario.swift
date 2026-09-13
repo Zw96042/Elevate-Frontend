@@ -290,3 +290,71 @@ enum WhatIfScenarioEvaluator {
         var issue: WhatIfScenarioIssue? = nil
     }
 
+    private static func quarterValue(_ quarter: TermLabel, snapshot: WhatIfScenarioSnapshot, source: WhatIfScenarioSource) -> QuarterResult {
+        let key = quarter.shortName
+        let added = snapshot.assignmentsByQuarter[key] ?? []
+        let overrides = snapshot.overridesByQuarter[key] ?? [:]
+        guard let info = source.quarterGradebooks[key] else {
+            let saved = !added.isEmpty || !overrides.isEmpty
+            return QuarterResult(value: saved ? nil : source.postedQuarterGrades[key], changed: saved,
+                                 issue: saved ? .unavailableGradebook(quarter: key) : nil)
+        }
+        let official = AssignmentGradeEdits.assignments(from: info, className: source.className, term: quarter)
+            .filter { $0.category != "Final Exam" }
+        let officialIDs = Set(official.map(\.id))
+        guard Set(added.map(\.id)).isDisjoint(with: officialIDs) else {
+            return QuarterResult(issue: .assignmentIDCollision)
+        }
+        let stale = Set(overrides.keys).subtracting(officialIDs).count
+        guard stale == 0 else { return QuarterResult(issue: .staleAssignmentIDs(quarter: key, count: stale)) }
+        let changed = !added.isEmpty || AssignmentGradeEdits.hasEffectiveChanges(overrides, to: official)
+        let posted = info.score ?? source.postedQuarterGrades[key]
+        if !changed, let posted, validNumber(posted) { return QuarterResult(value: posted) }
+        let assignments = AssignmentGradeEdits.applying(overrides, to: official) + added.map(assignment(from:))
+        let counted = assignments.filter { !$0.isNoCount && $0.category != "Final Exam" }
+        guard counted.allSatisfy({ validNumber($0.outOf) && $0.outOf >= 0 && ($0.grade.map(validNumber) ?? true) }) else {
+            return QuarterResult(changed: changed, issue: .invalidScore)
+        }
+        let categories = info.gradebook.filter { $0.category != "Final Exam" }
+        guard Set(categories.map(\.category)).count == categories.count,
+              categories.allSatisfy({ $0.weight.map { validNumber($0) && $0 >= 0 } ?? true }) else {
+            return QuarterResult(changed: changed, issue: .invalidCategories)
+        }
+        let weighted = categories.contains { $0.weight != nil }
+        if weighted {
+            let categoriesWithPossible = Set(counted.filter { $0.grade != nil && $0.outOf > 0 }.map(\.category))
+            for assignment in counted where assignment.grade != nil {
+                guard let weight = categories.first(where: { $0.category == assignment.category })?.weight, weight > 0 else {
+                    return QuarterResult(changed: changed, issue: .unavailableCategory(quarter: key, category: assignment.category))
+                }
+                // Zero-possible bonus points are valid beside graded work, but
+                // alone cannot establish a category's denominator or average.
+                guard categoriesWithPossible.contains(assignment.category) else {
+                    return QuarterResult(changed: changed, issue: .unavailableCalculation(quarter: key))
+                }
+            }
+        }
+        let value: Double?
+        if weighted {
+            let weights = GradeCalculator.normalizedWeights(categories: categories, assignments: counted)
+            value = GradeCalculator.summary(assignments: counted, categoryWeights: weights, sourceCategories: categories).courseTotal
+        } else {
+            value = GradeCalculator.pointsTotal(assignments: counted)
+        }
+        return QuarterResult(value: value, changed: changed,
+                             issue: changed && value == nil ? .unavailableCalculation(quarter: key) : nil)
+    }
+
+    private static func selectedValue(_ quarters: [String: Double], exam: Double?, term: TermLabel) -> Double? {
+        guard term.isSemester else { return quarters[term.shortName] }
+        let terms = term.whatIfQuarterTerms
+        return GradeCalculator.semesterTotal(firstQuarter: quarters[terms[0].shortName],
+                                             secondQuarter: quarters[terms[1].shortName], finalExamGrade: exam)
+    }
+
+    private static func unavailable(_ issue: WhatIfScenarioIssue, official: Double?, quarters: [String: Double] = [:]) -> WhatIfScenarioEvaluation {
+        WhatIfScenarioEvaluation(officialValue: official,
+                                 presentation: .resolve(official: official, calculated: nil, hasEffectiveChanges: true, calculationUnavailable: true),
+                                 quarterGrades: quarters, issue: issue)
+    }
+}
