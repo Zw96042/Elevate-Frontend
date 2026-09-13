@@ -201,3 +201,92 @@ struct WhatIfScenarioSource {
     var officialExamGrade: Double? = nil
 }
 
+struct WhatIfScenarioEvaluation: Equatable {
+    var officialValue: Double?
+    var presentation: WhatIfGradePresentation
+    var quarterGrades: [String: Double]
+    var issue: WhatIfScenarioIssue?
+
+    var value: Double? { presentation.value }
+    var difference: Double? {
+        guard let value, let officialValue else { return nil }
+        return value - officialValue
+    }
+}
+
+struct WhatIfScenarioComparison: Identifiable {
+    var id: String
+    var name: String
+    var evaluation: WhatIfScenarioEvaluation
+}
+
+enum WhatIfScenarioEvaluator {
+    static func compare(_ scenarios: [WhatIfScenario], source: WhatIfScenarioSource) -> [WhatIfScenarioComparison] {
+        scenarios.map { scenario in
+            let result: WhatIfScenarioEvaluation
+            if scenario.classKey != source.classKey || scenario.term != source.term {
+                result = unavailable(.differentCourseOrTerm, official: source.officialGrade)
+            } else {
+                result = evaluate(scenario.snapshot, source: source)
+            }
+            return WhatIfScenarioComparison(id: scenario.id, name: scenario.name, evaluation: result)
+        }
+    }
+
+    static func evaluate(_ snapshot: WhatIfScenarioSnapshot, source: WhatIfScenarioSource) -> WhatIfScenarioEvaluation {
+        if let issue = snapshot.validationIssue(for: source.term) {
+            return unavailable(issue, official: source.officialGrade)
+        }
+        guard source.officialGrade.map(validNumber) ?? true,
+              source.officialExamGrade.map(validNumber) ?? true,
+              source.postedQuarterGrades.values.allSatisfy(validNumber) else {
+            return unavailable(.invalidScore, official: nil)
+        }
+        var baseline: [String: Double] = [:]
+        var estimated: [String: Double] = [:]
+        var changed = false
+        var failure: WhatIfScenarioIssue?
+        for quarter in source.term.whatIfQuarterTerms {
+            let original = quarterValue(quarter, snapshot: .init(), source: source)
+            let result = quarterValue(quarter, snapshot: snapshot, source: source)
+            baseline[quarter.shortName] = original.value
+            estimated[quarter.shortName] = result.value
+            changed = changed || result.changed
+            failure = failure ?? result.issue
+        }
+        if source.term.isSemester, let exam = snapshot.finalExamGrade,
+           exam != source.officialExamGrade { changed = true }
+        let official = source.officialGrade ?? selectedValue(baseline, exam: source.officialExamGrade, term: source.term)
+        if let failure { return unavailable(failure, official: official, quarters: estimated) }
+        let calculated = selectedValue(estimated, exam: snapshot.finalExamGrade ?? source.officialExamGrade, term: source.term)
+        if changed, calculated == nil {
+            return unavailable(.unavailableCalculation(quarter: source.term.shortName), official: official, quarters: estimated)
+        }
+        return WhatIfScenarioEvaluation(
+            officialValue: official,
+            presentation: .resolve(official: official, calculated: calculated, hasEffectiveChanges: changed),
+            quarterGrades: estimated, issue: nil
+        )
+    }
+
+    static func assignment(from assignment: WhatIfAssignment) -> CalcAssignment {
+        let meta: [AssignmentMeta]
+        switch assignment.resolvedStatus {
+        case .counted: meta = []
+        case .noCount: meta = [.init(type: "noCount", note: "Excluded from estimate")]
+        case .missing: meta = [.init(type: "missing", note: "Missing")]
+        case .absent: meta = [.init(type: "absent", note: "Absent")]
+        }
+        return CalcAssignment(id: assignment.id, className: assignment.className, name: assignment.name,
+                              term: assignment.term, category: assignment.category, grade: assignment.grade,
+                              outOf: assignment.outOf, dueDate: assignment.dueDate, artificial: true, meta: meta)
+    }
+
+    static func validNumber(_ value: Double) -> Bool { value.isFinite && abs(value) <= 1_000_000 }
+
+    private struct QuarterResult {
+        var value: Double?
+        var changed: Bool = false
+        var issue: WhatIfScenarioIssue? = nil
+    }
+
