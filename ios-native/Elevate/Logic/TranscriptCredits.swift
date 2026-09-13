@@ -575,3 +575,63 @@ enum TranscriptCreditCalculator {
         for name in ["Physical Education", "PE", "Personal Fitness", "Team Sports", "PE Personal Fitness and Team Sports", "Skill Based Lifetime Activities", "Lifetime Fitness and Wellness Pursuits", "PE Yoga", "Yoga"] {
             add(normalize(name), .physicalEducation, [name], repeatable: true)
         }
+        add("pe", .physicalEducation, ["Physical Education", "P.E."], repeatable: true)
+        add("pe personal fitness and team sports", .physicalEducation, ["PE803A/B", "PE803A", "PE803B"], repeatable: true)
+        add("pe yoga", .physicalEducation, ["PE801"], repeatable: true)
+        for name in ["Athletics", "Football", "Basketball", "Baseball", "Softball", "Volleyball", "Soccer", "Track", "Cross Country", "Swimming", "Water Polo", "Wrestling", "Tennis", "Golf", "Cheerleading"] {
+            add(normalize(name), .physicalEducation, [name, "Boys \(name)", "Girls \(name)"], repeatable: true)
+        }
+        add("water polo", .physicalEducation, ["Waterpolo"], repeatable: true)
+        add("swimming", .physicalEducation, ["Swim", "Swimming/Diving", "Swimming and Diving", "Swim and Dive"], repeatable: true)
+        add("cheerleading", .physicalEducation, ["Cheer", "Cheerleader"], repeatable: true)
+        add("football", .physicalEducation, ["AT832A/B", "AT832A", "AT832B", "Football 9th Grade - AT832A/B"], repeatable: true)
+        add("track", .physicalEducation, ["Track and Field", "Track & Field", "Track Field"], repeatable: true)
+        // Published Athletics catalog identifiers (2026-10-06). These are
+        // exact codes, not a blanket AT/PE prefix rule: AT100 is Sports Medicine
+        // and explicitly does not satisfy the state PE requirement.
+        let athleticsCodes: [(String, [String])] = [
+            ("football", ["AT021A/B", "AT021C/D", "AT021E/F", "AT021G"]),
+            ("volleyball", ["AT830A/B", "AT001A/B", "AT001C/D", "AT001E/F", "AT001G"]),
+            ("basketball", ["AT831A/B", "AT833A/B", "AT011C/D", "AT011E/F", "AT011G/H", "AT016A/B", "AT016C/D", "AT016E/F", "AT016G/H"]),
+            ("cross country", ["AT881A/B", "AT041C/D", "AT041E/F", "AT041G/H", "AT892A/B", "AT077C/D", "AT077E/F", "AT077G/H"]),
+            ("track", ["AT886A/B", "AT059C/D", "AT059E/F", "AT059G/H", "AT067A/B", "AT067C/D", "AT067E/F", "AT067G/H"]),
+            ("golf", ["AT889A/B", "AT072C/D", "AT072E/F", "AT072G/H", "AT887A/B", "AT062C/D", "AT062E/F", "AT062G/H"]),
+            ("wrestling", ["AT895A/B", "AT083C/D", "AT083E/F", "AT083G/H", "AT086A/B", "AT087C/D", "AT087E/F", "AT087G/H"]),
+            ("softball", ["AT882A/B", "AT046C/D", "AT046E/F", "AT046G/H"]),
+            ("soccer", ["AT852A/B", "AT026C/D", "AT026E/F", "AT026G/H", "AT854A/B", "AT031C/D", "AT031E/F", "AT031G/H"]),
+            ("swimming", ["AT857A/B", "AT858C/D", "AT036C/D", "AT036E/F", "AT036G/H", "AT037C/D", "AT037E/F", "AT037G/H"]),
+            ("tennis", ["AT884A/B", "AT884C/D", "AT884E/F", "AT054A/B", "AT054C/D", "AT885E/F", "AT885G/H"]),
+            ("baseball", ["AT837A/B", "AT006C/D", "AT006E/F", "AT006G/H"]),
+            ("cheerleading", ["PE879A/B", "PE880C/D", "PE881E/F", "PE881G/H"]),
+        ]
+        func splitCodes(_ codes: [String]) -> [String] {
+            codes.flatMap { code in
+                guard let separator = code.firstIndex(of: "/") else { return [code] }
+                let first = String(code[..<separator])
+                let second = String(first.dropLast()) + code[code.index(after: separator)...]
+                return [code, first, second]
+            }
+        }
+        for (key, codes) in athleticsCodes {
+            add(key, .physicalEducation, splitCodes(codes), repeatable: true)
+        }
+        add("sportsmedicine", .elective, ["Athletic Training - Sports Medicine", "Athletic Training Sports Medicine SPORTMD1 SPORTMD2 SPORTMD3",
+            "Sports Medicine", "Athletic Training", "ATH TRAIN", "SPORTMD1", "SPORTMD2", "SPORTMD3"]
+            + splitCodes(["AT100A/B", "AT100C/D", "AT100E/F"]), repeatable: true)
+        // Known credit-bearing CTE/elective courses; unknown titles stay reviewable.
+        add("csp", .elective, ["Computer Science Principles", "CSP", "APCSP", "PRINIT"])
+        add("csa", .elective, ["Computer Science A", "CSA", "APTACSA"])
+        add("cs2", .elective, ["Computer Science II", "Computer Science 2", "TACS2"])
+        add("cs3", .elective, ["Computer Science III", "Computer Science 3", "TACS3"])
+        add("csind", .elective, ["Computer Science Independent Study", "Computer Science Ind Study 1", "TAIND2"])
+        // Credit 1 was verified in the All Courses AP Cybersecurity dialog.
+        add("cybersecurity", .elective, ["AP Cybersecurity", "AP Cybersecurity TC281"])
+        add("robotics1", .elective, ["Robotics Engineering First Focus", "Robotics I", "Robotics 1", "ROBOTIC1"])
+        add("robotics2", .elective, ["Robotics II", "Robotics 2"])
+        add("appliedengineering", .elective, ["Principles of Applied Engineering and Tech", "Invention and Innovation", "Invention & Innovation FF"])
+        add("peerpartners", .elective, ["Peer Partners", "Peer Partners 1"], repeatable: true)
+        add("maps", .elective, ["Methodology for Academic and Personal Success I", "MAPS", "MAPS I"])
+        add("officeaide", .elective, ["Office Aide", "Excused Period"], credits: 0)
+        return result
+    }()
+}
