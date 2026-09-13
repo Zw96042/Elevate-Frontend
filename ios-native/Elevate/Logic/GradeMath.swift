@@ -38,10 +38,36 @@ enum TermSelectionPolicy {
 
 // MARK: - Class name formatting (port of formatClassName.tsx)
 
+/// Exact district titles, not a general independent-study bonus. The current
+/// WHS English electives catalog identifies LA145 as Seminar and LA146 as
+/// Research; Independent Study III (LA147) is a separate non-AP course.
+/// https://whs.eanesisd.net/coursecatalog/courses/la/electives
+enum APCapstoneCourse: CaseIterable {
+    case seminar, research
+
+    static func matching(_ title: String) -> APCapstoneCourse? {
+        let tokens = title.uppercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map { $0 == "I" ? "1" : $0 == "II" ? "2" : String($0) }
+        for course in allCases {
+            let number = course == .seminar ? "1" : "2"
+            let subject = course == .seminar ? "SEMINAR" : "RESEARCH"
+            let code = course == .seminar ? "LA145" : "LA146"
+            if tokens == [code] { return course }
+            let name = (tokens.last == code ? Array(tokens.dropLast()) : tokens).joined(separator: " ")
+            let stems = ["ENGLISH INDEPENDENT STUDY \(number)", "INDEPENDENT STUDY IN ENGLISH \(number)"]
+            let aliases = ["AP \(subject)", "AP CAPSTONE \(subject)"] + stems
+                + (stems + ["ENGLISH INDEPENDENT STUDY", "INDEPENDENT STUDY IN ENGLISH"])
+                    .map { "\($0) AP CAPSTONE \(subject)" }
+            if aliases.contains(name) { return course }
+        }
+        return nil
+    }
+}
+
 enum ClassNameFormatter {
     private static let acronyms: Set<String> = [
         "AP", "IB", "GT", "ELA", "BC", "AB", "CSA", "CSP", "APUSH", "US", "UK", "EU",
-        "PE", "IT", "CS", "AI", "ML", "CAD", "CTE", "STEM",
+        "PE", "IT", "CS", "AI", "ML", "CAD", "CTE", "STEM", "LOTE",
     ]
 
     static func format(_ raw: String) -> String {
@@ -51,15 +77,18 @@ enum ClassNameFormatter {
             name = name.replacingOccurrences(of: "HONORS", with: "H").trimmingCharacters(in: .whitespaces)
         }
         return name.uppercased()
-            .split(separator: "_")
+            .split(whereSeparator: { $0 == "_" || $0.isWhitespace })
             .map { word -> String in
                 let w = String(word)
-                if acronyms.contains(w) { return w }
-                if w.range(of: "II", options: .caseInsensitive) != nil, w.allSatisfy({ $0 == "I" || $0 == "i" }) {
-                    return w.uppercased()
+                guard let start = w.firstIndex(where: \.isLetter),
+                      let end = w.lastIndex(where: \.isLetter) else { return w }
+                let prefix = String(w[..<start])
+                let suffix = String(w[w.index(after: end)...])
+                let letters = String(w[start...end])
+                if acronyms.contains(letters) || letters.allSatisfy({ $0 == "I" }) {
+                    return prefix + letters + suffix
                 }
-                guard let first = w.first else { return w }
-                return String(first) + w.dropFirst().lowercased()
+                return prefix + letters.prefix(1) + letters.dropFirst().lowercased() + suffix
             }
             .joined(separator: " ")
     }
@@ -112,10 +141,17 @@ enum CourseLevelDetector {
         return normalized
     }
 
-    static func level(for className: String) -> CourseLevel {
+    static func level(for className: String, catalogCourseCode: String? = nil) -> CourseLevel {
+        // These exact district codes identify the two AP Capstone courses even
+        // when Skyward truncates their titles. Unknown codes retain name policy.
+        switch catalogCourseCode?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
+        case "LA145", "LA146": return .ap
+        default: break
+        }
         let normalized = className.lowercased().trimmingCharacters(in: .whitespaces)
         guard !normalized.isEmpty else { return .regular }
 
+        if APCapstoneCourse.matching(className) != nil { return .ap }
         let hasAPKeyword = normalized.range(of: #"\bap\b"#, options: .regularExpression) != nil
         if hasAPKeyword || matchesException(normalized, in: apExceptions) { return .ap }
 
@@ -200,30 +236,47 @@ enum GradeCalculator {
     static func summary(
         assignments: [CalcAssignment],
         categoryWeights: [String: Double],
+        sourceCategories: [GradeCategory] = [],
         quarterTotals: (first: Double?, second: Double?)? = nil,
         selectedTerm: TermLabel? = nil,
         finalExamGrade: Double? = nil
     ) -> GradeSummary {
-        let countable = assignments.filter { !$0.isNoCount && $0.grade != nil }
-
-        var raw: [String: (points: Double, total: Double)] = [:]
-        for a in countable {
-            var entry = raw[a.category] ?? (0, 0)
-            entry.points += a.grade ?? 0
-            entry.total += a.outOf
-            raw[a.category] = entry
+        // Preserve decimal input precision through category accumulation. Skyward's
+        // observed weighted totals round each category's contribution, not its
+        // average or only the final sum, to hundredths before adding them.
+        var raw: [String: (points: Decimal, total: Decimal)] = [:]
+        for assignment in assignments where !assignment.isNoCount {
+            guard let grade = assignment.grade,
+                  let points = decimal(grade), let total = decimal(assignment.outOf) else { continue }
+            var entry = raw[assignment.category] ?? (0, 0)
+            entry.points += points
+            entry.total += total
+            raw[assignment.category] = entry
         }
 
-        var weightedSum = 0.0
-        var totalWeight = 0.0
+        // Original weights avoid converting repeating normalized Double ratios
+        // back into decimals at a half-cent boundary. Display weights stay normalized.
+        var originalWeights: [String: Double] = [:]
+        for category in sourceCategories {
+            if let weight = category.weight { originalWeights[category.category] = weight }
+        }
+        var calculationWeights: [String: Decimal] = [:]
+        for category in raw.keys {
+            calculationWeights[category] = decimal(originalWeights[category] ?? categoryWeights[category] ?? 0) ?? 0
+        }
+        let totalWeight = calculationWeights.values.reduce(Decimal.zero, +)
+        var weightedTotal = Decimal.zero
         var categories: [String: GradeSummary.CategoryResult] = [:]
-        for (cat, data) in raw {
-            let weight = categoryWeights[cat] ?? 0
-            let average = data.total > 0 ? (data.points / data.total) * 100 : 0
-            weightedSum += average * weight
-            totalWeight += weight
-            categories[cat] = .init(average: (average * 100).rounded() / 100, weight: weight,
-                                    rawPoints: data.points, rawTotal: data.total)
+        for (category, data) in raw {
+            let average = data.total > 0 ? data.points / data.total * 100 : 0
+            if totalWeight > 0 {
+                let contribution = average * (calculationWeights[category] ?? 0) / totalWeight
+                weightedTotal += roundedHundredths(contribution)
+            }
+            categories[category] = .init(
+                average: double(roundedHundredths(average)), weight: categoryWeights[category] ?? 0,
+                rawPoints: double(data.points), rawTotal: double(data.total)
+            )
         }
 
         var sm1: Double? = nil
