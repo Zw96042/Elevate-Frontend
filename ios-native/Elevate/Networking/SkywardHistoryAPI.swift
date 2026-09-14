@@ -4,6 +4,9 @@ import OSLog
 /// One course row from academic history (and, after combining, the current gradebook).
 struct HistoryCourse: Codable, Hashable {
     var courseName: String?
+    /// Verified district code from the same live course-information popup.
+    /// Separate from the original name used by course and local-edit identities.
+    var catalogCourseCode: String? = nil
     var terms: String = ""
     var finalGrade: String = ""
     var sm1: String?, sm2: String?
@@ -21,6 +24,13 @@ struct HistoryCourse: Codable, Hashable {
     var corNumId: String?
     var section: String?
     var gbId: String?
+    /// False only for courses introduced by the live gradebook overlay.
+    var isTranscriptRecord: Bool? = nil
+    var postedHistoricalGrades: HistoricalGrades? = nil
+    var isCurrentEnrollment: Bool? = nil
+    var currentEnrollmentSemester: Semester? = nil
+    var currentEnrollmentGradeYear: Int? = nil
+    var currentEnrollmentObservedAt: Date? = nil
 
     mutating func setBucketField(_ field: String, value: String) {
         switch field {
@@ -36,6 +46,12 @@ struct HistoryCourse: Codable, Hashable {
 struct AcademicYear: Codable, Hashable {
     var grade: Int?
     var courses: [String: HistoryCourse]
+    /// Nil retains the semantics of parsed year keys; false marks a synthetic
+    /// merge bucket whose spelling does not establish an actual school year.
+    var academicYearIsVerified: Bool? = nil
+    /// Immutable planning source, including non-linked and pre-high-school rows.
+    /// Never merged with the live gradebook or inserted into `courses`.
+    var planningTranscriptCourses: [PlanningTranscriptCourse]? = nil
 }
 
 /// Keyed by "2024-2025"-style year strings.
@@ -52,6 +68,7 @@ struct GradebookCourse {
     var corNumId: Int?
     var section: String?
     var gbId: String?
+    var catalogCourseCode: String? = nil
 }
 
 enum SkywardHistoryAPI {
@@ -65,12 +82,18 @@ enum SkywardHistoryAPI {
 
         let history = try await historyTask
         let gradebookHTML = try await gradebookTask
-        let gradebookCourses = try parseGradebookHTML(gradebookHTML)
+        var gradebookCourses = try parseGradebookHTML(gradebookHTML)
+        for index in gradebookCourses.indices where SkywardCourseInfoAPI.needsCatalogCode(gradebookCourses[index].courseName) {
+            try Task.checkCancellation()
+            gradebookCourses[index].catalogCourseCode = try await SkywardCourseInfoAPI.fetchCatalogCode(
+                course: gradebookCourses[index], gradebookHTML: gradebookHTML,
+                baseURL: baseUrl, sessionCodes: sessionCodes)
+        }
         let gradeLevel = inferGradeLevel(from: gradebookHTML)
         #if DEBUG
         logger.debug("Parsed current gradebook courses=\(gradebookCourses.count, privacy: .public) inferredGrade=\(gradeLevel ?? -1, privacy: .public)")
         #endif
-        return combine(history: history, gradebook: gradebookCourses, fallbackGrade: gradeLevel)
+        return combine(history: history, gradebook: gradebookCourses, fallbackGrade: gradeLevel, observedAt: Date())
     }
 
     static func fetchAcademicHistory(baseUrl: String, sessionCodes: SkywardSessionCodes) async throws -> AcademicHistory {
@@ -119,14 +142,14 @@ enum SkywardHistoryAPI {
     // MARK: - sf_gridObjects extraction (bounded data-only parser)
 
     static func parseGridObjects(html: String, pattern: String) throws -> [String: Any] {
+        try SkywardHTTP.checkSessionExpired(html)
         let root = MiniHTML.parse(html)
-        if root.querySelector("title")?.text.contains("Family Access") == true, html.count < 5000 {
-            throw SkywardError.sessionExpired
-        }
-
         let scripts = root.querySelectorAll("script")
         for script in scripts {
-            let content = script.text
+            // Script is HTML raw text. Decoding entities here can turn an
+            // encoded quote inside cell HTML into JavaScript string syntax.
+            // Decode the cell HTML only after its literal has been parsed.
+            let content = script.children.map(\.textContentRaw).joined()
             guard content.contains("sf_gridObjects") else { continue }
             guard let m = SkywardGradesAPI.firstMatch(in: content, pattern: pattern) else { continue }
             guard let object = try JavaScriptLiteralParser.parse(m[1]) as? [String: Any] else {
@@ -190,6 +213,7 @@ enum SkywardHistoryAPI {
 
             for section in sections {
                 var courses: [String: HistoryCourse] = [:]
+                var planningCourses: [PlanningTranscriptCourse] = []
                 var nameCounts: [String: Int] = [:]
                 var validCourseRows = 0
                 var malformedRows = 0
@@ -200,11 +224,20 @@ enum SkywardHistoryAPI {
                         malformedRows += 1
                         continue
                     }
-                    guard isValidCourse(name: parsed.name) else { continue }
+                    let belongsToOfficialSubset = isValidCourse(name: parsed.name)
+                    // A recognized two-letter PE title is useful to planning,
+                    // but must not broaden the existing official GPA subset.
+                    guard belongsToOfficialSubset || parsed.name.trimmingCharacters(in: .whitespaces).uppercased() == "PE" else { continue }
                     validCourseRows += 1
+                    planningCourses.append(PlanningTranscriptCourse(
+                        academicYear: "\(section.begin)-\(section.end)", gradeYear: section.grade,
+                        name: parsed.name, terms: parsed.course.terms, sm1: parsed.course.sm1,
+                        sm2: parsed.course.sm2, ex1: parsed.course.ex1, ex2: parsed.course.ex2,
+                        isNonLinked: parsed.isAlt
+                    ))
                     // Alt courses (non-linked rows, e.g. middle-school credit) are
                     // excluded from year data, matching the unified-data transform.
-                    if parsed.isAlt { continue }
+                    if parsed.isAlt || !belongsToOfficialSubset { continue }
 
                     var key = parsed.name
                     if courses[key] != nil || nameCounts[parsed.name] ?? 0 > 0 {
@@ -221,12 +254,18 @@ enum SkywardHistoryAPI {
                     throw SkywardError.invalidResponse("academic-history grid has malformed populated rows")
                 }
 
-                // Transcripts can carry pre-high-school credit. Validate those
-                // sections but omit them from Elevate's grade 9-12 model.
-                if section.grade < 9 { continue }
+                // Retain these rows only in the independent planning projection.
+                // The existing official grade/GPA subset stays grades 9–12.
+                if section.grade < 9 {
+                    courses = [:]
+                }
 
-                if !courses.isEmpty || section.rows.count > 1 {
-                    academicYears["\(section.begin)-\(section.end)"] = AcademicYear(grade: section.grade, courses: courses)
+                if !courses.isEmpty || !planningCourses.isEmpty || section.rows.count > 1 {
+                    let year = "\(section.begin)-\(section.end)"
+                    let previousPlanning = academicYears[year]?.planningTranscriptCourses ?? []
+                    // Keep the existing official grid replacement behavior.
+                    academicYears[year] = AcademicYear(grade: section.grade, courses: courses,
+                        planningTranscriptCourses: previousPlanning + planningCourses)
                 }
             }
         }
@@ -259,6 +298,8 @@ enum SkywardHistoryAPI {
         course.finalGrade = course.sm2 ?? course.sm1
             ?? [course.rc4, course.rc3, course.rc2, course.rc1].compactMap { $0 }.first { !$0.isEmpty }
             ?? ""
+        course.isTranscriptRecord = true
+        course.postedHistoricalGrades = UnifiedCourseTransformer.historicalGrades(for: course)
         return (name, isAlt, course)
     }
 
@@ -419,30 +460,57 @@ enum SkywardHistoryAPI {
     static func combine(
         history: AcademicHistory,
         gradebook: [GradebookCourse],
-        fallbackGrade: Int? = nil
+        fallbackGrade: Int? = nil,
+        observedAt: Date? = nil
     ) -> AcademicHistory {
+        // Membership belongs to this live snapshot, not an earlier overlay.
+        let history = history.mapValues { original in
+            var year = original
+            for key in year.courses.keys {
+                year.courses[key]?.isCurrentEnrollment = nil
+                year.courses[key]?.currentEnrollmentSemester = nil
+                year.courses[key]?.currentEnrollmentGradeYear = nil
+                year.courses[key]?.currentEnrollmentObservedAt = nil
+            }
+            return year
+        }
         guard !gradebook.isEmpty else { return history }
         let latestYear: String
         var yearData: AcademicYear
-        if let existingYear = history.keys.sorted().last, let existingData = history[existingYear] {
+        let officialYearKeys = history.keys.filter { key in
+            // Planning-only middle-school sections must not date or classify
+            // today's live enrollment differently from the prior pipeline.
+            !(history[key]?.grade.map { $0 < 9 } ?? false)
+        }
+        if let existingYear = officialYearKeys.sorted().last, let existingData = history[existingYear] {
             if let fallbackGrade, existingData.grade != fallbackGrade {
                 latestYear = nextAcademicYearKey(after: existingYear, existingKeys: Set(history.keys))
-                yearData = AcademicYear(grade: fallbackGrade, courses: [:])
+                yearData = AcademicYear(grade: fallbackGrade, courses: [:], academicYearIsVerified: false)
             } else {
                 latestYear = existingYear
                 yearData = existingData
             }
         } else {
             latestYear = "current"
-            yearData = AcademicYear(grade: fallbackGrade, courses: [:])
+            yearData = AcademicYear(grade: fallbackGrade, courses: [:], academicYearIsVerified: false)
         }
 
         let existingCourses = yearData.courses
         var mergedCourses = existingCourses
         var claimedExistingKeys: Set<String> = []
 
-        for gbCourse in gradebook {
-            let matchedKey = existingCourses.first { key, course in
+        // Match rows with posted semester evidence first, so an ungraded spring
+        // section cannot consume the fall transcript row with the same name.
+        let orderedGradebook = gradebook.sorted {
+            let leftHasSemester = gradebookSemester($0) != nil
+            let rightHasSemester = gradebookSemester($1) != nil
+            if leftHasSemester != rightHasSemester { return leftHasSemester }
+            if $0.course != $1.course { return $0.course < $1.course }
+            return ($0.section ?? "") < ($1.section ?? "")
+        }
+        for gbCourse in orderedGradebook {
+            let semester = gradebookSemester(gbCourse)
+            let exactKey = existingCourses.first { key, course in
                 guard !claimedExistingKeys.contains(key) else { return false }
                 if let liveCourseNumber = gbCourse.corNumId,
                    course.corNumId == String(liveCourseNumber),
