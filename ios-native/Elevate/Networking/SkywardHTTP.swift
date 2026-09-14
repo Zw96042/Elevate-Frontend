@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
 import OSLog
 
 /// Form-encoded POST helper shared by all Skyward endpoints.
@@ -13,6 +16,49 @@ enum SkywardHTTP {
         ]
         return URLSession(configuration: config)
     }()
+
+    /// Milliseconds to wait before retrying a transient connection failure,
+    /// or nil to give up: two retries. Failures before a connection exists
+    /// never reached Skyward, so any request retries them. A lost connection
+    /// may have delivered the request, so only a repeatable one (anything
+    /// but sign-in or queuing a report) retries it. Timeouts and being
+    /// offline are not retried.
+    static func retryDelay(for code: URLError.Code, attempt: Int, repeatable: Bool) -> Int? {
+        let beforeConnecting: Set<URLError.Code> = [
+            .cannotConnectToHost, .dnsLookupFailed, .cannotFindHost, .secureConnectionFailed,
+        ]
+        let retries = beforeConnecting.contains(code) || (repeatable && code == .networkConnectionLost)
+        guard retries, attempt < 2 else { return nil }
+        return attempt == 0 ? 350 : 1_200
+    }
+
+    /// What to tell the person when a request fails before Skyward answers.
+    /// iOS's own wording ("The network connection was lost.") blames their
+    /// connection even when Skyward itself is closing every connection, as
+    /// it does during maintenance, so say which side is the likely problem.
+    static func connectionMessage(for code: URLError.Code) -> String? {
+        switch code {
+        case .notConnectedToInternet, .dataNotAllowed, .internationalRoamingOff, .callIsActive:
+            return "You're offline. Check your connection and try again."
+        case .networkConnectionLost, .cannotConnectToHost, .secureConnectionFailed,
+             .badServerResponse, .zeroByteResource:
+            return "Skyward isn't responding right now. It may be down for maintenance; try again in a little while."
+        case .timedOut:
+            return "Skyward is taking too long to respond. Try again in a little while."
+        case .dnsLookupFailed, .cannotFindHost:
+            return "Couldn't reach Skyward. Check your connection and try again."
+        default:
+            return nil
+        }
+    }
+
+    /// Requests that change something on Skyward, so a retry could repeat
+    /// it: signing in (attempts count toward a lockout) and queuing a report.
+    static func isRepeatable(_ fields: [(String, String)]) -> Bool {
+        !fields.contains { key, value in
+            key.lowercased() == "password" || (key == "action" && value == "addToPrintQueue")
+        }
+    }
 
     static let userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
 
@@ -54,7 +100,8 @@ enum SkywardHTTP {
             redacting: fields.map(\.1),
             suppressResponsePreview: fields.contains { sensitiveFieldNames.contains($0.0.lowercased()) },
             validatesSession: validatesSession,
-            isAuthenticationRequest: isAuthenticationRequest
+            isAuthenticationRequest: isAuthenticationRequest,
+            repeatable: isRepeatable(fields)
         )
     }
 
@@ -70,7 +117,8 @@ enum SkywardHTTP {
             redacting: [],
             suppressResponsePreview: false,
             validatesSession: false,
-            isAuthenticationRequest: false
+            isAuthenticationRequest: false,
+            repeatable: true
         )
     }
 
@@ -80,7 +128,8 @@ enum SkywardHTTP {
         redacting sensitiveValues: [String],
         suppressResponsePreview: Bool,
         validatesSession: Bool,
-        isAuthenticationRequest: Bool
+        isAuthenticationRequest: Bool,
+        repeatable: Bool
     ) async throws -> String {
         guard let url = request.url else {
             throw SkywardError.invalidResponse("invalid request URL")
@@ -94,13 +143,31 @@ enum SkywardHTTP {
         #endif
 
         let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            #if DEBUG
-            logger.error("\(method, privacy: .public) failed host=\(url.host ?? "unknown", privacy: .public) path=\(url.path, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
-            #endif
-            throw SkywardError.network(error.localizedDescription)
+        var attempt = 0
+        while true {
+            do {
+                (data, response) = try await session.data(for: request)
+                break
+            } catch {
+                #if DEBUG
+                logger.error("\(method, privacy: .public) failed host=\(url.host ?? "unknown", privacy: .public) path=\(url.path, privacy: .public) error=\(error.localizedDescription, privacy: .public) attempt=\(attempt)")
+                #endif
+                // A cancelled request is a cancellation, never a network failure.
+                if error is CancellationError || Task.isCancelled {
+                    throw CancellationError()
+                }
+                // Cellular networks often hand back a connection Skyward already
+                // closed; iOS reports it as lost or unstable, and trying again
+                // usually works (see retryDelay for which requests may).
+                if let urlError = error as? URLError,
+                   let delay = retryDelay(for: urlError.code, attempt: attempt, repeatable: repeatable) {
+                    attempt += 1
+                    try await Task.sleep(for: .milliseconds(delay))
+                    continue
+                }
+                let code = (error as? URLError)?.code
+                throw SkywardError.network(code.flatMap(connectionMessage) ?? error.localizedDescription)
+            }
         }
 
         #if DEBUG
@@ -120,7 +187,7 @@ enum SkywardHTTP {
                 throw isAuthenticationRequest ? SkywardError.invalidCredentials : SkywardError.sessionExpired
             }
             if http.statusCode >= 500 {
-                throw SkywardError.network("Skyward server error (\(http.statusCode))")
+                throw SkywardError.network("Skyward isn't responding right now (server error \(http.statusCode)). Try again in a little while.")
             }
             if http.statusCode >= 400 {
                 throw SkywardError.network("Skyward request failed (\(http.statusCode))")
@@ -132,10 +199,7 @@ enum SkywardHTTP {
         }
         if validatesSession {
             try checkSessionExpired(text)
-            if let finalPath = response.url?.path.lowercased(),
-               finalPath.contains("fwemnu01.w") || finalPath.contains("skyportlogin") {
-                throw SkywardError.sessionExpired
-            }
+            try checkSessionRedirect(response.url)
         }
         return text
     }
@@ -199,6 +263,13 @@ enum SkywardHTTP {
             ("User-Type", codes.userType),
             ("sessionid", codes.sessionid),
         ]
+    }
+
+    static func checkSessionRedirect(_ url: URL?) throws {
+        guard let path = url?.path.lowercased() else { return }
+        if path.contains("fwemnu01.w") || path.contains("skyportlogin") {
+            throw SkywardError.sessionExpired
+        }
     }
 
     static func checkSessionExpired(_ html: String) throws {
