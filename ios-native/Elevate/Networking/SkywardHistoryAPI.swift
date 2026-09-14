@@ -512,24 +512,50 @@ enum SkywardHistoryAPI {
             let semester = gradebookSemester(gbCourse)
             let exactKey = existingCourses.first { key, course in
                 guard !claimedExistingKeys.contains(key) else { return false }
-                if let liveCourseNumber = gbCourse.corNumId,
-                   course.corNumId == String(liveCourseNumber),
-                   course.section == gbCourse.section {
-                    return true
+                guard let liveCourseNumber = gbCourse.corNumId else { return false }
+                return course.corNumId == String(liveCourseNumber)
+                    && course.section == gbCourse.section
+            }?.key
+            let nameMatches = existingCourses.filter { key, course in
+                guard !claimedExistingKeys.contains(key) else { return false }
+                // A known, different course identity cannot be replaced by a
+                // name match. Transcript-only rows normally have no identity.
+                if let number = course.corNumId {
+                    guard number == gbCourse.corNumId.map(String.init),
+                          course.section == nil || course.section == gbCourse.section else { return false }
+                }
+                if let semester {
+                    let historySemester = UnifiedCourseTransformer.inferSemester(course.terms)
+                    guard historySemester == semester || historySemester == .both
+                            || historySemester == .unknown else { return false }
                 }
                 let existingName = course.courseName ?? key
                 return normalizedCourseName(existingName) == normalizedCourseName(gbCourse.courseName)
-            }?.key
+            }.sorted {
+                // Prefer the matching half-year row over a full-year fallback.
+                let leftExactSemester = semester != nil && UnifiedCourseTransformer.inferSemester($0.value.terms) == semester
+                let rightExactSemester = semester != nil && UnifiedCourseTransformer.inferSemester($1.value.terms) == semester
+                if leftExactSemester != rightExactSemester { return leftExactSemester }
+                return $0.key < $1.key
+            }
+            let matchedKey = exactKey ?? nameMatches.first?.key
             if let matchedKey {
                 claimedExistingKeys.insert(matchedKey)
             }
-            var course = matchedKey.flatMap { existingCourses[$0] } ?? {
-                var fresh = HistoryCourse()
-                fresh.terms = "1 - 4"
-                return fresh
-            }()
+            // The gradebook doesn't report duration. Preserve unknown for an
+            // unmatched row instead of inventing a full-year course.
+            var course = matchedKey.flatMap { existingCourses[$0] } ?? HistoryCourse(isTranscriptRecord: false)
+            if matchedKey != nil, course.isTranscriptRecord != false {
+                course.isTranscriptRecord = true
+                // Also protect synthetic/raw history inputs that bypassed the
+                // parser, and retain the original snapshot across repeat merges.
+                if course.postedHistoricalGrades == nil {
+                    course.postedHistoricalGrades = UnifiedCourseTransformer.historicalGrades(for: course)
+                }
+            }
 
             course.courseName = gbCourse.courseName
+            course.catalogCourseCode = gbCourse.catalogCourseCode
             course.courseId = gbCourse.course
             course.instructor = gbCourse.instructor
             course.period = gbCourse.period
@@ -538,6 +564,10 @@ enum SkywardHistoryAPI {
             course.corNumId = gbCourse.corNumId.map(String.init)
             course.section = gbCourse.section
             course.gbId = gbCourse.gbId
+            course.isCurrentEnrollment = true
+            course.currentEnrollmentSemester = semester
+            course.currentEnrollmentGradeYear = fallbackGrade
+            course.currentEnrollmentObservedAt = observedAt
 
             for (bucket, score) in gbCourse.scores {
                 if let field = bucketToField[bucket], field != "ex1", field != "ex2" {
@@ -556,6 +586,16 @@ enum SkywardHistoryAPI {
         var updated = history
         updated[latestYear] = yearData
         return updated
+    }
+
+    private static func gradebookSemester(_ course: GradebookCourse) -> Semester? {
+        let buckets = Set(course.scores.map(\.bucket))
+        let hasFall = !buckets.isDisjoint(with: ["SEM 1", "TERM 1", "TERM 2", "TERM 3", "TERM 4", "TERM 5", "TERM 6"])
+        let hasSpring = !buckets.isDisjoint(with: ["SEM 2", "TERM 7", "TERM 8", "TERM 9", "TERM 10", "TERM 11", "TERM 12"])
+        if hasFall && hasSpring { return .both }
+        if hasFall { return .fall }
+        if hasSpring { return .spring }
+        return nil
     }
 
     private static func nextAcademicYearKey(
