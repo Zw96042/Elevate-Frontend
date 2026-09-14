@@ -410,3 +410,101 @@ enum SkywardLoaderMetadata {
         return result
     }
 
+    private static func validateStatusLiteral(_ options: [String: Any], literal: String) throws {
+        guard options["status"] != nil else { return }
+        // The grid parser accepts bare identifiers as data. A loader status
+        // must instead be a string literal, never a JavaScript variable.
+        let value = try fieldLiteral("status", in: literal)
+        guard value.first == "\"" || value.first == "'",
+              (try? JavaScriptLiteralParser.parse(value)) is String else { throw invalidMetadata() }
+    }
+
+    private static func fieldLiteral(_ name: String, in literal: String) throws -> String {
+        guard literal.first == "{", literal.last == "}" else { throw invalidMetadata() }
+        let fields = try statements(String(literal.dropFirst().dropLast()), separator: ",")
+        let pattern = "^\\s*(?:" + name + "|\"" + name + "\"|'" + name + "')\\s*:\\s*"
+        let values = fields.compactMap { field -> String? in
+            guard let key = field.range(of: pattern, options: .regularExpression) else { return nil }
+            return String(field[key.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard values.count == 1, let value = values.first else { throw invalidMetadata() }
+        return value
+    }
+
+    /// Split only top-level statements/fields. Quoted strings, templates,
+    /// comments, regex literals and nested function bodies cannot create matches.
+    private static func statements(_ source: String, separator: Character) throws -> [String] {
+        var scanner = StatementScanner(source)
+        return try scanner.split(separator: separator)
+    }
+
+    private static func invalidMetadata() -> SkywardError {
+        .invalidResponse("Skyward loader metadata is malformed or unsupported")
+    }
+
+    private final class Envelope: NSObject, XMLParserDelegate {
+        var metadata: [String] = []
+        var failed = false
+        private var path: [String] = []
+        private var text = ""
+        private var metadataSize = 0
+
+        func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName: String?, attributes: [String: String]) {
+            path.append(name.lowercased())
+            if path == ["response", "sff"] { text = "" }
+            if path.count > 64 || (path.count > 2 && Array(path.prefix(2)) == ["response", "sff"]) {
+                failed = true
+                parser.abortParsing()
+            }
+        }
+
+        func parser(_ parser: XMLParser, foundCharacters string: String) { append(string, parser: parser) }
+        func parser(_ parser: XMLParser, foundCDATA data: Data) {
+            guard let string = String(data: data, encoding: .utf8) else { failed = true; parser.abortParsing(); return }
+            append(string, parser: parser)
+        }
+
+        private func append(_ string: String, parser: XMLParser) {
+            guard path == ["response", "sff"] else { return }
+            metadataSize += string.utf8.count
+            guard metadataSize <= maximumMetadataBytes else { failed = true; parser.abortParsing(); return }
+            text += string
+        }
+
+        func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) {
+            if path == ["response", "sff"] { metadata.append(text) }
+            path.removeLast()
+        }
+    }
+
+    private struct StatementScanner {
+        var chars: [Character]
+        var index = 0
+        private var quoteDepth = 0
+        init(_ source: String) { chars = Array(source) }
+
+        mutating func split(separator: Character) throws -> [String] {
+            var result: [String] = []
+            var start = 0
+            var stack: [Character] = []
+            while index < chars.count {
+                let c = chars[index]
+                if c == "\"" || c == "'" || c == "`" { try skipQuoted(c); continue }
+                if c == "/" { try skipSlash(); continue }
+                if "({[".contains(c) {
+                    stack.append(c)
+                    guard stack.count <= 128 else { throw invalidMetadata() }
+                } else if ")}]".contains(c) {
+                    let expected: Character = c == ")" ? "(" : c == "}" ? "{" : "["
+                    guard stack.popLast() == expected else { throw invalidMetadata() }
+                } else if c == separator, stack.isEmpty {
+                    result.append(String(chars[start..<index]))
+                    start = index + 1
+                }
+                index += 1
+            }
+            guard stack.isEmpty else { throw invalidMetadata() }
+            result.append(String(chars[start..<index]))
+            return result
+        }
+
