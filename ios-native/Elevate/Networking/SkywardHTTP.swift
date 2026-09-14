@@ -273,10 +273,15 @@ enum SkywardHTTP {
     }
 
     static func checkSessionExpired(_ html: String) throws {
+        if let status = try SkywardLoaderMetadata.status(in: html) {
+            if status == "logout" { throw SkywardError.sessionExpired }
+            if status != "success", status != "valid" {
+                throw SkywardError.invalidResponse("Skyward loader request was unsuccessful")
+            }
+        }
         let normalized = html.lowercased()
         if normalized.contains("your session has expired")
             || normalized.contains("your session has timed out")
-            || normalized.contains("webspeed error")
             || normalized.contains("session has ended")
             || (normalized.contains("family access")
                 && normalized.contains("detailform")
@@ -285,3 +290,123 @@ enum SkywardHTTP {
         }
     }
 }
+
+/// The vendor's sff.request consumes response/sff text, then reads
+/// sff.httpCalls[requestId].options.status. Only this metadata can signal logout;
+/// arbitrary message text and JavaScript functions are never interpreted.
+enum SkywardLoaderMetadata {
+    struct Call {
+        let requestID: String
+        var options: [String: Any]?
+        var messages: [[String: Any]]?
+        var status: String? { options?["status"] as? String }
+    }
+
+    private struct Assignment {
+        let requestID: String
+        let field: String
+        let value: Any
+    }
+
+    private static let maximumEnvelopeBytes = 5_000_000
+    private static let maximumMetadataBytes = 512_000
+
+    static func status(in source: String) throws -> String? {
+        let statuses = try parse(source)?.compactMap(\.status) ?? []
+        // A response belongs to one request; conflicting statuses do not
+        // establish one trustworthy outcome without executing remote script.
+        guard statuses.count <= 1 else { throw invalidMetadata() }
+        return statuses.first
+    }
+
+    /// Nil denotes a non-loader response; callers can match the exact requestID.
+    /// The dictionaries contain bounded literal data, never executable values.
+    static func parse(_ source: String) throws -> [Call]? {
+        let envelopeStart = #"^\s*(?:<\?xml\b[^>]*>\s*)?<response(?:\s|>)"#
+        guard source.range(of: envelopeStart, options: [.regularExpression, .caseInsensitive]) != nil else { return nil }
+        guard source.utf8.count <= maximumEnvelopeBytes,
+              !source.localizedCaseInsensitiveContains("<!DOCTYPE") else { throw invalidMetadata() }
+        let delegate = Envelope()
+        let parser = XMLParser(data: Data(source.utf8))
+        parser.shouldResolveExternalEntities = false
+        parser.delegate = delegate
+        guard parser.parse(), !delegate.failed else { throw invalidMetadata() }
+        var assignments: [Assignment] = []
+        for metadata in delegate.metadata {
+            guard metadata.utf8.count <= maximumMetadataBytes else { throw invalidMetadata() }
+            let trimmed = metadata.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("<") {
+                // Script-looking text in a link, template or other inert HTML
+                // is not a top-level loader assignment.
+                var remainder = trimmed
+                let wrapper = #"^<script\b[^>]*>([\s\S]*?)</script\s*>"#
+                while remainder.range(of: #"^<script\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
+                    guard let match = SkywardGradesAPI.firstMatch(in: remainder, pattern: wrapper, caseInsensitive: true),
+                          let range = remainder.range(of: wrapper, options: [.regularExpression, .caseInsensitive]) else { throw invalidMetadata() }
+                    assignments += try parseAssignments(in: match[1])
+                    remainder = String(remainder[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                if !remainder.isEmpty, !assignments.isEmpty { throw invalidMetadata() }
+            } else {
+                assignments += try parseAssignments(in: trimmed)
+            }
+        }
+        var calls: [String: Call] = [:]
+        for assignment in assignments {
+            var call = calls[assignment.requestID] ?? Call(requestID: assignment.requestID)
+            if assignment.field == "options" {
+                guard call.options == nil, let options = assignment.value as? [String: Any] else { throw invalidMetadata() }
+                call.options = options
+            } else {
+                guard call.messages == nil, let messages = assignment.value as? [[String: Any]] else { throw invalidMetadata() }
+                call.messages = messages
+            }
+            calls[assignment.requestID] = call
+            guard calls.count <= 128 else { throw invalidMetadata() }
+        }
+        return calls.values.sorted { $0.requestID < $1.requestID }
+    }
+
+    private static func parseAssignments(in script: String) throws -> [Assignment] {
+        let requestKey = #"([0-9]+|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*")"#
+        let prefix = #"^sff\s*\.\s*httpCalls\s*\[\s*"# + requestKey + #"\s*\](?:\s*\.\s*(options|messages))?\s*="#
+        var result: [Assignment] = []
+        for statement in try statements(script, separator: ";") {
+            let statement = statement.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let match = SkywardGradesAPI.firstMatch(in: statement, pattern: prefix),
+                  let range = statement.range(of: prefix, options: .regularExpression) else { continue }
+            let requestID: String
+            let literal = String(statement[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let value: Any
+            do {
+                let key = try JavaScriptLiteralParser.parse(match[1])
+                if let string = key as? String { requestID = string }
+                else if let number = key as? Int { requestID = String(number) }
+                else { throw invalidMetadata() }
+                value = try JavaScriptLiteralParser.parse(literal)
+            } catch { throw invalidMetadata() }
+            if match[2].isEmpty {
+                // Verified loader wire shape assigns the whole request object.
+                guard let call = value as? [String: Any] else { throw invalidMetadata() }
+                if let optionsValue = call["options"] {
+                    guard let options = optionsValue as? [String: Any] else { throw invalidMetadata() }
+                    let optionsLiteral = try fieldLiteral("options", in: literal)
+                    try validateStatusLiteral(options, literal: optionsLiteral)
+                    result.append(Assignment(requestID: requestID, field: "options", value: options))
+                }
+                if let messagesValue = call["messages"] {
+                    guard let messages = messagesValue as? [[String: Any]] else { throw invalidMetadata() }
+                    _ = try fieldLiteral("messages", in: literal)
+                    result.append(Assignment(requestID: requestID, field: "messages", value: messages))
+                }
+            } else {
+                if match[2] == "options" {
+                    guard let options = value as? [String: Any] else { throw invalidMetadata() }
+                    try validateStatusLiteral(options, literal: literal)
+                } else if !(value is [[String: Any]]) { throw invalidMetadata() }
+                result.append(Assignment(requestID: requestID, field: match[2], value: value))
+            }
+        }
+        return result
+    }
+
