@@ -508,3 +508,65 @@ enum SkywardLoaderMetadata {
             return result
         }
 
+        mutating func skipQuoted(_ quote: Character) throws {
+            quoteDepth += 1
+            defer { quoteDepth -= 1 }
+            guard quoteDepth <= 128 else { throw invalidMetadata() }
+            index += 1
+            while index < chars.count {
+                if chars[index] == "\\" { index += 2; continue }
+                if chars[index] == quote { index += 1; return }
+                if quote == "`", chars[index] == "$", peek() == "{" {
+                    index += 2
+                    try skipInterpolation()
+                } else { index += 1 }
+            }
+            throw invalidMetadata()
+        }
+
+        mutating func skipInterpolation() throws {
+            var depth = 1
+            while index < chars.count {
+                let c = chars[index]
+                if c == "\"" || c == "'" || c == "`" { try skipQuoted(c); continue }
+                if c == "/" { try skipSlash(); continue }
+                if c == "{" { depth += 1; guard depth <= 128 else { throw invalidMetadata() } }
+                if c == "}" { depth -= 1; if depth == 0 { index += 1; return } }
+                index += 1
+            }
+            throw invalidMetadata()
+        }
+
+        mutating func skipSlash() throws {
+            let start = index
+            if peek() == "/" {
+                index += 2
+                while index < chars.count, chars[index] != "\n", chars[index] != "\r" { index += 1 }
+                for i in start..<index { chars[i] = " " }
+            } else if peek() == "*" {
+                index += 2
+                while index + 1 < chars.count, !(chars[index] == "*" && peek() == "/") { index += 1 }
+                guard index + 1 < chars.count else { throw invalidMetadata() }
+                index += 2
+                for i in start..<index { chars[i] = " " }
+            } else {
+                // Unknown executable expressions are ignored, not evaluated.
+                // Treat a slash-delimited regex as opaque so its semicolons and
+                // braces cannot manufacture a top-level options assignment.
+                index += 1
+                var inClass = false
+                while index < chars.count {
+                    let c = chars[index]
+                    if c == "\\" { index += 2; continue }
+                    if c == "[" { inClass = true }
+                    if c == "]" { inClass = false }
+                    if c == "/", !inClass { index += 1; return }
+                    index += 1
+                }
+                throw invalidMetadata()
+            }
+        }
+
+        private func peek() -> Character? { index + 1 < chars.count ? chars[index + 1] : nil }
+    }
+}
