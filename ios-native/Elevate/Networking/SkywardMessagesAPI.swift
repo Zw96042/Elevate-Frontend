@@ -90,7 +90,8 @@ enum SkywardMessagesAPI {
         if messageItems.isEmpty {
             switch context {
             case .initialPage:
-                let hasFeedAnchor = root.querySelector("#messageFeed") != nil
+                let hasFeedAnchor = root.querySelector("#MessageFeed li.emptyFeed") != nil
+                    || root.querySelector("#messageFeed") != nil
                     || root.querySelector("#messageWall") != nil
                     || root.querySelector("#messageCenter") != nil
                     || root.querySelector(".messageFeed") != nil
