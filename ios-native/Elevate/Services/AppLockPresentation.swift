@@ -107,3 +107,95 @@ struct AppLockPresentation<Content: View>: UIViewRepresentable {
             synchronize()
         }
 
+        func synchronize() {
+            guard let sourceWindow, let coverWindow else { return }
+            let shouldCover = store.isContentCovered
+            if shouldCover {
+                if originalWindowState == nil {
+                    originalWindowState = (sourceWindow.alpha, sourceWindow.isUserInteractionEnabled, sourceWindow.accessibilityElementsHidden)
+                    // Only sample a window the user has already seen. Cold
+                    // starts and already-hidden content use the opaque base.
+                    if hasShownUncoveredContent {
+                        backdropView?.image = AppLockBackdrop.image(from: sourceWindow)
+                    }
+                    sourceWindow.endEditing(true)
+                }
+                if UIAccessibility.isReduceTransparencyEnabled { backdropView?.image = nil }
+                updateBackdropDiagnostic()
+                // Hide the source window itself as well, so presented sheets,
+                // accessibility, hardware keyboard actions and snapshots cannot
+                // expose or interact with a covered screen.
+                sourceWindow.alpha = 0
+                sourceWindow.isUserInteractionEnabled = false
+                sourceWindow.accessibilityElementsHidden = true
+                if coverWindow.isHidden {
+                    coverWindow.makeKeyAndVisible()
+                    coverWindow.layoutIfNeeded()
+                    UIAccessibility.post(notification: .screenChanged, argument: host?.view)
+                }
+            } else {
+                backdropView?.image = nil
+                updateBackdropDiagnostic()
+                restoreSourceWindow()
+                coverWindow.isHidden = true
+                if !sourceWindow.isHidden, sourceWindow.alpha > 0 {
+                    hasShownUncoveredContent = true
+                }
+            }
+        }
+
+        func detach() {
+            backdropView?.image = nil
+            backdropView = nil
+            hasShownUncoveredContent = false
+            restoreSourceWindow()
+            coverWindow?.isHidden = true
+            coverWindow?.rootViewController = nil
+            coverWindow = nil
+            host = nil
+            sourceWindow = nil
+            if store.privacyCover === self { store.privacyCover = nil }
+        }
+
+        private func restoreSourceWindow() {
+            guard let sourceWindow, let originalWindowState else { return }
+            sourceWindow.alpha = originalWindowState.alpha
+            sourceWindow.isUserInteractionEnabled = originalWindowState.interactive
+            sourceWindow.accessibilityElementsHidden = originalWindowState.accessibilityHidden
+            if coverWindow?.isKeyWindow == true { sourceWindow.makeKey() }
+            self.originalWindowState = nil
+        }
+
+        private func belongsToScene(_ notification: Notification) -> Bool {
+            (notification.object as? UIScene) === sourceWindow?.windowScene
+        }
+
+        @objc private func transparencyPreferenceChanged() {
+            // Never recover a backdrop by sampling an already-covered window.
+            // Turning transparency back on waits for the next visible session.
+            if UIAccessibility.isReduceTransparencyEnabled { backdropView?.image = nil }
+            updateBackdropDiagnostic()
+        }
+
+        private func updateBackdropDiagnostic() {
+#if DEBUG
+            let arguments = ProcessInfo.processInfo.arguments
+            guard arguments.contains("-SampleData"), arguments.contains("-AppLockPreview") else { return }
+            // Synthetic runtime verification only; exposes no image or account data.
+            guard let pixels = backdropView?.image?.cgImage else {
+                coverWindow?.accessibilityValue = "No contextual backdrop"
+                return
+            }
+            switch AppLockBackdrop.hasColorVariation(pixels) {
+            case true?: coverWindow?.accessibilityValue = "Blurred backdrop present-varied"
+            case false?: coverWindow?.accessibilityValue = "Blurred backdrop present-flat"
+            case nil: coverWindow?.accessibilityValue = "Blurred backdrop present"
+            }
+#endif
+        }
+
+        @objc private func sceneWillDeactivate(_ notification: Notification) {
+            guard belongsToScene(notification) else { return }
+            store.scenePhaseChanged(.inactive)
+        }
+
