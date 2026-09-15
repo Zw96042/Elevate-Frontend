@@ -107,3 +107,80 @@ enum SkywardStudentInfoAPI {
                                                enrollments: enrollments), photoPath: photoPath?.isEmpty == false ? photoPath : nil)
     }
 
+    private static func fields(_ table: HTMLNode, allowed: Set<String>, cellCount: Int, skipping headerRow: HTMLNode? = nil) throws -> [StudentInfoField] {
+        let rows = table.querySelectorAll("tr").filter { nearestTable($0) === table }
+        guard rows.contains(where: { $0 !== headerRow }) else { throw invalid("profile section is empty") }
+        var result: [StudentInfoField] = []
+        for row in rows where row !== headerRow {
+            let cells = row.elements
+            guard cells.count == cellCount, cells.allSatisfy({ $0.tagName == "td" && $0.querySelector("table") == nil
+                && $0.querySelector("script") == nil && $0.querySelector("style") == nil }) else {
+                throw invalid("profile row is unrecognized")
+            }
+            for index in stride(from: 0, to: cells.count, by: 2) {
+                let label = clean(cells[index].text)
+                let value = readable(cells[index + 1])
+                if label.isEmpty && value.isEmpty { continue }
+                guard allowed.contains(label), !result.contains(where: { $0.label == label }) else {
+                    throw invalid("profile field is unrecognized")
+                }
+                result.append(StudentInfoField(label: label, value: value))
+            }
+        }
+        return result
+    }
+
+    private static func readable(_ node: HTMLNode) -> String {
+        if node.isText { return node.text }
+        if node.tagName == "br" { return "\n" }
+        let text = node.children.map(readable).joined()
+        return node.tagName == "td" ? text.components(separatedBy: "\n").map(clean).filter { !$0.isEmpty }.joined(separator: "\n") : text
+    }
+    private static func clean(_ text: String) -> String { text.split(whereSeparator: \.isWhitespace).joined(separator: " ") }
+    private static func matches(_ value: String, _ pattern: String) -> Bool { value.range(of: pattern, options: .regularExpression) != nil }
+    private static func invalid(_ detail: String) -> SkywardError { .invalidResponse("student information \(detail)") }
+    private static func nearestTable(_ node: HTMLNode) -> HTMLNode? {
+        var parent = node.parent
+        while let current = parent {
+            if current.tagName == "table" { return current }
+            parent = current.parent
+        }
+        return nil
+    }
+
+    private static func requireCompleteTable(_ html: String, tableID: String) throws {
+        let noise = #"<!--[\s\S]*?-->|<script\b[^>]*>[\s\S]*?</script\s*>|<style\b[^>]*>[\s\S]*?</style\s*>"#
+        let source = html.replacingOccurrences(of: noise, with: "", options: [.regularExpression, .caseInsensitive])
+        let regex = try NSRegularExpression(pattern: #"<\s*(/?)\s*([a-z][a-z0-9:-]*)\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>"#, options: .caseInsensitive)
+        var stack: [String] = []
+        var found = false
+        for match in regex.matches(in: source, range: NSRange(source.startIndex..., in: source)) {
+            guard let range = Range(match.range, in: source), let nameRange = Range(match.range(at: 2), in: source) else { continue }
+            let name = source[nameRange].lowercased()
+            let closing = match.range(at: 1).length > 0
+            guard ["table", "thead", "tbody", "tfoot", "tr", "td", "th"].contains(name) else { continue }
+            if !found {
+                guard name == "table", !closing,
+                      MiniHTML.parse(String(source[range]) + "</table>").querySelector("table")?.id == tableID else { continue }
+                found = true
+                stack.append(name)
+                continue
+            }
+            if closing {
+                if name == "table", stack.last == "tbody" { stack.removeLast() }
+                guard stack.last == name else { throw invalid("table structure is incomplete") }
+                stack.removeLast()
+                if stack.isEmpty { return }
+            } else {
+                let parent = stack.last ?? ""
+                let valid = name == "table" ? ["td", "th"].contains(parent)
+                    : ["thead", "tbody", "tfoot"].contains(name) ? parent == "table"
+                    : name == "tr" ? ["table", "thead", "tbody", "tfoot"].contains(parent)
+                    : parent == "tr"
+                guard valid, !source[range].hasSuffix("/>") else { throw invalid("table structure is incomplete") }
+                stack.append(name)
+            }
+        }
+        throw invalid("table is truncated")
+    }
+}
