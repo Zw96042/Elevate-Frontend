@@ -199,3 +199,95 @@ struct AppLockPresentation<Content: View>: UIViewRepresentable {
             store.scenePhaseChanged(.inactive)
         }
 
+        @objc private func sceneDidEnterBackground(_ notification: Notification) {
+            guard belongsToScene(notification) else { return }
+            store.scenePhaseChanged(.background)
+        }
+
+        @objc private func sceneDidActivate(_ notification: Notification) {
+            guard belongsToScene(notification) else { return }
+            store.scenePhaseChanged(.active)
+        }
+
+        @objc private func sceneDidDisconnect(_ notification: Notification) {
+            guard belongsToScene(notification) else { return }
+            store.scenePhaseChanged(.background)
+            detach()
+        }
+    }
+}
+
+/// Keeps only coarse colors, never a screen-sized screenshot. The visible view
+/// hierarchy draws into at most 2,304 pixels, then those pixels are blurred before
+/// any image is installed in the cover. Nothing is saved, logged or encoded.
+@MainActor private enum AppLockBackdrop {
+    private static let context = CIContext(options: [
+        .useSoftwareRenderer: true,
+        .cacheIntermediates: false,
+    ])
+
+#if DEBUG
+    /// Inspect only the already-blurred thumbnail, never the source screen.
+    /// A two-level tolerance ignores RGB conversion/rounding noise.
+    static func hasColorVariation(_ image: CGImage) -> Bool? {
+        guard image.width > 0, image.width <= 32,
+              image.height > 0, image.height <= 72 else { return nil }
+        var bytes = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        return bytes.withUnsafeMutableBytes { buffer -> Bool? in
+            guard let graphics = CGContext(
+                data: buffer.baseAddress, width: image.width, height: image.height,
+                bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+            ) else { return nil }
+            graphics.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            var minimum = [UInt8](repeating: 255, count: 3)
+            var maximum = [UInt8](repeating: 0, count: 3)
+            for pixel in stride(from: 0, to: buffer.count, by: 4) {
+                for channel in 0..<3 {
+                    minimum[channel] = min(minimum[channel], buffer[pixel + channel])
+                    maximum[channel] = max(maximum[channel], buffer[pixel + channel])
+                }
+            }
+            return (0..<3).contains { Int(maximum[$0]) - Int(minimum[$0]) > 2 }
+        }
+    }
+#endif
+
+    static func image(from window: UIWindow) -> UIImage? {
+        guard !UIAccessibility.isReduceTransparencyEnabled,
+              !window.isHidden, window.alpha > 0,
+              window.bounds.width > 0, window.bounds.height > 0 else { return nil }
+        return autoreleasepool {
+            let bounds = window.bounds
+            let scale = min(32 / bounds.width, 72 / bounds.height)
+            let size = CGSize(width: max(1, floor(bounds.width * scale)),
+                              height: max(1, floor(bounds.height * scale)))
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            format.opaque = true
+            format.preferredRange = .standard
+            var isComplete = false
+            let thumbnail = UIGraphicsImageRenderer(size: size, format: format).image { renderer in
+                UIColor.systemBackground.setFill()
+                renderer.fill(CGRect(origin: .zero, size: size))
+                let graphics = renderer.cgContext
+                graphics.interpolationQuality = .high
+                graphics.scaleBy(x: size.width / bounds.width, y: size.height / bounds.height)
+                graphics.translateBy(x: -bounds.minX, y: -bounds.minY)
+                // Draw the current onscreen hierarchy, including composited
+                // SwiftUI content, directly into this tiny context. Waiting for
+                // updates could incorporate the lock's hidden source state.
+                isComplete = window.drawHierarchy(in: bounds, afterScreenUpdates: false)
+            }
+            // Partial captures use the opaque fallback, never a larger image.
+            guard isComplete, let input = CIImage(image: thumbnail) else { return nil }
+            let blur = CIFilter.gaussianBlur()
+            blur.inputImage = input.clampedToExtent()
+            blur.radius = 3
+            guard let output = blur.outputImage?.cropped(to: input.extent),
+                  let pixels = context.createCGImage(output, from: input.extent) else { return nil }
+            return UIImage(cgImage: pixels)
+        }
+    }
+}
