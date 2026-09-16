@@ -109,3 +109,108 @@ actor AuthenticationCoordinator {
         return result
     }
 
+    private func validateRequest(credentials: SkywardCredentials, generation requestGeneration: Int) throws {
+        try Task.checkCancellation()
+        guard requestGeneration == generation, loadCredentials() == credentials else {
+            throw CancellationError()
+        }
+    }
+
+    func authenticate(
+        credentials: SkywardCredentials,
+        persistSession: Bool
+    ) async throws -> SkywardSessionCodes {
+        try Task.checkCancellation()
+        let requestGeneration = generation
+        while let active = inFlight {
+            let activeID = inFlightID
+            if inFlightCredentials == credentials, let activeID {
+                let codes = try await active.value
+                return try finish(
+                    codes: codes, credentials: credentials,
+                    persistSession: persistSession, requestGeneration: requestGeneration,
+                    authenticationID: activeID
+                )
+            }
+            _ = try? await active.value
+            guard generation == requestGeneration, !Task.isCancelled else {
+                throw CancellationError()
+            }
+            if inFlightID == activeID {
+                inFlight = nil
+                inFlightID = nil
+                inFlightCredentials = nil
+            }
+            // Another credential verification may have acquired the slot while
+            // this caller waited. Recheck before starting a competing login.
+        }
+        let requestID = UUID()
+        let login = self.login
+        let task = Task<SkywardSessionCodes, Error> {
+            try await login(credentials)
+        }
+        inFlightID = requestID
+        latestAuthenticationID = requestID
+        inFlight = task
+        inFlightCredentials = credentials
+        do {
+            let codes = try await task.value
+            if inFlightID == requestID {
+                inFlight = nil
+                inFlightID = nil
+                inFlightCredentials = nil
+            }
+            return try finish(
+                codes: codes, credentials: credentials,
+                persistSession: persistSession, requestGeneration: requestGeneration,
+                authenticationID: requestID
+            )
+        } catch {
+            if inFlightID == requestID {
+                inFlight = nil
+                inFlightID = nil
+                inFlightCredentials = nil
+            }
+            throw error
+        }
+    }
+
+    func cancel() {
+        generation &+= 1
+        inFlight?.cancel()
+        latestAuthenticationID = nil
+        inFlight = nil
+        inFlightID = nil
+        inFlightCredentials = nil
+    }
+
+    private func finish(
+        codes: SkywardSessionCodes,
+        credentials: SkywardCredentials,
+        persistSession: Bool,
+        requestGeneration: Int,
+        authenticationID: UUID
+    ) throws -> SkywardSessionCodes {
+        guard AuthenticationRequestPolicy.permitsCompletion(
+            isCancelled: Task.isCancelled,
+            requestGeneration: requestGeneration,
+            currentGeneration: generation
+        ), latestAuthenticationID == authenticationID else {
+            throw CancellationError()
+        }
+        if persistSession {
+            guard SessionPersistencePolicy.permitsSave(
+                requestedCredentials: credentials,
+                currentCredentials: loadCredentials(),
+                isCancelled: false,
+                requestGeneration: requestGeneration,
+                currentGeneration: generation
+            ) else {
+                throw CancellationError()
+            }
+            try saveSession(codes, CredentialStore.accountIdentifier(for: credentials.username))
+        }
+        return codes
+    }
+}
+
