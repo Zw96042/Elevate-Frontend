@@ -397,6 +397,10 @@ actor DataService {
         inFlightGradeInfo.removeAll()
         JSONCache.clear(prefix: Self.coursesCacheKey)
         JSONCache.clear(prefix: Self.messagesCacheKey)
+        JSONCache.clear(prefix: Self.attendanceCacheKey)
+        JSONCache.clear(prefix: Self.feesCacheKey)
+        JSONCache.clear(prefix: Self.studentInfoCacheKey)
+        JSONCache.clear(prefix: Self.documentsCacheKey)
         JSONCache.clear(prefix: "gradeInfo_")
     }
 
@@ -409,22 +413,17 @@ actor DataService {
         )
     }
 
+    private nonisolated static func gradeInfoCacheKey(params: GradeInfoParams) -> String? {
+        cacheKey(base: [
+            "gradeInfo", params.stuId, params.corNumId, params.gbId, params.section, params.bucket,
+        ].joined(separator: "_"))
+    }
+
     /// Runs `operation` with a valid session, re-authenticating once on expiry.
-    private static func withSessionRetry<T>(
-        _ operation: (SkywardSessionCodes, String) async throws -> T
+    private static func withSessionRetry<T: Sendable>(
+        _ operation: @Sendable (SkywardSessionCodes, String) async throws -> T
     ) async throws -> T {
-        let (codes, baseUrl) = try await AuthService.currentSession()
-        do {
-            return try await operation(codes, baseUrl)
-        } catch SkywardError.sessionExpired {
-            if let accountIdentifier = CredentialStore.currentAccountIdentifier {
-                try? SessionStore.clear(accountIdentifier: accountIdentifier)
-            } else {
-                SessionStore.invalidateUnboundLegacySessions()
-            }
-            let freshCodes = try await AuthService.authenticate()
-            return try await operation(freshCodes, baseUrl)
-        }
+        try await AuthenticationCoordinator.shared.withSessionRetry(operation)
     }
 
     /// Flattens academic history years into the unified course list.
