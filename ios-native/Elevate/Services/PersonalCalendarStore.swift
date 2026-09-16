@@ -99,3 +99,94 @@ final class PersonalCalendarStore {
         if needsSave { saveSelection() }
     }
 
+    // MARK: - Access
+
+    private static func currentAccess() -> Access {
+        switch EKEventStore.authorizationStatus(for: .event) {
+        case .notDetermined: return .notDetermined
+        case .fullAccess: return .full
+        case .writeOnly: return .writeOnly
+        case .restricted: return .restricted
+        case .denied: return .denied
+        // `.authorized` is the pre-iOS 17 spelling of full access.
+        default: return .full
+        }
+    }
+
+    /// iOS Settings may have changed access while Elevate was away.
+    func refreshAccess() {
+        guard sample == nil else { return }
+        let current = Self.currentAccess()
+        guard current != access else { return }
+        access = current
+        reloadCalendars()
+        reloadMonth()
+        changeCount += 1
+    }
+
+    func requestAccess() async {
+        guard access == .notDetermined, !isRequestingAccess else { return }
+        isRequestingAccess = true
+        defer { isRequestingAccess = false }
+        if sample != nil {
+            access = .full
+        } else {
+            do {
+                _ = try await reader.store.requestFullAccessToEvents()
+                error = nil
+            } catch {
+                self.error = "Couldn't ask for calendar access. Try again in a moment."
+            }
+            access = Self.currentAccess()
+        }
+        if access == .full { needsCalendarChoice = true }
+        reloadCalendars()
+        reloadMonth()
+    }
+
+    func calendarChoiceShown() {
+        needsCalendarChoice = false
+    }
+
+    // MARK: - Choices
+
+    func setShown(_ shown: Bool, for calendar: PersonalCalendarInfo) {
+        selection.setShown(shown, for: calendar)
+        saveSelection()
+        reloadMonth()
+    }
+
+    func dismissInvitation() {
+        selection.dismissedPrompt = true
+        saveSelection()
+    }
+
+    /// The saved choice, and whether none was saved under v2 yet. A v1
+    /// opt-out list isn't carried over, only whether the invitation was
+    /// dismissed; the v1 value is removed.
+    private static func loadSelection() -> (PersonalCalendarSelection, isNew: Bool) {
+        let defaults = UserDefaults.standard
+        let legacyKey = "personalCalendars.selection.v1"
+        if let data = defaults.data(forKey: PersonalCalendarSelection.storageKey) {
+            guard data.count <= 200_000,
+                  let value = try? JSONDecoder().decode(PersonalCalendarSelection.self, from: data)
+            else { return (PersonalCalendarSelection(), false) }
+            return (value, false)
+        }
+        var fresh = PersonalCalendarSelection()
+        if let legacy = defaults.data(forKey: legacyKey), legacy.count <= 200_000,
+           let object = try? JSONSerialization.jsonObject(with: legacy) as? [String: Any],
+           object["dismissedPrompt"] as? Bool == true {
+            fresh.dismissedPrompt = true
+        }
+        defaults.removeObject(forKey: legacyKey)
+        return (fresh, true)
+    }
+
+    private func saveSelection() {
+        guard sample == nil, let data = try? JSONEncoder().encode(selection) else { return }
+        UserDefaults.standard.set(data, forKey: PersonalCalendarSelection.storageKey)
+    }
+
+    // MARK: - Loading
+
