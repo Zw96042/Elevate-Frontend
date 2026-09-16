@@ -111,3 +111,34 @@ enum BackgroundGradeRefresh {
         }
     }
 
+    @available(iOS, introduced: 17, obsoleted: 27)
+    private static func submitLegacyRequest(at date: Date) throws {
+        let request = BGAppRefreshTaskRequest(identifier: identifier)
+        request.earliestBeginDate = date
+        try BGTaskScheduler.shared.submit(request)
+    }
+
+    private static var schedulingEnabled: Bool {
+        // The hint permits resubmission before first unlock only, never fetching.
+        if let account = CredentialStore.currentAccountIdentifier {
+            let enabled = SchoolNotifications.shared.accountScope == account && SchoolNotifications.shared.gradeChangesEnabled
+            UserDefaults.standard.set(enabled, forKey: enabledHintKey)
+            return enabled
+        }
+        return UIApplication.shared.applicationState != .active && UserDefaults.standard.bool(forKey: enabledHintKey)
+    }
+
+    static func cancel() {
+        schedulingRevision = UUID()
+        UserDefaults.standard.set(false, forKey: enabledHintKey)
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: identifier)
+    }
+}
+
+final class ElevateAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        BackgroundGradeRefresh.register()
+        _ = SchoolNotifications.shared
+        return true
+    }
+}
