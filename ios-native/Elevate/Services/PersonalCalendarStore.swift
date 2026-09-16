@@ -190,3 +190,101 @@ final class PersonalCalendarStore {
 
     // MARK: - Loading
 
+    private func reloadCalendars() {
+        guard access == .full else { calendars = []; return }
+        calendars = sample?.calendars ?? reader.calendars()
+    }
+
+    private func storeChanged() {
+        guard isActive else { return }
+        reloadCalendars()
+        reloadMonth()
+        changeCount += 1
+    }
+
+    /// Reads the loaded months again, unless the page leaves or another read
+    /// starts before this one runs.
+    private func reloadMonth() {
+        guard isActive, let months = loadedMonths else { return }
+        let expected = generation
+        Task {
+            guard isActive, generation == expected else { return }
+            await fetch(year: months.year, month: months.month, count: months.count)
+        }
+    }
+
+    /// Calendar left the screen, the app moved to the background, or Skyward
+    /// was disconnected: stop reading and drop any read still in flight.
+    /// Events stay in memory only for a tab switch or a pushed page
+    /// (`keepingEvents`), so coming back doesn't empty and refill the grid;
+    /// the next load reads them again either way.
+    func deactivate(keepingEvents: Bool = false) {
+        isActive = false
+        generation += 1
+        loadedMonths = nil
+        if !keepingEvents { eventsByDay = [:] }
+        isLoading = false
+    }
+
+    /// Reads the months on screen (the one holding the visible days, and
+    /// the next when they straddle a month end) from the shown calendars
+    /// while Calendar is on screen. A newer request, a change of access or
+    /// choices, or leaving the page meanwhile replaces this one's result.
+    func load(year: Int, month: Int, monthCount: Int = 1) async {
+        if !isActive {
+            // Calendars or an open event may have changed while away.
+            isActive = true
+            reloadCalendars()
+            changeCount += 1
+        }
+        await fetch(year: year, month: month, count: monthCount)
+    }
+
+    /// The months the grid shows, read as one span from the earliest through
+    /// the latest. A span longer than the cap keeps the months around today.
+    func load(months: [CalendarMonth], today: CalendarMonth) async {
+        guard let first = months.min(), let last = months.max() else { return }
+        let firstIndex = first.year * 12 + first.month - 1
+        let lastIndex = last.year * 12 + last.month - 1
+        let todayIndex = today.year * 12 + today.month - 1
+        let start = max(firstIndex, min(todayIndex - Self.monthCap / 2, lastIndex - Self.monthCap + 1))
+        let count = min(lastIndex - start + 1, Self.monthCap)
+        await load(year: start / 12, month: start % 12 + 1, monthCount: count)
+    }
+
+    /// The most months read at once.
+    static let monthCap = 14
+
+    private func fetch(year: Int, month: Int, count: Int) async {
+        // The whole school year Calendar shows, read once while it's open.
+        let count = max(1, min(count, Self.monthCap))
+        loadedMonths = (year, month, count)
+        generation += 1
+        let request = generation
+        let shownIDs = Set(shownCalendars.map(\.id))
+        guard !shownIDs.isEmpty,
+              let interval = PersonalEventDays.monthsInterval(year: year, month: month, count: count,
+                                                              calendar: PersonalEventDays.dayCalendar)
+        else {
+            eventsByDay = [:]
+            isLoading = false
+            return
+        }
+        isLoading = true
+        let events: [PersonalEvent]
+        if let sample {
+            events = sample.events(in: interval).filter { shownIDs.contains($0.calendarID) }
+        } else {
+            let reader = reader
+            // EventKit's fetch is synchronous; Apple recommends running it
+            // off the main thread.
+            events = await Task.detached(priority: .userInitiated) {
+                reader.events(in: interval, calendarIDs: shownIDs)
+            }.value
+        }
+        guard request == generation, isActive else { return }
+        eventsByDay = PersonalEventDays.index(events, calendar: PersonalEventDays.dayCalendar, within: interval)
+        isLoading = false
+        error = nil
+    }
+
