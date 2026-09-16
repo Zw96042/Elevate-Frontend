@@ -7,16 +7,34 @@ actor DataService {
 
     private static let coursesCacheKey = "unifiedCourseData"
     private static let messagesCacheKey = "skywardMessages"
+    private static let attendanceCacheKey = "skywardAttendance"
+    private static let feesCacheKey = "skywardFees"
+    private static let studentInfoCacheKey = "skywardStudentInfo"
+    private static let documentsCacheKey = "skywardDocuments"
+    private static let documentsCacheMaxAge: TimeInterval = 30 * 60
+    private static let feesCacheMaxAge: TimeInterval = 30 * 60
+    private static let studentInfoCacheMaxAge: TimeInterval = 30 * 60
+    private static let attendanceCacheMaxAge: TimeInterval = 30 * 60
     private static let coursesCacheMaxAge: TimeInterval = 30 * 60      // 30 min
     private static let messagesCacheMaxAge: TimeInterval = 30 * 60     // 30 min
     private static let gradeInfoCacheMaxAge: TimeInterval = 5 * 60     // 5 min
 
     private var inFlightCourses: Task<[UnifiedCourseData], Error>?
+    private var inFlightAttendance: Task<AttendanceData, Error>?
+    private var inFlightFees: Task<FeesData, Error>?
+    private var inFlightStudentInfo: Task<StudentInfoData, Error>?
+    private var inFlightDocuments: Task<DocumentsData, Error>?
     private var inFlightGradeInfo: [String: Task<GradeInfoResult, Error>] = [:]
     private var cacheGeneration = 0
 
     func cancelAuthentication() async {
         await AuthService.cancelAuthentication()
+    }
+
+    /// Background expiration must cancel the owned transport, not just its waiter.
+    func cancelCourseRefresh(accountScope: String) {
+        guard CredentialStore.currentAccountIdentifier == accountScope else { return }
+        inFlightCourses?.cancel()
     }
 
     /// Last-known-good disk values remain available after expiry so AppStore
@@ -45,17 +63,53 @@ actor DataService {
 
     // MARK: - Combined course data
 
-    func combinedCourses(forceRefresh: Bool = false) async throws -> [UnifiedCourseData] {
-        guard let cacheKey = Self.cacheKey(base: Self.coursesCacheKey) else {
+    nonisolated func cachedAttendance() -> JSONCacheRecord<AttendanceData>? {
+        guard let cacheKey = Self.cacheKey(base: Self.attendanceCacheKey) else { return nil }
+        return JSONCache.record(AttendanceData.self, key: cacheKey, maxAge: Self.attendanceCacheMaxAge)
+    }
+
+    func loadAttendance(forceRefresh: Bool = false) async throws -> AttendanceData {
+        guard let account = CredentialStore.currentAccountIdentifier,
+              let cacheKey = Self.cacheKey(base: Self.attendanceCacheKey) else {
             throw SkywardError.missingSession
         }
         if !forceRefresh,
-           let cached = JSONCache.load([UnifiedCourseData].self, key: cacheKey, maxAge: Self.coursesCacheMaxAge) {
-            _ = LegacyAsyncStorageMigration.bindPendingCourseData(to: cached)
-            return cached
+           let saved = JSONCache.load(AttendanceData.self, key: cacheKey, maxAge: Self.attendanceCacheMaxAge) {
+            return saved
         }
-        if let task = inFlightCourses {
-            return try await task.value
+        if let task = inFlightAttendance { return try await task.value }
+        let generation = cacheGeneration
+        let task = Task<AttendanceData, Error> {
+            try await Self.withSessionRetry { codes, baseUrl in
+                try Task.checkCancellation()
+                guard CredentialStore.currentAccountIdentifier == account else { throw CancellationError() }
+                return try await SkywardAttendanceAPI.fetch(baseUrl: baseUrl, sessionCodes: codes)
+            }
+        }
+        inFlightAttendance = task
+        defer { if generation == cacheGeneration { inFlightAttendance = nil } }
+        let attendance = try await task.value
+        try Task.checkCancellation()
+        guard generation == cacheGeneration, CredentialStore.currentAccountIdentifier == account else {
+            throw CancellationError()
+        }
+        JSONCache.save(attendance, key: cacheKey)
+        return attendance
+    }
+
+    nonisolated func cachedFees() -> JSONCacheRecord<FeesData>? {
+        guard let cacheKey = Self.cacheKey(base: Self.feesCacheKey) else { return nil }
+        return JSONCache.record(FeesData.self, key: cacheKey, maxAge: Self.feesCacheMaxAge)
+    }
+
+    func loadFees(forceRefresh: Bool = false) async throws -> FeesData {
+        guard let account = CredentialStore.currentAccountIdentifier,
+              let cacheKey = AccountCacheNamespace.key(base: Self.feesCacheKey, accountIdentifier: account) else {
+            throw SkywardError.missingSession
+        }
+        if !forceRefresh,
+           let saved = JSONCache.load(FeesData.self, key: cacheKey, maxAge: Self.feesCacheMaxAge) {
+            return saved
         }
         let generation = cacheGeneration
         let task = Task<[UnifiedCourseData], Error> {
