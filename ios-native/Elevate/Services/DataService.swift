@@ -220,8 +220,53 @@ actor DataService {
         return result
     }
 
+    func openDocument(id: String) async throws -> SkywardBinaryHTTP.Resource {
+        guard let account = CredentialStore.currentAccountIdentifier else { throw SkywardError.missingSession }
+        let generation = cacheGeneration
+        let resource = try await Self.withSessionRetry { codes, baseUrl in
+            try Task.checkCancellation()
+            guard CredentialStore.currentAccountIdentifier == account else { throw CancellationError() }
+            return try await SkywardDocumentsAPI.open(documentID: id, baseUrl: baseUrl, sessionCodes: codes)
+        }
+        try Task.checkCancellation()
+        guard generation == cacheGeneration, CredentialStore.currentAccountIdentifier == account else {
+            throw CancellationError()
+        }
+        return resource
+    }
+
+    func combinedCourses(forceRefresh: Bool = false) async throws -> [UnifiedCourseData] {
+        try await combinedCoursesObservation(forceRefresh: forceRefresh).courses.filter { $0.isPlanningOnly != true }
+    }
+
+    struct CourseObservation: Sendable {
+        var courses: [UnifiedCourseData]
+        var freshValidated: Bool
+        var updatedAt: Date
+    }
+
+    /// Notification history must never treat disk hydration as a new observation.
+    func combinedCoursesObservation(forceRefresh: Bool = false) async throws -> CourseObservation {
+        try Task.checkCancellation()
+        guard let account = CredentialStore.currentAccountIdentifier,
+              let cacheKey = Self.cacheKey(base: Self.coursesCacheKey) else {
+            throw SkywardError.missingSession
+        }
+        if !forceRefresh,
+           let cached = cachedCourses(), cached.isFresh {
+            _ = LegacyAsyncStorageMigration.bindPendingCourseData(to: cached.value.filter { $0.isPlanningOnly != true })
+            return CourseObservation(courses: cached.value, freshValidated: false, updatedAt: cached.updatedAt)
+        }
+        let generation = cacheGeneration
+        if let task = inFlightCourses {
+            let courses = try await task.value
+            try Task.checkCancellation()
+            guard generation == cacheGeneration, CredentialStore.currentAccountIdentifier == account else { throw CancellationError() }
+            return CourseObservation(courses: courses, freshValidated: true, updatedAt: Date())
+        }
         let task = Task<[UnifiedCourseData], Error> {
             try await Self.withSessionRetry { codes, baseUrl in
+                guard CredentialStore.currentAccountIdentifier == account else { throw CancellationError() }
                 let history = try await SkywardHistoryAPI.fetchCombinedAcademicData(baseUrl: baseUrl, sessionCodes: codes)
                 return Self.transform(history: history)
             }
@@ -231,22 +276,46 @@ actor DataService {
             if generation == cacheGeneration { inFlightCourses = nil }
         }
         let courses = try await task.value
-        guard generation == cacheGeneration else { throw CancellationError() }
+        try Task.checkCancellation()
+        guard generation == cacheGeneration, CredentialStore.currentAccountIdentifier == account else { throw CancellationError() }
         JSONCache.save(courses, key: cacheKey)
-        _ = LegacyAsyncStorageMigration.bindPendingCourseData(to: courses)
-        return courses
+        let officialCourses = courses.filter { $0.isPlanningOnly != true }
+        GradeJournalStore(accountIdentifier: account).observeCourseAverages(courses: officialCourses, expectedAccountIdentifier: account)
+        _ = LegacyAsyncStorageMigration.bindPendingCourseData(to: officialCourses)
+        return CourseObservation(courses: courses, freshValidated: true, updatedAt: Date())
     }
 
     // MARK: - Per-class grade info
 
+    nonisolated func cachedGradeInfo(params: GradeInfoParams) -> JSONCacheRecord<GradeInfoResult>? {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           ["-PreviewAssignmentLoading", "-AssignmentRoutingPreview", "-FutureQuarterPreview"]
+            .contains(where: ProcessInfo.processInfo.arguments.contains) { return nil }
+        #endif
+        guard let cacheKey = Self.gradeInfoCacheKey(params: params) else { return nil }
+        return JSONCache.record(
+            GradeInfoResult.self,
+            key: cacheKey,
+            maxAge: Self.gradeInfoCacheMaxAge
+        )
+    }
+
     func gradeInfo(params: GradeInfoParams, forceRefresh: Bool = false) async throws -> GradeInfoResult {
         #if DEBUG
-        if let sample = SampleData.gradeInfo(for: params) { return sample }
+        if let sample = SampleData.gradeInfo(for: params) {
+            if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+               ProcessInfo.processInfo.arguments.contains("-PreviewAssignmentLoading") {
+                try await Task.sleep(for: .seconds(60))
+            }
+            if ProcessInfo.processInfo.arguments.contains("-FailSecondQuarter"), params.bucket == TermLabel.q2.bucket {
+                throw SkywardError.invalidResponse("Synthetic quarter response failure")
+            }
+            return sample
+        }
         #endif
-        let cacheBase = [
-            "gradeInfo", params.stuId, params.corNumId, params.gbId, params.section, params.bucket,
-        ].joined(separator: "_")
-        guard let cacheKey = Self.cacheKey(base: cacheBase) else {
+        guard let account = CredentialStore.currentAccountIdentifier,
+              let cacheKey = Self.gradeInfoCacheKey(params: params) else {
             throw SkywardError.missingSession
         }
         if !forceRefresh,
@@ -267,8 +336,19 @@ actor DataService {
             if generation == cacheGeneration { inFlightGradeInfo[cacheKey] = nil }
         }
         let result = try await task.value
-        guard generation == cacheGeneration else { throw CancellationError() }
+        guard generation == cacheGeneration, CredentialStore.currentAccountIdentifier == account, !Task.isCancelled else { throw CancellationError() }
         JSONCache.save(result, key: cacheKey)
+        // Observe only the owner's validated transport result, never cache hits or joiners.
+        let matches = (cachedCourses()?.value ?? []).filter {
+            $0.hasGradebookParams && $0.stuId == params.stuId && $0.corNumId == params.corNumId &&
+            $0.gbId == params.gbId && $0.section == params.section
+        }
+        if matches.count == 1, let course = matches.first,
+           let term = SchoolCalendar.quarters.first(where: { $0.bucket == params.bucket }),
+           course.availableTerms.contains(term) {
+            GradeJournalStore(accountIdentifier: account).observeAssignments(result, courseID: course.id,
+                courseName: course.courseName, term: term, expectedAccountIdentifier: account)
+        }
         return result
     }
 
@@ -303,6 +383,14 @@ actor DataService {
 
     func clearCaches() {
         cacheGeneration += 1
+        inFlightAttendance?.cancel()
+        inFlightAttendance = nil
+        inFlightFees?.cancel()
+        inFlightFees = nil
+        inFlightStudentInfo?.cancel()
+        inFlightStudentInfo = nil
+        inFlightDocuments?.cancel()
+        inFlightDocuments = nil
         inFlightCourses?.cancel()
         inFlightCourses = nil
         for task in inFlightGradeInfo.values { task.cancel() }
