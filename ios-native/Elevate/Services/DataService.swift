@@ -112,6 +112,114 @@ actor DataService {
             return saved
         }
         let generation = cacheGeneration
+        if let task = inFlightFees {
+            let result = try await task.value
+            try Task.checkCancellation()
+            guard generation == cacheGeneration, CredentialStore.currentAccountIdentifier == account else {
+                throw CancellationError()
+            }
+            return result
+        }
+        let task = Task<FeesData, Error> {
+            try await Self.withSessionRetry { codes, baseUrl in
+                try Task.checkCancellation()
+                guard CredentialStore.currentAccountIdentifier == account else { throw CancellationError() }
+                return try await SkywardFeesAPI.fetch(baseUrl: baseUrl, sessionCodes: codes)
+            }
+        }
+        inFlightFees = task
+        defer { if generation == cacheGeneration { inFlightFees = nil } }
+        let result = try await task.value
+        try Task.checkCancellation()
+        guard generation == cacheGeneration, CredentialStore.currentAccountIdentifier == account else {
+            throw CancellationError()
+        }
+        JSONCache.save(result, key: cacheKey)
+        return result
+    }
+
+    nonisolated func cachedStudentInfo() -> JSONCacheRecord<StudentInfoData>? {
+        guard let cacheKey = Self.cacheKey(base: Self.studentInfoCacheKey) else { return nil }
+        return JSONCache.record(StudentInfoData.self, key: cacheKey, maxAge: Self.studentInfoCacheMaxAge)
+    }
+
+    func loadStudentInfo(forceRefresh: Bool = false) async throws -> StudentInfoData {
+        guard let account = CredentialStore.currentAccountIdentifier,
+              let cacheKey = AccountCacheNamespace.key(base: Self.studentInfoCacheKey, accountIdentifier: account) else {
+            throw SkywardError.missingSession
+        }
+        if !forceRefresh,
+           let saved = JSONCache.load(StudentInfoData.self, key: cacheKey, maxAge: Self.studentInfoCacheMaxAge) {
+            return saved
+        }
+        let generation = cacheGeneration
+        if let task = inFlightStudentInfo {
+            let result = try await task.value
+            try Task.checkCancellation()
+            guard generation == cacheGeneration, CredentialStore.currentAccountIdentifier == account else {
+                throw CancellationError()
+            }
+            return result
+        }
+        let task = Task<StudentInfoData, Error> {
+            try await Self.withSessionRetry { codes, baseUrl in
+                try Task.checkCancellation()
+                guard CredentialStore.currentAccountIdentifier == account else { throw CancellationError() }
+                return try await SkywardStudentInfoAPI.fetch(baseUrl: baseUrl, sessionCodes: codes)
+            }
+        }
+        inFlightStudentInfo = task
+        defer { if generation == cacheGeneration { inFlightStudentInfo = nil } }
+        let result = try await task.value
+        try Task.checkCancellation()
+        guard generation == cacheGeneration, CredentialStore.currentAccountIdentifier == account else {
+            throw CancellationError()
+        }
+        JSONCache.save(result, key: cacheKey)
+        return result
+    }
+
+    nonisolated func cachedDocuments() -> JSONCacheRecord<DocumentsData>? {
+        guard let cacheKey = Self.cacheKey(base: Self.documentsCacheKey) else { return nil }
+        return JSONCache.record(DocumentsData.self, key: cacheKey, maxAge: Self.documentsCacheMaxAge)
+    }
+
+    func loadDocuments(forceRefresh: Bool = false) async throws -> DocumentsData {
+        guard let account = CredentialStore.currentAccountIdentifier,
+              let cacheKey = AccountCacheNamespace.key(base: Self.documentsCacheKey, accountIdentifier: account) else {
+            throw SkywardError.missingSession
+        }
+        if !forceRefresh,
+           let saved = JSONCache.load(DocumentsData.self, key: cacheKey, maxAge: Self.documentsCacheMaxAge) {
+            return saved
+        }
+        let generation = cacheGeneration
+        if let task = inFlightDocuments {
+            let result = try await task.value
+            try Task.checkCancellation()
+            guard generation == cacheGeneration, CredentialStore.currentAccountIdentifier == account else {
+                throw CancellationError()
+            }
+            return result
+        }
+        let task = Task<DocumentsData, Error> {
+            try await Self.withSessionRetry { codes, baseUrl in
+                try Task.checkCancellation()
+                guard CredentialStore.currentAccountIdentifier == account else { throw CancellationError() }
+                return try await SkywardDocumentsAPI.fetch(baseUrl: baseUrl, sessionCodes: codes)
+            }
+        }
+        inFlightDocuments = task
+        defer { if generation == cacheGeneration { inFlightDocuments = nil } }
+        let result = try await task.value
+        try Task.checkCancellation()
+        guard generation == cacheGeneration, CredentialStore.currentAccountIdentifier == account else {
+            throw CancellationError()
+        }
+        JSONCache.save(result, key: cacheKey)
+        return result
+    }
+
         let task = Task<[UnifiedCourseData], Error> {
             try await Self.withSessionRetry { codes, baseUrl in
                 let history = try await SkywardHistoryAPI.fetchCombinedAcademicData(baseUrl: baseUrl, sessionCodes: codes)
