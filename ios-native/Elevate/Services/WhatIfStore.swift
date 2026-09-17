@@ -387,6 +387,7 @@ enum WhatIfStore {
         }
 
         // Also remove values left by pre-namespacing releases.
+        defaults.removeObject(forKey: gradeOverridesKey)
         defaults.removeObject(forKey: assignmentsKey)
         defaults.removeObject(forKey: finalExamKey)
         for key in defaults.dictionaryRepresentation().keys
