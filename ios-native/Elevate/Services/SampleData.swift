@@ -294,15 +294,31 @@ enum SampleData {
         default: scoreBucket = "Q1"
         }
         let score = course.currentScores.first { $0.bucket == scoreBucket }?.score
+        if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           ProcessInfo.processInfo.arguments.contains("-FutureQuarterPreview"), scoreBucket == "Q2" {
+            return GradeInfoResult(course: course.courseName, instructor: course.instructor ?? "",
+                                   period: course.period, litName: params.bucket, gradebook: [], score: nil, grade: nil)
+        }
+        if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           ProcessInfo.processInfo.arguments.contains("-AssignmentRoutingPreview"),
+           let term = SchoolCalendar.quarters.first(where: { $0.bucket == params.bucket }) {
+            let rows = calendar(term: term, courses: courses).assignments.filter { $0.course.id == course.id }
+            return GradeInfoResult(course: course.courseName, instructor: course.instructor ?? "",
+                period: course.period, litName: params.bucket,
+                gradebook: [GradeCategory(category: "Assignments", weight: 100, assignments: rows.map {
+                    assignment($0.title, earned: nil, total: 10, date: $0.sourceDate, meta: $0.meta)
+                })], score: nil, grade: nil)
+        }
 
-        return GradeInfoResult(
+        let isEmpty = ProcessInfo.processInfo.arguments.contains("-EmptyAssignments")
+        var result = GradeInfoResult(
             course: course.courseName,
             instructor: course.instructor ?? "",
             period: course.period,
             litName: params.bucket,
             litBegin: "8/1/26",
             litEnd: "10/25/26",
-            gradebook: [
+            gradebook: isEmpty ? [] : [
                 GradeCategory(category: "Assignments", weight: 30, adjustedWeight: 30, assignments: [
                     assignment("Practice Set 1", earned: 19, total: 20, date: "8/7/26"),
                     assignment("Reading Notes", earned: nil, total: 10, date: "8/6/26",
@@ -320,9 +336,52 @@ enum SampleData {
                     assignment("Data Analysis", earned: 24, total: 25, date: "8/1/26"),
                 ]),
             ],
-            score: score,
-            grade: score.map { Int($0.rounded()) }
+            score: isEmpty ? nil : score,
+            grade: isEmpty ? nil : score.map { Int($0.rounded()) }
         )
+        if !isEmpty, ProcessInfo.processInfo.arguments.contains("-ScoreLayoutSamples") {
+            result.gradebook[0].assignments += [
+                assignment("Score layout full points", earned: 100, total: 100, date: "8/10/26"),
+                GradeInfoAssignment(date: "8/9/26", name: "Score layout bonus points",
+                                    grade: nil, score: nil, pointsEarned: 2, pointsTotal: 0, meta: []),
+                assignment("An extended assignment name to verify readable editable score alignment",
+                           earned: 12.5, total: 15, date: "8/8/26"),
+            ]
+        }
+        if !isEmpty, ProcessInfo.processInfo.arguments.contains("-DecimalScorePreview") {
+            result.gradebook[0].assignments[0].pointsEarned = 19.1234
+            result.gradebook[0].assignments[0].score = 19.1234
+            result.score = 93.2789
+        }
+        if !isEmpty, ProcessInfo.processInfo.arguments.contains("-WeightedContributionPreview") {
+            // Synthetic half-cent ties distinguish contribution rounding from
+            // rounding category averages or only the final total.
+            result.gradebook = [
+                GradeCategory(category: "Practice", weight: 50, adjustedWeight: 50, assignments: [
+                    assignment("Contribution practice", earned: 90.01, total: 100, date: "8/7/26"),
+                ]),
+                GradeCategory(category: "Assessments", weight: 50, adjustedWeight: 50, assignments: [
+                    assignment("Contribution assessment", earned: 94.01, total: 100, date: "8/6/26"),
+                ]),
+            ]
+            result.score = 92.02
+            result.grade = 92
+        }
+        return result
+    }
+
+    /// Exercises the real iOS reminder callback using only the synthetic account.
+    @MainActor
+    static func scheduleNotificationTapPreview(courses: [UnifiedCourseData]) async {
+        guard ProcessInfo.processInfo.arguments.contains("-SampleData"),
+              ProcessInfo.processInfo.arguments.contains("-NotificationTapPreview"),
+              SchoolNotifications.shared.accountScope == "sample",
+              let course = courses.first(where: { $0.gradeYear == 12 }) else { return }
+        let notifications = SchoolNotifications.shared
+        await notifications.setRemindersEnabled(true)
+        _ = await notifications.saveReminder(course: course, term: .q1, assignmentID: nil,
+            title: "Notification tap regression", fireDate: Date().addingTimeInterval(12),
+            expectedAccountScope: "sample")
     }
 
     static func install() {
@@ -352,11 +411,11 @@ enum SampleData {
                                gradeYear: Int, index: Int) -> UnifiedCourseData {
         let offset = Double((index % 4) - 1)
         return UnifiedCourseData(
-            courseId: 10_000 + index,
-            corNumId: "sample-\(gradeYear)-\(index)",
-            stuId: studentID,
-            section: "S\(index)",
-            gbId: "GB\(index)",
+            courseId: gradeYear == 12 ? 10_000 + index : nil,
+            corNumId: gradeYear == 12 ? "sample-\(gradeYear)-\(index)" : "",
+            stuId: gradeYear == 12 ? studentID : "",
+            section: gradeYear == 12 ? "S\(index)" : "",
+            gbId: gradeYear == 12 ? "GB\(index)" : "",
             courseName: name,
             instructor: instructor,
             period: (index % 8) + 1,
@@ -369,7 +428,16 @@ enum SampleData {
                 .init(bucket: "S1", score: score + 0.5), .init(bucket: "Q3", score: score - offset),
                 .init(bucket: "Q4", score: score + 1), .init(bucket: "S2", score: score + 0.8),
             ],
-            historicalGrades: history(score: score, offset: offset)
+            historicalGrades: history(score: score, offset: offset),
+            academicYear: "\(2023 + gradeYear - 9)-\(2024 + gradeYear - 9)",
+            historyRowKey: "sample-\(gradeYear)-\(index)",
+            academicYearIsVerified: true,
+            currentAcademicYearIsVerified: gradeYear == 12 && !ProcessInfo.processInfo.arguments.contains("-HistoryYearUnknownPreview"),
+            isTranscriptRecord: gradeYear != 12,
+            isCurrentEnrollment: gradeYear == 12,
+            currentEnrollmentSemester: gradeYear == 12 ? .fall : nil,
+            currentEnrollmentGradeYear: gradeYear == 12 ? gradeYear : nil,
+            currentEnrollmentObservedAt: gradeYear == 12 ? Date() : nil
         )
     }
 
