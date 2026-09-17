@@ -421,6 +421,123 @@ final class AppStore {
 
     // MARK: - Actions
 
+    func refreshFees(force: Bool = false) async {
+        guard canShowData, !Task.isCancelled else { return }
+        let generation = accountGeneration
+        if let task = feesRefreshTask {
+            let refreshID = feesRefreshID
+            let needsForcedFollowUp = force && !feesRefreshIsForced
+            await task.value
+            guard generation == accountGeneration, !Task.isCancelled else { return }
+            if needsForcedFollowUp {
+                if feesRefreshID == refreshID {
+                    feesRefreshTask = nil
+                    feesRefreshID = nil
+                    feesRefreshIsForced = false
+                }
+                await refreshFees(force: true)
+            }
+            return
+        }
+        feesRefreshIsForced = force
+        let refreshID = UUID()
+        let task = Task { [weak self] in
+            guard let self, generation == self.accountGeneration, !Task.isCancelled else { return }
+            await self.performRefreshFees(force: force, generation: generation)
+        }
+        feesRefreshID = refreshID
+        feesRefreshTask = task
+        await task.value
+        if feesRefreshID == refreshID {
+            feesRefreshTask = nil
+            feesRefreshID = nil
+            feesRefreshIsForced = false
+        }
+    }
+
+    private func performRefreshFees(force: Bool, generation: Int) async {
+        guard generation == accountGeneration, !Task.isCancelled else { return }
+        feesLoading = true
+        feesError = nil
+        defer { if generation == accountGeneration { feesLoading = false } }
+        #if DEBUG
+        if isUsingSampleData {
+            if ProcessInfo.processInfo.arguments.contains("-PreviewFeesLoading") {
+                try? await Task.sleep(for: .seconds(30))
+                guard generation == accountGeneration, !Task.isCancelled else { return }
+            }
+            if ProcessInfo.processInfo.arguments.contains("-FeesErrorPreview") {
+                fees = nil
+                feesLastUpdated = nil
+                feesError = "Skyward fees are temporarily unavailable."
+                return
+            }
+            if ProcessInfo.processInfo.arguments.contains("-FeesOfflinePreview") {
+                fees = SampleData.fees
+                feesLastUpdated = Date(timeIntervalSinceNow: -2 * 24 * 60 * 60)
+                feesError = "You're offline. Showing saved fees."
+                return
+            }
+            fees = ProcessInfo.processInfo.arguments.contains("-EmptyFees")
+                ? FeesData(fees: [], payments: []) : SampleData.fees
+            if ProcessInfo.processInfo.arguments.contains("-FeesUnavailablePreview") {
+                fees = FeesData(fees: [], payments: [], availability: .unavailable)
+            }
+            feesLastUpdated = Date()
+            return
+        }
+        #endif
+        let saved = DataService.shared.cachedFees()
+        do {
+            let stale = saved.map { Date().timeIntervalSince($0.updatedAt) >= Self.automaticRefreshInterval } ?? false
+            let result = try await DataService.shared.loadFees(forceRefresh: force || stale)
+            guard generation == accountGeneration, !Task.isCancelled else { return }
+            fees = result
+            feesLastUpdated = DataService.shared.cachedFees()?.updatedAt ?? Date()
+        } catch {
+            guard generation == accountGeneration, !Task.isCancelled else { return }
+            if let saved {
+                fees = saved.value
+                feesLastUpdated = saved.updatedAt
+            }
+            feesError = error.localizedDescription
+        }
+    }
+
+    func refreshStudentInfo(force: Bool = false) async {
+        guard canShowData, !Task.isCancelled else { return }
+        let generation = accountGeneration
+        if let task = studentInfoRefreshTask {
+            let refreshID = studentInfoRefreshID
+            let needsForcedFollowUp = force && !studentInfoRefreshIsForced
+            await task.value
+            guard generation == accountGeneration, !Task.isCancelled else { return }
+            if needsForcedFollowUp {
+                if studentInfoRefreshID == refreshID {
+                    studentInfoRefreshTask = nil
+                    studentInfoRefreshID = nil
+                    studentInfoRefreshIsForced = false
+                }
+                await refreshStudentInfo(force: true)
+            }
+            return
+        }
+        studentInfoRefreshIsForced = force
+        let refreshID = UUID()
+        let task = Task { [weak self] in
+            guard let self, generation == self.accountGeneration, !Task.isCancelled else { return }
+            await self.performRefreshStudentInfo(force: force, generation: generation)
+        }
+        studentInfoRefreshID = refreshID
+        studentInfoRefreshTask = task
+        await task.value
+        if studentInfoRefreshID == refreshID {
+            studentInfoRefreshTask = nil
+            studentInfoRefreshID = nil
+            studentInfoRefreshIsForced = false
+        }
+    }
+
     func saveCredentials(username: String, password: String) async -> Bool {
         let saveID = credentialSaveOwnership.begin()
         let previousAccount = CredentialStore.currentAccountIdentifier
