@@ -141,6 +141,109 @@ enum SampleData {
                        messageRowId: "sample-message-5", subject: "Build teams announced"),
     ]
 
+    static let attendance = AttendanceData(records: [
+        AttendanceRecord(id: "sample-calendar-attendance", date: "2026-09-16", attendance: "Medical appointment",
+                         period: "1", courseName: "LINEAR ALGEBRA", granularity: .period),
+        AttendanceRecord(id: "sample-attendance-1", date: "2026-09-30", attendance: "Tardy",
+                         period: "2", courseName: "MULTIVARIABLE CALCULUS", granularity: .period),
+        AttendanceRecord(id: "sample-attendance-2", date: "2026-09-18", attendance: "Medical appointment",
+                         period: "1", courseName: "LINEAR ALGEBRA", granularity: .period),
+        AttendanceRecord(id: "sample-attendance-3", date: "2026-09-18", attendance: "Medical appointment",
+                         period: "2", courseName: "MULTIVARIABLE CALCULUS", granularity: .period),
+        AttendanceRecord(id: "sample-attendance-4", date: "2026-09-03", attendance: "School activity",
+                         period: "All Day", courseName: nil, granularity: .daily),
+    ])
+
+    /// Calendar-only source fixtures; grade and what-if fixtures remain separate.
+    static func calendar(term: TermLabel, courses: [UnifiedCourseData]) -> SchoolCalendarData {
+        let eligible = SchoolCalendar.eligibleCourses(courses, term: term)
+        let sourceDate: String
+        if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           ProcessInfo.processInfo.arguments.contains("-FollowupPreview") {
+            sourceDate = SchoolWeek.day(for: Date())
+        } else {
+            switch term {
+            case .q2: sourceDate = "11/16/26"
+            case .q3: sourceDate = "2/16/27"
+            case .q4: sourceDate = "4/16/27"
+            default: sourceDate = "9/16/26"
+            }
+        }
+        // Rows near each quarter's start, so the week strip around October 9,
+        // 2026 shows Q1 work and Q2 work appearing once Q2 loads.
+        let nearDate: String
+        switch term {
+        case .q2: nearDate = "10/14/26"
+        case .q3: nearDate = "1/6/27"
+        case .q4: nearDate = "3/24/27"
+        default: nearDate = "10/7/26"
+        }
+        let now = Date()
+        if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           ProcessInfo.processInfo.arguments.contains("-FutureQuarterPreview"), term == .q2 {
+            return SchoolCalendarData(term: term, assignments: [], updatedAt: now,
+                                      eligibleCourseCount: eligible.count, resolvedCourseIDs: Set(eligible.map(\.id)))
+        }
+        let snapshots = eligible.enumerated().map { index, course in
+            let assignments: [GradeInfoAssignment]
+            switch index {
+            case 0:
+                assignments = [
+                    assignment("Matrix practice due", earned: 0, total: 10, date: sourceDate),
+                    assignment("Practice check", earned: nil, total: 10, date: sourceDate),
+                    assignment("Practice check", earned: nil, total: 10, date: sourceDate),
+                    assignment("Date pending from Skyward", earned: nil, total: 10, date: "2/30/26"),
+                    assignment("Chapter review", earned: nil, total: 15, date: nearDate),
+                    assignment("Lab notebook check", earned: nil, total: 10, date: nearDate),
+                ]
+            case 1:
+                assignments = [assignment("Reading response due", earned: nil, total: 20, date: sourceDate,
+                                          meta: [.init(type: "missing", note: "Missing")]),
+                               assignment("Reading log", earned: nil, total: 10, date: nearDate)]
+            case 2:
+                assignments = [assignment("An extended source assignment title for the investigation and reflection on laboratory measurement uncertainty",
+                                          earned: nil, total: 20, date: sourceDate,
+                                          meta: [.init(type: "noCount", note: "No count")])]
+            default: assignments = []
+            }
+            let result = GradeInfoResult(course: course.courseName, instructor: course.instructor ?? "",
+                period: course.period, litName: term.bucket,
+                gradebook: [GradeCategory(category: "Assignments", assignments: assignments)], score: nil, grade: nil)
+            return SchoolCalendarCourseSnapshot(course: course,
+                assignments: CalendarAssignment.sourceAssignments(course: course, term: term, gradeInfo: result),
+                updatedAt: now, isResolved: true, didFail: false)
+        }
+        return SchoolCalendarData(term: term, snapshots: snapshots)
+    }
+
+    /// Explicit debug-only journal fixtures, never observations of a real account.
+    static func installFollowupHistory(courses: [UnifiedCourseData]) {
+        guard ProcessInfo.processInfo.arguments.contains("-SampleData"),
+              ProcessInfo.processInfo.arguments.contains("-FollowupPreview"),
+              !UserDefaults.standard.bool(forKey: "account.sample.followupHistorySeeded"),
+              let original = SchoolCalendar.eligibleCourses(courses, term: .q1).first else { return }
+        let journal = GradeJournalStore(accountIdentifier: "sample")
+        let earlier = Date().addingTimeInterval(-3_600)
+        journal.observeCourseAverages(courses: [original], at: earlier, expectedAccountIdentifier: "sample")
+        var changed = original
+        if let index = changed.currentScores.firstIndex(where: { $0.bucket == "Q1" }) {
+            changed.currentScores[index].score += 1.25
+        }
+        journal.observeCourseAverages(courses: [changed], expectedAccountIdentifier: "sample")
+        var info = GradeInfoResult(course: original.courseName, instructor: "Synthetic teacher", litName: "TERM 3",
+            gradebook: [.init(category: "Daily", assignments: [
+                .init(date: SchoolWeek.day(for: Date()), name: "Synthetic practice", pointsEarned: 8, pointsTotal: 10,
+                      meta: [.init(type: "missing", note: "Missing")])
+            ])])
+        journal.observeAssignments(info, courseID: original.id, courseName: original.courseName, term: .q1,
+            at: earlier, expectedAccountIdentifier: "sample")
+        info.gradebook[0].assignments[0].pointsEarned = 10
+        info.gradebook[0].assignments[0].meta = []
+        journal.observeAssignments(info, courseID: original.id, courseName: original.courseName, term: .q1,
+            expectedAccountIdentifier: "sample")
+        UserDefaults.standard.set(true, forKey: "account.sample.followupHistorySeeded")
+    }
+
     static let widgetSnapshot = WidgetSnapshot(
         generatedAt: Date(),
         termShortName: "Q1",
