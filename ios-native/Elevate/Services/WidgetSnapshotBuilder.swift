@@ -18,9 +18,12 @@ enum WidgetSnapshotBuilder {
         var completedCourseCount = 0
         var expectedCourseCount = 0
         var failedCourseNames: Set<String> = []
+        var sourceDates: [Date] = []
+        var hasUnknownSourceDate = false
         var didTimeOut = false
 
         var isComplete: Bool { completedCourseCount == expectedCourseCount }
+        var updatedAt: Date? { hasUnknownSourceDate ? nil : sourceDates.min() }
     }
 
     private struct CourseAssignmentFetch {
@@ -28,6 +31,7 @@ enum WidgetSnapshotBuilder {
         var recent: [WidgetSnapshot.AssignmentItem] = []
         var missing: [WidgetSnapshot.AssignmentItem] = []
         var absent: [WidgetSnapshot.AssignmentItem] = []
+        var updatedAt: Date?
         var succeeded = false
     }
 
@@ -66,6 +70,7 @@ enum WidgetSnapshotBuilder {
         messagesUpdatedAt: Date?,
         messagesAreComplete: Bool
     ) async {
+        let accountScope = CredentialStore.currentAccountIdentifier
         let previous = WidgetSnapshotStore.load()
         guard courses != nil || previous != nil else { return }
 
@@ -119,17 +124,29 @@ enum WidgetSnapshotBuilder {
         }
 
         let needsAssignments = await installedWidgetsNeedAssignments()
-        let coursesChangedSinceSnapshot = previous == nil
-            || coursesUpdatedAt != previous?.resolvedBaseStatus.updatedAt
+        // Never carry a different term's assignments under the new term label.
+        let previousAssignments = previous?.termShortName == term.shortName ? previous : nil
+        let assignmentsNeedRefresh = WidgetAssignmentRefreshPolicy.isDue(
+            term: term,
+            previousTerm: previous?.termShortName,
+            coursesUpdatedAt: coursesUpdatedAt,
+            previousCoursesUpdatedAt: previous?.resolvedBaseStatus.updatedAt,
+            assignmentsUpdatedAt: previousAssignments?.resolvedAssignmentStatus.updatedAt,
+            assignmentsAreComplete: previousAssignments?.resolvedAssignmentStatus.isComplete ?? false,
+            now: now
+        )
         let assignmentSections: AssignmentSections
-        if needsAssignments, coursesChangedSinceSnapshot, coursesAreComplete,
-           courses != nil, !visible.isEmpty {
-            let result = await fetchAssignmentsWithTimeout(courses: visible, term: term)
+        // Semester buckets contain exam work, not the quarter's assignments.
+        // Use Calendar's current-quarter and live-identity rules.
+        let assignmentTerm = SchoolCalendar.quarter(for: term)
+        let assignmentCourses = SchoolCalendar.eligibleCourses(courses ?? [], term: assignmentTerm)
+        if needsAssignments, assignmentsNeedRefresh, coursesAreComplete,
+           !assignmentCourses.isEmpty {
+            let result = await fetchAssignmentsWithTimeout(courses: assignmentCourses, term: assignmentTerm, accountScope: accountScope)
             guard !Task.isCancelled else { return }
             assignmentSections = mergedAssignmentSections(
                 result,
-                previous: previous,
-                refreshedAt: now
+                previous: previousAssignments
             )
         } else if needsAssignments, coursesAreComplete, courses?.isEmpty == true {
             assignmentSections = AssignmentSections(
@@ -139,10 +156,10 @@ enum WidgetSnapshotBuilder {
             )
         } else {
             let canReusePreviousCompleteness = !needsAssignments
-                || (coursesAreComplete && !coursesChangedSinceSnapshot)
+                || (coursesAreComplete && !assignmentsNeedRefresh)
             let preservedCompleteness: Bool? = canReusePreviousCompleteness ? nil : false
             assignmentSections = preservedAssignmentSections(
-                previous: previous,
+                previous: previousAssignments,
                 isComplete: preservedCompleteness
             )
         }
@@ -188,6 +205,7 @@ enum WidgetSnapshotBuilder {
             messageStatus: messageStatus
         )
         guard !Task.isCancelled else { return }
+        guard accountScope == CredentialStore.currentAccountIdentifier else { return }
         WidgetSnapshotStore.save(snapshot)
         WidgetCenter.shared.reloadAllTimelines()
     }
@@ -232,8 +250,7 @@ enum WidgetSnapshotBuilder {
 
     private static func mergedAssignmentSections(
         _ fetch: AssignmentFetch,
-        previous: WidgetSnapshot?,
-        refreshedAt: Date
+        previous: WidgetSnapshot?
     ) -> AssignmentSections {
         if fetch.isComplete {
             let recent = sortedUnique(fetch.recent)
@@ -246,7 +263,7 @@ enum WidgetSnapshotBuilder {
                 recentTotal: recent.count,
                 missingTotal: missing.count,
                 absentTotal: absent.count,
-                status: WidgetSnapshot.SectionStatus(updatedAt: refreshedAt, isComplete: true)
+                status: WidgetSnapshot.SectionStatus(updatedAt: fetch.updatedAt, isComplete: true)
             )
         }
 
@@ -258,6 +275,16 @@ enum WidgetSnapshotBuilder {
         let previousRecent = previous?.recentGrades.filter { failedNames.contains($0.className) } ?? []
         let previousMissing = previous?.missingAssignments.filter { failedNames.contains($0.className) } ?? []
         let previousAbsent = previous?.absentAssignments?.filter { failedNames.contains($0.className) } ?? []
+        let preservesPrevious = !previousRecent.isEmpty || !previousMissing.isEmpty || !previousAbsent.isEmpty
+        let updatedAt: Date?
+        if preservesPrevious {
+            // A mixed snapshot is only as fresh as its oldest retained source.
+            updatedAt = fetch.updatedAt.flatMap { fetched in
+                previous?.resolvedAssignmentStatus.updatedAt.map { min(fetched, $0) }
+            }
+        } else {
+            updatedAt = fetch.updatedAt
+        }
         return AssignmentSections(
             recent: sortedUnique(fetch.recent + previousRecent),
             missing: sortedUnique(fetch.missing + previousMissing),
@@ -265,7 +292,7 @@ enum WidgetSnapshotBuilder {
             recentTotal: nil,
             missingTotal: nil,
             absentTotal: nil,
-            status: WidgetSnapshot.SectionStatus(updatedAt: refreshedAt, isComplete: false)
+            status: WidgetSnapshot.SectionStatus(updatedAt: updatedAt, isComplete: false)
         )
     }
 
@@ -280,11 +307,12 @@ enum WidgetSnapshotBuilder {
 
     private static func fetchAssignmentsWithTimeout(
         courses: [UnifiedCourseData],
-        term: TermLabel
+        term: TermLabel,
+        accountScope: String?
     ) async -> AssignmentFetch {
         let gate = AssignmentFetchGate()
         let fetchTask = Task {
-            let result = await fetchAssignments(courses: courses, term: term)
+            let result = await fetchAssignments(courses: courses, term: term, accountScope: accountScope)
             await gate.resolve(result)
         }
         let timeoutTask = Task {
@@ -312,13 +340,14 @@ enum WidgetSnapshotBuilder {
 
     private static func fetchAssignments(
         courses: [UnifiedCourseData],
-        term: TermLabel
+        term: TermLabel,
+        accountScope: String?
     ) async -> AssignmentFetch {
         await withTaskGroup(of: CourseAssignmentFetch.self) { group in
             var iterator = courses.makeIterator()
             for _ in 0..<min(courses.count, 4) {
                 if let course = iterator.next() {
-                    group.addTask { await fetchAssignments(for: course, term: term) }
+                    group.addTask { await fetchAssignments(for: course, term: term, accountScope: accountScope) }
                 }
             }
 
@@ -326,6 +355,11 @@ enum WidgetSnapshotBuilder {
             while let result = await group.next() {
                 if result.succeeded {
                     combined.completedCourseCount += 1
+                    if let date = result.updatedAt {
+                        combined.sourceDates.append(date)
+                    } else {
+                        combined.hasUnknownSourceDate = true
+                    }
                 } else {
                     combined.failedCourseNames.insert(result.courseName)
                 }
@@ -334,7 +368,7 @@ enum WidgetSnapshotBuilder {
                 combined.absent.append(contentsOf: result.absent)
 
                 if !Task.isCancelled, let course = iterator.next() {
-                    group.addTask { await fetchAssignments(for: course, term: term) }
+                    group.addTask { await fetchAssignments(for: course, term: term, accountScope: accountScope) }
                 }
             }
             return combined
@@ -343,31 +377,40 @@ enum WidgetSnapshotBuilder {
 
     private static func fetchAssignments(
         for course: UnifiedCourseData,
-        term: TermLabel
+        term: TermLabel,
+        accountScope: String?
     ) async -> CourseAssignmentFetch {
         let className = displayName(for: course)
         guard !Task.isCancelled else { return CourseAssignmentFetch(courseName: className) }
-        let params = GradeInfoParams(
-            stuId: course.stuId,
-            corNumId: course.corNumId,
-            gbId: course.gbId,
-            section: course.section,
-            bucket: term.bucket
-        )
+        let params = SchoolCalendar.params(course: course, term: term)
         guard let info = try? await DataService.shared.gradeInfo(params: params),
               !Task.isCancelled else {
             return CourseAssignmentFetch(courseName: className)
         }
 
-        var result = CourseAssignmentFetch(courseName: className, succeeded: true)
+        var result = CourseAssignmentFetch(
+            courseName: className,
+            updatedAt: DataService.shared.cachedGradeInfo(params: params)?.updatedAt,
+            succeeded: true
+        )
+        // Build identities before excluding any status so occurrence suffixes
+        // agree exactly with Calendar and the official class-detail gradebook.
+        let sourceAssignments = CalendarAssignment.sourceAssignments(course: course, term: term, gradeInfo: info)
+        var sourceIndex = 0
         for category in info.gradebook {
             for assignment in category.assignments {
+                let sourceID = sourceAssignments[sourceIndex].routeID
+                sourceIndex += 1
                 if assignment.meta.contains(where: { $0.type == "noCount" }) { continue }
                 let item = WidgetSnapshot.AssignmentItem(
                     className: className,
                     name: assignment.name,
                     gradeText: gradeText(assignment),
-                    date: assignment.date
+                    date: assignment.date,
+                    courseID: AssignmentLink.assignmentToken(for: course.id),
+                    termRawValue: term.rawValue,
+                    assignmentID: sourceID,
+                    accountScope: accountScope
                 )
                 if assignment.meta.contains(where: { $0.type == "missing" }) {
                     result.missing.append(item)
