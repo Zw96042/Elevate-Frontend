@@ -13,12 +13,15 @@ private enum SecureStoreError: LocalizedError {
     }
 }
 
-/// Small checked Keychain boundary shared by credentials and active sessions.
-private enum KeychainStore {
+/// Skyward sign-in secrets stay device-only, but remain usable by background
+/// requests after the first unlock following a restart, including re-authentication.
+enum KeychainStore {
     static func save<Value: Encodable>(
         _ value: Value,
         service: String,
-        account: String
+        account: String,
+        update: (CFDictionary, CFDictionary) -> OSStatus = { SecItemUpdate($0, $1) },
+        add: (CFDictionary) -> OSStatus = { SecItemAdd($0, nil) }
     ) throws {
         let data = try JSONEncoder().encode(value)
         let query: [String: Any] = [
@@ -28,10 +31,10 @@ private enum KeychainStore {
         ]
         let attributes: [String: Any] = [
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
         ]
 
-        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        let updateStatus = update(query as CFDictionary, attributes as CFDictionary)
         if updateStatus == errSecSuccess { return }
         guard updateStatus == errSecItemNotFound else {
             throw SecureStoreError.keychain(updateStatus)
@@ -39,7 +42,7 @@ private enum KeychainStore {
 
         var item = query
         attributes.forEach { item[$0.key] = $0.value }
-        let addStatus = SecItemAdd(item as CFDictionary, nil)
+        let addStatus = add(item as CFDictionary)
         guard addStatus == errSecSuccess else {
             throw SecureStoreError.keychain(addStatus)
         }
@@ -48,21 +51,37 @@ private enum KeychainStore {
     static func load<Value: Decodable>(
         _ type: Value.Type,
         service: String,
-        account: String
+        account: String,
+        copy: (CFDictionary, inout AnyObject?) -> OSStatus = { SecItemCopyMatching($0, &$1) },
+        update: (CFDictionary, CFDictionary) -> OSStatus = { SecItemUpdate($0, $1) }
     ) -> Value? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
+            kSecReturnAttributes as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else {
+        guard copy(query as CFDictionary, &result) == errSecSuccess,
+              let attributes = result as? [String: Any],
+              let data = attributes[kSecValueData as String] as? Data,
+              let value = try? JSONDecoder().decode(type, from: data) else {
             return nil
         }
-        return try? JSONDecoder().decode(type, from: data)
+        if attributes[kSecAttrAccessible as String] as? String != kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String {
+            // Upgrade old installs after a successful read. Change only the
+            // protection attribute; never rewrite a possibly superseded payload.
+            // A failed upgrade leaves the original item and successful read intact.
+            let item: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service, kSecAttrAccount as String: account,
+            ]
+            let protection: [String: Any] = [kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
+            _ = update(item as CFDictionary, protection as CFDictionary)
+        }
+        return value
     }
 
     static func remove(service: String, account: String) throws {
@@ -116,7 +135,7 @@ enum ExpoKeychainStore {
     }
 }
 
-/// Skyward credentials are device-only and available only while the device is unlocked.
+/// Device-only Skyward credentials support background login after first unlock.
 enum CredentialStore {
     private struct Payload: Codable {
         var username: String
