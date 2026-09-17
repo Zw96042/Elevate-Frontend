@@ -327,6 +327,59 @@ final class AppStore {
             }
         }
         #endif
+        planning.activate(accountScope: localAccountScope)
+    }
+
+    func openDocument(_ document: SkywardDocument) async {
+        guard canShowData, document.canOpen, documentOpenTask == nil, !Task.isCancelled else { return }
+        let generation = accountGeneration
+        let requestID = UUID()
+        documentOpenID = requestID
+        documentLoadingID = document.id
+        documentOpenError = nil
+        closeDocumentPreview()
+        let task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let resource: SkywardBinaryHTTP.Resource
+                #if DEBUG
+                if self.isUsingSampleData {
+                    if ProcessInfo.processInfo.arguments.contains("-DocumentOpenErrorPreview") {
+                        throw SkywardError.invalidResponse("document is temporarily unavailable")
+                    }
+                    resource = SampleData.documentResource
+                } else {
+                    resource = try await DataService.shared.openDocument(id: document.id)
+                }
+                #else
+                resource = try await DataService.shared.openDocument(id: document.id)
+                #endif
+                guard generation == self.accountGeneration, !Task.isCancelled else { return }
+                let file = try await Task.detached(priority: .userInitiated) { try DocumentPreviewFiles.write(resource, title: document.title) }.value
+                guard generation == self.accountGeneration, !Task.isCancelled else {
+                    DocumentPreviewFiles.remove(file)
+                    return
+                }
+                self.previewFileURL = file
+                self.documentPreview = DocumentPreview(url: file, title: document.title)
+            } catch {
+                guard generation == self.accountGeneration, !Task.isCancelled else { return }
+                self.documentOpenError = error.localizedDescription
+            }
+        }
+        documentOpenTask = task
+        await task.value
+        if documentOpenID == requestID {
+            documentOpenTask = nil
+            documentOpenID = nil
+            documentLoadingID = nil
+        }
+    }
+
+    func closeDocumentPreview() {
+        if let url = previewFileURL { DocumentPreviewFiles.remove(url) }
+        previewFileURL = nil
+        documentPreview = nil
     }
 
     // MARK: - Derived
