@@ -174,10 +174,75 @@ final class AppStore {
     var authError: String?
 
     // Unified course data
-    var courses: [UnifiedCourseData]?
+    /// Planning rows travel with the same account-scoped course snapshot, but
+    /// never enter Courses, GPA, notifications or widget inputs.
+    private(set) var planningTranscriptCourses: [PlanningTranscriptCourse]?
+    private(set) var courses: [UnifiedCourseData]?
+
+    private func assignCourseSnapshot(_ snapshot: [UnifiedCourseData]?) {
+        planningTranscriptCourses = snapshot?.compactMap(\.planningTranscriptCourses).first
+        courses = snapshot?.filter { $0.isPlanningOnly != true }
+    }
     var coursesLoading = false
     var coursesError: String?
     var coursesLastUpdated: Date?
+
+    // Attendance loads independently when its page is visited.
+    var attendance: AttendanceData?
+    var attendanceLoading = false
+    var attendanceError: String?
+    var attendanceLastUpdated: Date?
+
+    // Calendar requests are quarter scoped and independent of Courses
+    // selection. Each quarter loads on its own, when a page needs its dates,
+    // and keeps its own saved data, error and timestamp.
+    var calendarQuarters: [TermLabel: CalendarQuarterState] = [:] {
+        didSet {
+            // Any change to a quarter's saved rows, including one class's
+            // grades while another keeps old data, bumps this; loading flags
+            // and errors alone don't.
+            if oldValue.mapValues(\.data) != calendarQuarters.mapValues(\.data) { calendarDataRevision &+= 1 }
+        }
+    }
+    /// Changes whenever any quarter's saved assignments change, so a page can
+    /// rebuild what it draws once per change.
+    private(set) var calendarDataRevision = 0
+
+    func calendarQuarter(_ term: TermLabel) -> CalendarQuarterState {
+        calendarQuarters[SchoolCalendar.quarter(for: term)] ?? CalendarQuarterState()
+    }
+
+    /// The quarter Search works in. Changing it never discards another
+    /// quarter's saved assignments.
+    var calendarTerm: TermLabel = SchoolCalendar.quarter(for: AcademicCalendar.currentTerm()) {
+        didSet {
+            let quarter = SchoolCalendar.quarter(for: calendarTerm)
+            if quarter != calendarTerm { calendarTerm = quarter }
+        }
+    }
+
+    /// The selected quarter's state, for pages that work in one quarter.
+    var calendarData: SchoolCalendarData? { calendarQuarter(calendarTerm).data }
+    var calendarLoading: Bool { calendarQuarter(calendarTerm).isLoading }
+    var calendarError: String? { calendarQuarter(calendarTerm).error }
+    var calendarLastUpdated: Date? { calendarQuarter(calendarTerm).lastUpdated }
+
+    // Account pages load independently when visited in Settings.
+    var fees: FeesData?
+    var feesLoading = false
+    var feesError: String?
+    var feesLastUpdated: Date?
+    var studentInfo: StudentInfoData?
+    var studentInfoLoading = false
+    var studentInfoError: String?
+    var studentInfoLastUpdated: Date?
+    var documents: DocumentsData?
+    var documentsLoading = false
+    var documentsError: String?
+    var documentsLastUpdated: Date?
+    var documentLoadingID: String?
+    var documentOpenError: String?
+    var documentPreview: DocumentPreview?
 
     // Term selection (shared by Courses tab and class detail, like BottomSheetContext)
     var selectedTerm: TermLabel = AcademicCalendar.currentTerm()
@@ -188,6 +253,7 @@ final class AppStore {
     // Inbox
     var messages: [SkywardMessage] = []
     var messagesLoading = false
+    var messagesRefreshing = false
     var messagesLoadingMore = false
     var messagesError: String?
     var messagesPaginationError: String?
@@ -197,7 +263,11 @@ final class AppStore {
     @ObservationIgnored private var messagePaginationCursor: String?
 
     init() {
+        DocumentPreviewFiles.clear()
+        selectedTerm = AcademicCalendar.currentTerm(for: Self.academicSelectionDate(Date()))
+        calendarTerm = SchoolCalendar.quarter(for: selectedTerm)
         lastAutomaticallySelectedTerm = selectedTerm
+        lastAutomaticallySelectedCalendarTerm = calendarTerm
         do {
             _ = try LegacyAsyncStorageMigration.migrateIfNeeded()
         } catch {
@@ -206,15 +276,55 @@ final class AppStore {
         hasCredentials = CredentialStore.hasCredentials
 
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           ProcessInfo.processInfo.arguments.contains("-ResetFollowupData") {
+            WhatIfStore.clearAccountData(scope: "sample")
+        }
+        if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           ProcessInfo.processInfo.arguments.contains("-LegacyNotificationNamesPreview") {
+            // Synthetic migration fixture; never touches a connected account.
+            let legacy = Data(#"{"gradeChanges":false,"reminders":true,"showGradePreviews":true}"#.utf8)
+            UserDefaults.standard.set(legacy, forKey: "account.sample.notifications.preferences")
+        }
         if !hasCredentials || ProcessInfo.processInfo.arguments.contains("-SampleData") {
             isUsingSampleData = true
-            courses = SampleData.courses
-            messages = SampleData.messages
+            assignCourseSnapshot(sampleCourses)
+            messages = ProcessInfo.processInfo.arguments.contains("-EmptyInbox") ? [] : SampleData.messages
             hasLoadedMessages = true
             selectedGradeLevel = .senior
             coursesLastUpdated = Date()
             messagesLastUpdated = Date()
             SampleData.install()
+            SampleData.installFollowupHistory(courses: courses ?? [])
+            if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+               ProcessInfo.processInfo.arguments.contains("-FollowupReminderPreview"),
+               let course = courses?.first(where: { $0.gradeYear == 12 }) {
+                let reminder = LocalReminder(courseID: SchoolNotifications.notificationCourseID(for: course),
+                    term: .q1, title: "Synthetic local reminder", courseName: course.courseName,
+                    fireDate: Date().addingTimeInterval(1800))
+                if let data = try? JSONEncoder().encode([reminder]) {
+                    UserDefaults.standard.set(data, forKey: "account.sample.notifications.reminders")
+                }
+            }
+            if ProcessInfo.processInfo.arguments.contains("-SampleData") {
+                if ProcessInfo.processInfo.arguments.contains("-PreviewTranscriptLoading") {
+                    assignCourseSnapshot(nil)
+                    coursesLoading = true
+                    coursesLastUpdated = nil
+                }
+                if ProcessInfo.processInfo.arguments.contains("-PreviewInboxLoading") {
+                    messages = []
+                    messagesLoading = true
+                    messagesLastUpdated = nil
+                    hasLoadedMessages = false
+                }
+            }
+        }
+        if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           ProcessInfo.processInfo.arguments.contains("-CorruptFollowupStoragePreview") {
+            for suffix in ["gradeJournal.v1", "coursePlan.v1", "assignmentCompletion.v1", "namedWhatIfScenarios"] {
+                UserDefaults.standard.set(Data("unreadable synthetic fixture".utf8), forKey: "account.sample.\(suffix)")
+            }
         }
         #endif
     }
