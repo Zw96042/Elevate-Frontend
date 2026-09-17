@@ -4,11 +4,17 @@ import Foundation
 /// the per-class "Show Calculated" toggle, and manual GPA classes.
 enum WhatIfStore {
     private static let assignmentsKey = "artificialAssignments"
+    private static let gradeOverridesKey = "assignmentGradeOverrides"
     private static let finalExamKey = "finalExamGrades"
 
     private static var currentScope: String {
-        CredentialStore.currentAccountIdentifier ?? "sample"
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-SampleData") { return "sample" }
+        #endif
+        return CredentialStore.currentAccountIdentifier ?? "sample"
     }
+
+    static var accountScope: String { currentScope }
 
     private static func scopedKey(_ key: String, scope: String? = nil) -> String {
         "account.\(scope ?? currentScope).\(key)"
@@ -43,6 +49,59 @@ enum WhatIfStore {
         gbId: String
     ) -> String {
         "\(studentID)|\(className)_\(corNumId)_\(section)_\(gbId)"
+    }
+
+    // MARK: Local estimates for existing Skyward assignments
+
+    private static func loadGradeOverrides() -> [String: [String: AssignmentGradeOverride]] {
+        guard let data = storedData(for: gradeOverridesKey) else { return [:] }
+        do { return try JSONDecoder().decode([String: [String: AssignmentGradeOverride]].self, from: data) }
+        catch { preserveCorruptData(data, for: gradeOverridesKey); return [:] }
+    }
+
+    private static func saveGradeOverrides(_ overrides: [String: [String: AssignmentGradeOverride]]) {
+        if let data = try? JSONEncoder().encode(overrides) {
+            UserDefaults.standard.set(data, forKey: scopedKey(gradeOverridesKey))
+        }
+    }
+
+    static func gradeOverrides(classKey: String, term: TermLabel) -> [String: AssignmentGradeOverride] {
+        let all = loadGradeOverrides()
+        return relevantTerms(for: term).reduce(into: [:]) { result, quarter in
+            result.merge(all["\(classKey)_\(quarter)"] ?? [:]) { _, new in new }
+        }
+    }
+
+    static func setGradeOverride(_ grade: Double?, assignment: CalcAssignment, classKey: String) {
+        guard !assignment.artificial,
+              ["Q1", "Q2", "Q3", "Q4"].contains(assignment.term) else { return }
+        if let grade, !grade.isFinite || abs(grade) > 1_000_000 { return }
+        var all = loadGradeOverrides()
+        let key = "\(classKey)_\(assignment.term)"
+        var edit = all[key]?[assignment.id] ?? AssignmentGradeOverride(grade: assignment.grade)
+        edit.overridesGrade = grade != assignment.grade
+        edit.grade = edit.overridesGrade == true ? grade : nil
+        all[key, default: [:]][assignment.id] = edit
+        saveGradeOverrides(all)
+    }
+
+    static func setNoCountOverride(_ noCount: Bool, assignment: CalcAssignment, classKey: String) {
+        guard !assignment.artificial,
+              ["Q1", "Q2", "Q3", "Q4"].contains(assignment.term) else { return }
+        var all = loadGradeOverrides()
+        let key = "\(classKey)_\(assignment.term)"
+        var edit = all[key]?[assignment.id] ?? AssignmentGradeOverride(grade: nil, overridesGrade: false)
+        edit.noCount = noCount
+        all[key, default: [:]][assignment.id] = edit
+        saveGradeOverrides(all)
+    }
+
+    static func removeGradeOverride(assignment: CalcAssignment, classKey: String) {
+        var all = loadGradeOverrides()
+        let key = "\(classKey)_\(assignment.term)"
+        all[key]?[assignment.id] = nil
+        if all[key]?.isEmpty == true { all.removeValue(forKey: key) }
+        saveGradeOverrides(all)
     }
 
     // MARK: Artificial assignments, keyed by "<classKey>_<term>"
@@ -141,6 +200,9 @@ enum WhatIfStore {
     }
 
     static func reset(classKey: String, term: TermLabel) {
+        var overrides = loadGradeOverrides()
+        for quarter in relevantTerms(for: term) { overrides.removeValue(forKey: "\(classKey)_\(quarter)") }
+        saveGradeOverrides(overrides)
         var all = loadAllAssignments()
         for t in relevantTerms(for: term) {
             all.removeValue(forKey: "\(classKey)_\(t)")
@@ -235,6 +297,67 @@ enum WhatIfStore {
 
     static func setShowCalculated(_ value: Bool, classKey: String) {
         UserDefaults.standard.set(value, forKey: scopedKey("showCalculated_\(classKey)"))
+    }
+
+    // MARK: Named scenario snapshots
+
+    /// Capture only locally owned changes; the saved plan follows fresh official scores.
+    static func scenarioSnapshot(classKey: String, term: TermLabel) -> WhatIfScenarioSnapshot? {
+        guard let storedAssignments: [String: [WhatIfAssignment]] = scenarioBacking(key: assignmentsKey),
+              let overrides: [String: [String: AssignmentGradeOverride]] = scenarioBacking(key: gradeOverridesKey),
+              let exams: [String: [String: Double]] = scenarioBacking(key: finalExamKey) else { return nil }
+        let assignments = migrateLegacySemesterAssignments(storedAssignments).assignments
+        var snapshot = WhatIfScenarioSnapshot()
+        for quarter in relevantTerms(for: term) {
+            snapshot.assignmentsByQuarter[quarter] = assignments["\(classKey)_\(quarter)"] ?? []
+            snapshot.overridesByQuarter[quarter] = overrides["\(classKey)_\(quarter)"] ?? [:]
+        }
+        if term.isSemester { snapshot.finalExamGrade = exams[classKey]?[term == .sm1 ? "EX1" : "EX2"] }
+        return snapshot.validationIssue(for: term) == nil ? snapshot : nil
+    }
+
+    /// Validate and encode every backing value before replacing any owned quarter.
+    /// Synchronous writes contain no suspension where an account can change.
+    static func applyScenario(_ scenario: WhatIfScenario, classKey: String, term: TermLabel,
+                              expectedAccountScope: String) -> Bool {
+        guard currentScope == expectedAccountScope, scenario.classKey == classKey, scenario.term == term,
+              scenario.snapshot.validationIssue(for: term) == nil,
+              var assignments: [String: [WhatIfAssignment]] = scenarioBacking(key: assignmentsKey),
+              var overrides: [String: [String: AssignmentGradeOverride]] = scenarioBacking(key: gradeOverridesKey),
+              var exams: [String: [String: Double]] = scenarioBacking(key: finalExamKey) else { return false }
+        for quarter in relevantTerms(for: term) {
+            let key = "\(classKey)_\(quarter)"
+            assignments[key] = scenario.snapshot.assignmentsByQuarter[quarter] ?? []
+            overrides[key] = scenario.snapshot.overridesByQuarter[quarter] ?? [:]
+        }
+        if term.isSemester {
+            var values = exams[classKey] ?? [:]
+            values[term == .sm1 ? "EX1" : "EX2"] = scenario.snapshot.finalExamGrade
+            exams[classKey] = values
+        }
+        guard let assignmentData = try? JSONEncoder().encode(assignments),
+              let overrideData = try? JSONEncoder().encode(overrides),
+              let examData = try? JSONEncoder().encode(exams), currentScope == expectedAccountScope else { return false }
+        let defaults = UserDefaults.standard
+        defaults.set(assignmentData, forKey: scopedKey(assignmentsKey))
+        defaults.set(overrideData, forKey: scopedKey(gradeOverridesKey))
+        defaults.set(examData, forKey: scopedKey(finalExamKey))
+        setShowCalculated(true, classKey: classKey)
+        return true
+    }
+
+    private static func scenarioBacking<T: Decodable>(key: String) -> T? {
+        let defaults = UserDefaults.standard
+        let scoped = scopedKey(key)
+        if defaults.object(forKey: scoped) != nil, defaults.data(forKey: scoped) == nil { return nil }
+        if defaults.object(forKey: scoped) == nil, defaults.object(forKey: key) != nil,
+           defaults.data(forKey: key) == nil { return nil }
+        let data = storedData(for: key) ?? Data("{}".utf8)
+        guard let result = try? JSONDecoder().decode(T.self, from: data) else {
+            preserveCorruptData(data, for: key)
+            return nil
+        }
+        return result
     }
 
     // MARK: Manual GPA classes
