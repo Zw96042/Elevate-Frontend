@@ -1,9 +1,73 @@
 import Foundation
 import WidgetKit
+import UIKit
 
 #if DEBUG
 enum SampleData {
     private static let studentID = "sample-student"
+
+    static let fees = FeesData(fees: [
+        FeeRecord(id: "sample-fee-1", description: "Lab supplies", schoolYear: "2026-2027", date: "08/15/2026", fields: [
+            FeeField(label: "School year", value: "2026-2027"), FeeField(label: "Due date", value: "08/15/2026"),
+            FeeField(label: "Amount charged", value: "$30.00"), FeeField(label: "Amount paid", value: "$10.00"),
+            FeeField(label: "Amount due", value: "$20.00"), FeeField(label: "Remaining due", value: "$20.00"),
+            FeeField(label: "Payor name", value: "Jordan Avery"), FeeField(label: "Pay plan ID", value: ""),
+        ]),
+        FeeRecord(id: "sample-fee-2", description: "AP exam deposit", schoolYear: "2026-2027", date: "10/20/2026", fields: [
+            FeeField(label: "School year", value: "2026-2027"), FeeField(label: "Due date", value: "10/20/2026"),
+            FeeField(label: "Amount charged", value: "$40.00"), FeeField(label: "Amount paid", value: "$0.00"),
+            FeeField(label: "Amount due", value: "$40.00"), FeeField(label: "Remaining due", value: "$40.00"),
+        ]),
+    ], payments: [
+        FeeRecord(id: "sample-payment-1", description: "Activity fee payment", schoolYear: "2026-2027", date: "09/15/2026", fields: [
+            FeeField(label: "Payor name", value: "Jordan Avery"), FeeField(label: "School year", value: "2026-2027"),
+            FeeField(label: "Payment date", value: "09/15/2026"), FeeField(label: "Payment amount", value: "$10.00"),
+            FeeField(label: "Check number", value: ""), FeeField(label: "Receipt number", value: "SAMPLE-01"),
+        ]),
+    ])
+
+    static var studentInfo: StudentInfoData {
+        let photo = UIGraphicsImageRenderer(size: CGSize(width: 160, height: 160)).image { context in
+            UIColor.systemBlue.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 160, height: 160))
+            UIImage(systemName: "person.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
+                .draw(in: CGRect(x: 40, y: 28, width: 80, height: 104))
+        }.pngData()
+        return StudentInfoData(name: "Avery, Jordan", contactFields: [
+            StudentInfoField(label: "School:", value: "Example High School"),
+            StudentInfoField(label: "Call:", value: "512-555-0123"),
+            StudentInfoField(label: "Address:", value: "123 Example Street\nAustin, TX 78701"),
+        ], studentFields: [
+            StudentInfoField(label: "Gender:", value: "Not provided"),
+            StudentInfoField(label: "Age (Birthday):", value: "17 (03/17/2009)"),
+            StudentInfoField(label: "Language:", value: "English"),
+            StudentInfoField(label: "Graduation Year:", value: "2027"),
+            StudentInfoField(label: "Other ID:", value: "SAMPLE-001"),
+            StudentInfoField(label: "Community Service:", value: "12 hours"),
+        ], enrollments: [
+            StudentEnrollment(id: "sample-enrollment", schoolName: "Example High School", fields: [
+                StudentInfoField(label: "Grade:", value: "12"), StudentInfoField(label: "Status:", value: "Active"),
+                StudentInfoField(label: "Phone:", value: "512-555-0100"),
+                StudentInfoField(label: "Principal:", value: "Reed, Taylor"),
+                StudentInfoField(label: "Counselor:", value: "Morgan, Alex"),
+            ]),
+        ], photoData: photo)
+    }
+
+    static var documentResource: SkywardBinaryHTTP.Resource {
+        let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 612, height: 792))
+        let data = renderer.pdfData { context in
+            context.beginPage()
+            ("Example High School\nQuarter 1 report card\nAvery, Jordan\n\nMathematics   93\nEnglish   96" as NSString).draw(at: CGPoint(x: 48, y: 48), withAttributes: [.font: UIFont.systemFont(ofSize: 20)])
+        }
+        return SkywardBinaryHTTP.Resource(data: data, mimeType: "application/pdf")
+    }
+
+    static let documents = DocumentsData(documents: [
+        SkywardDocument(id: "sample-report-1", title: "Quarter 1 report card", kind: "Report card", created: "10/02/2026"),
+        SkywardDocument(id: "sample-report-2", title: "Spring semester report card", kind: "Report card", created: "05/28/2026"),
+        SkywardDocument(id: "sample-document-1", title: "Enrollment confirmation", kind: "Document", created: "08/01/2026"),
+    ])
 
     static let courses: [UnifiedCourseData] = {
         let seniorCourses: [(String, String, Double)] = [
@@ -33,6 +97,22 @@ enum SampleData {
             result += yearCourses.enumerated().map { index, item in
                 course(name: item.0, instructor: item.1, score: item.2,
                        gradeYear: year, index: year * 10 + index)
+            }
+        }
+        if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           ProcessInfo.processInfo.arguments.contains("-CurrentSportsPreview"), result.count >= 8 {
+            result[6].courseName = "TRACK AND FIELD"
+            result[7].courseName = "SPORTS MEDICINE"
+        }
+        if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           ProcessInfo.processInfo.arguments.contains("-FutureQuarterPreview") {
+            for index in result.indices {
+                result[index].currentScores.removeAll { ["Q2", "Q3", "Q4"].contains($0.bucket) }
+                if result[index].gradeYear == 12 {
+                    result[index].historicalGrades.rc2 = nil
+                    result[index].historicalGrades.rc3 = nil
+                    result[index].historicalGrades.rc4 = nil
+                }
             }
         }
         return result
