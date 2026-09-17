@@ -7,9 +7,47 @@ import WidgetKit
 @Observable
 @MainActor
 final class AppStore {
+    let notifications = SchoolNotifications.shared
+    let planning = StudentPlanningStore()
+    var localAccountScope: String? { canShowData ? (isUsingSampleData ? "sample" : CredentialStore.currentAccountIdentifier) : nil }
+    @ObservationIgnored private var previewFileURL: URL?
+    @ObservationIgnored private var documentOpenID: UUID?
+    @ObservationIgnored private var documentOpenTask: Task<Void, Never>?
     @ObservationIgnored private var widgetSnapshotTask: Task<Void, Never>?
+    @ObservationIgnored private var widgetSnapshotID: UUID?
+    @ObservationIgnored private var widgetSnapshotLastAttempt: Date?
     @ObservationIgnored private var coursesRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var messagesRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var attendanceRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var attendanceRefreshID: UUID?
+    @ObservationIgnored private var attendanceRefreshIsForced = false
+    @ObservationIgnored private var attendanceLastAttempt: Date?
+    @ObservationIgnored private var feesRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var feesRefreshID: UUID?
+    @ObservationIgnored private var feesRefreshIsForced = false
+    @ObservationIgnored private var studentInfoRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var studentInfoRefreshID: UUID?
+    @ObservationIgnored private var studentInfoRefreshIsForced = false
+    @ObservationIgnored private var documentsRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var documentsRefreshID: UUID?
+    @ObservationIgnored private var documentsRefreshIsForced = false
+    /// One in-flight load per quarter; joiners wait on the same task.
+    @ObservationIgnored private var calendarRefreshes: [TermLabel: CalendarRefreshEntry] = [:]
+    private struct CalendarRefreshScope: Equatable {
+        var generation: Int
+        var term: TermLabel
+        var coursesRevision: Int
+        var courses: [UnifiedCourseData]
+    }
+    private struct CalendarRefreshEntry {
+        var task: Task<Void, Never>
+        var id: UUID
+        var isForced: Bool
+        var scope: CalendarRefreshScope
+    }
+    #if DEBUG
+    @ObservationIgnored private var calendarRevisionPreviewInjected = false
+    #endif
     @ObservationIgnored private var foregroundRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var coursesRefreshIsForced = false
     @ObservationIgnored private var coursesRefreshID: UUID?
@@ -17,6 +55,7 @@ final class AppStore {
     @ObservationIgnored private var foregroundRefreshID: UUID?
     @ObservationIgnored private var hasStartedForegroundHydration = false
     @ObservationIgnored private var lastAutomaticallySelectedTerm: TermLabel?
+    @ObservationIgnored private var lastAutomaticallySelectedCalendarTerm: TermLabel?
     @ObservationIgnored private var accountGeneration = 0
     @ObservationIgnored private var credentialSaveOwnership = CredentialSaveOwnership()
     private static let foregroundRefreshMaxAge: TimeInterval = 15 * 60
