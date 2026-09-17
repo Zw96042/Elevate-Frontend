@@ -58,7 +58,116 @@ final class AppStore {
     @ObservationIgnored private var lastAutomaticallySelectedCalendarTerm: TermLabel?
     @ObservationIgnored private var accountGeneration = 0
     @ObservationIgnored private var credentialSaveOwnership = CredentialSaveOwnership()
-    private static let foregroundRefreshMaxAge: TimeInterval = 15 * 60
+    static let automaticRefreshInterval = AutomaticRefreshPolicy.interval
+    var automaticRefreshInterval: TimeInterval {
+        #if DEBUG
+        if isUsingSampleData,
+           ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           ProcessInfo.processInfo.arguments.contains("-FastAutomaticRefresh") { return 3 }
+        #endif
+        return Self.automaticRefreshInterval
+    }
+    var coursesRefreshRevision = 0
+    var messagesRefreshRevision = 0
+    @ObservationIgnored private var courseGradeTracker: GradeChangeTracker?
+    @ObservationIgnored private var courseGradeTrackerScope: String?
+    private var observedCourseGradeTerm: TermLabel?
+    private var courseGradeChanges: [String: Double] = [:]
+    @ObservationIgnored private var messageFeedGeneration = 0
+
+    #if DEBUG
+    private var sampleCourses: [UnifiedCourseData] {
+        var result = SampleData.courses
+        if ProcessInfo.processInfo.arguments.contains("-SevenCourses") {
+            result.removeAll { $0.period == 5 }
+        }
+        if ProcessInfo.processInfo.arguments.contains("-UppercaseSampleTeachers") {
+            for index in result.indices { result[index].instructor = result[index].instructor?.uppercased() }
+        }
+        if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           ProcessInfo.processInfo.arguments.contains("-CourseRingEdgePreview") {
+            let indices = result.indices.filter { result[$0].gradeYear == 12 }
+            for (offset, index) in indices.prefix(4).enumerated() {
+                result[index].currentScores.removeAll { $0.bucket == "Q1" }
+                result[index].historicalGrades.rc1 = nil
+                if offset < 3 {
+                    let score = [100.7, 103.75, 0.0][offset]
+                    result[index].currentScores.append(.init(bucket: "Q1", score: score))
+                }
+            }
+        }
+        if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           ProcessInfo.processInfo.arguments.contains("-PastCoursesCleanupPreview"),
+           let template = result.first(where: { $0.gradeYear == 11 }) {
+            result.removeAll { $0.gradeYear == 11 }
+            func entry(_ name: String, _ key: String, _ semester: Semester, _ grades: HistoricalGrades) -> UnifiedCourseData {
+                var course = template
+                course.courseName = name
+                course.historyRowKey = key
+                course.semester = semester
+                course.currentScores = []
+                course.historicalGrades = grades
+                course.postedHistoricalGrades = grades
+                return course
+            }
+            result += [
+                entry("STUDIO ART", "art-fall", .fall, .init(rc1: "88", rc2: "91", sm1: "90")),
+                entry("STUDIO ART", "art-spring", .spring, .init(rc3: "93", rc4: "95", sm2: "94")),
+                entry("SCIENCE H", "science-dropped", .both, .init()),
+                entry("WORLD LANGUAGE LOTE", "language", .both, .init(sm1: "P", sm2: "P")),
+            ]
+        }
+        if isUsingSampleData,
+           ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           (ProcessInfo.processInfo.arguments.contains("-HigherSampleGrades") ||
+            (ProcessInfo.processInfo.arguments.contains("-HigherSampleGradesAfterRefresh") && coursesRefreshRevision >= 6)),
+           let courseIndex = result.firstIndex(where: { $0.gradeYear == 12 }),
+           let scoreIndex = result[courseIndex].currentScores.firstIndex(where: { $0.bucket == "Q1" }) {
+            result[courseIndex].currentScores[scoreIndex].score += 1
+        }
+        if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           let flag = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("-PreviewStudentGrade=") }),
+           let year = Int(flag.replacingOccurrences(of: "-PreviewStudentGrade=", with: "")),
+           (9...12).contains(year) {
+            result.removeAll { ($0.gradeYear ?? year) > year }
+        }
+        if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           ProcessInfo.processInfo.arguments.contains("-AutomaticCreditPreview"), !result.isEmpty {
+            func record(_ name: String, _ year: String, _ grade: Int, _ terms: String = "1-4",
+                        _ fall: String? = "95", _ spring: String? = "96") -> PlanningTranscriptCourse {
+                PlanningTranscriptCourse(academicYear: year, gradeYear: grade, name: name,
+                    terms: terms, sm1: fall, sm2: spring, ex1: nil, ex2: nil)
+            }
+            result[0].planningTranscriptCourses = [
+                record("English I", "2023-2024", 9),
+                record("English II", "2024-2025", 10),
+                record("AP English Language and Composition", "2025-2026", 11),
+                record("Algebra I", "2022-2023", 8),
+                record("Biology", "2023-2024", 9),
+                record("AP World History", "2024-2025", 10),
+                record("Spanish I", "2022-2023", 8),
+                record("Physical Education", "2023-2024", 9),
+                record("Health", "2024-2025", 10, "1-2", "95", nil),
+                record("AP Art History", "2025-2026", 11),
+                record("Robotics II", "2025-2026", 11),
+                record("Unrecognized elective", "2024-2025", 10, "1-2", "P", nil),
+            ]
+        }
+        if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           ProcessInfo.processInfo.arguments.contains("-PerfectCollegePreview") {
+            for index in result.indices where (result[index].gradeYear ?? 12) < 12 {
+                result[index].historicalGrades.sm1 = "100"
+                result[index].historicalGrades.sm2 = "100"
+                result[index].postedHistoricalGrades = result[index].historicalGrades
+            }
+        }
+        return result
+    }
+    #endif
+    @ObservationIgnored private var coursesLastAttempt: Date?
+    @ObservationIgnored private var messagesLastAttempt: Date?
+    var isAuthenticating = false
+    var accountRevision: Int { accountGeneration }
     // Credentials / auth
     var hasCredentials = false
     var isUsingSampleData = false
