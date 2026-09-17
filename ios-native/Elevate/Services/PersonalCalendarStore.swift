@@ -288,3 +288,142 @@ final class PersonalCalendarStore {
         error = nil
     }
 
+    /// The event as it is now, with its notes and link, for the detail sheet;
+    /// nil once it has been deleted. Sample events have no notes.
+    func details(for event: PersonalEvent) -> PersonalEventDetails? {
+        guard access == .full else { return nil }
+        guard sample == nil else { return PersonalEventDetails(event: event) }
+        return reader.details(of: event)
+    }
+}
+
+/// EventKit access off the main actor. `EKEventStore` may be used from any
+/// thread; it only returns value copies to the main actor.
+private final class EventReader: @unchecked Sendable {
+    let store = EKEventStore()
+
+    func calendars() -> [PersonalCalendarInfo] {
+        store.calendars(for: .event).map { calendar in
+            PersonalCalendarInfo(
+                id: calendar.calendarIdentifier,
+                title: calendar.title,
+                accountTitle: calendar.source?.title ?? "",
+                color: Self.color(calendar.cgColor),
+                isHiddenByDefault: calendar.type == .birthday
+            )
+        }
+    }
+
+    func events(in interval: DateInterval, calendarIDs: Set<String>) -> [PersonalEvent] {
+        let calendars = store.calendars(for: .event).filter { calendarIDs.contains($0.calendarIdentifier) }
+        guard !calendars.isEmpty else { return [] }
+        let predicate = store.predicateForEvents(withStart: interval.start, end: interval.end, calendars: calendars)
+        return store.events(matching: predicate).compactMap(Self.personalEvent)
+    }
+
+    private static func personalEvent(_ event: EKEvent) -> PersonalEvent? {
+        guard let start = event.startDate, let end = event.endDate,
+              let calendar = event.calendar else { return nil }
+        let identifier = event.eventIdentifier ?? event.calendarItemIdentifier
+        let location = event.location?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return PersonalEvent(
+            eventIdentifier: identifier, calendarID: calendar.calendarIdentifier,
+            title: event.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+            location: location?.isEmpty == false ? location : nil,
+            start: start, end: end, isAllDay: event.isAllDay
+        )
+    }
+
+    /// The exact occurrence, so a repeating event shows the chosen day's
+    /// notes. A one-time event edited elsewhere is found by its identifier;
+    /// every shown field comes from the fresh copy.
+    func details(of event: PersonalEvent) -> PersonalEventDetails? {
+        var match: EKEvent?
+        if let calendar = store.calendar(withIdentifier: event.calendarID) {
+            let predicate = store.predicateForEvents(
+                withStart: event.start, end: event.end.addingTimeInterval(1), calendars: [calendar])
+            match = store.events(matching: predicate).first {
+                ($0.eventIdentifier ?? $0.calendarItemIdentifier) == event.eventIdentifier && $0.startDate == event.start
+            }
+        }
+        if match == nil, let single = store.event(withIdentifier: event.eventIdentifier), !single.hasRecurrenceRules {
+            match = single
+        }
+        guard let match, let fresh = Self.personalEvent(match) else { return nil }
+        return PersonalEventDetails(event: fresh, notes: match.notes, url: match.url)
+    }
+
+    private static func color(_ color: CGColor?) -> PersonalCalendarColor {
+        guard let color,
+              let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let converted = color.converted(to: space, intent: .defaultIntent, options: nil),
+              let parts = converted.components, parts.count >= 3
+        else { return PersonalCalendarColor(red: 0.5, green: 0.55, blue: 0.62) }
+        return PersonalCalendarColor(red: Double(parts[0]), green: Double(parts[1]), blue: Double(parts[2]))
+    }
+}
+
+#if DEBUG
+/// Synthetic calendars for `-SampleData` runs, around the current month.
+/// `-SampleCalendarInvitation` starts before access, to show the invitation;
+/// `-SystemCalendars` reads the simulator's real calendars beside sample data.
+private struct SampleCalendars {
+    var startsUninvited = false
+
+    static func fromLaunchArguments() -> SampleCalendars? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains("-SampleData"), !arguments.contains("-SystemCalendars") else { return nil }
+        return SampleCalendars(startsUninvited: arguments.contains("-SampleCalendarInvitation"))
+    }
+
+    let calendars: [PersonalCalendarInfo] = [
+        PersonalCalendarInfo(id: "sample.robotics", title: "Robotics", accountTitle: "Gmail",
+                             color: .init(red: 0.04, green: 0.50, blue: 0.26)),
+        PersonalCalendarInfo(id: "sample.school", title: "Eanes Events", accountTitle: "Gmail",
+                             color: .init(red: 0.25, green: 0.32, blue: 0.71)),
+        PersonalCalendarInfo(id: "sample.personal", title: "Personal", accountTitle: "iCloud",
+                             color: .init(red: 0.56, green: 0.27, blue: 0.68)),
+        PersonalCalendarInfo(id: "sample.birthdays", title: "Birthdays", accountTitle: "Other",
+                             color: .init(red: 0.55, green: 0.58, blue: 0.62), isHiddenByDefault: true),
+    ]
+
+    func events(in interval: DateInterval) -> [PersonalEvent] {
+        let calendar = PersonalEventDays.dayCalendar
+        let today = calendar.startOfDay(for: Date())
+        func day(_ offset: Int, _ hour: Int = 0, _ minute: Int = 0) -> Date {
+            let base = calendar.date(byAdding: .day, value: offset, to: today) ?? today
+            return calendar.date(bySettingHour: hour, minute: minute, second: 0, of: base) ?? base
+        }
+        func event(_ id: String, _ calendarID: String, _ title: String, _ location: String?,
+                   _ start: Date, _ end: Date, allDay: Bool = false) -> PersonalEvent {
+            PersonalEvent(eventIdentifier: id, calendarID: calendarID, title: title, location: location,
+                          start: start, end: end, isAllDay: allDay)
+        }
+        var events = [
+            event("s1", "sample.school", "Pep rally", "Main gym", day(0, 14, 45), day(0, 15, 30)),
+            event("s2", "sample.personal", "Orthodontist", nil, day(0, 16, 30), day(0, 17, 15)),
+            event("s3", "sample.school", "Early release", nil, day(2), day(3), allDay: true),
+            event("s4", "sample.robotics", "Regional competition", "Austin Convention Center",
+                  day(9, 15), day(11, 12)),
+            event("s5", "sample.personal", "SAT", "Westlake High School", day(16, 8), day(16, 12)),
+            event("s6", "sample.birthdays", "Sam's birthday", nil, day(5), day(6), allDay: true),
+        ]
+        // Weekly robotics build on the next four Tuesdays and Thursdays.
+        for offset in 0..<28 {
+            let weekday = calendar.component(.weekday, from: day(offset))
+            guard weekday == 3 || weekday == 5 else { continue }
+            events.append(event("build", "sample.robotics", "Robotics build", "Room 214",
+                                day(offset, 7, 15), day(offset, 8)))
+        }
+        return events.filter { $0.end > interval.start && $0.start < interval.end }
+    }
+}
+#else
+/// Release builds have no sample calendars.
+private struct SampleCalendars {
+    var startsUninvited: Bool { false }
+    var calendars: [PersonalCalendarInfo] { [] }
+    static func fromLaunchArguments() -> SampleCalendars? { nil }
+    func events(in interval: DateInterval) -> [PersonalEvent] { [] }
+}
+#endif
