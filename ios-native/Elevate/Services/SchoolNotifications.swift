@@ -263,3 +263,142 @@ final class SchoolNotifications: NSObject, UNUserNotificationCenterDelegate {
         persist()
     }
 
+    private var isInBackground: Bool { UIApplication.shared.applicationState == .background }
+
+    func updateBackgroundStatus(_ status: String?) {
+        backgroundStatus = status
+        persist()
+    }
+
+    private var canSchedule: Bool { authorization == .authorized || authorization == .provisional || authorization == .ephemeral }
+    private func requestPermission(token: UUID) async -> Bool {
+        await refreshAuthorization()
+        guard generation == token else { return false }
+        if authorization == .notDetermined {
+            guard !isRequestingPermission else { return false }
+            isRequestingPermission = true
+            defer { isRequestingPermission = false }
+            do { _ = try await center.requestAuthorization(options: [.alert, .sound]) }
+            catch { if generation == token { self.error = "Elevate couldn't request notification permission." }; return false }
+            await refreshAuthorization()
+        }
+        guard generation == token else { return false }
+        if !canSchedule { error = "Allow Elevate notifications in iOS Settings to receive alerts." }
+        return canSchedule
+    }
+    private func scheduleReminder(_ reminder: LocalReminder, scope: String, token: UUID) async -> Bool {
+        guard generation == token, accountScope == scope, preferences.reminders,
+              reminders.contains(where: { $0.id == reminder.id }), reminder.fireDate > Date() else { return false }
+        let revision = reminderRevision
+        let identifier = reminderIdentifier(scope: scope, id: reminder.id)
+        let content = UNMutableNotificationContent()
+        content.title = "Elevate reminder"
+        content.body = NotificationText.reminder(courseName: reminder.courseName, title: reminder.title)
+        content.sound = .default
+        content.userInfo = ["scope": scope, "kind": "reminder", "courseID": reminder.courseID, "term": reminder.term.rawValue, "reminderID": reminder.id, "alertContentVersion": NotificationText.contentVersion]
+        if let assignmentID = reminder.assignmentID { content.userInfo["assignmentID"] = AssignmentLink.assignmentToken(for: assignmentID) }
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, reminder.fireDate.timeIntervalSinceNow), repeats: false)
+        do {
+            try await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: trigger))
+            guard generation == token, reminderRevision == revision, preferences.reminders, reminders.contains(where: { $0.id == reminder.id }) else {
+                center.removePendingNotificationRequests(withIdentifiers: [identifier])
+                center.removeDeliveredNotifications(withIdentifiers: [identifier])
+                // A reminder-toggle change may have replaced this same request ID
+                // while add was suspended. Restore only the current desired content.
+                if generation == token, accountScope == scope, preferences.reminders,
+                   reminderRevision != revision,
+                   let current = reminders.first(where: { $0.id == reminder.id }) {
+                    return await scheduleReminder(current, scope: scope, token: token)
+                }
+                return false
+            }
+            return true
+        } catch {
+            if generation == token { self.error = "Reminder saved, but Elevate couldn't schedule its alert." }
+            return false
+        }
+    }
+    private func reminderIdentifier(scope: String, id: String) -> String { "elevate.reminder.\(scope).\(id)" }
+    private func key(_ scope: String, _ suffix: String) -> String { "account.\(scope).notifications.\(suffix)" }
+    private func load<T: Decodable>(_ type: T.Type, scope: String?, suffix: String) -> T? {
+        guard let scope, let data = defaults.data(forKey: key(scope, suffix)) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
+    }
+    private func persist() {
+        guard let scope = accountScope else { return }
+        if let data = try? JSONEncoder().encode(preferences) { defaults.set(data, forKey: key(scope, "preferences")) }
+        if let data = try? JSONEncoder().encode(ledger) { defaults.set(data, forKey: key(scope, "ledger")) }
+        if let data = try? JSONEncoder().encode(reminders) { defaults.set(data, forKey: key(scope, "reminders")) }
+        if let lastGradeCheck { defaults.set(lastGradeCheck, forKey: key(scope, "lastCheck")) }
+        if let lastBackgroundGradeCheck { defaults.set(lastBackgroundGradeCheck, forKey: key(scope, "lastBackgroundCheck")) }
+        defaults.set(backgroundStatus, forKey: key(scope, "backgroundStatus"))
+    }
+    private func removeOwnedRequests(scope: String, kind: String? = nil, legacyOnly: Bool = false) async {
+        let token = generation, gradeToken = gradeRevision, reminderToken = reminderRevision
+        func stillCurrent() -> Bool {
+            generation == token && (kind != "grade" || gradeRevision == gradeToken)
+                && (kind != "reminder" || reminderRevision == reminderToken)
+        }
+        let prefixes = (kind.map { [$0] } ?? ["grade", "reminder"]).map { "elevate.\($0).\(scope)." }
+        func isOwned(_ request: UNNotificationRequest) -> Bool {
+            prefixes.contains { request.identifier.hasPrefix($0) }
+                && (!legacyOnly || (request.content.userInfo["alertContentVersion"] as? Int) != NotificationText.contentVersion)
+        }
+        let pending = await center.pendingNotificationRequests()
+        guard stillCurrent() else { return }
+        center.removePendingNotificationRequests(withIdentifiers: pending.filter(isOwned).map(\.identifier))
+        let delivered = await center.deliveredNotifications()
+        guard stillCurrent() else { return }
+        center.removeDeliveredNotifications(withIdentifiers: delivered.filter { isOwned($0.request) }.map { $0.request.identifier })
+    }
+    // UIKit's notification-response completion performs scene restoration.
+    // The generated async delegate bridge can call it off the main thread,
+    // even after MainActor.run returns. Own both completions explicitly.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping @Sendable (UNNotificationPresentationOptions) -> Void) {
+        let scope = notification.request.content.userInfo["scope"] as? String
+        let kind = notification.request.content.userInfo["kind"] as? String
+        let contentVersion = notification.request.content.userInfo["alertContentVersion"] as? Int
+        let identifier = notification.request.identifier
+        Task { @MainActor in
+            if kind == "grade" {
+                if scope == self.accountScope, self.preferences.gradeChanges,
+                   contentVersion == NotificationText.contentVersion {
+                    // A background add can finish just before activation. If iOS
+                    // suppresses it in the foreground, preserve the unseen retry.
+                    self.ledger.deferSuppressedRequest(identifier)
+                    self.persist()
+                }
+                completionHandler([])
+                return
+            }
+            let allowed = kind == "reminder" && self.preferences.reminders
+            guard scope == self.accountScope, allowed,
+                  contentVersion == NotificationText.contentVersion else {
+                completionHandler([])
+                return
+            }
+            completionHandler([.banner, .sound])
+        }
+    }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping @Sendable () -> Void) {
+        let info = response.notification.request.content.userInfo
+        let destination = (info["scope"] as? String).map { scope in
+            NotificationDestination(scope: scope, courseID: info["courseID"] as? String,
+                term: (info["term"] as? String).flatMap(TermLabel.init(rawValue:)),
+                reminderID: info["reminderID"] as? String,
+                assignmentID: info["assignmentID"] as? String)
+        }
+        Task { @MainActor in
+            // Ignored/malformed and other-account taps must finish as well.
+            defer { completionHandler() }
+            guard let destination,
+                  self.accountScope == nil || self.accountScope == destination.scope else { return }
+            self.pendingDestination = destination
+        }
+    }
+}
