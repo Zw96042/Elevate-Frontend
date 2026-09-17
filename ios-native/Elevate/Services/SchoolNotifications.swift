@@ -165,3 +165,101 @@ final class SchoolNotifications: NSObject, UNUserNotificationCenterDelegate {
         center.removePendingNotificationRequests(withIdentifiers: [identifier]); center.removeDeliveredNotifications(withIdentifiers: [identifier])
     }
 
+    /// Caller supplies only fresh, complete, validated, account-current network results.
+    func observeFreshGrades(courses: [UnifiedCourseData], accountScope scope: String, origin: GradeCheckOrigin, observedAt: Date = Date()) async {
+        guard self.accountScope == scope, !Task.isCancelled else { return }
+        let previous = gradeObservationTask, token = generation, id = UUID()
+        // Foreground and background callers can share a network fetch. Serialize
+        // the full transaction so one cannot invalidate the other's suspended add.
+        let task = Task { @MainActor [weak self] in
+            if let previous { await previous.value }
+            guard let self, self.generation == token, self.accountScope == scope, !Task.isCancelled else { return }
+            await self.processFreshGrades(courses: courses, scope: scope, origin: origin, observedAt: observedAt)
+        }
+        gradeObservationTask = task; gradeObservationID = id
+        await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
+        if gradeObservationID == id { gradeObservationTask = nil; gradeObservationID = nil }
+    }
+
+    func markGradeViewed(course: UnifiedCourseData, term: TermLabel, score: Double, sourceDate: Date,
+                         accountScope scope: String) {
+        guard accountScope == scope else { return }
+        ledger.markViewed(courseID: Self.notificationCourseID(for: course), term: term, score: score, sourceDate: sourceDate)
+        persist()
+    }
+
+    private func processFreshGrades(courses: [UnifiedCourseData], scope: String, origin: GradeCheckOrigin, observedAt now: Date) async {
+        guard accountScope == scope, !Task.isCancelled else { return }
+        let revision = gradeRevision, token = generation
+        // Real gradebook parameters establish live enrollment; transcript-year
+        // verification is a separate archive concern and is not populated for live accounts.
+        let current = GradeNotificationLedger.eligibleCourses(in: courses)
+        for term in TermLabel.allCases {
+            let bucket: String
+            switch term {
+            case .q1: bucket = "Q1"; case .q2: bucket = "Q2"; case .sm1: bucket = "S1"
+            case .q3: bucket = "Q3"; case .q4: bucket = "Q4"; case .sm2: bucket = "S2"
+            }
+            var scores: [String: Double?] = [:]
+            for course in current where course.availableTerms.contains(term) {
+                scores[Self.notificationCourseID(for: course)] = .some(course.currentScores.first { $0.bucket == bucket }?.score)
+            }
+            ledger.observe(scores, term: term, at: now)
+        }
+        lastGradeCheck = now
+        if origin == .background { lastBackgroundGradeCheck = now }
+        let allowed = Set(current.map { Self.notificationCourseID(for: $0) })
+        let pending = ledger.pendingEvents.filter { allowed.contains($0.courseID) }
+        if !preferences.gradeChanges || scope == "sample" {
+            for event in pending { ledger.consumeWithoutAlert(eventID: event.id) }
+            persist(); return
+        }
+        persist()
+        // Opening or refreshing Elevate must stay quiet. Keep unseen changes
+        // for the next validated background check rather than acknowledging them.
+        guard origin == .background, isInBackground, !pending.isEmpty else { return }
+        await refreshAuthorization()
+        guard generation == token, gradeRevision == revision, preferences.gradeChanges, !Task.isCancelled else { return }
+        guard isInBackground else { return }
+        guard canSchedule else { updateBackgroundStatus("Grade changes found; notifications are off in iOS Settings."); return }
+        // A grade may have become visible while permission was being checked.
+        let events = ledger.pendingEvents.filter { allowed.contains($0.courseID) && !ledger.wasViewed($0) }
+        guard let first = events.sorted(by: { $0.id < $1.id }).first else { return }
+        let identifier = "elevate.grade.\(scope).\(first.id)"
+        let content = UNMutableNotificationContent()
+        content.title = "Grades updated"
+        content.body = NotificationText.gradeChanges(
+            courseNames: events.map { event in
+                current.first { Self.notificationCourseID(for: $0) == event.courseID }?.courseName ?? "Course"
+            })
+        content.sound = .default
+        content.userInfo = ["scope": scope, "kind": "grade", "alertContentVersion": NotificationText.contentVersion]
+        if events.count == 1 { content.userInfo["courseID"] = first.courseID; content.userInfo["term"] = first.term.rawValue }
+        ledger.associateRequest(identifier, eventIDs: Set(events.map(\.id)))
+        persist()
+        do {
+            try await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+            guard generation == token, gradeRevision == revision, preferences.gradeChanges, !Task.isCancelled else {
+                center.removePendingNotificationRequests(withIdentifiers: [identifier]); center.removeDeliveredNotifications(withIdentifiers: [identifier]); return
+            }
+            guard isInBackground else {
+                center.removePendingNotificationRequests(withIdentifiers: [identifier])
+                center.removeDeliveredNotifications(withIdentifiers: [identifier])
+                persist()
+                return
+            }
+            let unseen = ledger.unseenEvents(forRequest: identifier)
+            if unseen.isEmpty {
+                center.removePendingNotificationRequests(withIdentifiers: [identifier])
+                center.removeDeliveredNotifications(withIdentifiers: [identifier])
+            }
+            for event in unseen { ledger.markSchedulingAccepted(eventID: event.id, at: now) }
+            backgroundStatus = "Grade check completed. Alert requested."
+        } catch {
+            guard generation == token, gradeRevision == revision else { return }
+            for event in events { ledger.markSchedulingFailed(eventID: event.id) }
+            self.error = "Elevate couldn't schedule the grade alert. It will retry after a fresh grade check."
+        }
+        persist()
+    }
+
