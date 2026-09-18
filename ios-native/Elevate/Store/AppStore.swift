@@ -1125,6 +1125,7 @@ final class AppStore {
             }
             assignCourseSnapshot(sampleCourses)
             coursesLastUpdated = Date()
+            coursesRefreshRevision += 1
             SampleData.install()
             return
         }
@@ -1136,21 +1137,31 @@ final class AppStore {
         coursesError = nil
         do {
             let diskDataExceedsForegroundAge = diskFallback.map {
-                Date().timeIntervalSince($0.updatedAt) >= Self.foregroundRefreshMaxAge
+                Date().timeIntervalSince($0.updatedAt) >= Self.automaticRefreshInterval
             } ?? false
-            let result = try await DataService.shared.combinedCourses(
+            if !force, !diskDataExceedsForegroundAge, diskFallback != nil {
+                // Hydration from disk is not a network attempt. Schedule the
+                // next fetch from the saved data's true age.
+                coursesLastAttempt = nil
+            }
+            let observation = try await DataService.shared.combinedCoursesObservation(
                 forceRefresh: force || diskDataExceedsForegroundAge
             )
-            guard generation == accountGeneration else { return }
-            courses = result
-            coursesLastUpdated = DataService.shared.cachedCourses()?.updatedAt ?? Date()
+            guard generation == accountGeneration, !Task.isCancelled else { return }
+            assignCourseSnapshot(observation.courses)
+            coursesLastUpdated = observation.updatedAt
+            coursesRefreshRevision += 1
+            planning.reloadHistory()
             if !availableGradeLevels.contains(selectedGradeLevel) {
                 selectedGradeLevel = currentGradeLevel
             }
+            if observation.freshValidated, let scope = CredentialStore.currentAccountIdentifier {
+                await notifications.observeFreshGrades(courses: courses ?? [], accountScope: scope, origin: .foreground, observedAt: observation.updatedAt)
+            }
         } catch {
-            if generation == accountGeneration {
+            if generation == accountGeneration, !Task.isCancelled {
                 if let diskFallback {
-                    courses = diskFallback.value
+                    assignCourseSnapshot(diskFallback.value)
                     coursesLastUpdated = diskFallback.updatedAt
                     if !availableGradeLevels.contains(selectedGradeLevel) {
                         selectedGradeLevel = currentGradeLevel
@@ -1164,11 +1175,14 @@ final class AppStore {
     }
 
     func refreshMessages(force: Bool = false) async {
+        guard !Task.isCancelled else { return }
         if let task = messagesRefreshTask {
             await task.value
             return
         }
 
+        messagesLastAttempt = Date()
+        messagesRefreshing = true
         let refreshID = UUID()
         let task = Task { [weak self] in
             guard let self else { return }
@@ -1178,38 +1192,49 @@ final class AppStore {
         messagesRefreshTask = task
         await task.value
         if messagesRefreshID == refreshID {
+            if messagesError != nil { messagesLastAttempt = Date() }
             messagesRefreshTask = nil
             messagesRefreshID = nil
+            messagesRefreshing = false
         }
     }
 
     private func performRefreshMessages(force: Bool) async {
         #if DEBUG
         if isUsingSampleData {
-            messages = SampleData.messages
+            if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+               ProcessInfo.processInfo.arguments.contains("-PreviewInboxLoading") { return }
+            if automaticRefreshInterval < Self.automaticRefreshInterval {
+                do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            }
+            messages = ProcessInfo.processInfo.arguments.contains("-EmptyInbox") ? [] : SampleData.messages
             hasLoadedMessages = true
+            messagesLastUpdated = Date()
+            messagesRefreshRevision += 1
             SampleData.install()
             return
         }
         #endif
         guard hasCredentials else { return }
         let generation = accountGeneration
+        messageFeedGeneration += 1
         let diskFallback = DataService.shared.cachedMessages()
         if messages.isEmpty || force {
-            messagesLoading = messages.isEmpty
+            messagesLoading = !hasLoadedMessages && messages.isEmpty
         }
         messagesError = nil
         messagesPaginationError = nil
         do {
             let result = try await DataService.shared.loadMessages()
-            guard generation == accountGeneration else { return }
+            guard generation == accountGeneration, !Task.isCancelled else { return }
             messages = result
             hasLoadedMessages = true
             messagesLastUpdated = DataService.shared.cachedMessages()?.updatedAt ?? Date()
+            messagesRefreshRevision += 1
             messagesExhausted = result.isEmpty
             messagePaginationCursor = nil
         } catch {
-            if generation == accountGeneration {
+            if generation == accountGeneration, !Task.isCancelled {
                 if let diskFallback {
                     messages = diskFallback.value
                     hasLoadedMessages = true
@@ -1228,7 +1253,7 @@ final class AppStore {
     /// later activations refresh only data older than the foreground threshold.
     /// Repeated active notifications join the same task.
     func handleSceneBecameActive(now: Date = Date()) async {
-        let currentTerm = AcademicCalendar.currentTerm(for: now)
+        let currentTerm = AcademicCalendar.currentTerm(for: Self.academicSelectionDate(now))
         if let lastAutomaticallySelectedTerm {
             selectedTerm = TermSelectionPolicy.selectionOnActivation(
                 selected: selectedTerm,
@@ -1237,7 +1262,17 @@ final class AppStore {
             )
         }
         lastAutomaticallySelectedTerm = currentTerm
-        guard canShowData else { return }
+        let currentQuarter = SchoolCalendar.quarter(for: currentTerm)
+        if let lastAutomaticallySelectedCalendarTerm {
+            let selection = TermSelectionPolicy.selectionOnActivation(
+                selected: calendarTerm,
+                current: currentQuarter,
+                lastAutomatic: lastAutomaticallySelectedCalendarTerm
+            )
+            if selection != calendarTerm { calendarTerm = selection }
+        }
+        lastAutomaticallySelectedCalendarTerm = currentQuarter
+        guard canShowData, !isAuthenticating, !Task.isCancelled else { return }
         if let foregroundRefreshTask {
             await foregroundRefreshTask.value
             return
@@ -1245,9 +1280,19 @@ final class AppStore {
 
         let isInitialHydration = !hasStartedForegroundHydration
         hasStartedForegroundHydration = true
-        let refreshCourses = needsForegroundRefresh(lastUpdated: coursesLastUpdated, now: now)
-        let refreshMessages = needsForegroundRefresh(lastUpdated: messagesLastUpdated, now: now)
-        guard refreshCourses || refreshMessages else { return }
+        let refreshCourses = AutomaticRefreshPolicy.isDue(lastUpdated: coursesLastUpdated, lastAttempt: coursesLastAttempt, now: now, interval: automaticRefreshInterval)
+        let refreshMessages = AutomaticRefreshPolicy.isDue(lastUpdated: messagesLastUpdated, lastAttempt: messagesLastAttempt, now: now, interval: automaticRefreshInterval)
+        guard refreshCourses || refreshMessages else {
+            // Adding a widget or retrying failed class requests must also work
+            // while the course and inbox caches are still fresh. The foreground
+            // loop checks every 15 seconds, so independently bound this work.
+            if !isUsingSampleData, courses != nil, coursesError == nil,
+               widgetSnapshotTask == nil,
+               AutomaticRefreshPolicy.isDue(lastUpdated: nil, lastAttempt: widgetSnapshotLastAttempt, now: now) {
+                updateWidgetSnapshot()
+            }
+            return
+        }
 
         let refreshID = UUID()
         let task = Task { [weak self] in
@@ -1271,9 +1316,15 @@ final class AppStore {
         }
     }
 
-    private func needsForegroundRefresh(lastUpdated: Date?, now: Date) -> Bool {
-        guard let lastUpdated else { return true }
-        return now.timeIntervalSince(lastUpdated) >= Self.foregroundRefreshMaxAge
+    /// Owned by the active scene's SwiftUI task; cancellation stops the timer.
+    /// Network requests already shared with a manual refresh may finish normally.
+    func runForegroundRefreshLoop() async {
+        while !Task.isCancelled {
+            await handleSceneBecameActive()
+            do {
+                try await Task.sleep(for: .seconds(min(15, automaticRefreshInterval)))
+            } catch { return }
+        }
     }
 
     /// Rebuilds the shared widget snapshot in the background.
@@ -1284,13 +1335,24 @@ final class AppStore {
         let messagesUpdatedAt = messagesLastUpdated
         let coursesAreComplete = courses != nil && coursesError == nil
         let messagesAreComplete = hasLoadedMessages && messagesError == nil
+        let generation = accountGeneration
+        let refreshID = UUID()
         widgetSnapshotTask?.cancel()
+        widgetSnapshotID = refreshID
         widgetSnapshotTask = Task {
+            defer {
+                if widgetSnapshotID == refreshID {
+                    widgetSnapshotTask = nil
+                    widgetSnapshotID = nil
+                }
+            }
             do {
                 try await Task.sleep(for: .milliseconds(250))
             } catch {
                 return
             }
+            guard generation == accountGeneration, !Task.isCancelled else { return }
+            widgetSnapshotLastAttempt = Date()
             await WidgetSnapshotBuilder.refresh(
                 courses: courses,
                 coursesUpdatedAt: coursesUpdatedAt,
