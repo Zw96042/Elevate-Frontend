@@ -1555,9 +1555,24 @@ final class AppStore {
         messagePaginationCursor = nil
         coursesLastUpdated = nil
         messagesLastUpdated = nil
-        selectedTerm = AcademicCalendar.currentTerm()
+        selectedTerm = AcademicCalendar.currentTerm(for: Self.academicSelectionDate(Date()))
         lastAutomaticallySelectedTerm = selectedTerm
         WidgetSnapshotStore.clear()
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// Date fixtures affect academic selection only; refresh timestamps and
+    /// saved-data ages continue using the real clock.
+    private static func academicSelectionDate(_ date: Date) -> Date {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-SampleData"),
+           let index = arguments.firstIndex(of: "-AcademicDatePreview"),
+           arguments.indices.contains(index + 1),
+           let preview = ISO8601DateFormatter().date(from: arguments[index + 1]) {
+            return preview
+        }
+        #endif
+        return date
     }
 }
