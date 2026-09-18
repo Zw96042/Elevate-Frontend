@@ -1366,17 +1366,18 @@ final class AppStore {
 
     func loadMoreMessages() async {
         guard !isUsingSampleData else { return }
-        guard !messagesLoadingMore, !messagesExhausted,
+        guard !messagesRefreshing, !messagesLoadingMore, !messagesExhausted,
               let last = messages.last, !last.messageRowId.isEmpty,
               messagePaginationCursor != last.messageRowId else { return }
         let generation = accountGeneration
+        let feedGeneration = messageFeedGeneration
         messagePaginationCursor = last.messageRowId
         messagesPaginationError = nil
         messagesLoadingMore = true
-        defer { messagesLoadingMore = false }
+        defer { if generation == accountGeneration { messagesLoadingMore = false } }
         do {
             let more = try await DataService.shared.loadMoreMessages(after: last.messageRowId, limit: 6)
-            guard generation == accountGeneration else { return }
+            guard generation == accountGeneration, feedGeneration == messageFeedGeneration, !Task.isCancelled else { return }
             let existingIds = Set(messages.map(\.id))
             let unique = more.filter { !existingIds.contains($0.id) }
             if more.isEmpty || unique.isEmpty {
@@ -1384,8 +1385,13 @@ final class AppStore {
             } else {
                 messages.append(contentsOf: unique)
             }
+        } catch is CancellationError {
+            // Leaving the page isn't an error; the next scroll asks again.
+            if generation == accountGeneration, feedGeneration == messageFeedGeneration {
+                messagePaginationCursor = nil
+            }
         } catch {
-            if generation == accountGeneration {
+            if generation == accountGeneration, feedGeneration == messageFeedGeneration {
                 messagePaginationCursor = nil
                 messagesPaginationError = error.localizedDescription
             }
@@ -1393,12 +1399,25 @@ final class AppStore {
     }
 
     func clearAllCaches() async {
+        let calendarTermsToReload = SchoolCalendar.quarters.filter { term in
+            let state = calendarQuarters[term]
+            return state?.data != nil || state?.error != nil || calendarRefreshes[term] != nil
+        }
+        let reloadAttendance = attendance != nil || attendanceError != nil || attendanceRefreshTask != nil
+        let reloadFees = fees != nil || feesError != nil || feesRefreshTask != nil
+        let reloadStudentInfo = studentInfo != nil || studentInfoError != nil || studentInfoRefreshTask != nil
+        let reloadDocuments = documents != nil || documentsError != nil || documentsRefreshTask != nil
         #if DEBUG
         if isUsingSampleData {
-            courses = SampleData.courses
-            messages = SampleData.messages
+            assignCourseSnapshot(sampleCourses)
+            messages = ProcessInfo.processInfo.arguments.contains("-EmptyInbox") ? [] : SampleData.messages
             coursesLastUpdated = Date()
             messagesLastUpdated = Date()
+            if reloadAttendance { await refreshAttendance(force: true) }
+            if reloadFees { await refreshFees(force: true) }
+            if reloadStudentInfo { await refreshStudentInfo(force: true) }
+            if reloadDocuments { await refreshDocuments(force: true) }
+            for term in calendarTermsToReload { await refreshCalendar(term: term, force: true) }
             SampleData.install()
             return
         }
@@ -1408,15 +1427,22 @@ final class AppStore {
         async let courses: Void = refreshCourses(force: true)
         async let messages: Void = refreshMessages(force: true)
         _ = await (courses, messages)
+        if reloadAttendance { await refreshAttendance(force: true) }
+        if reloadFees { await refreshFees(force: true) }
+        if reloadStudentInfo { await refreshStudentInfo(force: true) }
+        if reloadDocuments { await refreshDocuments(force: true) }
+        for term in calendarTermsToReload { await refreshCalendar(term: term, force: true) }
     }
 
     func disconnect() async throws {
         credentialSaveOwnership.cancel()
+        isAuthenticating = false
         let account = CredentialStore.currentAccountIdentifier
         // Stop every account-bound task before removing secrets. Otherwise an
         // authentication completing between session and credential deletion
         // could repopulate the just-cleared account session.
         await invalidateAccountScopedWork()
+        await notifications.clearAccount(scope: account)
         try LegacyAsyncStorageMigration.cleanupLegacyArtifacts(accountIdentifier: account)
         if let account {
             try SessionStore.clear(accountIdentifier: account)
@@ -1441,10 +1467,45 @@ final class AppStore {
 
     private func invalidateAccountScopedWork() async {
         accountGeneration += 1
+        planning.activate(accountScope: nil)
+        await notifications.activateAccount(scope: nil)
+        BackgroundGradeRefresh.cancel()
+        for entry in calendarRefreshes.values { entry.task.cancel() }
+        calendarRefreshes = [:]
+        #if DEBUG
+        calendarRevisionPreviewInjected = false
+        #endif
+        attendanceRefreshTask?.cancel()
+        attendanceRefreshTask = nil
+        attendanceRefreshID = nil
+        attendanceRefreshIsForced = false
+        attendanceLastAttempt = nil
+        feesRefreshTask?.cancel()
+        feesRefreshTask = nil
+        feesRefreshID = nil
+        feesRefreshIsForced = false
+        studentInfoRefreshTask?.cancel()
+        studentInfoRefreshTask = nil
+        studentInfoRefreshID = nil
+        studentInfoRefreshIsForced = false
+        documentsRefreshTask?.cancel()
+        documentsRefreshTask = nil
+        documentsRefreshID = nil
+        documentsRefreshIsForced = false
+        documentOpenTask?.cancel()
+        documentOpenTask = nil
+        documentOpenID = nil
+        closeDocumentPreview()
+        endCourseGradeViewingSession()
+        coursesLastAttempt = nil
+        messagesLastAttempt = nil
         foregroundRefreshTask?.cancel()
         coursesRefreshTask?.cancel()
         messagesRefreshTask?.cancel()
         widgetSnapshotTask?.cancel()
+        widgetSnapshotTask = nil
+        widgetSnapshotID = nil
+        widgetSnapshotLastAttempt = nil
         foregroundRefreshTask = nil
         coursesRefreshTask = nil
         messagesRefreshTask = nil
@@ -1458,7 +1519,33 @@ final class AppStore {
     }
 
     private func resetAccountScopedState() async {
-        courses = nil
+        calendarTerm = SchoolCalendar.quarter(for: AcademicCalendar.currentTerm(for: Self.academicSelectionDate(Date())))
+        lastAutomaticallySelectedCalendarTerm = calendarTerm
+        calendarQuarters = [:]
+        attendance = nil
+        attendanceLoading = false
+        attendanceError = nil
+        attendanceLastUpdated = nil
+        fees = nil
+        feesLoading = false
+        feesError = nil
+        feesLastUpdated = nil
+        studentInfo = nil
+        studentInfoLoading = false
+        studentInfoError = nil
+        studentInfoLastUpdated = nil
+        documents = nil
+        documentsLoading = false
+        documentsError = nil
+        documentsLastUpdated = nil
+        documentLoadingID = nil
+        documentOpenError = nil
+        documentPreview = nil
+        assignCourseSnapshot(nil)
+        coursesLoading = false
+        messagesLoading = false
+        messagesLoadingMore = false
+        messagesRefreshing = false
         messages = []
         coursesError = nil
         messagesError = nil
