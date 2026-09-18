@@ -677,6 +677,99 @@ final class AppStore {
         }
     }
 
+    func refreshAttendance(force: Bool = false) async {
+        guard canShowData, !Task.isCancelled else { return }
+        let generation = accountGeneration
+        if let task = attendanceRefreshTask {
+            let refreshID = attendanceRefreshID
+            let needsForcedFollowUp = force && !attendanceRefreshIsForced
+            await task.value
+            guard generation == accountGeneration, !Task.isCancelled else { return }
+            if needsForcedFollowUp {
+                if attendanceRefreshID == refreshID {
+                    attendanceRefreshTask = nil
+                    attendanceRefreshID = nil
+                    attendanceRefreshIsForced = false
+                }
+                await refreshAttendance(force: true)
+            }
+            return
+        }
+        attendanceLastAttempt = Date()
+        attendanceRefreshIsForced = force
+        let refreshID = UUID()
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.performRefreshAttendance(force: force)
+        }
+        attendanceRefreshID = refreshID
+        attendanceRefreshTask = task
+        await task.value
+        if attendanceRefreshID == refreshID {
+            attendanceRefreshTask = nil
+            attendanceRefreshID = nil
+            attendanceRefreshIsForced = false
+        }
+    }
+
+    private func performRefreshAttendance(force: Bool) async {
+        let generation = accountGeneration
+        attendanceLoading = true
+        attendanceError = nil
+        defer { if generation == accountGeneration { attendanceLoading = false } }
+        #if DEBUG
+        if isUsingSampleData {
+            if ProcessInfo.processInfo.arguments.contains("-PreviewAttendanceLoading") {
+                try? await Task.sleep(for: .seconds(30))
+                guard generation == accountGeneration, !Task.isCancelled else { return }
+            }
+            if ProcessInfo.processInfo.arguments.contains("-AttendanceErrorPreview") {
+                attendanceError = "Skyward attendance is temporarily unavailable."
+                return
+            }
+            if ProcessInfo.processInfo.arguments.contains("-AttendanceOfflinePreview") {
+                attendance = SampleData.attendance
+                attendanceLastUpdated = Date(timeIntervalSinceNow: -2 * 24 * 60 * 60)
+                attendanceError = "You're offline. Showing saved attendance."
+                return
+            }
+            attendance = ProcessInfo.processInfo.arguments.contains("-EmptyAttendance")
+                ? AttendanceData(records: []) : SampleData.attendance
+            if ProcessInfo.processInfo.arguments.contains("-AttendanceUnavailablePreview") {
+                attendance = AttendanceData(records: [], availability: .unavailable)
+            }
+            attendanceLastUpdated = Date()
+            return
+        }
+        #endif
+        let saved = DataService.shared.cachedAttendance()
+        do {
+            let stale = saved.map { Date().timeIntervalSince($0.updatedAt) >= Self.automaticRefreshInterval } ?? false
+            let result = try await DataService.shared.loadAttendance(forceRefresh: force || stale)
+            guard generation == accountGeneration, !Task.isCancelled else { return }
+            attendance = result
+            attendanceLastUpdated = DataService.shared.cachedAttendance()?.updatedAt ?? Date()
+        } catch {
+            guard generation == accountGeneration, !Task.isCancelled else { return }
+            if let saved {
+                attendance = saved.value
+                attendanceLastUpdated = saved.updatedAt
+            }
+            attendanceError = error.localizedDescription
+        }
+    }
+
+    /// The Attendance view owns this loop: hidden tabs don't add network work.
+    func runAttendanceRefreshLoop() async {
+        while !Task.isCancelled, canShowData {
+            if AutomaticRefreshPolicy.isDue(lastUpdated: attendanceLastUpdated, lastAttempt: attendanceLastAttempt,
+                                            now: Date(), interval: automaticRefreshInterval) {
+                await refreshAttendance(force: attendance != nil)
+            }
+            do { try await Task.sleep(for: .seconds(30)) } catch { return }
+        }
+    }
+
     func saveCredentials(username: String, password: String) async -> Bool {
         let saveID = credentialSaveOwnership.begin()
         let previousAccount = CredentialStore.currentAccountIdentifier
