@@ -900,6 +900,90 @@ final class AppStore {
         }
     }
 
+    /// The selected quarter, for Search and other one-quarter pages.
+    func refreshCalendar(force: Bool = false) async {
+        await refreshCalendar(term: calendarTerm, force: force)
+    }
+
+    /// The quarters a page has on screen, one after another so no more than
+    /// one quarter's course requests run at a time. A quarter already saved
+    /// is refreshed only when its data is due or `force` is set.
+    func refreshCalendar(terms: [TermLabel], force: Bool = false) async {
+        for term in terms {
+            guard !Task.isCancelled else { return }
+            let state = calendarQuarter(term)
+            // A recent failure waits for the policy too; otherwise every
+            // scroll past a failed quarter would retry it.
+            if !force, state.data != nil || state.error != nil,
+               !AutomaticRefreshPolicy.isDue(lastUpdated: state.lastUpdated, lastAttempt: state.lastAttempt,
+                                             now: Date(), interval: automaticRefreshInterval) {
+                continue
+            }
+            await refreshCalendar(term: term, force: force)
+            // Without classes no quarter can load; one course request is enough.
+            if courses == nil { return }
+        }
+    }
+
+    func refreshCalendar(term requested: TermLabel, force: Bool = false) async {
+        let term = SchoolCalendar.quarter(for: requested)
+        let generation = accountGeneration
+        var needsForce = force
+        while generation == accountGeneration, canShowData, !Task.isCancelled {
+            if courses == nil {
+                calendarQuarters[term, default: CalendarQuarterState()].isLoading = true
+                await refreshCourses()
+            }
+            guard generation == accountGeneration, canShowData, !Task.isCancelled else {
+                if generation == accountGeneration, calendarRefreshes[term] == nil {
+                    calendarQuarters[term]?.isLoading = false
+                }
+                return
+            }
+            guard let courses else {
+                calendarQuarters[term, default: CalendarQuarterState()].isLoading = false
+                calendarQuarters[term]?.error = coursesError ?? "Courses could not load. Try again to load the calendar."
+                // Counts as an attempt, so scrolling doesn't request classes
+                // again until the refresh policy allows it.
+                calendarQuarters[term]?.lastAttempt = Date()
+                return
+            }
+            let entry: CalendarRefreshEntry
+            if let active = calendarRefreshes[term] {
+                entry = active
+            } else {
+                let scope = CalendarRefreshScope(generation: generation, term: term,
+                    coursesRevision: coursesRefreshRevision,
+                    courses: SchoolCalendar.eligibleCourses(courses, term: term))
+                let refreshID = UUID()
+                let wasForced = needsForce
+                let task = Task { [weak self] in
+                    guard let self else { return }
+                    await self.performRefreshCalendar(courses: scope.courses, term: scope.term, force: wasForced,
+                        generation: scope.generation, revision: scope.coursesRevision, refreshID: refreshID)
+                }
+                entry = CalendarRefreshEntry(task: task, id: refreshID, isForced: wasForced, scope: scope)
+                calendarRefreshes[term] = entry
+                calendarQuarters[term, default: CalendarQuarterState()].lastAttempt = Date()
+            }
+            await entry.task.value
+            if calendarRefreshes[term]?.id == entry.id {
+                calendarRefreshes[term] = nil
+            }
+            guard generation == accountGeneration, canShowData, !Task.isCancelled else { return }
+            // Every waiter owns this check. A cancelled original caller cannot
+            // strand an uncancelled joiner after a stale batch was rejected.
+            let current = CalendarRefreshScope(generation: accountGeneration, term: term,
+                coursesRevision: coursesRefreshRevision,
+                courses: SchoolCalendar.eligibleCourses(self.courses ?? [], term: term))
+            if entry.scope != current || (needsForce && !entry.isForced) {
+                needsForce = true
+                continue
+            }
+            return
+        }
+    }
+
     func refreshCourses(force: Bool = false) async {
         if let task = coursesRefreshTask {
             let activeRefreshID = coursesRefreshID
