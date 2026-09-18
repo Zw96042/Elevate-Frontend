@@ -118,7 +118,7 @@ export const BottomSheetProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <BottomSheetContext.Provider value={{ bottomSheetRef, selectedCategory, setSelectedCategory }}>
+    <BottomSheetContext.Provider value={{ bottomSheetRef, selectedCategory, setSelectedCategory: handleSetSelectedCategory }}>
       {children}
     </BottomSheetContext.Provider>
   );
