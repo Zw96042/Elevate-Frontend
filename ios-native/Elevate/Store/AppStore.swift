@@ -538,6 +538,145 @@ final class AppStore {
         }
     }
 
+    private func performRefreshStudentInfo(force: Bool, generation: Int) async {
+        guard generation == accountGeneration, !Task.isCancelled else { return }
+        studentInfoLoading = true
+        studentInfoError = nil
+        defer { if generation == accountGeneration { studentInfoLoading = false } }
+        #if DEBUG
+        if isUsingSampleData {
+            if ProcessInfo.processInfo.arguments.contains("-PreviewStudentInfoLoading") {
+                try? await Task.sleep(for: .seconds(30))
+                guard generation == accountGeneration, !Task.isCancelled else { return }
+            }
+            if ProcessInfo.processInfo.arguments.contains("-StudentInfoErrorPreview") {
+                studentInfo = nil
+                studentInfoLastUpdated = nil
+                studentInfoError = "Skyward student information is temporarily unavailable."
+                return
+            }
+            var preview = SampleData.studentInfo
+            if ProcessInfo.processInfo.arguments.contains("-StudentPhotoMissingPreview") {
+                preview.photoData = nil
+                preview.photoLoadFailed = false
+            }
+            if ProcessInfo.processInfo.arguments.contains("-StudentInfoEmptyFieldsPreview") {
+                preview.contactFields = []
+                preview.studentFields = []
+                preview.enrollments = []
+                preview.photoData = nil
+                preview.photoLoadFailed = false
+            }
+            studentInfo = preview
+            if ProcessInfo.processInfo.arguments.contains("-StudentInfoOfflinePreview") {
+                studentInfoLastUpdated = Date(timeIntervalSinceNow: -2 * 24 * 60 * 60)
+                studentInfoError = "You're offline. Showing saved student information."
+                return
+            }
+            studentInfoLastUpdated = Date()
+            return
+        }
+        #endif
+        let saved = DataService.shared.cachedStudentInfo()
+        do {
+            let stale = saved.map { Date().timeIntervalSince($0.updatedAt) >= Self.automaticRefreshInterval } ?? false
+            let result = try await DataService.shared.loadStudentInfo(forceRefresh: force || stale)
+            guard generation == accountGeneration, !Task.isCancelled else { return }
+            studentInfo = result
+            studentInfoLastUpdated = DataService.shared.cachedStudentInfo()?.updatedAt ?? Date()
+        } catch {
+            guard generation == accountGeneration, !Task.isCancelled else { return }
+            if let saved {
+                studentInfo = saved.value
+                studentInfoLastUpdated = saved.updatedAt
+            }
+            studentInfoError = error.localizedDescription
+        }
+    }
+
+    func refreshDocuments(force: Bool = false) async {
+        guard canShowData, !Task.isCancelled else { return }
+        let generation = accountGeneration
+        if let task = documentsRefreshTask {
+            let refreshID = documentsRefreshID
+            let needsForcedFollowUp = force && !documentsRefreshIsForced
+            await task.value
+            guard generation == accountGeneration, !Task.isCancelled else { return }
+            if needsForcedFollowUp {
+                if documentsRefreshID == refreshID {
+                    documentsRefreshTask = nil
+                    documentsRefreshID = nil
+                    documentsRefreshIsForced = false
+                }
+                await refreshDocuments(force: true)
+            }
+            return
+        }
+        documentsRefreshIsForced = force
+        let refreshID = UUID()
+        let task = Task { [weak self] in
+            guard let self, generation == self.accountGeneration, !Task.isCancelled else { return }
+            await self.performRefreshDocuments(force: force, generation: generation)
+        }
+        documentsRefreshID = refreshID
+        documentsRefreshTask = task
+        await task.value
+        if documentsRefreshID == refreshID {
+            documentsRefreshTask = nil
+            documentsRefreshID = nil
+            documentsRefreshIsForced = false
+        }
+    }
+
+    private func performRefreshDocuments(force: Bool, generation: Int) async {
+        guard generation == accountGeneration, !Task.isCancelled else { return }
+        documentsLoading = true
+        documentsError = nil
+        defer { if generation == accountGeneration { documentsLoading = false } }
+        #if DEBUG
+        if isUsingSampleData {
+            if ProcessInfo.processInfo.arguments.contains("-PreviewDocumentsLoading") {
+                try? await Task.sleep(for: .seconds(30))
+                guard generation == accountGeneration, !Task.isCancelled else { return }
+            }
+            if ProcessInfo.processInfo.arguments.contains("-DocumentsErrorPreview") {
+                documents = nil
+                documentsLastUpdated = nil
+                documentsError = "Skyward documents are temporarily unavailable."
+                return
+            }
+            if ProcessInfo.processInfo.arguments.contains("-DocumentsOfflinePreview") {
+                documents = SampleData.documents
+                documentsLastUpdated = Date(timeIntervalSinceNow: -2 * 24 * 60 * 60)
+                documentsError = "You're offline. Showing saved documents."
+                return
+            }
+            documents = ProcessInfo.processInfo.arguments.contains("-EmptyDocuments")
+                ? DocumentsData(documents: []) : SampleData.documents
+            if ProcessInfo.processInfo.arguments.contains("-DocumentsUnavailablePreview") {
+                documents = DocumentsData(documents: [], availability: .unavailable)
+            }
+            documentsLastUpdated = Date()
+            return
+        }
+        #endif
+        let saved = DataService.shared.cachedDocuments()
+        do {
+            let stale = saved.map { Date().timeIntervalSince($0.updatedAt) >= Self.automaticRefreshInterval } ?? false
+            let result = try await DataService.shared.loadDocuments(forceRefresh: force || stale)
+            guard generation == accountGeneration, !Task.isCancelled else { return }
+            documents = result
+            documentsLastUpdated = DataService.shared.cachedDocuments()?.updatedAt ?? Date()
+        } catch {
+            guard generation == accountGeneration, !Task.isCancelled else { return }
+            if let saved {
+                documents = saved.value
+                documentsLastUpdated = saved.updatedAt
+            }
+            documentsError = error.localizedDescription
+        }
+    }
+
     func saveCredentials(username: String, password: String) async -> Bool {
         let saveID = credentialSaveOwnership.begin()
         let previousAccount = CredentialStore.currentAccountIdentifier
