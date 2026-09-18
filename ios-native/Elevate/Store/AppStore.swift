@@ -984,11 +984,106 @@ final class AppStore {
         }
     }
 
+    private func performRefreshCalendar(courses: [UnifiedCourseData], term: TermLabel, force: Bool,
+                                        generation: Int, revision: Int, refreshID: UUID) async {
+        var state = calendarQuarter(term)
+        state.isLoading = state.data == nil || force
+        state.error = nil
+        calendarQuarters[term] = state
+        defer {
+            if calendarRefreshes[term]?.id == refreshID { calendarQuarters[term]?.isLoading = false }
+        }
+        func isCurrent() -> Bool {
+            generation == accountGeneration && calendarRefreshes[term]?.id == refreshID &&
+                revision == coursesRefreshRevision && !Task.isCancelled &&
+                courses == SchoolCalendar.eligibleCourses(self.courses ?? [], term: term)
+        }
+        func finish(_ data: SchoolCalendarData, error: String?) {
+            var state = calendarQuarter(term)
+            state.data = data
+            state.lastUpdated = data.updatedAt
+            state.error = error
+            calendarQuarters[term] = state
+        }
+        #if DEBUG
+        if isUsingSampleData {
+            let flags = ProcessInfo.processInfo.arguments
+            if flags.contains("-CalendarRevisionDuringLoadPreview"), !calendarRevisionPreviewInjected {
+                calendarRevisionPreviewInjected = true
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                guard isCurrent() else { return }
+                await refreshCourses(force: true)
+                // Let SwiftUI restart its course-revision task while this old
+                // batch is still active, reproducing the coalescing race.
+                do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            }
+            if flags.contains("-PreviewCalendarLoading") {
+                do { try await Task.sleep(for: .seconds(30)) } catch { return }
+            }
+            // `-SlowCalendarQuarterPreview Q2` holds one quarter for a few
+            // seconds so its loading state can be seen beside a loaded one.
+            if Self.debugQuarterArgument("-SlowCalendarQuarterPreview") == term {
+                do { try await Task.sleep(for: .seconds(6)) } catch { return }
+            }
+            guard isCurrent() else { return }
+            if flags.contains("-CalendarErrorPreview") || Self.debugQuarterArgument("-CalendarQuarterErrorPreview") == term {
+                calendarQuarters[term]?.error = "Calendar could not refresh. Try again."
+                return
+            }
+            var data = SampleData.calendar(term: term, courses: courses)
+            if flags.contains("-EmptyCalendar") {
+                data.assignments = []
+            }
+            var error: String?
+            if flags.contains("-CalendarOfflinePreview") {
+                let saved = Date().addingTimeInterval(-2 * 24 * 60 * 60)
+                data.updatedAt = saved
+                data.courseUpdatedAt = Dictionary(uniqueKeysWithValues: courses.map { ($0.id, saved) })
+                data.failedCourseNames = courses.map(\.courseName)
+                error = "Offline. Showing saved assignments."
+            }
+            finish(data, error: error)
+            return
+        }
+        #endif
+        do {
+            let data = try await SchoolCalendarService.load(courses: courses, term: term,
+                                                           force: force, previous: calendarQuarter(term).data)
+            guard isCurrent() else { return }
+            var error: String?
+            if !data.failedCourseNames.isEmpty {
+                error = data.resolvedCourseCount == 0
+                    ? "Assignments could not load for any course. Try again."
+                    : "Some courses could not refresh. Saved assignments are shown where available."
+            }
+            finish(data, error: error)
+        } catch is CancellationError {
+            // Stopped, not failed: keep what's saved without an error.
+            return
+        } catch {
+            guard isCurrent() else { return }
+            calendarQuarters[term]?.error = error.localizedDescription
+        }
+    }
+
+    #if DEBUG
+    /// The quarter named after a debug flag, such as `-Flag Q2`.
+    private static func debugQuarterArgument(_ flag: String) -> TermLabel? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains("-SampleData"), let index = arguments.firstIndex(of: flag),
+              arguments.indices.contains(index + 1) else { return nil }
+        return SchoolCalendar.quarters.first { $0.shortName == arguments[index + 1].uppercased() }
+    }
+    #endif
+
     func refreshCourses(force: Bool = false) async {
+        let generation = accountGeneration
+        guard !Task.isCancelled else { return }
         if let task = coursesRefreshTask {
             let activeRefreshID = coursesRefreshID
             let needsForcedFollowUp = force && !coursesRefreshIsForced
             await task.value
+            guard generation == accountGeneration, !Task.isCancelled else { return }
             if needsForcedFollowUp {
                 if coursesRefreshID == activeRefreshID {
                     coursesRefreshTask = nil
@@ -1000,6 +1095,7 @@ final class AppStore {
             return
         }
 
+        coursesLastAttempt = Date()
         coursesRefreshIsForced = force
         let refreshID = UUID()
         let task = Task { [weak self] in
@@ -1010,6 +1106,7 @@ final class AppStore {
         coursesRefreshTask = task
         await task.value
         if coursesRefreshID == refreshID {
+            if coursesError != nil { coursesLastAttempt = Date() }
             coursesRefreshTask = nil
             coursesRefreshID = nil
             coursesRefreshIsForced = false
@@ -1019,7 +1116,14 @@ final class AppStore {
     private func performRefreshCourses(force: Bool) async {
         #if DEBUG
         if isUsingSampleData {
-            courses = SampleData.courses
+            if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+               ProcessInfo.processInfo.arguments.contains("-PreviewTranscriptLoading") { return }
+            coursesLoading = true
+            defer { coursesLoading = false }
+            if automaticRefreshInterval < Self.automaticRefreshInterval {
+                do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            }
+            assignCourseSnapshot(sampleCourses)
             coursesLastUpdated = Date()
             SampleData.install()
             return
