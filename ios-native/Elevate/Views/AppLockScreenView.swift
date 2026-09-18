@@ -95,3 +95,87 @@ struct AppLockScreenView: View {
             .accessibilityHidden(store.isLocked)
     }
 
+    private var lockedContent: some View {
+        VStack(spacing: 32) {
+            VStack(spacing: 6) {
+                Text("Elevate is locked")
+                    .font(.title2.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("appLock.title")
+                Text("Use \(AppLockCopy.method(for: store)) to open it.")
+                    .font(.body)
+                    .foregroundStyle(Color.muted)
+                if let error = store.error {
+                    errorMessage(error)
+                        .padding(.top, 10)
+                        .transition(.opacity)
+                }
+            }
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+
+            unlockButton
+        }
+        .animation(Motion.replace(reduceMotion), value: store.error)
+    }
+
+    /// The store's message, centered under the instruction with its symbol
+    /// inline so a wrapped line stays balanced.
+    private func errorMessage(_ error: String) -> some View {
+        let symbol = Text(Image(systemName: "exclamationmark.circle"))
+            .foregroundStyle(Color.gradeAttention)
+        return Text("\(symbol) \(error)")
+            .font(.subheadline)
+            .foregroundStyle(Color.ink)
+            .accessibilityLabel(error)
+            .accessibilityFocused($errorFocused)
+            .accessibilityIdentifier("appLock.error")
+    }
+
+    /// Unlock, or Try again after a failure; the same request either way.
+    /// Sized for its label rather than the page, until text is large enough
+    /// to need the full width.
+    private var unlockButton: some View {
+        let title = store.error == nil ? "Unlock" : "Try again"
+        return Button(action: unlock) {
+            HStack(spacing: 8) {
+                if isBusy {
+                    ProgressView()
+                        .accessibilityHidden(true)
+                } else {
+                    Image(systemName: store.authenticationSymbol)
+                        .accessibilityHidden(true)
+                }
+                Text(title)
+            }
+        }
+        .buttonStyle(PrimaryButtonStyle())
+        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : 220)
+        .disabled(isBusy)
+        .accessibilityLabel("\(title) with \(store.authenticationName)")
+        .accessibilityValue(isBusy ? "Waiting for \(store.authenticationName)" : "")
+        .accessibilityIdentifier("appLock.unlock")
+    }
+
+    private func unlock() {
+        guard !isBusy else { return }
+        isStarting = true
+        store.clearError()
+        Task {
+            _ = await store.unlock()
+            isStarting = false
+        }
+    }
+}
+
+/// How the app lock's check reads in a sentence: "Face ID or your passcode",
+/// or "your passcode" alone on an iPhone without Face ID or Touch ID.
+enum AppLockCopy {
+    @MainActor static func method(for store: AppLockStore) -> String {
+        let name = store.authenticationName
+        if name.isEmpty || name.localizedCaseInsensitiveContains("passcode") {
+            return "your passcode"
+        }
+        return "\(name) or your passcode"
+    }
+}
