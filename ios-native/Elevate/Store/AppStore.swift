@@ -770,8 +770,61 @@ final class AppStore {
         }
     }
 
+    /// Idempotent during one foreground viewing session. Starting a session does
+    /// not mark any fetched or cached courses as seen.
+    func beginCourseGradeViewingSession() {
+        guard canShowData, !isAuthenticating else { return }
+        let scope = isUsingSampleData ? "sample" : CredentialStore.currentAccountIdentifier
+        guard let scope else { return }
+        guard courseGradeTracker == nil || courseGradeTrackerScope != scope else { return }
+        courseGradeTracker = GradeChangeTracker(scope: scope)
+        courseGradeTrackerScope = scope
+        courseGradeChanges = [:]
+        observedCourseGradeTerm = nil
+    }
+
+    /// End on foreground-session exit, not when pushing a class or changing tabs.
+    func endCourseGradeViewingSession() {
+        courseGradeTracker = nil
+        courseGradeTrackerScope = nil
+        courseGradeChanges = [:]
+        observedCourseGradeTerm = nil
+    }
+
+    /// The Courses root calls this only while actually visible and active. A
+    /// refresh completion alone must never call it: unseen values are not seen.
+    func observeVisibleCourseGrades(displayedCourseIDs: Set<String>) {
+        guard canShowData, !isAuthenticating, courses != nil else { return }
+        beginCourseGradeViewingSession()
+        guard var tracker = courseGradeTracker else { return }
+        var scores: [String: Double?] = [:]
+        let displayed = visibleCourses.filter { displayedCourseIDs.contains($0.id) }
+        for course in displayed {
+            scores.updateValue(GradeChangeTracker.officialScore(for: course, term: selectedTerm), forKey: course.id)
+        }
+        let deltas = tracker.observe(scores, term: selectedTerm)
+        if observedCourseGradeTerm != selectedTerm { courseGradeChanges = [:] }
+        for id in scores.keys { courseGradeChanges[id] = deltas[id] }
+        observedCourseGradeTerm = selectedTerm
+        courseGradeTracker = tracker
+        if let scope = localAccountScope, let sourceDate = coursesLastUpdated {
+            for course in displayed {
+                guard let score = GradeChangeTracker.officialScore(for: course, term: selectedTerm) else { continue }
+                notifications.markGradeViewed(course: course, term: selectedTerm, score: score,
+                    sourceDate: sourceDate, accountScope: scope)
+            }
+        }
+    }
+
+    func courseGradeDelta(for courseID: String) -> Double? {
+        guard observedCourseGradeTerm == selectedTerm else { return nil }
+        return courseGradeChanges[courseID]
+    }
+
     func saveCredentials(username: String, password: String) async -> Bool {
         let saveID = credentialSaveOwnership.begin()
+        isAuthenticating = true
+        defer { if credentialSaveOwnership.owns(saveID) { isAuthenticating = false } }
         let previousAccount = CredentialStore.currentAccountIdentifier
         let requestGeneration = accountGeneration
         let credentials = SkywardCredentials(
@@ -825,7 +878,10 @@ final class AppStore {
                 WhatIfStore.clearAccountData(scope: previousAccount)
             }
             hasCredentials = true
+            planning.activate(accountScope: newAccount)
+            await notifications.activateAccount(scope: newAccount)
             authError = nil
+            isAuthenticating = false
             credentialSaveOwnership.finish(saveID)
             Task {
                 await refreshCourses(force: true)
@@ -834,9 +890,11 @@ final class AppStore {
             return true
         } catch {
             if credentialSaveOwnership.owns(saveID) {
+                isAuthenticating = false
                 credentialSaveOwnership.finish(saveID)
                 authError = error.localizedDescription
                 hasCredentials = CredentialStore.hasCredentials
+                planning.activate(accountScope: localAccountScope)
             }
             return false
         }
