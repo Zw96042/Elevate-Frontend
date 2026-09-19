@@ -89,3 +89,109 @@ final class AppRouter {
     /// The longest query kept; longer text is cut, not rejected.
     static let searchQueryLimit = 256
 
+    /// The domain the shared search field edits: Search's chosen domain while
+    /// Search is selected, assignments everywhere else.
+    var activeSearchDomain: SearchDomain {
+        selectedTab == .search ? searchDomain : .assignments
+    }
+
+    /// The query for `activeSearchDomain`.
+    var activeSearchQuery: String {
+        activeSearchDomain == .colleges ? collegeQuery : searchQuery
+    }
+
+    /// Whether the Courses stack currently shows College profiles or one
+    /// college, as its last screen.
+    var isShowingCollegeProfiles: Bool {
+        guard selectedTab == .courses else { return false }
+        switch coursesPath.last {
+        case .collegeProfiles?, .collegeProfile?: return true
+        default: return false
+        }
+    }
+
+    /// The tab bar's selection setter. Entering Search chooses its domain
+    /// from the screen being left, before the selection hides that screen;
+    /// reselecting Search keeps the domain it has.
+    func select(_ tab: Tab) {
+        if tab == .search, selectedTab != .search {
+            let domain: SearchDomain = isShowingCollegeProfiles ? .colleges : .assignments
+            if searchDomain != domain { searchDomain = domain }
+        }
+        if selectedTab != tab { selectedTab = tab }
+    }
+
+    /// Edits the active domain's query, cut to the limit. The other
+    /// domain's query is untouched.
+    func setActiveSearchQuery(_ text: String) {
+        let clamped = String(text.prefix(Self.searchQueryLimit))
+        switch activeSearchDomain {
+        case .assignments:
+            if searchQuery != clamped { searchQuery = clamped }
+        case .colleges:
+            if collegeQuery != clamped { collegeQuery = clamped }
+        }
+    }
+
+    /// Lowers the system search field. The query is kept.
+    func dismissSearch() {
+        if isSearchPresented { isSearchPresented = false }
+    }
+
+    /// Explicit entry points open the same bottom search field as the tab.
+    func openCollegeSearch() {
+        searchDomain = .colleges
+        selectedTab = .search
+        collegeFocusRequest += 1
+        isSearchPresented = true
+    }
+
+    /// Opens a college from Search in Courses, above College profiles, so
+    /// Back returns to the catalog. A college already on top is replaced
+    /// rather than stacked. Search keeps the college query, and choosing
+    /// Search from this screen searches colleges again.
+    func showCollege(_ id: String) {
+        pendingAssignment = nil
+        var path = coursesPath
+        if case .collegeProfile? = path.last { path.removeLast() }
+        if path.last != .collegeProfiles { path.append(.collegeProfiles) }
+        path.append(.collegeProfile(id))
+        coursesPath = path
+        select(.courses)
+    }
+
+    /// Handles `com.zacharywilson.elevate://` links from the widgets.
+    /// `gpa` replaces the Courses path rather than adding to it, so a link
+    /// that arrives while a class is open lands on GPA with one step back.
+    /// `history` opens Settings on Past courses with School records one step back.
+    /// Returns whether the link opened GPA.
+    @discardableResult
+    func open(_ url: URL) -> Bool {
+        guard url.scheme == "com.zacharywilson.elevate" else { return false }
+        pendingAssignment = nil
+        if url.host != "history" {
+            isShowingSettings = false
+            recordsPath = []
+        }
+        switch url.host {
+        case "gpa":
+            selectedTab = .courses
+            coursesPath = [.gpa]
+            return true
+        case "inbox":
+            selectedTab = .inbox
+        case "attendance", "calendar":
+            // Attendance lives on Calendar's first page.
+            selectedTab = .calendar
+            calendarPath = []
+        case "history":
+            selectedTab = .courses
+            recordsPath = [.pastCourses]
+            isShowingSettings = true
+        default:
+            selectedTab = .courses
+            coursesPath = []
+        }
+        return false
+    }
+
