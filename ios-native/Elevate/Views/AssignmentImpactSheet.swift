@@ -102,3 +102,106 @@ struct AssignmentImpactSheet: View {
         _text = State(initialValue: single?.assignment.grade.map(Self.exactText) ?? "")
     }
 
+    private var candidate: AssignmentImpactCandidate? {
+        request.candidates.first { $0.id == chosenID }.flatMap(currentCandidate)
+    }
+
+    private func currentCandidate(_ captured: AssignmentImpactCandidate) -> AssignmentImpactCandidate? {
+        guard let source = quarterSources[captured.quarter.shortName],
+              let info = source.quarterGradebooks[captured.quarter.shortName] else { return nil }
+        let matches = AssignmentGradeEdits.assignments(from: info, className: source.className,
+            term: captured.quarter).filter { $0.id == captured.id }
+        guard matches.count == 1, let assignment = matches.first else { return nil }
+        return AssignmentImpactCandidate(assignment: assignment, quarter: captured.quarter)
+    }
+
+    private var fieldHeight: CGFloat { max(44, wellHeight) }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    header
+
+                    if request.candidates.isEmpty {
+                        message(request.unavailableMessage
+                                ?? "This assignment isn't in the loaded gradebook. Refresh the class and try again.")
+                            .padding(.top, 12)
+                    } else {
+                        if request.candidates.count > 1 {
+                            candidateChoice
+                        }
+                        if let candidate {
+                            calculator(for: candidate)
+                        } else if chosenID != nil {
+                            message("This assignment isn't available in the current gradebook. Refresh the class and try again.")
+                                .padding(.top, 12)
+                        }
+                    }
+                }
+                .padding(.horizontal, Metrics.page)
+                .padding(.bottom, 24)
+                .background {
+                    Color.clear.contentShape(Rectangle())
+                        .onTapGesture { focused = false }
+                }
+            }
+            .background(Color.appBackground.ignoresSafeArea())
+            .softScrollEdges()
+            .scrollDismissesKeyboard(.interactively)
+            .navigationTitle("Impact")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        focused = false
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close")
+                    .accessibilityIdentifier("impact.close")
+                }
+            }
+            .alert(
+                replaceTitle,
+                isPresented: Binding(get: { pendingTry != nil }, set: { if !$0 { pendingTry = nil } }),
+                presenting: pendingTry
+            ) { pending in
+                Button("Replace") { commitTry(pending) }
+                Button("Cancel", role: .cancel) {}
+            } message: { pending in
+                Text("What-if will use \(GradeFormat.upToTwoDecimals(pending.earned))/\(GradeFormat.upToTwoDecimals(pending.candidate.assignment.outOf)) instead. Skyward isn't changed.")
+            }
+        }
+        .tint(Color.themeAccent)
+        .foregroundStyle(Color.ink)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .task(id: chosenID) {
+            guard chosenID != nil else { return }
+            focusField()
+        }
+        .onChange(of: store.accountRevision) { _, _ in dismiss() }
+        .onChange(of: store.selectedTerm) { _, _ in dismiss() }
+    }
+
+    // MARK: Header and choice
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(request.title)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(headerDetail)
+                .font(.subheadline)
+                .foregroundStyle(Color.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("impact.header")
+    }
+
