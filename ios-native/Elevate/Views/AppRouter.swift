@@ -195,3 +195,49 @@ final class AppRouter {
         return false
     }
 
+    /// Opens a class in Courses from another tab. Calendar's own path and
+    /// quarter stay as they were, so going back to Calendar returns there.
+    func showCourse(_ course: UnifiedCourseData) {
+        pendingAssignment = nil
+        coursesPath = [.course(course)]
+        selectedTab = .courses
+    }
+
+    /// Opens the official assignment's quarter. Calendar and Search keep their
+    /// own state; the detail destination owns loading and the eventual focus.
+    func showAssignment(course: UnifiedCourseData, term: TermLabel, assignmentID: String) {
+        guard course.hasGradebookParams, SchoolCalendar.quarters.contains(term),
+              course.availableTerms.contains(term), !assignmentID.isEmpty else { return }
+        isShowingSettings = false
+        recordsPath = []
+        dismissSearch()
+        selectedTab = .courses
+        // The active Courses stack applies this after mounting. Writing its
+        // path while Search closes can lose the destination to initial state.
+        let id = UUID()
+        pendingAssignment = AssignmentNavigation(id: id, route: .assignment(course, term, assignmentID, id))
+    }
+
+    func applyPendingAssignment(_ id: UUID) {
+        guard selectedTab == .courses, let pendingAssignment, pendingAssignment.id == id else { return }
+        coursesPath = [pendingAssignment.route]
+    }
+
+    func acknowledgeAssignment(_ route: CoursesRoute) {
+        guard pendingAssignment?.route == route else { return }
+        pendingAssignment = nil
+    }
+
+    /// Pages and results that belong to the previous account. Settings stays
+    /// open, since connecting and disconnecting happen inside it.
+    func resetForAccountChange() {
+        pendingAssignment = nil
+        if !coursesPath.isEmpty { coursesPath = [] }
+        if !calendarPath.isEmpty { calendarPath = [] }
+        if !recordsPath.isEmpty { recordsPath = [] }
+        if !searchQuery.isEmpty { searchQuery = "" }
+        if !collegeQuery.isEmpty { collegeQuery = "" }
+        if searchDomain != .assignments { searchDomain = .assignments }
+        dismissSearch()
+    }
+}
