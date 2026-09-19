@@ -117,3 +117,94 @@ struct AppUpdateStatus {
         }
     }
 
+    /// Only a current, successful check with a compatible system offers the
+    /// App Store link.
+    var offersStoreUpdate: Bool { phase == .checked(.newer) }
+
+    /// "App Store version 2.0.3, Oct 3, 2026 at 4:12 PM."
+    private var lastKnown: String? {
+        release.map { "App Store version \($0.version), \(Self.checkedText($0.checkedAt))." }
+    }
+
+    static func checkedText(_ date: Date) -> String {
+        date.formatted(date: .abbreviated, time: .shortened)
+    }
+}
+
+/// App version and App Store status. Elevate looks up its public App Store
+/// listing only when Check is tapped; updates themselves install through the
+/// App Store or TestFlight. Pushed from Settings → Updates.
+struct AppUpdatesView: View {
+    var service: AppUpdateService
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let status = AppUpdateStatus(service: service)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Metrics.sectionGap) {
+                installedSection
+                storeSection(status)
+            }
+            .padding(.horizontal, Metrics.page)
+            .padding(.top, 8)
+            .padding(.bottom, 32)
+        }
+        .background(Color.appBackground.ignoresSafeArea())
+        .softScrollEdges()
+        .navigationTitle("Updates")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .accessibilityIdentifier("updates.screen")
+    }
+
+    // MARK: - This iPhone
+
+    private var installedSection: some View {
+        let build = InstalledAppInfo.build
+        let version = InstalledAppInfo.version.isEmpty ? "Unknown" : InstalledAppInfo.version
+        return SettingsGroup(title: "This iPhone") {
+            valueRow("Installed version", value: build.isEmpty ? version : "\(version) (\(build))",
+                     spokenValue: build.isEmpty ? version : "\(version), build \(build)",
+                     identifier: "updates.installed")
+            InsetDivider()
+            valueRow("iOS", value: InstalledAppInfo.operatingSystemVersion,
+                     spokenValue: InstalledAppInfo.operatingSystemVersion,
+                     identifier: "updates.os")
+        } footer: {
+            if InstalledAppInfo.isTestBuild {
+                Text("This is a TestFlight or development build. TestFlight builds update in the TestFlight app; the check below compares public App Store versions only.")
+                    .foregroundStyle(Color.muted)
+                    .accessibilityIdentifier("updates.testBuild")
+            }
+        }
+    }
+
+    /// A label with its value trailing, or beneath it at accessibility sizes.
+    private func valueRow(_ title: String, value: String, spokenValue: String, identifier: String) -> some View {
+        SettingsRow {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                if dynamicTypeSize.isAccessibilitySize {
+                    Text(value)
+                        .font(.figure(.body, weight: .regular))
+                        .foregroundStyle(Color.muted)
+                }
+            }
+        } accessory: {
+            if !dynamicTypeSize.isAccessibilitySize {
+                Text(value)
+                    .font(.figure(.body, weight: .regular))
+                    .foregroundStyle(Color.muted)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(spokenValue)
+        .accessibilityIdentifier(identifier)
+    }
+
+    // MARK: - App Store
+
