@@ -208,3 +208,135 @@ struct AppUpdatesView: View {
 
     // MARK: - App Store
 
+    private func storeSection(_ status: AppUpdateStatus) -> some View {
+        SettingsGroup(title: "App Store") {
+            SettingsRow {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(status.title)
+                    Text(status.detail)
+                        .font(.subheadline)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } accessory: {
+                if status.phase == .failed {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(Color.gradeAttention)
+                        .accessibilityHidden(true)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("updates.status")
+
+            if status.offersStoreUpdate {
+                InsetDivider()
+                Link(destination: AppUpdateClient.storeURL) {
+                    SettingsRow {
+                        Text("Update in the App Store")
+                    } accessory: {
+                        Image(systemName: "arrow.up.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.muted)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .buttonStyle(RowPressStyle())
+                .accessibilityHint("Opens Elevate in the App Store")
+                .accessibilityIdentifier("updates.update")
+            }
+
+            if let release = status.release,
+               !release.releaseNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                InsetDivider()
+                NavigationLink {
+                    AppReleaseNotesView(release: release)
+                } label: {
+                    SettingsRow {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("What's new in \(release.version)")
+                            Text("App Store release notes")
+                                .font(.subheadline)
+                                .foregroundStyle(Color.muted)
+                        }
+                    } accessory: {
+                        RowChevron()
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+                .buttonStyle(RowPressStyle())
+                .accessibilityIdentifier("updates.releaseNotes")
+            }
+
+            InsetDivider()
+            checkButton(status)
+        } footer: {
+            Text("Elevate checks Apple's public App Store listing only when you check. No Skyward information is sent. Updates install through the App Store or TestFlight; Elevate doesn't download code itself.")
+                .foregroundStyle(Color.muted)
+        }
+    }
+
+    private func checkButton(_ status: AppUpdateStatus) -> some View {
+        let isChecking = status.phase == .checking
+        let isRetry = status.phase == .failed
+        return Button {
+            check()
+        } label: {
+            SettingsRow {
+                Text(isChecking ? "Checking…" : (isRetry ? "Try again" : "Check for updates"))
+                    .foregroundStyle(Color.themeAccent)
+            } accessory: {
+                if isChecking {
+                    ProgressView()
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+        .buttonStyle(RowPressStyle())
+        .disabled(isChecking)
+        .accessibilityLabel(isChecking ? "Checking the App Store" : (isRetry ? "Try checking again" : "Check for updates"))
+        .accessibilityIdentifier(isRetry ? "updates.retry" : "updates.check")
+    }
+
+    private func check() {
+        guard !service.isChecking else { return }
+        AccessibilityNotification.Announcement("Checking the App Store").post()
+        Task {
+            await service.check()
+            let status = AppUpdateStatus(service: service)
+            guard status.phase != .checking else { return }
+            AccessibilityNotification.Announcement(status.title).post()
+        }
+    }
+}
+
+/// The listing's release notes as plain text. Nothing in them is interpreted
+/// as Markdown, a link, or anything to run.
+private struct AppReleaseNotesView: View {
+    var release: AppStoreRelease
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(verbatim: release.releaseNotes)
+                    .font(.body)
+                    .foregroundStyle(Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("updates.releaseNotes.text")
+                Text("From the App Store listing for version \(release.version), checked \(AppUpdateStatus.checkedText(release.checkedAt)).")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, Metrics.page)
+            .padding(.top, 8)
+            .padding(.bottom, 32)
+        }
+        .background(Color.appBackground.ignoresSafeArea())
+        .softScrollEdges()
+        .navigationTitle("What's New in \(release.version)")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+    }
+}
