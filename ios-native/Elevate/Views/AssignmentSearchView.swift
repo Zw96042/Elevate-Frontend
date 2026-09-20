@@ -101,3 +101,96 @@ struct AssignmentSearchView: View {
         }
     }
 
+    // MARK: - Field
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.body)
+                .foregroundStyle(Color.muted)
+                .accessibilityHidden(true)
+            TextField("Titles, classes, categories", text: query)
+                .font(.body)
+                .textFieldStyle(.plain)
+                .focused($fieldFocused)
+                .submitLabel(.search)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .onSubmit { fieldFocused = false }
+                .accessibilityLabel("Search assignments in \(store.calendarTerm.displayName)")
+                .accessibilityIdentifier("search.field")
+            if !router.searchQuery.isEmpty {
+                Button {
+                    router.searchQuery = ""
+                    fieldFocused = true
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.body)
+                        .foregroundStyle(Color.muted)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(ScopePressStyle())
+                .accessibilityLabel("Clear search")
+                .accessibilityIdentifier("search.clear")
+            }
+        }
+        .padding(.leading, 10)
+        .frame(minHeight: 44)
+        .background(Color.well, in: RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous))
+        .padding(.horizontal, Metrics.page)
+        .padding(.bottom, 8)
+        .background(Color.appBackground)
+    }
+
+    // MARK: - Source
+
+    private enum SourceState: Equatable {
+        case loading
+        case failed(String)
+        case loaded
+    }
+
+    /// The selected quarter's saved assignments only; another quarter's
+    /// entries are never searched under this quarter's name.
+    private var calendarData: SchoolCalendarData? {
+        guard let data = store.calendarData, data.term == store.calendarTerm else { return nil }
+        return data
+    }
+
+    /// As in Calendar: data in which no class resolved is a failure, not an
+    /// empty quarter. Nothing saved and no failure yet counts as loading.
+    private var assignmentState: SourceState {
+        guard let data = calendarData,
+              data.resolvedCourseCount > 0 || data.failedCourseNames.isEmpty else {
+            if let error = store.calendarError, !store.calendarLoading { return .failed(error) }
+            return .loading
+        }
+        return .loaded
+    }
+
+    /// Classes with nothing saved, which aren't searched, and classes whose
+    /// saved assignments are searched after a failed refresh.
+    private struct Coverage {
+        var missing: [String] = []
+        var saved: [String] = []
+        var isComplete: Bool { missing.isEmpty && saved.isEmpty }
+    }
+
+    private func coverage(_ data: SchoolCalendarData) -> Coverage {
+        let missing = SchoolCalendar.eligibleCourses(store.courses ?? [], term: data.term)
+            .filter { !data.resolvedCourseIDs.contains($0.id) }
+            .map(\.courseName)
+        let missingNames = Set(missing)
+        return Coverage(missing: missing, saved: data.failedCourseNames.filter { !missingNames.contains($0) })
+    }
+
+    // MARK: - Page
+
+    private var page: some View {
+        let state = assignmentState
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                statusStrip
+                    .padding(.horizontal, Metrics.page)
+
