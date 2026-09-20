@@ -312,3 +312,103 @@ struct AssignmentImpactSheet: View {
             }
         }
 
+        if let failure {
+            Label {
+                Text(failure)
+            } icon: {
+                Image(systemName: "exclamationmark.circle")
+                    .foregroundStyle(Color.gradeAttention)
+            }
+            .font(.footnote)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 12)
+            .accessibilityIdentifier("impact.error")
+        }
+
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(notes(for: candidate, outcomes: shared == nil ? outcomes : []), id: \.self) { note in
+                footnote(note)
+            }
+        }
+        .padding(.top, 16)
+    }
+
+    /// "If you earn" with a points well like the assignment rows', then
+    /// Full credit. The well moves beneath the label at larger text sizes.
+    @ViewBuilder
+    private func scoreRow(_ candidate: AssignmentImpactCandidate) -> some View {
+        let label = Text("If you earn")
+            .font(.body)
+            .foregroundStyle(Color.ink)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityHidden(true)
+        if dynamicTypeSize >= .xLarge {
+            VStack(alignment: .leading, spacing: 8) {
+                label
+                HStack(spacing: 8) {
+                    scoreWell(candidate)
+                    fullCreditButton(candidate)
+                }
+            }
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(spacing: 8) {
+                label
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                scoreWell(candidate)
+                fullCreditButton(candidate)
+            }
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, minHeight: 52)
+        }
+    }
+
+    private func scoreWell(_ candidate: AssignmentImpactCandidate) -> some View {
+        let outOf = GradeFormat.upToTwoDecimals(candidate.assignment.outOf)
+        return HStack(alignment: .firstTextBaseline, spacing: 0) {
+            AssignmentScoreField(
+                text: $text,
+                displayText: text,
+                focused: $focused,
+                selectionRequest: selectionRequest,
+                finishRequest: 0,
+                placeholder: "Points",
+                onCommit: { _ in }
+            )
+            .padding(.leading, 8)
+            .frame(width: fieldWidth, height: fieldHeight)
+            .alignmentGuide(.firstTextBaseline) { dimensions in
+                let font = UIFontMetrics(forTextStyle: .body).scaledFont(
+                    for: .monospacedDigitSystemFont(ofSize: 17, weight: .medium)
+                )
+                return (dimensions.height - font.lineHeight) / 2 + font.ascender
+            }
+            .accessibilityLabel("If you earn, points")
+            .accessibilityHint("Out of \(outOf) points")
+            .accessibilityIdentifier("impact.field")
+
+            Text("/\(outOf)")
+                .font(.figure(.subheadline, weight: .regular))
+                .foregroundStyle(Color.muted)
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.leading, 1)
+                .padding(.trailing, 8)
+                .frame(height: fieldHeight)
+                .accessibilityHidden(true)
+        }
+        .background {
+            RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous)
+                .fill(Color.well)
+                .padding(.vertical, (fieldHeight - wellHeight) / 2)
+        }
+        .background {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { focusField() }
+                .accessibilityHidden(true)
+        }
+        .fixedSize()
+    }
+
