@@ -604,3 +604,60 @@ struct AssignmentImpactSheet: View {
         focused = true
     }
 
+    /// Confirms only when it would replace a different saved what-if score.
+    private func requestTry(_ candidate: AssignmentImpactCandidate, earned: Double) {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        focused = false
+        failure = nil
+        let existing = localOverrides[candidate.id]
+        if let existing, existing.changesScore(of: candidate.assignment), existing.grade != earned {
+            pendingTry = PendingTry(candidate: candidate, earned: earned, replacing: existing)
+        } else {
+            commitTry(PendingTry(candidate: candidate, earned: earned, replacing: nil))
+        }
+    }
+
+    private func commitTry(_ pending: PendingTry) {
+        guard store.localAccountScope == request.accountScope, store.selectedTerm == request.term else {
+            failure = "The account or term changed while this was open. Nothing was changed."
+            return
+        }
+        guard let current = currentCandidate(pending.candidate) else {
+            failure = "This assignment isn't available in the current gradebook. Nothing was changed."
+            return
+        }
+        if let reason = onTry(current, pending.earned) {
+            failure = reason
+        } else {
+            dismiss()
+        }
+    }
+
+    // MARK: Pieces
+
+    private func message(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(Color.ink)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("impact.message")
+    }
+
+    private func footnote(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The exact stored value for editing, never the rounded display.
+    private static func exactText(_ value: Double) -> String {
+        guard value.isFinite else { return "" }
+        if value == value.rounded(), abs(value) < 1e15 {
+            return String(Int(value))
+        }
+        return String(value)
+    }
+}
