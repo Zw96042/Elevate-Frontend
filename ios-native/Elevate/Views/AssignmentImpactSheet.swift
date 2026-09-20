@@ -511,3 +511,96 @@ struct AssignmentImpactSheet: View {
         }
     }
 
+    private func resultDetail(_ outcome: Outcome, candidate: AssignmentImpactCandidate) -> String {
+        guard let result = outcome.result else {
+            return outcome.term.isSemester
+                ? "Elevate can't calculate \(outcome.term.displayName) until the class gradebook loads. Refresh the class and try again."
+                : "\(outcome.term.displayName)'s gradebook hasn't loaded. Refresh the class and try again."
+        }
+        if let issue = result.issue { return issueText(issue, candidate: candidate) }
+        guard let before = result.before, let difference = result.difference else {
+            return "Elevate can't calculate this grade from the loaded gradebook."
+        }
+        if abs(difference) < 0.005 { return "No change from \(GradeFormat.twoDecimals(before))" }
+        let direction = difference > 0 ? "up" : "down"
+        return "Now \(GradeFormat.twoDecimals(before)), \(direction) \(GradeFormat.twoDecimals(abs(difference)))"
+    }
+
+    private func issueText(_ issue: AssignmentImpactResult.UnavailableReason, candidate: AssignmentImpactCandidate) -> String {
+        switch issue {
+        case .excludedAssignment:
+            return "Skyward marks this No count, so its score doesn't change the grade."
+        case .unavailableCategory:
+            return "Its category has no weight in Skyward, so Elevate can't calculate its effect."
+        case .unavailableGradebook:
+            return "\(candidate.quarter.displayName)'s gradebook hasn't loaded. Refresh the class and try again."
+        case .assignmentNotFound:
+            return "This assignment is no longer in the loaded gradebook. Refresh the class and try again."
+        case .invalidInput:
+            // Entered points are checked before calculating, so this is
+            // Skyward's own possible points.
+            return "Skyward's possible points for this assignment can't be used."
+        case .differentTerm:
+            return "Elevate can't match this assignment to \(request.term.displayName)."
+        case .calculation(let reason):
+            switch reason {
+            case .unavailableGradebook(let quarter):
+                let name = TermLabel.allCases.first { $0.shortName == quarter }?.displayName ?? quarter
+                return "\(name)'s gradebook hasn't loaded. Refresh the class and try again."
+            case .staleAssignmentIDs:
+                return "This assignment is no longer in the loaded gradebook. Refresh the class and try again."
+            case .unavailableCategory(_, let category):
+                return "“\(category)” has no weight in Skyward, so Elevate can't calculate its effect."
+            default:
+                return "Elevate can't calculate this grade from the loaded gradebook."
+            }
+        }
+    }
+
+    private func notes(for candidate: AssignmentImpactCandidate, outcomes: [Outcome]) -> [String] {
+        var notes = [whatIfIsOn
+            ? "Based on Skyward's posted scores. Your what-if changes aren't included."
+            : "Based on Skyward's posted scores."]
+        if candidate.assignment.outOf == 0 {
+            notes.append("This assignment has no possible points, so points add as extra credit.")
+        }
+        for outcome in outcomes where outcome.result?.issue == nil {
+            for assumption in outcome.result?.assumptions ?? [] where !notes.contains(assumption) {
+                notes.append(assumption)
+            }
+        }
+        return notes
+    }
+
+    /// Offered only when every shown result is valid and the score would
+    /// actually change what What-if uses.
+    private func canTry(_ candidate: AssignmentImpactCandidate, earned: Double, outcomes: [Outcome]) -> Bool {
+        guard canTryInWhatIf, !outcomes.isEmpty,
+              outcomes.allSatisfy({ $0.result != nil && $0.result?.issue == nil }) else { return false }
+        let existing = localOverrides[candidate.id]
+        if existing?.changesScore(of: candidate.assignment) == true {
+            return existing?.grade != earned
+        }
+        return earned != candidate.assignment.grade
+    }
+
+    private var replaceTitle: String {
+        guard let replacing = pendingTry?.replacing, let candidate = pendingTry?.candidate else { return "" }
+        guard let grade = replacing.grade else { return "Replace your what-if change to no score?" }
+        return "Replace your what-if score of \(GradeFormat.upToTwoDecimals(grade))/\(GradeFormat.upToTwoDecimals(candidate.assignment.outOf))?"
+    }
+
+    // MARK: Actions
+
+    private func choose(_ id: String) {
+        guard let next = request.candidates.first(where: { $0.id == id }).flatMap(currentCandidate) else { return }
+        chosenID = id
+        text = next.assignment.grade.map(Self.exactText) ?? ""
+        failure = nil
+    }
+
+    private func focusField() {
+        selectionRequest += 1
+        focused = true
+    }
+
