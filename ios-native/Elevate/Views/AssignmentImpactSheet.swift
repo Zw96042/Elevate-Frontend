@@ -205,3 +205,110 @@ struct AssignmentImpactSheet: View {
         .accessibilityIdentifier("impact.header")
     }
 
+    /// "Labs, Quarter 1, due 10/2/26. Skyward: 16/20"
+    private var headerDetail: String {
+        let official = candidate?.assignment
+        var parts = [official?.category ?? request.category]
+        if request.term.isSemester, let candidate {
+            parts.append(candidate.quarter.displayName)
+        }
+        let due = official?.dueDate ?? request.dueDate
+        if !due.isEmpty { parts.append("due \(due)") }
+        var detail = parts.filter { !$0.isEmpty }.joined(separator: ", ")
+        if let official {
+            let score = official.grade.map {
+                "Skyward: \(GradeFormat.upToTwoDecimals($0))/\(GradeFormat.upToTwoDecimals(official.outOf))"
+            } ?? "Not graded in Skyward"
+            detail = detail.isEmpty ? score : "\(detail). \(score)"
+        }
+        return detail
+    }
+
+    private var candidateChoice: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            GroupLabel("Which assignment?")
+                .frame(minHeight: 32, alignment: .bottomLeading)
+                .padding(.top, 12)
+                .padding(.bottom, 4)
+            footnote("Skyward lists more than one matching assignment in \(request.term.displayName)'s quarters. Choose the one you mean.")
+                .padding(.bottom, 4)
+            ChoiceList(
+                groups: [ChoiceGroup(title: nil, options: candidateOptions)],
+                isSelected: { $0 == chosenID }
+            ) { id in
+                choose(id)
+            }
+        }
+    }
+
+    private var candidateOptions: [ChoiceOption<String>] {
+        request.candidates.enumerated().map { index, candidate in
+            let sameQuarter = request.candidates.filter { $0.quarter == candidate.quarter }
+            var title = candidate.quarter.displayName
+            if sameQuarter.count > 1, let position = sameQuarter.firstIndex(of: candidate) {
+                title += ", row \(position + 1) of \(sameQuarter.count)"
+            }
+            let current = currentCandidate(candidate)
+            let score = current.map { current in
+                current.assignment.grade.map {
+                    "Skyward: \(GradeFormat.upToTwoDecimals($0))/\(GradeFormat.upToTwoDecimals(current.assignment.outOf))"
+                } ?? "Not graded in Skyward"
+            } ?? "Unavailable in the current gradebook"
+            return ChoiceOption(value: candidate.id, title: title, note: score,
+                                identifier: "impact.candidate.\(index)")
+        }
+    }
+
+    // MARK: Calculator
+
+    @ViewBuilder
+    private func calculator(for candidate: AssignmentImpactCandidate) -> some View {
+        let entry = self.entry
+        let earned = entry.enteredPoints
+        let outcomes = earned.map { outcomes(for: candidate, earned: $0) } ?? []
+        let shared = outcomes.first.flatMap { sharedMessage($0.result, candidate: candidate) }
+
+        GroupLabel("Score")
+            .frame(minHeight: 32, alignment: .bottomLeading)
+            .padding(.top, Metrics.sectionGap - 8)
+            .padding(.bottom, 4)
+        scoreRow(candidate)
+
+        switch entry {
+        case .empty:
+            footnote("Enter points to see how this score changes the grade.")
+                .padding(.top, 4)
+        case .invalid:
+            Text("Enter a number of points.")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(Color.gradeAttention)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 4)
+                .accessibilityIdentifier("impact.inputError")
+        case .points:
+            if let shared {
+                message(shared)
+                    .padding(.top, 12)
+            } else {
+                GroupLabel("Result")
+                    .frame(minHeight: 32, alignment: .bottomLeading)
+                    .padding(.top, Metrics.sectionGap - 8)
+                    .padding(.bottom, 4)
+                ForEach(Array(outcomes.enumerated()), id: \.element.id) { index, outcome in
+                    if index > 0 { InsetDivider() }
+                    resultRow(outcome, candidate: candidate)
+                }
+                if let earned, canTry(candidate, earned: earned, outcomes: outcomes) {
+                    Button {
+                        requestTry(candidate, earned: earned)
+                    } label: {
+                        Text("Try in What-if")
+                    }
+                    .buttonStyle(QuietButtonStyle())
+                    .padding(.top, 8)
+                    .accessibilityHint("Uses this score in What-if on this iPhone. Skyward isn't changed.")
+                    .accessibilityIdentifier("impact.try")
+                }
+            }
+        }
+
