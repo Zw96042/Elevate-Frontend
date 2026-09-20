@@ -412,3 +412,102 @@ struct AssignmentImpactSheet: View {
         .fixedSize()
     }
 
+    @ViewBuilder
+    private func fullCreditButton(_ candidate: AssignmentImpactCandidate) -> some View {
+        let possible = candidate.assignment.outOf
+        // A zero-possible bonus row has no full credit to fill in.
+        if possible > 0, possible.isFinite {
+            Button("Full credit") {
+                text = Self.exactText(possible)
+                failure = nil
+            }
+            .buttonStyle(QuietButtonStyle())
+            .accessibilityHint("Enters \(GradeFormat.upToTwoDecimals(possible)) points")
+            .accessibilityIdentifier("impact.fullCredit")
+        }
+    }
+
+    private func resultRow(_ outcome: Outcome, candidate: AssignmentImpactCandidate) -> some View {
+        let title = "\(outcome.term.displayName) estimate"
+        let value: Double? = outcome.result?.issue == nil ? outcome.result?.after : nil
+        let detail = resultDetail(outcome, candidate: candidate)
+        let figure = Text(GradeFormat.twoDecimals(value))
+            .font(.figure(.body))
+            .foregroundStyle(value == nil ? Color.muted : GradeTier(value).textColor)
+            .contentTransition(.numericText(value: value ?? 0))
+            .animation(Motion.value(reduceMotion), value: value)
+            .lineLimit(1)
+        let titleText = Text(title)
+            .font(.body)
+            .foregroundStyle(Color.ink)
+            .fixedSize(horizontal: false, vertical: true)
+        let detailText = Text(detail)
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .contentTransition(.opacity)
+        return Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    titleText
+                    figure
+                    detailText
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        titleText
+                        detailText
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    figure
+                        .fixedSize()
+                }
+            }
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue("\(GradeFormat.spokenCourseGrade(value)), \(detail)")
+        .accessibilityIdentifier(outcome.term.isSemester ? "impact.semester" : "impact.quarter")
+    }
+
+    // MARK: Values
+
+    private var entry: Entry {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .empty }
+        guard let value = Double(trimmed), WhatIfScenarioEvaluator.validNumber(value) else { return .invalid }
+        return .points(value)
+    }
+
+    /// The quarter result, then on a semester view the semester result. Each
+    /// uses its own term's source and official grade.
+    private func outcomes(for candidate: AssignmentImpactCandidate, earned: Double) -> [Outcome] {
+        func calculate(_ source: WhatIfScenarioSource?) -> AssignmentImpactResult? {
+            source.map {
+                AssignmentImpactCalculator.calculate(
+                    assignmentID: candidate.id, quarter: candidate.quarter, earned: earned, source: $0
+                )
+            }
+        }
+        var outcomes = [Outcome(term: candidate.quarter, result: calculate(quarterSources[candidate.quarter.shortName]))]
+        if request.term.isSemester {
+            outcomes.append(Outcome(term: request.term, result: calculate(semesterSource)))
+        }
+        return outcomes
+    }
+
+    /// Reasons about the assignment itself read once, not per grade row.
+    private func sharedMessage(_ result: AssignmentImpactResult?, candidate: AssignmentImpactCandidate) -> String? {
+        guard let issue = result?.issue else { return nil }
+        switch issue {
+        case .excludedAssignment, .unavailableCategory, .assignmentNotFound, .invalidInput, .differentTerm:
+            return issueText(issue, candidate: candidate)
+        case .unavailableGradebook, .calculation:
+            return nil
+        }
+    }
+
