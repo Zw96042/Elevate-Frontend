@@ -194,3 +194,110 @@ struct AssignmentSearchView: View {
                 statusStrip
                     .padding(.horizontal, Metrics.page)
 
+                switch state {
+                case .loading:
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityHidden(true)
+                        Text("Loading \(store.calendarTerm.displayName) assignments")
+                            .font(.footnote)
+                            .foregroundStyle(Color.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(minHeight: 32, alignment: .leading)
+                    .padding(.horizontal, Metrics.page)
+                    .padding(.top, 4)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("search.loading")
+                case .failed(let error):
+                    InlineErrorState(title: "Couldn't load assignments", message: error) {
+                        await store.refreshCalendar(force: true)
+                    }
+                    .padding(.horizontal, Metrics.page)
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("search.error")
+                case .loaded:
+                    if let data = calendarData {
+                        loaded(data)
+                    }
+                }
+            }
+            .padding(.bottom, 24)
+        }
+        .scrollDismissesKeyboard(.immediately)
+        .visibleRefreshable { await store.refreshCalendar(force: true) }
+    }
+
+    private var statusStrip: some View {
+        let isLoaded = assignmentState == .loaded
+        return StatusStrip(
+            lastUpdated: isLoaded ? store.calendarLastUpdated : nil,
+            isRefreshing: store.calendarLoading && isLoaded,
+            error: isLoaded ? store.calendarError : nil
+        ) {
+            await store.refreshCalendar(force: true)
+        } control: {
+            ScopePicker(
+                title: "Assignment quarter",
+                valueName: store.calendarTerm.displayName,
+                hint: "Selects the quarter searched. Calendar shows the same quarter.",
+                identifier: "search.quarter",
+                groups: [
+                    ChoiceGroup(title: "Fall semester", options: [TermLabel.q1, .q2].map { quarterOption($0) }),
+                    ChoiceGroup(title: "Spring semester", options: [TermLabel.q3, .q4].map { quarterOption($0) }),
+                ],
+                selection: Binding(get: { store.calendarTerm }, set: { term in
+                    guard term != store.calendarTerm else { return }
+                    store.calendarTerm = term
+                })
+            )
+        }
+    }
+
+    private func quarterOption(_ term: TermLabel) -> ChoiceOption<TermLabel> {
+        ChoiceOption(value: term, title: term.displayName, identifier: "search.quarter.\(term.shortName)")
+    }
+
+    @ViewBuilder
+    private func loaded(_ data: SchoolCalendarData) -> some View {
+        let classCoverage = coverage(data)
+        let quarter = data.term.displayName
+        if trimmedQuery.isEmpty {
+            EmptyStateView(title: "Search \(quarter) assignments", message: scopeText(data))
+                .padding(.horizontal, Metrics.page)
+                .accessibilityIdentifier("search.prompt")
+        } else {
+            let results = AssignmentSearch.results(in: data.assignments, query: router.searchQuery)
+            if results.isEmpty {
+                EmptyStateView(
+                    title: "No matches in \(quarter)",
+                    message: "No assignment title, class, or category matches “\(trimmedQuery)”."
+                        + (classCoverage.missing.isEmpty ? "" : " Classes that couldn't load weren't searched.")
+                )
+                .padding(.horizontal, Metrics.page)
+                .accessibilityIdentifier("search.empty")
+            } else {
+                GroupLabel("\(results.count) \(results.count == 1 ? "result" : "results") in \(quarter)")
+                    .padding(.horizontal, Metrics.page)
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("search.count")
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(results.enumerated()), id: \.element.id) { index, assignment in
+                        if index > 0 { InsetDivider().padding(.horizontal, Metrics.page) }
+                        AssignmentSearchRow(
+                            assignment: assignment,
+                            onOpen: assignment.course.hasGradebookParams ? { open(assignment) } : nil,
+                            identifier: "search.result.\(index)"
+                        )
+                    }
+                }
+            }
+        }
+        if !classCoverage.isComplete {
+            coverageNote(classCoverage)
+                .padding(.horizontal, Metrics.page)
+                .padding(.top, 12)
+        }
+    }
+
