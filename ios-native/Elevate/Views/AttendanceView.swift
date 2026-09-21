@@ -104,3 +104,97 @@ struct AttendanceView: View {
         }
     }
 
+    /// The record list's shape: dates as group labels, each over its records'
+    /// description and period line.
+    private var loadingRows: some View {
+        let days = [[14, 11], [16], [12, 15, 10]]
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(days.indices, id: \.self) { day in
+                SkeletonText(.footnote.weight(.medium), length: 18, tone: .secondary)
+                    .padding(.bottom, 2)
+                    .padding(.horizontal, Metrics.page)
+                    .padding(.top, 20)
+                ForEach(days[day].indices, id: \.self) { index in
+                    if index > 0 { InsetDivider().padding(.horizontal, Metrics.page) }
+                    SkeletonRow(lines: [SkeletonLine(.body, days[day][index]), SkeletonLine(.subheadline, 17)])
+                        .padding(.horizontal, Metrics.page)
+                }
+            }
+        }
+        .loadingPlaceholder("Loading attendance")
+        .accessibilityIdentifier("attendance.loading")
+    }
+
+    private func recordGroups(_ days: [AttendanceDay]) -> some View {
+        LazyVStack(alignment: .leading, spacing: 0) {
+            ForEach(days) { day in
+                GroupLabel(day.title)
+                    .padding(.horizontal, Metrics.page)
+                    .padding(.top, 20)
+                    .accessibilityIdentifier("attendance.date.\(day.date)")
+                ForEach(Array(day.entries.enumerated()), id: \.element.record.id) { position, entry in
+                    if position > 0 { InsetDivider().padding(.horizontal, Metrics.page) }
+                    AttendanceRow(record: entry.record, dateTitle: day.title)
+                        .accessibilityIdentifier("attendance.record.\(entry.index)")
+                }
+            }
+        }
+    }
+}
+
+/// Records sharing one school date, in source order.
+private struct AttendanceDay: Identifiable {
+    struct Entry {
+        /// Position across every displayed row, for row identifiers.
+        var index: Int
+        var record: AttendanceRecord
+    }
+
+    var date: String
+    var title: String
+    var entries: [Entry]
+
+    var id: String { date }
+
+    /// ISO school dates sort as text, so newest first is a descending sort.
+    static func days(from records: [AttendanceRecord]) -> [AttendanceDay] {
+        let grouped = Dictionary(grouping: records, by: \.date)
+        var index = 0
+        return grouped.keys.sorted(by: >).map { date in
+            let records = grouped[date] ?? []
+            let entries = records.map { record -> Entry in
+                defer { index += 1 }
+                return Entry(index: index, record: record)
+            }
+            let title = records.first?.displayDate?
+                .formatted(.dateTime.weekday(.wide).month(.wide).day().year()) ?? date
+            return AttendanceDay(date: date, title: title, entries: entries)
+        }
+    }
+}
+
+/// One record as an open row: Skyward's description, then the period and
+/// class beneath it. Not navigable.
+struct AttendanceRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    var record: AttendanceRecord
+    var dateTitle: String
+
+    private var sourceDescription: String {
+        record.attendance.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var code: String? {
+        record.rawCode.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// "Period 2" only for a numeric period of a period record; any other
+    /// source text, such as "All day", is shown as written.
+    private var periodText: String? {
+        guard let raw = record.period?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        if record.granularity == .period, raw.allSatisfy({ $0.isASCII && $0.isNumber }) {
+            return "Period \(raw)"
+        }
+        return raw
+    }
+
