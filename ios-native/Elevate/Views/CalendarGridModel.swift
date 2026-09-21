@@ -196,3 +196,79 @@ final class CalendarGridModel {
         }
     }
 
+    private func stopSettling() {
+        settleDriver?.stop()
+        settleDriver = nil
+    }
+
+    // MARK: - Anchoring
+
+    /// Sets the zoom without animation and scrolls to hold the anchor.
+    private func apply(_ value: Double) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            zoom = value
+            holdAnchor()
+        }
+    }
+
+    /// The grid item under a point of the screen, and how far down it.
+    private func anchor(atViewportY y: CGFloat) -> Anchor? {
+        let contentY = y - contentMinY
+        var top: CGFloat = 0
+        for (index, item) in items.enumerated() {
+            let height = height(of: item, at: zoom)
+            if contentY < top + height || index == items.count - 1 {
+                let fraction = height > 0 ? min(max((contentY - top) / height, 0), 1) : 0
+                return Anchor(id: item.id, fraction: fraction, viewportY: y)
+            }
+            top += height
+        }
+        return nil
+    }
+
+    /// Scrolls so the anchored point of its row stays at the same place on
+    /// screen at the current zoom. The unit point is linear in the offset,
+    /// so it's left unclamped: a row partly above the top edge needs a
+    /// negative one.
+    private func holdAnchor() {
+        guard let anchor, let proxy, let item = items.first(where: { $0.id == anchor.id }) else { return }
+        let height = height(of: item, at: zoom)
+        let span = viewportHeight - height
+        guard abs(span) > 0.5 else { return }
+        let unit = (anchor.viewportY - anchor.fraction * height) / span
+        proxy.scrollTo(item.id, anchor: UnitPoint(x: 0.5, y: unit))
+    }
+}
+
+/// Calls back once per display frame with progress 0...1 over a duration,
+/// then stops.
+@MainActor
+final class CalendarSettleDriver: NSObject {
+    private var link: CADisplayLink?
+    private let duration: CFTimeInterval
+    private let start = CACurrentMediaTime()
+    private let step: (Double) -> Void
+
+    init(duration: CFTimeInterval, step: @escaping (Double) -> Void) {
+        self.duration = duration
+        self.step = step
+        super.init()
+        let link = CADisplayLink(target: self, selector: #selector(tick))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        link.add(to: .main, forMode: .common)
+        self.link = link
+    }
+
+    @objc private func tick() {
+        let progress = min((CACurrentMediaTime() - start) / duration, 1)
+        if progress >= 1 { stop() }
+        step(progress)
+    }
+
+    func stop() {
+        link?.invalidate()
+        link = nil
+    }
+}
