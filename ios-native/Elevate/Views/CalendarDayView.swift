@@ -192,3 +192,67 @@ struct CalendarDayView: View {
             .accessibilityAddTraits(.isHeader)
             .accessibilityIdentifier("day.title.\(day.iso)")
 
+            GroupLabel("Due")
+                .padding(.horizontal, Metrics.page)
+                .padding(.top, 12)
+            if assignments.isEmpty {
+                Text(context.emptyDueText(for: day))
+                    .font(.subheadline)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Metrics.page)
+                    .padding(.vertical, 8)
+                    .accessibilityIdentifier("day.due.none.\(day.iso)")
+            } else {
+                if let note = context.coverageNote(for: day) {
+                    Text(note)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, Metrics.page)
+                        .padding(.bottom, 2)
+                        .accessibilityIdentifier("day.coverage.\(day.iso)")
+                }
+                ForEach(Array(assignments.enumerated()), id: \.element.id) { index, assignment in
+                    if index > 0 { InsetDivider().padding(.horizontal, Metrics.page) }
+                    CalendarAssignmentRow(
+                        assignment: assignment,
+                        isDone: context.isDone(assignment),
+                        onToggleDone: context.canToggleDone(assignment) ? { context.onToggleDone(assignment) } : nil,
+                        onOpen: assignment.course.hasGradebookParams ? { context.onOpen(assignment) } : nil,
+                        onRemind: { context.onRemind(assignment) },
+                        identifier: "day.\(day.iso).assignment.\(index)",
+                        doneIdentifier: "day.\(day.iso).done.\(index)",
+                        reservesDoneLane: true
+                    )
+                }
+            }
+
+            if !events.isEmpty {
+                GroupLabel("Events")
+                    .padding(.horizontal, Metrics.page)
+                    .padding(.top, 16)
+                ForEach(Array(events.enumerated()), id: \.element.id) { index, event in
+                    if index > 0 { InsetDivider().padding(.horizontal, Metrics.page) }
+                    PersonalEventRow(
+                        event: event, day: day.iso, calendar: context.personal.calendar(id: event.calendarID),
+                        onOpen: { context.onOpenEvent(event) },
+                        identifier: "day.\(day.iso).event.\(index)"
+                    )
+                }
+            }
+
+            if !records.isEmpty {
+                GroupLabel("Attendance")
+                    .padding(.horizontal, Metrics.page)
+                    .padding(.top, 16)
+                ForEach(Array(records.enumerated()), id: \.offset) { index, record in
+                    if index > 0 { InsetDivider().padding(.horizontal, Metrics.page) }
+                    AttendanceRow(record: record, dateTitle: day.title(today: context.today, calendar: calendar))
+                        .accessibilityIdentifier("day.\(day.iso).attendance.\(index)")
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
