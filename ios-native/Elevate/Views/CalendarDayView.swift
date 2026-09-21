@@ -92,3 +92,103 @@ struct CalendarDayView: View {
         .accessibilityIdentifier("day.screen")
     }
 
+    // MARK: - Moving between days
+
+    private func move(by days: Int) {
+        show(day.adding(days, calendar: calendar))
+    }
+
+    private func show(_ target: CalendarDay) {
+        guard target != day, days.contains(target) else { return }
+        day = target
+        Motion.perform(reduceMotion ? nil : .smooth(duration: 0.32)) { page = target.id }
+        UIAccessibility.post(notification: .announcement, argument: target.title(today: context.today, calendar: calendar))
+    }
+
+    // MARK: - Week strip
+
+    private var weekStrip: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 0) {
+                ForEach(Array(CalendarAgenda.weekdaySymbols(calendar: calendar).enumerated()), id: \.offset) { _, symbol in
+                    Text(symbol)
+                        .font(.caption2)
+                        .foregroundStyle(Color.muted)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .accessibilityHidden(true)
+            HStack(spacing: 0) {
+                ForEach(week.days) { item in
+                    stripDay(item)
+                }
+            }
+        }
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        .padding(.top, 6)
+        .gesture(
+            DragGesture(minimumDistance: 20).onEnded { value in
+                guard abs(value.translation.width) > 50 else { return }
+                move(by: value.translation.width < 0 ? 7 : -7)
+            }
+        )
+    }
+
+    private func stripDay(_ item: CalendarDay) -> some View {
+        let level = context.snapshot.level(item)
+        let selected = item == day
+        let isToday = item == context.today
+        let due = context.snapshot.assignments(on: item).count
+        return Button { show(item) } label: {
+            Text("\(item.day)")
+                .font(.figure(.body, weight: selected || isToday ? .semibold : .regular))
+                .foregroundStyle(isToday && level <= 1 ? Color.themeAccent : Color.dayLoadInk(level: level))
+                .frame(width: 34, height: 34)
+                .background { Circle().fill(Color.dayLoad(level: level)) }
+                .overlay {
+                    if selected {
+                        Circle().strokeBorder(Color.ink, lineWidth: 2).padding(-4)
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if context.snapshot.hasAttendance(item) {
+                        Circle().fill(Color.gradeWarning).frame(width: 7, height: 7)
+                            .overlay { Circle().stroke(Color.appBackground, lineWidth: 1.5) }
+                            .offset(x: 3, y: -2)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 46)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(ScopePressStyle())
+        .accessibilityLabel(item.title(today: context.today, calendar: calendar))
+        .accessibilityValue([isToday ? "Today" : nil, due > 0 ? "\(due) due" : nil].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("day.strip.\(item.iso)")
+    }
+
+    // MARK: - The day
+
+    private func dayContent(_ day: CalendarDay) -> some View {
+        // Skyward's order. Checking a row off never moves it out from
+        // under the finger.
+        let assignments = context.snapshot.assignments(on: day)
+        let events = context.events(on: day)
+        let records = context.snapshot.attendance(on: day)
+        let isToday = day == context.today
+        return VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(day.date(calendar: calendar).formatted(.dateTime.weekday(.wide)))
+                    .font(.title.weight(.bold))
+                    .foregroundStyle(isToday ? Color.themeAccent : Color.ink)
+                Text(day.date(calendar: calendar).formatted(.dateTime.month(.wide).day().year()))
+                    .font(.subheadline)
+                    .foregroundStyle(Color.muted)
+            }
+            .padding(.horizontal, Metrics.page)
+            .padding(.top, 14)
+            .padding(.bottom, 4)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityIdentifier("day.title.\(day.iso)")
+
