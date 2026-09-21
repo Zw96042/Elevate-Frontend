@@ -198,3 +198,95 @@ struct AttendanceRow: View {
         return raw
     }
 
+    private var courseText: String? {
+        guard let raw = record.courseName?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        return ClassNameFormatter.format(raw.replacingOccurrences(of: " ", with: "_"))
+    }
+
+    private var spokenLabel: String {
+        var parts = [dateTitle, sourceDescription]
+        if let periodText { parts.append(periodText) }
+        if let courseText { parts.append(courseText) }
+        if let code { parts.append("Code \(code)") }
+        return parts.joined(separator: ", ")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            primaryLine
+            if periodText != nil || courseText != nil {
+                metadataLine
+            }
+        }
+        .padding(.horizontal, Metrics.page)
+        .padding(.vertical, Metrics.rowPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenLabel)
+    }
+
+    @ViewBuilder
+    private var primaryLine: some View {
+        if let code {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 3) {
+                    descriptionText
+                    codeText(code)
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    descriptionText
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    codeText(code)
+                }
+            }
+        } else {
+            descriptionText
+        }
+    }
+
+    private var descriptionText: some View {
+        Text(sourceDescription)
+            .font(.body)
+            .foregroundStyle(Color.ink)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func codeText(_ code: String) -> some View {
+        Text(code)
+            .font(.subheadline)
+            .foregroundStyle(Color.muted)
+            .lineLimit(1)
+            .fixedSize()
+    }
+
+    @ViewBuilder
+    private var metadataLine: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 2) {
+                if let periodText { metadataText(periodText) }
+                if let courseText { metadataText(courseText) }
+            }
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                if let periodText {
+                    metadataText(periodText)
+                        .layoutPriority(1)
+                }
+                if let courseText {
+                    metadataText(courseText)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    private func metadataText(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(Color.muted)
+            .multilineTextAlignment(.leading)
+    }
+}
