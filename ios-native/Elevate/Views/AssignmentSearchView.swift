@@ -393,3 +393,102 @@ private struct AssignmentSearchRow: View {
         return text.isEmpty ? nil : text
     }
 
+    /// Skyward's school date; an unreadable one is shown as written.
+    private var dateText: String {
+        if let iso = assignment.date,
+           let parts = AttendanceSchoolDate.components(iso),
+           let date = Calendar.current.date(from: DateComponents(year: parts.year, month: parts.month,
+                                                                 day: parts.day, hour: 12)) {
+            if parts.year == Calendar.current.component(.year, from: Date()) {
+                return date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+            }
+            return date.formatted(.dateTime.month(.abbreviated).day().year())
+        }
+        let source = assignment.sourceDate.trimmingCharacters(in: .whitespacesAndNewlines)
+        return source.isEmpty ? "No date in Skyward" : "Date in Skyward: \(source)"
+    }
+
+    /// Only Skyward's own flags; nothing is inferred from attendance.
+    private var statuses: [Status] {
+        let types = Set(assignment.meta.map(\.type))
+        var result: [Status] = []
+        if types.contains("missing") { result.append(Status(text: "Missing", isMissing: true)) }
+        if types.contains("absent") { result.append(Status(text: "Absent", isAbsent: true)) }
+        if types.contains("noCount") { result.append(Status(text: "No count")) }
+        return result
+    }
+
+    private var spokenLabel: String {
+        ([title, courseName, dateText] + [category].compactMap { $0 } + statuses.map(\.text)).joined(separator: ", ")
+    }
+
+    var body: some View {
+        if let onOpen {
+            Button(action: onOpen) {
+                content(showsChevron: true)
+            }
+            .buttonStyle(RowPressStyle())
+            .accessibilityLabel(spokenLabel)
+            .accessibilityHint("Opens this assignment in Courses for \(assignment.term.displayName)")
+            .accessibilityIdentifier(identifier)
+        } else {
+            content(showsChevron: false)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(spokenLabel)
+                .accessibilityIdentifier(identifier)
+        }
+    }
+
+    private func content(showsChevron: Bool) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(Color.ink)
+                Text(courseName)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.muted)
+                detailLine
+            }
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if showsChevron { RowChevron() }
+        }
+        .padding(.horizontal, Metrics.page)
+        .padding(.vertical, Metrics.rowPadding)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var detailLine: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 2) { detailParts }
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 10) { detailParts }
+        }
+    }
+
+    /// Status as plain words, colored as in Calendar: only Missing and
+    /// Absent take a color.
+    @ViewBuilder
+    private var detailParts: some View {
+        Text(dateText)
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+        if let category {
+            Text(category)
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+        }
+        ForEach(statuses, id: \.self) { status in
+            Text(status.text)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(
+                    status.isMissing ? Color.gradeAttention : (status.isAbsent ? Color.gradeWarning : Color.ink)
+                )
+        }
+    }
+}
