@@ -301,3 +301,95 @@ struct AssignmentSearchView: View {
         }
     }
 
+    /// What a search covers: the assignment count, how many classes loaded,
+    /// and that other quarters aren't included.
+    private func scopeText(_ data: SchoolCalendarData) -> String {
+        let count = data.assignments.count
+        let assignments = "\(count) \(count == 1 ? "assignment" : "assignments")"
+        let classes: String
+        if data.eligibleCourseCount > 0, data.resolvedCourseCount < data.eligibleCourseCount {
+            classes = " from \(data.resolvedCourseCount) of \(data.eligibleCourseCount) classes"
+        } else if data.resolvedCourseCount > 0 {
+            classes = " from \(data.resolvedCourseCount) \(data.resolvedCourseCount == 1 ? "class" : "classes")"
+        } else {
+            classes = ""
+        }
+        guard count > 0 else {
+            return "Skyward lists no assignments for \(data.term.displayName)\(classes.isEmpty ? "" : " in the classes that loaded"). Other quarters aren't searched."
+        }
+        return "Titles, classes, and categories across \(assignments)\(classes). Other quarters aren't searched."
+    }
+
+    private func coverageNote(_ coverage: Coverage) -> some View {
+        func names(_ list: [String]) -> String {
+            ListFormatter.localizedString(byJoining: list.map(GPAConversionInputs.courseName))
+        }
+        return VStack(alignment: .leading, spacing: 0) {
+            if !coverage.missing.isEmpty {
+                note("Assignments couldn't load for \(names(coverage.missing)). They aren't searched.")
+            }
+            if !coverage.saved.isEmpty {
+                note("Couldn't refresh \(names(coverage.saved)). Their saved assignments are searched.")
+            }
+            Button("Retry") {
+                Task { await store.refreshCalendar(force: true) }
+            }
+            .buttonStyle(ActionTextButtonStyle())
+            .disabled(store.calendarLoading)
+            .accessibilityLabel("Retry loading assignments")
+            .accessibilityIdentifier("search.coverage.retry")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("search.coverage")
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+    }
+
+    /// Opens the exact assignment in Courses on its quarter, exactly as
+    /// Calendar does; the row's hint names that quarter. What-if work stays
+    /// in the class.
+    private func open(_ assignment: CalendarAssignment) {
+        fieldFocused = false
+        guard let course = SchoolCalendar.eligibleCourses(store.courses ?? [], term: assignment.term)
+            .first(where: { $0.id == assignment.course.id }) else { return }
+        store.selectedTerm = assignment.term
+        router.showAssignment(course: course, term: assignment.term, assignmentID: assignment.routeID)
+    }
+}
+
+// MARK: - Row
+
+/// A matching assignment as an open row: title, class, then its school date,
+/// category and Skyward's own Missing, Absent or No count flags.
+private struct AssignmentSearchRow: View {
+    var assignment: CalendarAssignment
+    var onOpen: (() -> Void)?
+    var identifier: String
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private struct Status: Hashable {
+        var text: String
+        var isMissing = false
+        var isAbsent = false
+    }
+
+    private var title: String {
+        let text = assignment.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "Untitled assignment" : text
+    }
+
+    private var courseName: String { GPAConversionInputs.courseName(assignment.course.courseName) }
+
+    private var category: String? {
+        let text = assignment.category.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
+    }
+
