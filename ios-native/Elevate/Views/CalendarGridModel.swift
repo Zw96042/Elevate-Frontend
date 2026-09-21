@@ -95,3 +95,104 @@ final class CalendarGridModel {
         if caption != scale { scale = caption }
     }
 
+    // MARK: - Scrolling in code
+
+    /// Opens the list on a row (a month's header) once its rows exist, and
+    /// from then on keeps the person's place through data changes.
+    func position(at id: String) {
+        isPositioned = false
+        pendingPosition = id
+        positionIfReady()
+    }
+
+    /// Scrolls a row to the top now.
+    func scroll(to id: String, animation: Animation?) {
+        guard let proxy else { return }
+        stopSettling()
+        Motion.perform(animation) { proxy.scrollTo(id, anchor: .top) }
+        scrolledTo = Anchor(id: id, fraction: 0, viewportY: 0)
+    }
+
+    private func positionIfReady() {
+        guard let id = pendingPosition, proxy != nil, items.contains(where: { $0.id == id }) else { return }
+        pendingPosition = nil
+        // After the rows' first layout, so the jump is exact.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, pendingPosition == nil else { return }
+            scroll(to: id, animation: nil)
+            isPositioned = true
+        }
+    }
+
+    // MARK: - Heights
+
+    /// A grid item's height at a zoom, from the same function its row uses.
+    func height(of item: CalendarGridItem, at zoom: Double) -> CGFloat {
+        guard case .week = item.kind else { return headerHeight }
+        guard let input = weeks[item.id] else { return 0 }
+        return CalendarWeekCanvas.height(zoom: zoom, input: input, numberSize: numberSize, scale: scale)
+    }
+
+    // MARK: - Pinching
+
+    var isPinching: Bool { pinchStart != nil }
+
+    func pinchChanged(magnification: CGFloat, startY: CGFloat) {
+        if pinchStart == nil {
+            stopSettling()
+            pinchStart = zoom
+            anchor = anchor(atViewportY: startY)
+        }
+        apply(CalendarZoom.zoom(start: pinchStart ?? zoom, magnification: Double(magnification)))
+    }
+
+    /// The level a pinch settles on once the fingers lift; a quick pinch
+    /// carries on to the next, never further.
+    func pinchEnded(magnification: CGFloat, velocity: CGFloat) -> CalendarDensity {
+        // Scale per second, as zoom levels per second.
+        let rate = Double(velocity) / max(Double(magnification), 0.01) / log(2) * 1.7
+        pinchStart = nil
+        let nearest = CalendarZoom.settle(zoom)
+        let projected = CalendarZoom.settle(zoom, velocity: rate)
+        let step = min(max(projected.rawValue - nearest.rawValue, -1), 1)
+        return CalendarDensity(rawValue: nearest.rawValue + step) ?? nearest
+    }
+
+    /// A pinch the system cancelled, which never reports an end: settle
+    /// where it was. Returns the level, or nil if no pinch was left open.
+    func pinchCancelled() -> CalendarDensity? {
+        guard pinchStart != nil else { return nil }
+        pinchStart = nil
+        return CalendarZoom.settle(zoom)
+    }
+
+    /// A level from the menu, with the week at the top of the screen held.
+    func anchorTop() {
+        stopSettling()
+        anchor = anchor(atViewportY: 0)
+    }
+
+    /// Moves the zoom to a level, frame by frame unless `animated` is off,
+    /// keeping the anchored row where it was on screen throughout.
+    func settle(on level: CalendarDensity, animated: Bool) {
+        stopSettling()
+        let target = Double(level.rawValue)
+        let distance = abs(target - zoom)
+        guard animated, distance > 0.001 else {
+            apply(target)
+            anchor = nil
+            return
+        }
+        let start = zoom
+        settleDriver = CalendarSettleDriver(duration: 0.26 + 0.08 * min(distance, 3)) { [weak self] progress in
+            guard let self else { return }
+            // Ease out, like a well-damped spring with no overshoot.
+            let eased = 1 - pow(1 - progress, 3)
+            apply(CalendarZoom.mix(start, target, eased))
+            if progress >= 1 {
+                settleDriver = nil
+                anchor = nil
+            }
+        }
+    }
+
