@@ -426,3 +426,97 @@ struct CalendarView: View {
         return dates.min()
     }
 
+    private func isRefreshingSavedData(_ statuses: [CalendarQuarterStatus]) -> Bool {
+        (store.attendanceLoading && store.attendance != nil)
+            || statuses.contains { $0.state.isLoading && $0.data != nil }
+    }
+
+    /// Failed refreshes by source; the coverage line says what is shown.
+    private func refreshError(_ statuses: [CalendarQuarterStatus]) -> String? {
+        var reasons: [String] = []
+        if let error = store.attendanceError, !store.attendanceLoading {
+            reasons.append("Attendance: \(Self.trimmed(error))")
+        }
+        for status in statuses {
+            if let error = status.state.error, !status.state.isLoading {
+                reasons.append("\(status.term.displayName): \(Self.trimmed(error))")
+            }
+        }
+        return reasons.isEmpty ? nil : reasons.joined(separator: ". ")
+    }
+
+    private static func trimmed(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+    }
+
+    private struct CoverageLine: Equatable {
+        var text: String
+        var spokenText: String?
+        var isLoading = false
+        var offersRetry = false
+    }
+
+    /// One line, the highest priority item only. Retry appears here only
+    /// when the freshness row above does not already offer it.
+    private func coverageLine(_ statuses: [CalendarQuarterStatus]) -> CoverageLine? {
+        let freshnessOffersRetry = refreshError(statuses) != nil && !isRefreshingSavedData(statuses)
+        func names(_ list: [String]) -> String {
+            ListFormatter.localizedString(byJoining: list.map(CourseTitle.display))
+        }
+        // One or two classes by name; more as a count, so the line keeps
+        // what happened instead of truncating it. VoiceOver reads the names.
+        func classes(_ list: [String]) -> String {
+            list.count <= 2 ? names(list) : "\(list.count) classes"
+        }
+        if store.courses == nil, let error = store.coursesError, !store.coursesLoading {
+            return CoverageLine(text: "Classes didn't load, so assignments can't",
+                                spokenText: "Classes didn't load, so assignments can't. \(error)", offersRetry: true)
+        }
+        if let failed = statuses.first(where: \.isFailed) {
+            return CoverageLine(text: "\(failed.term.displayName) assignments didn't load",
+                                spokenText: failed.state.failure.map { "\(failed.term.displayName) assignments didn't load. \($0)" },
+                                offersRetry: !freshnessOffersRetry)
+        }
+        if case .failed(let error) = attendanceState {
+            return CoverageLine(text: "Attendance didn't load", spokenText: "Attendance didn't load. \(error)",
+                                offersRetry: !freshnessOffersRetry)
+        }
+        if let loading = statuses.first(where: \.isUnknown) {
+            return CoverageLine(text: "Loading \(loading.term.displayName)", isLoading: true)
+        }
+        let missing = statuses.flatMap(\.missing).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        if !missing.isEmpty {
+            return CoverageLine(text: "\(classes(missing)) didn't load",
+                                spokenText: "\(names(missing)) didn't load", offersRetry: !freshnessOffersRetry)
+        }
+        let saved = statuses.flatMap(\.saved).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        if !saved.isEmpty {
+            let asOf = statuses.compactMap { $0.saved.isEmpty ? nil : $0.state.lastUpdated }.min()
+                .map { " as saved \(UpdatedText.short($0))" } ?? ""
+            return CoverageLine(text: "\(classes(saved)) shown\(asOf)",
+                                spokenText: "\(names(saved)) shown\(asOf)", offersRetry: !freshnessOffersRetry)
+        }
+        // A whole-quarter refresh that failed with its earlier data kept.
+        if let stale = statuses.first(where: { $0.data != nil && $0.state.error != nil && !$0.state.isLoading }) {
+            if let updated = stale.state.lastUpdated {
+                return CoverageLine(text: "Showing assignments saved \(Self.savedTime(updated))", offersRetry: !freshnessOffersRetry)
+            }
+            return CoverageLine(text: "Showing saved assignments", offersRetry: !freshnessOffersRetry)
+        }
+        // Attendance that couldn't refresh still shows its saved records.
+        if store.attendance != nil, store.attendanceError != nil, !store.attendanceLoading {
+            if let updated = store.attendanceLastUpdated {
+                return CoverageLine(text: "Attendance saved \(Self.savedTime(updated))", offersRetry: !freshnessOffersRetry)
+            }
+            return CoverageLine(text: "Showing saved attendance", offersRetry: !freshnessOffersRetry)
+        }
+        if let upcoming = statuses.compactMap({ status in status.upcomingStart.map { (status.term, $0) } }).first {
+            return CoverageLine(text: "\(upcoming.0.displayName) begins \(Self.schoolDay(upcoming.1)). Nothing posted yet.")
+        }
+        if attendanceState == .unavailable {
+            return CoverageLine(text: "Attendance isn't available for this account")
+        }
+        return nil
+    }
+
