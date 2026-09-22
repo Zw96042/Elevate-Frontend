@@ -878,50 +878,23 @@ struct ClassDetailView: View {
                         }
                     }
                 } else {
-                    HStack(alignment: .firstTextBaseline, spacing: 16) {
-                        courseIdentity
-                        Spacer()
-                        displayGradeLabel
+                    HStack(alignment: .top, spacing: 16) {
+                        ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                            compositionCell(part.name, value: part.value, share: part.share)
+                        }
                     }
                 }
             }
-            .padding(.bottom, 14)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Semester components")
 
-            TermPickerPill(selectedTerm: $store.selectedTerm, showsDescriptor: false)
-
-            Rectangle()
-                .fill(Color(uiColor: .separator).opacity(0.32))
-                .frame(height: 0.5)
-
-            Toggle("What-if grades", isOn: Binding(
-                get: { isWhatIfActive },
-                set: { newValue in
-                    showCalculated = newValue
-                    WhatIfStore.setShowCalculated(newValue, classKey: classKey)
-                }
-            ))
-            .frame(minHeight: 52)
-            .disabled(!semesterCalculationAvailable)
-            .sensoryFeedback(.selection, trigger: showCalculated)
-
-            if store.selectedTerm.isSemester, !semesterCalculationAvailable {
-                Text("What-if needs both quarter gradebooks. Refresh to try loading them again.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.bottom, 10)
-            } else if store.selectedTerm.isSemester, semesterCalculationError != nil {
-                Text("Using previously loaded quarter details for this prediction.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.bottom, 10)
+            if exam == nil {
+                Text(totals.first == nil || totals.second == nil ? "Waiting for both quarter grades." : "No exam posted. Using the quarter average.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            Rectangle()
-                .fill(Color(uiColor: .separator).opacity(0.32))
-                .frame(height: 0.5)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 4)
     }
 
     private var courseIdentity: some View {
