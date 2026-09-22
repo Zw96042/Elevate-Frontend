@@ -385,13 +385,29 @@ struct ClassDetailView: View {
         guard liveCourse.availableTerms.contains(store.selectedTerm) else { return }
         let selectedTerm = store.selectedTerm
         let bucket = selectedTerm.bucket
-        if !force, loadedBucket == bucket, gradeInfo != nil { return }
+        let revision = store.accountRevision
+        let previousCacheTimestamp = DataService.shared
+            .cachedGradeInfo(params: gradeInfoParams(for: selectedTerm))?.updatedAt
+        if loadErrorBucket != bucket {
+            loadError = nil
+            loadErrorBucket = nil
+        }
+        if !force, loadedBucket == bucket, gradeInfo != nil {
+            loading = false
+            return
+        }
+        let loadID = UUID()
+        gradeInfoLoadID = loadID
+        gradeInfoLastAttempt = Date()
         loading = gradeInfo == nil || loadedBucket != bucket
+        refreshing = true
+        defer { if gradeInfoLoadID == loadID { refreshing = false } }
         loadError = nil
-        semesterCalculationError = nil
+        loadErrorBucket = nil
         do {
             let result: GradeInfoResult
             var loadedQuarters: [String: GradeInfoResult] = [:]
+            var quarterLoadError: String?
 
             if selectedTerm.isSemester {
                 let quarterTerms = selectedTerm.whatIfQuarterTerms
@@ -401,38 +417,104 @@ struct ClassDetailView: View {
                 let responses = await (mainResponse, firstResponse, secondResponse)
                 result = try responses.0.get()
 
-                switch responses.1 {
-                case .success(let info): loadedQuarters[quarterTerms[0].shortName] = info
-                case .failure(let error): semesterCalculationError = error.localizedDescription
-                }
-                switch responses.2 {
-                case .success(let info): loadedQuarters[quarterTerms[1].shortName] = info
-                case .failure(let error):
-                    semesterCalculationError = semesterCalculationError ?? error.localizedDescription
+                for (term, response) in [(quarterTerms[0], responses.1), (quarterTerms[1], responses.2)] {
+                    switch response {
+                    case .success(let info):
+                        loadedQuarters[term.shortName] = info
+                    case .failure(let error):
+                        quarterLoadError = quarterLoadError ?? error.localizedDescription
+                        // Keep a quarter that was saved earlier rather than dropping the prediction.
+                        if quarterGradeInfo[term.shortName] == nil,
+                           let saved = DataService.shared.cachedGradeInfo(params: gradeInfoParams(for: term)) {
+                            loadedQuarters[term.shortName] = saved.value
+                        }
+                    }
                 }
             } else {
                 result = try await gradeInfoResponse(for: selectedTerm, force: force).get()
             }
 
-            guard !Task.isCancelled, store.selectedTerm.bucket == bucket else { return }
+            guard await waitForGradeRefreshApplication(
+                bucket: bucket, revision: revision, loadID: loadID, automatic: automatic
+            ) else { return }
+            semesterCalculationError = quarterLoadError
             gradeInfo = result
             for (term, info) in loadedQuarters {
                 quarterGradeInfo[term] = info
             }
-            gradeInfoLastUpdated = Date()
-            let availableCategories = Set(
-                gradeInfo?.gradebook.map(\.category).filter { $0 != "Final Exam" } ?? []
-            )
-            categoryFilter.formIntersection(availableCategories)
+            // A cache hit reports when the data was actually fetched, never now.
+            gradeInfoLastUpdated = DataService.shared
+                .cachedGradeInfo(params: gradeInfoParams(for: selectedTerm))?
+                .updatedAt ?? (store.isUsingSampleData ? Date() : nil)
+            if !force, semesterCalculationError == nil,
+               let previousCacheTimestamp, gradeInfoLastUpdated == previousCacheTimestamp {
+                // Opening an existing disk record did not make a network
+                // attempt. Its original timestamp determines the next refresh.
+                gradeInfoLastAttempt = nil
+            }
             loadedBucket = bucket
+            trimCategoryFilter()
         } catch is CancellationError {
             return
         } catch {
-            guard !Task.isCancelled, store.selectedTerm.bucket == bucket else { return }
+            guard await waitForGradeRefreshApplication(
+                bucket: bucket, revision: revision, loadID: loadID, automatic: automatic
+            ) else { return }
+            gradeInfoLastAttempt = Date()
             loadError = error.localizedDescription
+            loadErrorBucket = bucket
+            // Show the last saved gradebook for this term, clearly marked as not refreshed.
+            if !hasCurrentGradeInfo,
+               let saved = DataService.shared.cachedGradeInfo(params: gradeInfoParams(for: selectedTerm)) {
+                gradeInfo = saved.value
+                gradeInfoLastUpdated = saved.updatedAt
+                loadedBucket = bucket
+                trimCategoryFilter()
+            }
         }
-        guard !Task.isCancelled, store.selectedTerm.bucket == bucket else { return }
+        guard !Task.isCancelled, store.selectedTerm.bucket == bucket,
+                  store.accountRevision == revision, gradeInfoLoadID == loadID else { return }
         loading = false
+    }
+
+    /// Hardware keyboards need not post visibility notifications. Both manual
+    /// and automatic results wait for actual score focus to end before replacing
+    /// rows; every suspension rechecks request ownership before applying data.
+    private func waitForGradeRefreshApplication(
+        bucket: String, revision: Int, loadID: UUID, automatic: Bool
+    ) async -> Bool {
+        while true {
+            guard !Task.isCancelled, store.selectedTerm.bucket == bucket,
+                  store.accountRevision == revision, gradeInfoLoadID == loadID else { return false }
+            let shouldWait = !focusedScoreRows.isEmpty
+                || (automatic && (keyboardIsVisible || showingAddSheet))
+            guard shouldWait else { return true }
+            do { try await Task.sleep(for: .milliseconds(250)) }
+            catch { return false }
+        }
+    }
+
+    private func scoreFocusChanged(_ focused: Bool, rowID: String) {
+        if focused { focusedScoreRows.insert(rowID) }
+        else { focusedScoreRows.remove(rowID) }
+    }
+
+    /// Asks every focused score field to commit and resign. Reads actual field
+    /// focus, not keyboard visibility, so hardware keyboards behave the same.
+    /// Returns false when no score was being edited.
+    @discardableResult
+    private func finishScoreEditing() -> Bool {
+        guard !focusedScoreRows.isEmpty else { return false }
+        finishScoreTargets = focusedScoreRows
+        finishScoreRequest += 1
+        return true
+    }
+
+    private func trimCategoryFilter() {
+        let availableCategories = Set(
+            gradeInfo?.gradebook.map(\.category).filter { $0 != "Final Exam" } ?? []
+        )
+        categoryFilter.formIntersection(availableCategories)
     }
 
     private func gradeInfoResponse(
