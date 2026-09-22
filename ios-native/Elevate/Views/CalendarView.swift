@@ -233,3 +233,101 @@ struct CalendarView: View {
         .sensoryFeedback(.selection, trigger: densityValue)
     }
 
+    // MARK: - Shared context
+
+    private var context: CalendarContext {
+        CalendarContext(
+            store: store,
+            personal: personal,
+            snapshot: snapshot,
+            today: today,
+            ambiguousIDs: snapshot.ambiguousIDs,
+            onOpen: { open($0) },
+            onRemind: { remind($0) },
+            onOpenEvent: { eventDetail = personal.details(for: $0) },
+            onToggleDone: { toggleDone($0) }
+        )
+    }
+
+    // MARK: - Sources
+
+    private enum SourceState: Equatable {
+        case loading
+        case failed(String)
+        case unavailable
+        case loaded
+    }
+
+    /// Nothing saved and no failure yet counts as loading, including before
+    /// the first request starts.
+    private var attendanceState: SourceState {
+        guard let attendance = store.attendance else {
+            if let error = store.attendanceError, !store.attendanceLoading { return .failed(error) }
+            return .loading
+        }
+        return attendance.availability == .unavailable ? .unavailable : .loaded
+    }
+
+    private func refreshAll(force: Bool) async {
+        let store = store
+        let terms = SchoolCalendar.quarters
+        async let attendance: Void = store.refreshAttendance(force: force)
+        async let assignments: Void = store.refreshCalendar(terms: terms, force: force)
+        _ = await (attendance, assignments)
+    }
+
+    // MARK: - Page
+
+    private var calendarPage: some View {
+        let context = context
+        return ScrollViewReader { proxy in
+            VStack(alignment: .leading, spacing: 0) {
+                toolbarRow(proxy: proxy)
+                    .padding(.horizontal, Metrics.page)
+                statusArea(context: context)
+                    .padding(.horizontal, Metrics.page)
+                weekdayInitials
+                CalendarMonthList(grid: grid, today: today, reduceMotion: reduceMotion,
+                                  onSelect: { router.calendarPath.append(.day($0.iso)) },
+                                  onSettle: { densityValue = $0.rawValue },
+                                  onRefresh: { await refreshAll(force: true) })
+            }
+            .onAppear {
+                grid.proxy = proxy
+                // First appearance, or the first after an account change
+                // (which may have happened while this page was hidden).
+                guard !didPositionList || scrollRequest != nil else { return }
+                let month = scrollRequest ?? today.calendarMonth
+                didPositionList = true
+                scrollRequest = nil
+                grid.position(at: month.id)
+            }
+            .onChange(of: scrollRequest) { _, month in
+                guard let month else { return }
+                scroll(proxy, to: month, animated: true)
+                scrollRequest = nil
+            }
+
+        }
+        // A container of its own, so the screen's identifier stays on it
+        // rather than replacing every control's.
+        .accessibilityElement(children: .contain)
+    }
+
+    /// Every row has an exact height, so one scroll lands where it should.
+    private func scroll(_ proxy: ScrollViewProxy, to month: CalendarMonth, animated: Bool) {
+        grid.scroll(to: month.id, animation: animated ? Motion.replace(reduceMotion) : nil)
+    }
+
+    private func toolbarRow(proxy: ScrollViewProxy) -> some View {
+        HStack(spacing: 8) {
+            Button("Today") { scroll(proxy, to: today.calendarMonth, animated: true) }
+                .buttonStyle(QuietButtonStyle())
+                .accessibilityHint("Scrolls to this month")
+                .accessibilityIdentifier("calendar.today")
+            Spacer(minLength: 8)
+            densityButton
+            PersonalCalendarsButton(store: personal) { showingCalendars = true }
+        }
+    }
+
