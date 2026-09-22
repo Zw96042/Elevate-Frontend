@@ -277,3 +277,86 @@ struct AssignmentListSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var themeManager = ThemeManager.shared
 
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SheetHeader(title: title, doneIdentifier: "\(identifier).close") { dismiss() }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(groups) { group in
+                        GroupLabel(group.title)
+                            .padding(.horizontal, Metrics.page)
+                            .padding(.top, 16)
+                        ForEach(Array(group.rows.enumerated()), id: \.offset) { index, assignment in
+                            if index > 0 { InsetDivider().padding(.horizontal, Metrics.page) }
+                            CalendarAssignmentRow(
+                                assignment: assignment,
+                                showsSourceDate: showsSourceDate,
+                                showsDueDay: showsDueDay,
+                                isDone: isDone(assignment),
+                                onToggleDone: canToggleDone(assignment) ? { onToggleDone(assignment) } : nil,
+                                onOpen: assignment.course.hasGradebookParams ? { onOpen(assignment) } : nil,
+                                onRemind: { onRemind(assignment) },
+                                identifier: "\(identifier).\(group.key).\(index)",
+                                doneIdentifier: "\(identifier).done.\(group.key).\(index)",
+                                reservesDoneLane: true
+                            )
+                        }
+                    }
+                    if !attendance.isEmpty {
+                        GroupLabel("Attendance records without a school date")
+                            .padding(.horizontal, Metrics.page)
+                            .padding(.top, 16)
+                        ForEach(Array(attendance.enumerated()), id: \.offset) { index, record in
+                            if index > 0 { InsetDivider().padding(.horizontal, Metrics.page) }
+                            AttendanceRow(record: record, dateTitle: record.date)
+                                .accessibilityIdentifier("\(identifier).attendance.\(index)")
+                        }
+                    }
+                    if groups.isEmpty && attendance.isEmpty {
+                        Text("Nothing to list")
+                            .font(.subheadline)
+                            .foregroundStyle(Color.muted)
+                            .padding(.horizontal, Metrics.page)
+                            .padding(.top, 16)
+                    }
+                }
+                .padding(.bottom, 32)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+        .background(Color.appBackground.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Color.appBackground)
+        .tint(Color.themeAccent)
+        .foregroundStyle(Color.ink)
+        .preferredColorScheme(themeManager.appearance.colorScheme)
+        // A container, so its identifier doesn't replace its controls'.
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(identifier)
+    }
+}
+
+/// A small capsule count that opens a list: the drawn surface is compact,
+/// the hit area at least 44 points tall.
+struct SummaryPillStyle: ButtonStyle {
+    var tint: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed
+        configuration.label
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(tint)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(pressed ? Color.selection : Color.well)
+                    .animation(Motion.pressFeedback(reduceMotion, isPressed: pressed), value: pressed)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+    }
+}
