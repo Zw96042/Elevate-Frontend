@@ -141,3 +141,95 @@ struct CalendarView: View {
         Dictionary(personal.calendars.map { ($0.id, $0.color) }, uniquingKeysWith: { first, _ in first })
     }
 
+    var body: some View {
+        @Bindable var router = router
+        return NavigationStack(path: $router.calendarPath) {
+            Group {
+                if !store.canShowData {
+                    LoginPromptView(message: "Connect your Skyward account to see attendance records and assignment due dates from your school.") {
+                        showingConnect = true
+                    }
+                } else {
+                    calendarPage
+                }
+            }
+            .screenTitle("Calendar") { router.isShowingSettings = true }
+            .background(Color.appBackground.ignoresSafeArea())
+            .accessibilityIdentifier("calendar.screen")
+            .navigationDestination(for: CalendarRoute.self) { route in
+                // The root hides the bar for its own header; pushed screens
+                // keep their centered inline titles and Back.
+                Group {
+                    switch route {
+                    case .thisWeek:
+                        ThisWeekView()
+                    case .day(let iso):
+                        CalendarDayView(context: context, day: CalendarDay(iso: iso) ?? today, focusDay: $focusDay)
+                    }
+                }
+                .toolbar(.visible, for: .navigationBar)
+            }
+        }
+        // On the stack, so they present over a pushed day view too.
+        .sheet(isPresented: $showingConnect) { SkywardConnectSheet() }
+        .sheet(item: $reminder) { request in ReminderSheet(request: request) }
+        .sheet(isPresented: $showingCalendars) { PersonalCalendarsSheet(store: personal) }
+        .sheet(item: $eventDetail) { details in
+            PersonalEventDetailSheet(details: details, calendar: personal.calendar(id: details.event.calendarID))
+        }
+        .sheet(isPresented: $showingUndated) { undatedSheet }
+        .sheet(isPresented: $showingMissing) { missingSheet }
+        .task(id: loadIdentity) {
+            // Attendance keeps its own due-refresh loop. A new identity
+            // cancels it.
+            guard loadIdentity.isLive else { return }
+            await store.runAttendanceRefreshLoop()
+        }
+        .task(id: loadIdentity) {
+            // Every quarter, one after another, as soon as Calendar opens;
+            // saved quarters refresh only when due.
+            guard loadIdentity.isLive else { return }
+            await store.refreshCalendar(terms: SchoolCalendar.quarters)
+        }
+        .task(id: PersonalLoad(base: loadIdentity, months: gridMonths)) {
+            let months = gridMonths
+            guard loadIdentity.isLive, !months.isEmpty else {
+                personal.deactivate(keepingEvents: loadIdentity.canShowData && loadIdentity.isActive)
+                return
+            }
+            personal.refreshAccess()
+            await personal.load(months: months, today: today.calendarMonth)
+        }
+        .onChange(of: snapshotKey, initial: true) { _, _ in rebuildSnapshot() }
+        .onChange(of: personal.changeCount) { _, _ in
+            // An open event follows edits made in Calendar, and closes
+            // once the event is deleted.
+            if let open = eventDetail { eventDetail = personal.details(for: open.event) }
+        }
+        .onChange(of: personal.needsCalendarChoice, initial: true) { _, needed in
+            // Every calendar starts hidden: right after access is granted,
+            // the person picks the ones to show.
+            guard needed else { return }
+            personal.calendarChoiceShown()
+            showingCalendars = true
+        }
+        .onChange(of: store.accountRevision) { _, _ in
+            reminder = nil
+            eventDetail = nil
+            showingCalendars = false
+            showingUndated = false
+            showingMissing = false
+            doneError = nil
+            focusDay = nil
+            today = CalendarDay.today()
+            // Repositions now if the page is showing, or when it next appears.
+            didPositionList = false
+            scrollRequest = today.calendarMonth
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+            today = CalendarDay.today()
+        }
+        .sensoryFeedback(.success, trigger: doneRevision)
+        .sensoryFeedback(.selection, trigger: densityValue)
+    }
+
