@@ -275,23 +275,114 @@ struct ClassDetailView: View {
             gradeFilter.removeAll()
             showCalculated = targetAssignmentID != nil && openedAssignmentID == nil ? false : WhatIfStore.showCalculated(classKey: classKey)
             reloadWhatIf()
-            await load()
+            // A linked assignment may be newer than this class's saved cache.
+            await load(force: targetAssignmentID != nil && openedAssignmentID == nil)
         }
-        .refreshable {
+        .task(id: "\(scenePhase)-\(store.selectedTerm.bucket)-\(store.accountRevision)") {
+            guard scenePhase == .active, liveCourse.availableTerms.contains(store.selectedTerm) else { return }
+            while !Task.isCancelled {
+                if !refreshing, focusedScoreRows.isEmpty, !keyboardIsVisible, !showingAddSheet,
+                   !store.isAuthenticating, store.canShowData,
+                   AutomaticRefreshPolicy.isDue(
+                       lastUpdated: gradeInfoLastUpdated,
+                       lastAttempt: gradeInfoLastAttempt,
+                       now: Date(), interval: store.automaticRefreshInterval
+                   ) {
+                    await load(force: true, automatic: true)
+                }
+                do { try await Task.sleep(for: .seconds(min(15, store.automaticRefreshInterval))) }
+                catch { return }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            keyboardIsVisible = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardIsVisible = false
+        }
+        .visibleRefreshable {
             await load(force: true)
         }
-        .alert("Reset what-if changes?", isPresented: $showingResetConfirmation) {
-            Button("Reset changes", role: .destructive) { resetWhatIf() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(resetConfirmationMessage)
+        .task(id: "\(loading)-\(loadedBucket ?? "")-\(gradeInfoLastUpdated?.timeIntervalSince1970 ?? 0)-\(store.selectedTerm.bucket)") {
+            guard let targetAssignmentID, let targetTerm, store.selectedTerm == targetTerm,
+                  navigationAccountRevision == store.accountRevision, !loading, hasCurrentGradeInfo,
+                  openedAssignmentID == nil, let gradeInfo else { return }
+            guard let id = AssignmentLink.calcAssignmentID(for: targetAssignmentID, course: liveCourse,
+                                                          term: targetTerm, gradeInfo: gradeInfo) else {
+                assignmentLinkUnavailable = true
+                return
+            }
+            clearAssignmentControls()
+            showCalculated = false
+            assignmentLinkUnavailable = false
+            openedAssignmentID = id
+            highlightsLinkedAssignment = true
+            await Task.yield()
+            guard !Task.isCancelled, navigationAccountRevision == store.accountRevision else { return }
+            scroll.scrollTo(id, anchor: .center)
+            accessibilityAssignmentID = id
+            do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            withAnimation(Motion.replace(reduceMotion)) { highlightsLinkedAssignment = false }
         }
-        .background(Color.appBackground)
+        }
+    }
+
+    /// Navigation keeps the original course identity; refreshed posted scores
+    /// come from the account's current unified course record.
+    private var liveCourse: UnifiedCourseData {
+        store.courses?.first { $0.id == course.id } ?? course
+    }
+
+    private var courseName: String {
+        ClassNameFormatter.format(course.courseName.replacingOccurrences(of: " ", with: "_"))
+    }
+
+    private func animateWhatIfChange(_ change: () -> Void) {
+        if reduceMotion {
+            change()
+        } else {
+            withAnimation(.snappy(duration: 0.3)) { change() }
+        }
     }
 
     // MARK: - Data
 
-    private func load(force: Bool = false) async {
+    /// Matches the request `DataService.gradeInfo(params:)` caches under, so the
+    /// persisted record (and its real fetch time) can be read back.
+    private func gradeInfoParams(for term: TermLabel) -> GradeInfoParams {
+        GradeInfoParams(
+            stuId: course.stuId,
+            corNumId: course.corNumId,
+            gbId: course.gbId,
+            section: course.section,
+            bucket: term.bucket
+        )
+    }
+
+    /// A covered planner can refresh these same gradebooks. Reuse its latest
+    /// account cache before applying saved edits on return, without another fetch.
+    private func reconcileCachedGradeInfo() {
+        let term = store.selectedTerm
+        guard loadedBucket == term.bucket else { return }
+        if let saved = DataService.shared.cachedGradeInfo(params: gradeInfoParams(for: term)) {
+            gradeInfo = saved.value
+            if gradeInfoLastUpdated.map({ saved.updatedAt > $0 }) ?? true {
+                gradeInfoLastUpdated = saved.updatedAt
+                loadError = nil
+                loadErrorBucket = nil
+            }
+        }
+        if term.isSemester {
+            for quarter in term.whatIfQuarterTerms {
+                if let saved = DataService.shared.cachedGradeInfo(params: gradeInfoParams(for: quarter)) {
+                    quarterGradeInfo[quarter.shortName] = saved.value
+                }
+            }
+        }
+    }
+
+    private func load(force: Bool = false, automatic: Bool = false) async {
+        guard liveCourse.availableTerms.contains(store.selectedTerm) else { return }
         let selectedTerm = store.selectedTerm
         let bucket = selectedTerm.bucket
         if !force, loadedBucket == bucket, gradeInfo != nil { return }
