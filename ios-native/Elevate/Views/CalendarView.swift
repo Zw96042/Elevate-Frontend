@@ -520,3 +520,95 @@ struct CalendarView: View {
         return nil
     }
 
+    private static func savedTime(_ date: Date) -> String {
+        date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+    }
+
+    private static func schoolDay(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.timeZone = TimeZone(identifier: "America/Chicago")
+        formatter.setLocalizedDateFormatFromTemplate("MMMMd")
+        return formatter.string(from: date)
+    }
+
+    /// Flags counted only from quarters that resolved every eligible class
+    /// without a failure; any incomplete loaded quarter withholds the count.
+    private func knownMissingCount(_ loaded: [CalendarQuarterStatus]) -> Int? {
+        var total = 0
+        for status in loaded {
+            guard let courses = store.courses else { return nil }
+            // A quarter without classes adds nothing and hides nothing.
+            guard status.hasEligibleCourses else { continue }
+            guard status.isComplete, let data = status.data else { return nil }
+            let eligible = Set(SchoolCalendar.eligibleCourses(courses, term: status.term).map(\.id))
+            guard eligible.isSubset(of: data.resolvedCourseIDs) else { return nil }
+            total += data.assignments.filter { eligible.contains($0.course.id) && $0.isMarkedMissing }.count
+        }
+        return loaded.isEmpty ? nil : total
+    }
+
+    private func statusArea(context: CalendarContext) -> some View {
+        let statuses = onScreenStatuses(context)
+        let undatedCount = snapshot.index.undatedAssignments.count + snapshot.index.undatedAttendance.count
+        let missingCount = knownMissingCount(loadedQuarters(context)) ?? 0
+        return VStack(alignment: .leading, spacing: 0) {
+            // The pills share the freshness line, so the page spends one
+            // short row on status in the usual case.
+            StatusStrip(
+                lastUpdated: shownDataUpdated(statuses),
+                isRefreshing: isRefreshingSavedData(statuses),
+                error: refreshError(statuses),
+                showsFailureDetail: false
+            ) {
+                await refreshAll(force: true)
+            } control: {
+                if missingCount > 0 || undatedCount > 0 {
+                    summaryPills(undatedCount: undatedCount, missingCount: missingCount)
+                }
+            }
+            if let line = coverageLine(statuses) {
+                coverageRow(line)
+            }
+            if let doneError {
+                Text(doneError)
+                    .font(.footnote)
+                    .foregroundStyle(Color.gradeAttention)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 4)
+            }
+            if personal.showsInvitation {
+                invitationLine
+                    .padding(.top, 2)
+            }
+        }
+        .padding(.bottom, 2)
+    }
+
+    private func coverageRow(_ line: CoverageLine) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            if line.isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityHidden(true)
+            }
+            Text(line.text)
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(line.spokenText ?? line.text)
+            if line.offersRetry {
+                Button("Retry") {
+                    Task { await refreshAll(force: true) }
+                }
+                .buttonStyle(ActionTextButtonStyle())
+                .accessibilityLabel("Retry loading")
+                .accessibilityIdentifier("calendar.coverage.retry")
+            }
+        }
+        .frame(minHeight: 32)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("calendar.coverage")
+    }
+
