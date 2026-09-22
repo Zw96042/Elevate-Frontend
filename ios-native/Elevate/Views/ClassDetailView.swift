@@ -989,6 +989,59 @@ struct ClassDetailView: View {
             .contentTransition(.opacity)
     }
 
+    /// How far a what-if estimate is from Skyward's posted grade, so a
+    /// hypothetical value is never presented as the real one.
+    private var gradeCaption: String? {
+        guard hasCurrentGradeInfo, let whatIfDelta, let official = gradeInfo?.score else { return nil }
+        let direction = whatIfDelta > 0 ? "above" : "below"
+        return "\(GradeFormat.twoDecimals(abs(whatIfDelta))) \(direction) Skyward's \(GradeFormat.twoDecimals(official))"
+    }
+
+    private var gradeSourceLabel: String {
+        guard hasCurrentGradeInfo else { return loading ? "Loading grade" : "Grade" }
+        switch gradePresentation.source {
+        case .estimate: return "What-if estimate"
+        case .official: return "Skyward grade"
+        case .calculated: return gradePresentation.value == nil ? "Grade" : "Calculated from assignments"
+        }
+    }
+
+    private var whatIfDelta: Double? {
+        guard hasEffectiveWhatIfChanges, hasCurrentGradeInfo,
+              let official = gradeInfo?.score, official.isFinite,
+              let estimate = gradePresentation.value, estimate.isFinite else { return nil }
+        let delta = estimate - official
+        return abs(delta) >= 0.005 ? delta : nil
+    }
+
+    private var gradeAccessibilityValue: String {
+        if loading && !hasCurrentGradeInfo { return store.selectedTerm.displayName }
+        var parts = [store.selectedTerm.displayName, GradeFormat.spokenCourseGrade(displayGrade)]
+        if displayGrade == nil, let start = futureQuarterStart { parts.append("Starts \(schoolDayLabel(start))") }
+        if let whatIfDelta {
+            parts.append((whatIfDelta > 0 ? "+" : "−") + GradeFormat.twoDecimals(abs(whatIfDelta)) + " compared with Skyward")
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    // MARK: - Grade goal
+
+    /// Opens planning for this class in the term shown. Available with or
+    /// without what-if; planning never changes a score.
+    private var gradeGoalRow: some View {
+        NavigationLink(value: CoursesRoute.gradeGoal(course, store.selectedTerm)) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Grade goal")
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(Color.ink)
+                    Text(store.selectedTerm.isSemester
+                         ? "Find the exam score a target semester grade needs."
+                         : "Find the score a target grade needs.")
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                }
+                .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let instructor = course.instructor, !instructor.isEmpty {
