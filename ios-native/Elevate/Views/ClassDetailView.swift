@@ -640,74 +640,88 @@ struct ClassDetailView: View {
 
     private var quarterTotals: (first: Double?, second: Double?) {
         func score(_ bucket: String) -> Double? {
-            course.currentScores.first { $0.bucket == bucket }?.score
+            liveCourse.currentScores.first { $0.bucket == bucket }?.score
         }
         return store.selectedTerm == .sm1
             ? (score("Q1"), score("Q2"))
             : (score("Q3"), score("Q4"))
     }
 
+    private var hasEffectiveWhatIfChanges: Bool {
+        guard isWhatIfActive else { return false }
+        if hasUnavailableEditedQuarter { return true }
+        if !whatIfAssignments.isEmpty { return true }
+        if AssignmentGradeEdits.hasEffectiveChanges(gradeOverrides, to: editableOfficialAssignments) { return true }
+        guard store.selectedTerm.isSemester, let exam = finalExamGrades[examType], exam.isFinite else { return false }
+        return exam != officialFinalExamGrade
+    }
+
+    private var hasUnavailableEditedQuarter: Bool {
+        guard store.selectedTerm.isSemester else { return false }
+        return store.selectedTerm.whatIfQuarterTerms.contains { term in
+            quarterGradeInfo[term.shortName] == nil && hasSavedQuarterChanges(term)
+        }
+    }
+
+    private func hasSavedQuarterChanges(_ term: TermLabel) -> Bool {
+        whatIfAssignments.contains { $0.term == term.shortName }
+            || !WhatIfStore.gradeOverrides(classKey: classKey, term: term).isEmpty
+    }
+
     private var predictedQuarterTotals: (first: Double?, second: Double?) {
         guard isWhatIfActive, store.selectedTerm.isSemester else { return quarterTotals }
         let terms = store.selectedTerm.whatIfQuarterTerms
         return (
-            recalculatedQuarterTotal(for: terms[0]) ?? quarterTotals.first,
-            recalculatedQuarterTotal(for: terms[1]) ?? quarterTotals.second
+            recalculatedQuarterTotal(for: terms[0]),
+            recalculatedQuarterTotal(for: terms[1])
         )
     }
 
     private func recalculatedQuarterTotal(for term: TermLabel) -> Double? {
-        guard let info = quarterGradeInfo[term.shortName] else { return nil }
-        let real = calcAssignments(from: info, term: term).filter { $0.category != "Final Exam" }
-        let hypothetical = whatIfAssignments
-            .filter { $0.term == term.shortName }
-            .map(calcAssignment(from:))
-            .filter { $0.category != "Final Exam" }
-        let assignments = real + hypothetical
-        let weights = GradeCalculator.normalizedWeights(categories: info.gradebook, assignments: assignments)
-        let hypotheticalCategories = Set(
-            hypothetical
-                .filter { !$0.isNoCount && $0.grade != nil && $0.outOf > 0 }
-                .map(\.category)
+        WhatIfQuarterMath.quarterTotal(
+            term: term,
+            info: quarterGradeInfo[term.shortName],
+            className: course.courseName,
+            postedCourseGrade: liveCourse.currentScores.first(where: { $0.bucket == term.shortName })?.score,
+            whatIfAssignments: whatIfAssignments,
+            overrides: gradeOverrides,
+            hasSavedChanges: hasSavedQuarterChanges(term)
         )
-        let everyHypotheticalHasWeight = hypotheticalCategories.allSatisfy { weights[$0] != nil }
-        if everyHypotheticalHasWeight {
-            if let weighted = GradeCalculator.summary(
-                assignments: assignments,
-                categoryWeights: weights
-            ).courseTotal {
-                return weighted
-            }
-        }
-
-        // Some Skyward gradebooks are points-based and omit category weights.
-        // In that case, preserve a predictable what-if result using total points.
-        let countable = assignments.filter { !$0.isNoCount && $0.grade != nil && $0.outOf > 0 }
-        let totalPossible = countable.reduce(0) { $0 + $1.outOf }
-        guard totalPossible > 0 else { return nil }
-        return countable.reduce(0) { $0 + ($1.grade ?? 0) } / totalPossible * 100
     }
 
     private var summary: GradeSummary {
         let countable = meshedAssignments.filter { $0.category != "Final Exam" }
         let weights = GradeCalculator.normalizedWeights(categories: gradeInfo?.gradebook ?? [], assignments: countable)
-        return GradeCalculator.summary(
+        var result = GradeCalculator.summary(
             assignments: countable,
             categoryWeights: weights,
+            sourceCategories: gradeInfo?.gradebook ?? [],
             quarterTotals: store.selectedTerm.isSemester ? predictedQuarterTotals : nil,
             selectedTerm: store.selectedTerm,
             finalExamGrade: store.selectedTerm.isSemester ? effectiveFinalExamGrade : nil
+        )
+        if !store.selectedTerm.isSemester, weights.isEmpty {
+            result.courseTotal = GradeCalculator.pointsTotal(assignments: countable)
+        }
+        return result
+    }
+
+    private var gradePresentation: WhatIfGradePresentation {
+        let calculated = summary.courseTotal
+        let historical = calculated == nil
+            ? AcademicScoreValue.finiteDouble(liveCourse.historicalGrades[store.selectedTerm.historicalKey])
+            : nil
+        return .resolve(
+            official: gradeInfo?.score ?? historical,
+            calculated: calculated,
+            hasEffectiveChanges: hasEffectiveWhatIfChanges,
+            calculationUnavailable: hasUnavailableEditedQuarter
         )
     }
 
     private var displayGrade: Double? {
         guard hasCurrentGradeInfo else { return nil }
-        if isWhatIfActive, let calculated = summary.courseTotal {
-            return calculated
-        }
-        return gradeInfo?.score
-            ?? summary.courseTotal
-            ?? AcademicScoreValue.finiteDouble(course.historicalGrades[store.selectedTerm.historicalKey])
+        return gradePresentation.value
     }
 
     private var displayedAssignments: [CalcAssignment] {
@@ -758,7 +772,7 @@ struct ClassDetailView: View {
         return Calendar.current.date(from: components) ?? .distantPast
     }
 
-    // MARK: - Sections
+    // MARK: - Header
 
     private var headerSection: some View {
         @Bindable var store = store
