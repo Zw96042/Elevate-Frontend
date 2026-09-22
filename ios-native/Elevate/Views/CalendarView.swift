@@ -89,3 +89,55 @@ struct CalendarView: View {
         return CalendarMonth.months(in: first...last)
     }
 
+    /// What the grid summary depends on. Cheap to compare; the summary is
+    /// rebuilt only when this changes, never per scroll or frame.
+    private struct SnapshotKey: Hashable {
+        var calendarData: Int
+        var attendanceCount: Int
+        var attendanceUpdated: Date?
+        var eventsRevision: Int
+        var shownCalendars: [String]
+        var calendarColors: [String: PersonalCalendarColor]
+        var accountRevision: Int
+        var today: CalendarDay
+    }
+
+    private var snapshotKey: SnapshotKey {
+        SnapshotKey(
+            calendarData: store.calendarDataRevision,
+            attendanceCount: attendanceState == .loaded ? store.attendance?.records.count ?? 0 : -1,
+            attendanceUpdated: store.attendanceLastUpdated,
+            eventsRevision: personal.eventsRevision,
+            shownCalendars: personal.shownCalendars.map(\.id),
+            calendarColors: calendarColors,
+            accountRevision: store.accountRevision,
+            today: today
+        )
+    }
+
+    private func rebuildSnapshot() {
+        let assignments = SchoolCalendar.quarters.flatMap { store.calendarQuarter($0).loadedData?.assignments ?? [] }
+        let records = attendanceState == .loaded ? store.attendance?.records ?? [] : []
+        let index = CalendarDayIndex(attendance: records, assignments: assignments)
+        let range = CalendarMonth.browseRange(today: today, entryMonths: index.months)
+        // Only shown calendars, even before a re-read finishes after one is
+        // turned off.
+        let shown = Set(personal.shownCalendars.map(\.id))
+        let events: [String: [PersonalEvent]] = shown.isEmpty ? [:] : personal.eventsByDay.compactMapValues { list in
+            let kept = list.filter { shown.contains($0.calendarID) }
+            return kept.isEmpty ? nil : kept
+        }
+        snapshot = CalendarSnapshot(
+            assignments: assignments, attendance: records, eventsByDay: events,
+            weeks: CalendarWeek.weeks(in: range, calendar: calendar)
+        )
+        let items = CalendarGridItem.items(for: CalendarMonth.months(in: range), calendar: calendar)
+        let weeks = CalendarMonthWeek.inputs(for: items, snapshot: snapshot, today: today,
+                                             showsEvents: !shown.isEmpty, calendars: calendarColors)
+        grid.update(items: items, weeks: weeks)
+    }
+
+    private var calendarColors: [String: PersonalCalendarColor] {
+        Dictionary(personal.calendars.map { ($0.id, $0.color) }, uniquingKeysWith: { first, _ in first })
+    }
+
