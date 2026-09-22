@@ -95,3 +95,100 @@ struct CalendarAssignmentRow: View {
         return parts.joined(separator: ", ")
     }
 
+    private var hasLane: Bool { onToggleDone != nil || isGraded || reservesDoneLane }
+
+    var body: some View {
+        // The ring is a sibling of the row's button, not layered over it,
+        // so a tap on it reaches it on every iOS version. Its lane matches
+        // the events' time column, so titles align.
+        HStack(spacing: 0) {
+            if hasLane {
+                ZStack(alignment: .leading) {
+                    if isGraded {
+                        gradedMark
+                    } else if let onToggleDone {
+                        doneButton(onToggleDone)
+                    }
+                }
+                .padding(.leading, Metrics.page - 10)
+                // Page margin plus the time column: the bar then sits where
+                // event rows put theirs.
+                .frame(width: Metrics.page + leadLane, alignment: .leading)
+                .frame(maxHeight: .infinity)
+            }
+            mainElement
+        }
+        .fixedSize(horizontal: false, vertical: true)
+            .accessibilityActions {
+                if let onToggleDone, !isGraded {
+                    Button(isDone ? "Mark not done" : "Mark done", action: onToggleDone)
+                }
+                if let onRemind {
+                    Button("Remind me", action: onRemind)
+                }
+            }
+            // Reminders live in the row's menu, keeping a row to one control.
+            .contextMenu {
+                if let onToggleDone, !isGraded {
+                    Button(isDone ? "Mark Not Done" : "Mark Done",
+                           systemImage: isDone ? "circle" : "checkmark.circle", action: onToggleDone)
+                }
+                if let onRemind {
+                    Button("Remind Me", systemImage: "bell", action: onRemind)
+                }
+                if let onOpen {
+                    Button("Open in Courses", systemImage: "arrow.forward", action: onOpen)
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var mainElement: some View {
+        if let onOpen {
+            Button(action: onOpen) {
+                content(showsChevron: true)
+            }
+            .buttonStyle(RowPressStyle())
+            .accessibilityLabel(spokenLabel)
+            .accessibilityHint("Opens this assignment in Courses")
+            .accessibilityIdentifier(identifier)
+        } else {
+            content(showsChevron: false)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(spokenLabel)
+                .accessibilityIdentifier(identifier)
+        }
+    }
+
+    private func doneButton(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
+                .font(.title2)
+                .foregroundStyle(isDone ? Color.themeAccent : Color.muted)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(ScopePressStyle())
+        .accessibilityLabel("Done, \(title)")
+        .accessibilityValue(isDone ? "Checked" : "Not checked")
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityIdentifier(doneIdentifier)
+    }
+
+    /// Graded work can't be un-done here; the check is a fact, not a control.
+    private var gradedMark: some View {
+        Image(systemName: "checkmark.circle.fill")
+            .font(.title2)
+            .foregroundStyle(Color.themeAccent)
+            .frame(width: 44, height: 44)
+            .accessibilityHidden(true)
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.forward")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(Color.faint)
+            .accessibilityHidden(true)
+    }
+
