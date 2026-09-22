@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum AssignmentSortOption: String, CaseIterable, Identifiable {
     case date = "Date"
@@ -40,23 +41,48 @@ enum AssignmentGradeRange: String, CaseIterable, Identifiable {
 
 struct ClassDetailView: View {
     @Environment(AppStore.self) private var store
+    @Environment(AppRouter.self) private var router
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.isMainContentVisible) private var isMainContentVisible
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .largeTitle) private var heroGradeSize: CGFloat = 42
+    @ScaledMetric(relativeTo: .body) private var averageColumn: CGFloat = 56
+    /// Space above each section on this screen. Tighter than the shared
+    /// section gap: the 44-point headings already add air above their text.
+    private let sectionSpacing: CGFloat = 16
     let course: UnifiedCourseData
+    var targetAssignmentID: String? = nil
+    var targetTerm: TermLabel? = nil
+    @State private var openedAssignmentID: String?
+    @State private var highlightsLinkedAssignment = false
+    @AccessibilityFocusState private var accessibilityAssignmentID: String?
+    @State private var assignmentLinkUnavailable = false
+    @State private var navigationAccountRevision: Int?
 
     @State private var gradeInfo: GradeInfoResult?
     @State private var gradeInfoLastUpdated: Date?
     @State private var loading = true
+    @State private var refreshing = false
+    @State private var keyboardIsVisible = false
+    @State private var focusedScoreRows: Set<String> = []
+    @State private var finishScoreRequest = 0
+    @State private var finishScoreTargets: Set<String> = []
+    @State private var gradeInfoLastAttempt: Date?
+    @State private var gradeInfoLoadID: UUID?
     @State private var loadError: String?
+    @State private var loadErrorBucket: String?
     @State private var loadedBucket: String?
     @State private var quarterGradeInfo: [String: GradeInfoResult] = [:]
     @State private var semesterCalculationError: String?
 
     @State private var showCalculated = false
     @State private var whatIfAssignments: [WhatIfAssignment] = []
+    @State private var gradeOverrides: [String: AssignmentGradeOverride] = [:]
     @State private var finalExamGrades: [String: Double] = [:]
     @State private var showingAddSheet = false
-    @State private var showingResetConfirmation = false
+    @State private var scoreRowFrames: [String: CGRect] = [:]
+    @State private var feedbackRevision = 0
 
     @State private var sortOption: AssignmentSortOption = .date
     @State private var sortAscending = false
@@ -64,6 +90,13 @@ struct ClassDetailView: View {
     @State private var assignmentFilter: Set<AssignmentFilterOption> = []
     @State private var gradeFilter: Set<AssignmentGradeRange> = []
     @State private var showsBreakdown = false
+    @State private var reminder: ReminderRequest?
+    @State private var scenarioSheet: WhatIfScenarioSheetContext?
+    @State private var impactRequest: AssignmentImpactRequest?
+    @State private var showingTermSelector = false
+    @State private var gradeViewport: CGRect = .zero
+    @State private var displayedGradeFrame: CGRect = .zero
+    @State private var titleInBar = false
 
     private var classKey: String {
         WhatIfStore.classKey(studentID: course.stuId, className: course.courseName, corNumId: course.corNumId,
@@ -74,30 +107,60 @@ struct ClassDetailView: View {
 
     var body: some View {
         @Bindable var store = store
+        return ScrollViewReader { scroll in
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                headerSection
+            VStack(alignment: .leading, spacing: 0) {
+                // The navigation bar cannot wrap a full course name. Keep it
+                // in the content, including any parenthetical description.
+                Text(courseName)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.ink)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("course.fullTitle")
+                    .padding(.bottom, 12)
+                    .onGeometryChange(for: Bool.self) { geometry in
+                        geometry.frame(in: .scrollView).maxY < 0
+                    } action: { titleInBar = $0 }
+
+                StatusStrip(
+                    showsRefresh: hasCurrentGradeInfo && (loadError != nil || gradeInfoLastUpdated != nil),
+                    lastUpdated: gradeInfoLastUpdated,
+                    isRefreshing: refreshing,
+                    error: loadError
+                ) {
+                    await load(force: true)
+                } control: {
+                    TermSelector(selection: $store.selectedTerm, grades: liveCourse.termScores,
+                                 allowedTerms: liveCourse.availableTerms) { showingTermSelector = $0 }
+                }
+
+                gradeSection
+                    .padding(.top, 12)
+
+                gradeGoalRow
+                    .padding(.top, sectionSpacing - 8)
+                InsetDivider()
+
+                whatIfSection
+
                 if loading {
                     VStack(spacing: 0) {
-                        ForEach(0..<8, id: \.self) { _ in SkeletonRow(height: 80) }
+                        ForEach(0..<6, id: \.self) { index in
+                            if index > 0 { InsetDivider() }
+                            AssignmentRowPlaceholder(index: index)
+                        }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Loading assignments")
+                    .padding(.top, sectionSpacing)
+                    .loadingPlaceholder("Loading assignments")
                 } else if let loadError, !hasCurrentGradeInfo {
-                    ErrorStateView(title: "Couldn't load assignments", message: loadError) {
+                    InlineErrorState(title: "Couldn't load assignments", message: loadError) {
                         await load(force: true)
                     }
-                    .frame(minHeight: 300)
+                    .padding(.top, sectionSpacing)
                 } else {
-                    if loadError != nil {
-                        StaleDataBanner(lastUpdated: gradeInfoLastUpdated) {
-                            await load(force: true)
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                    }
                     categoriesSection
                     if store.selectedTerm.isSemester {
                         finalExamSection
@@ -105,7 +168,8 @@ struct ClassDetailView: View {
                     assignmentsSection
                 }
             }
-            .padding(.bottom, 40)
+            .padding(.horizontal, Metrics.page)
+            .padding(.bottom, 32)
         }
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Assignments")
