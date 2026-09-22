@@ -1043,87 +1043,11 @@ struct ClassDetailView: View {
                 }
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
-
-            if let instructor = course.instructor, !instructor.isEmpty {
-                Text(ClassNameFormatter.format(instructor.replacingOccurrences(of: " ", with: "_")))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var displayGradeLabel: some View {
-        if let displayGrade {
-            (Text(displayGrade, format: .number.precision(.fractionLength(1))) + Text("%"))
-                .font(.title2.weight(.semibold).monospacedDigit())
-                .contentTransition(.numericText(value: displayGrade))
-        }
-    }
-
-    private var categoriesSection: some View {
-        let categories = gradeInfo?.gradebook.filter { $0.category != "Final Exam" } ?? []
-        return Group {
-            if !categories.isEmpty {
-                VStack(alignment: .leading, spacing: 0) {
-                    Button {
-                        if reduceMotion {
-                            showsBreakdown.toggle()
-                        } else {
-                            withAnimation(.easeOut(duration: 0.18)) {
-                                showsBreakdown.toggle()
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            Text("Grade breakdown")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            Image(systemName: "chevron.down")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .rotationEffect(.degrees(showsBreakdown ? 180 : 0))
-                        }
-                        .frame(minHeight: 44)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityValue(showsBreakdown ? "Expanded" : "Collapsed")
-
-                    if showsBreakdown {
-                        Rectangle()
-                            .fill(Color(uiColor: .separator).opacity(0.32))
-                            .frame(height: 0.5)
-
-                        ForEach(Array(categories.enumerated()), id: \.element.category) { index, category in
-                            if index > 0 {
-                                Rectangle()
-                                    .fill(Color(uiColor: .separator).opacity(0.32))
-                                    .frame(height: 0.5)
-                            }
-                            categoryRow(category)
-                        }
-                    }
-                }
-                .padding(.horizontal, 20)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func categoryRow(_ category: GradeCategory) -> some View {
-        let result = summary.categories[category.category]
-        let baseWeight = category.weight ?? 0
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(category.category)
-                    .font(.subheadline.weight(.medium))
-                Text(categoryAverage(result))
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                Text(categoryWeight(result: result, baseWeight: baseWeight))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.forward")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.faint)
+                    .accessibilityHidden(true)
             }
             .padding(.vertical, 8)
         } else {
