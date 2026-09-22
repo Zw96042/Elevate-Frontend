@@ -612,3 +612,99 @@ struct CalendarView: View {
         .accessibilityIdentifier("calendar.coverage")
     }
 
+    @ViewBuilder
+    private func summaryPills(undatedCount: Int, missingCount: Int) -> some View {
+        let pills = Group {
+            if missingCount > 0 {
+                Button(missingCount == 1 ? "1 missing" : "\(missingCount) missing") { showingMissing = true }
+                    .buttonStyle(SummaryPillStyle(tint: Color.gradeAttention))
+                    .accessibilityLabel(missingCount == 1 ? "1 marked missing" : "\(missingCount) marked missing")
+                    .accessibilityHint("Lists assignments Skyward marks missing")
+                    .accessibilityIdentifier("calendar.missing")
+            }
+            if undatedCount > 0 {
+                Button("\(undatedCount) undated") { showingUndated = true }
+                    .buttonStyle(SummaryPillStyle(tint: Color.ink))
+                    .accessibilityLabel(undatedCount == 1 ? "1 without a date" : "\(undatedCount) without a date")
+                    .accessibilityHint("Lists work and records that have no school date")
+                    .accessibilityIdentifier("calendar.undated")
+            }
+        }
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 0) { pills }
+        } else {
+            HStack(spacing: 6) { pills }
+        }
+    }
+
+    /// One line: iOS asks for access only after Show.
+    private var invitationLine: some View {
+        let text = HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "calendar.badge.plus")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.themeAccent)
+                .accessibilityHidden(true)
+            Text("Add your Google or iCloud calendars")
+                .font(.footnote)
+                .foregroundStyle(Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+        let actions = HStack(spacing: 4) {
+            Button("Show") {
+                Task { await personal.requestAccess() }
+            }
+            .buttonStyle(ActionTextButtonStyle())
+            .disabled(personal.isRequestingAccess)
+            .accessibilityHint("Asks to read this iPhone's calendars")
+            .accessibilityIdentifier("calendar.invitation.connect")
+            Button { personal.dismissInvitation() } label: {
+                Image(systemName: "xmark")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.muted)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(ScopePressStyle())
+            .accessibilityLabel("Not now")
+            .accessibilityIdentifier("calendar.invitation.dismiss")
+        }
+        return Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 0) {
+                    text
+                    actions
+                }
+            } else {
+                HStack(alignment: .center, spacing: 8) {
+                    text
+                    Spacer(minLength: 8)
+                    actions
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("calendar.invitation")
+    }
+
+    // MARK: - Actions
+
+    /// A personal reminder. Skyward's date is offered only when it is a
+    /// valid school date; the class is its current record when available.
+    private func remind(_ assignment: CalendarAssignment) {
+        let course = store.courses?.first { $0.id == assignment.course.id } ?? assignment.course
+        reminder = ReminderRequest(accountScope: store.notifications.accountScope ?? "", course: course, term: assignment.term, assignmentID: assignment.id,
+                                   title: assignment.title, dueDay: assignment.date)
+    }
+
+    /// Opens the exact assignment in Courses on its quarter. Calendar shows
+    /// Skyward's values only; what-if work stays in the class.
+    private func open(_ assignment: CalendarAssignment) {
+        guard let course = SchoolCalendar.eligibleCourses(store.courses ?? [], term: assignment.term)
+            .first(where: { $0.id == assignment.course.id }) else { return }
+        showingUndated = false
+        showingMissing = false
+        store.selectedTerm = assignment.term
+        router.showAssignment(course: course, term: assignment.term, assignmentID: assignment.routeID)
+    }
+
