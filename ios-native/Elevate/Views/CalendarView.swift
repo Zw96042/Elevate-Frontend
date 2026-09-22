@@ -331,3 +331,98 @@ struct CalendarView: View {
         }
     }
 
+    /// The pinch, as a control: VoiceOver and anyone who doesn't pinch can
+    /// step through the same levels.
+    private var densityButton: some View {
+        Menu {
+            Picker("Detail", selection: Binding(get: { density }, set: { setDensity($0) })) {
+                Label("Compact", systemImage: "rectangle.compress.vertical").tag(CalendarDensity.compact)
+                Label("Bars", systemImage: "line.3.horizontal").tag(CalendarDensity.bars)
+                Label("Titles", systemImage: "list.bullet.rectangle").tag(CalendarDensity.titles)
+                Label("Details", systemImage: "rectangle.expand.vertical").tag(CalendarDensity.details)
+            }
+        } label: {
+            Image(systemName: "arrow.up.and.down.text.horizontal")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.ink)
+                .frame(minWidth: 20)
+        }
+        .menuStyle(.button)
+        .buttonStyle(QuietButtonStyle())
+        .accessibilityLabel("Detail")
+        .accessibilityValue(density.spokenName)
+        .accessibilityHint("Pinch the months to change this too")
+        .accessibilityIdentifier("calendar.density")
+    }
+
+    /// A level from the menu: the zoom animates there through every frame
+    /// in between, with the week at the top of the screen held in place.
+    private func setDensity(_ new: CalendarDensity) {
+        guard Double(new.rawValue) != grid.zoom else { return }
+        grid.anchorTop()
+        grid.settle(on: new, animated: !reduceMotion)
+        densityValue = new.rawValue
+    }
+
+    private var weekdayInitials: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                ForEach(Array(CalendarAgenda.weekdaySymbols(calendar: calendar).enumerated()), id: \.offset) { _, symbol in
+                    Text(symbol)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(Color.muted)
+                        .frame(maxWidth: .infinity, minHeight: 22)
+                }
+            }
+            .padding(.horizontal, Metrics.page)
+            Rule()
+        }
+        .accessibilityHidden(true)
+    }
+
+    // MARK: - Done marks
+
+    /// Duplicate source rows never take a mark, graded work is done by
+    /// itself, and a page left open from another account never writes.
+    private func toggleDone(_ assignment: CalendarAssignment) {
+        guard context.canToggleDone(assignment) else { return }
+        let done = !store.planning.completedIDs.contains(assignment.id)
+        var saved = false
+        Motion.perform(Motion.select(reduceMotion)) {
+            saved = store.planning.setCompleted(done, assignmentID: assignment.id,
+                                                expectedAccountScope: store.localAccountScope)
+        }
+        guard saved else {
+            doneError = "Couldn't save this Done mark. Try again."
+            return
+        }
+        doneError = nil
+        doneRevision += 1
+    }
+
+    // MARK: - Status area
+
+    /// The quarters on screen as the page can show them.
+    private func onScreenStatuses(_ context: CalendarContext) -> [CalendarQuarterStatus] {
+        SchoolCalendar.quarters.map(context.quarterStatus)
+    }
+
+    private func loadedQuarters(_ context: CalendarContext) -> [CalendarQuarterStatus] {
+        SchoolCalendar.quarters.map(context.quarterStatus).filter { $0.data != nil }
+    }
+
+    /// The older of every saved time on screen, so the line never claims
+    /// fresher data than is shown. Nil while any shown source lacks one.
+    private func shownDataUpdated(_ statuses: [CalendarQuarterStatus]) -> Date? {
+        var dates: [Date] = []
+        if store.attendance != nil {
+            guard let updated = store.attendanceLastUpdated else { return nil }
+            dates.append(updated)
+        }
+        for status in statuses where status.data != nil {
+            guard let updated = status.state.lastUpdated else { return nil }
+            dates.append(updated)
+        }
+        return dates.min()
+    }
+
