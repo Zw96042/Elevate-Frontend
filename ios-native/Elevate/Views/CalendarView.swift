@@ -708,3 +708,50 @@ struct CalendarView: View {
         router.showAssignment(course: course, term: assignment.term, assignmentID: assignment.routeID)
     }
 
+    // MARK: - Sheets
+
+    /// Entries without a valid school date can't mark a day; every loaded
+    /// quarter's are listed here, with any unreadable source date, so no
+    /// source work is hidden.
+    private var undatedSheet: some View {
+        let context = context
+        let groups = loadedQuarters(context).compactMap { status -> AssignmentListSheet.RowGroup? in
+            let rows = snapshot.index.undatedAssignments.filter { $0.term == status.term }
+            return rows.isEmpty ? nil : AssignmentListSheet.RowGroup(title: status.term.displayName, key: status.term.shortName, rows: rows)
+        }
+        return AssignmentListSheet(
+            title: "Without a date",
+            identifier: "calendar.undated.sheet",
+            groups: groups,
+            attendance: snapshot.index.undatedAttendance,
+            showsSourceDate: true,
+            isDone: { context.isDone($0) },
+            canToggleDone: { context.canToggleDone($0) },
+            onToggleDone: { toggleDone($0) },
+            onOpen: { open($0) },
+            onRemind: { remind($0) }
+        )
+    }
+
+    /// Skyward's Missing flags from quarters that resolved every class.
+    private var missingSheet: some View {
+        let context = context
+        let groups = loadedQuarters(context).compactMap { status -> AssignmentListSheet.RowGroup? in
+            guard status.isComplete, let data = status.data else { return nil }
+            let rows = data.assignments.filter(\.isMarkedMissing)
+            return rows.isEmpty ? nil : AssignmentListSheet.RowGroup(title: status.term.displayName, key: status.term.shortName, rows: rows)
+        }
+        return AssignmentListSheet(
+            title: "Marked missing",
+            identifier: "calendar.missing.sheet",
+            groups: groups,
+            attendance: [],
+            showsDueDay: true,
+            isDone: { context.isDone($0) },
+            canToggleDone: { context.canToggleDone($0) },
+            onToggleDone: { toggleDone($0) },
+            onOpen: { open($0) },
+            onRemind: { remind($0) }
+        )
+    }
+}
