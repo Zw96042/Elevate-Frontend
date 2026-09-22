@@ -897,11 +897,98 @@ struct ClassDetailView: View {
         }
     }
 
-    private var courseIdentity: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(ClassNameFormatter.format(course.courseName.replacingOccurrences(of: " ", with: "_")))
-                .font(.title2.weight(.semibold))
-                .lineLimit(3)
+    private func compositionCell(_ name: String, value: Double?, share: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(name)
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+            Text(GradeFormat.twoDecimals(value))
+                .font(.figure(.body))
+                .foregroundStyle(GradeTier(value).textColor)
+                .contentTransition(.numericText(value: value ?? 0))
+            Text(value == nil ? "Not posted" : "Counts \(share)")
+                .font(.figure(.caption, weight: .regular))
+                .foregroundStyle(Color.muted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(name)
+        .accessibilityValue("\(GradeFormat.spokenCourseGrade(value)), counts \(share)")
+    }
+
+    private var gradeBlock: some View {
+        let grade = displayGrade
+        let qualifier = gradeQualifier
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                if loading && !hasCurrentGradeInfo && grade == nil {
+                    SkeletonText(.display(size: min(heroGradeSize, 66)), length: 4)
+                } else {
+                    Text(GradeFormat.twoDecimals(grade))
+                        .font(.display(size: min(heroGradeSize, 66)))
+                        .tracking(-1)
+                        .foregroundStyle(grade == nil ? Color.muted : GradeTier(grade).textColor)
+                        .contentTransition(.numericText(value: grade ?? 0))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                }
+                if grade != nil {
+                    Text("%")
+                        .font(.title3)
+                        .foregroundStyle(Color.muted)
+                }
+                if let qualifier, !dynamicTypeSize.isAccessibilitySize {
+                    qualifierText(qualifier)
+                        .padding(.leading, 10)
+                }
+            }
+            .animation(Motion.value(reduceMotion), value: grade)
+
+            if let qualifier, dynamicTypeSize.isAccessibilitySize {
+                qualifierText(qualifier)
+            }
+
+            if let gradeCaption {
+                Text(gradeCaption)
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .contentTransition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(gradeSourceLabel)
+        .accessibilityValue(gradeAccessibilityValue)
+        .accessibilityIdentifier("course.grade")
+    }
+
+    /// A word beside the number when it is not Skyward's posted grade. An
+    /// estimate is named in the action color, the same color as what-if
+    /// rows, so it never reads as the official grade. Skyward's own grade
+    /// needs no label.
+    private var gradeQualifier: (text: String, isEstimate: Bool)? {
+        guard hasCurrentGradeInfo else { return nil }
+        if displayGrade == nil {
+            if let start = futureQuarterStart { return ("Starts \(schoolDayLabel(start))", false) }
+            return ("No grade yet", false)
+        }
+        switch gradePresentation.source {
+        case .estimate: return ("Estimate", true)
+        case .calculated: return gradePresentation.value == nil ? nil : ("Calculated", false)
+        case .official: return nil
+        }
+    }
+
+    private func qualifierText(_ qualifier: (text: String, isEstimate: Bool)) -> some View {
+        Text(qualifier.text)
+            .font(.subheadline.weight(qualifier.isEstimate ? .semibold : .regular))
+            .foregroundStyle(qualifier.isEstimate ? Color.themeAccent : Color.muted)
+            .lineLimit(1)
+            .fixedSize()
+            .contentTransition(.opacity)
+    }
+
                 .fixedSize(horizontal: false, vertical: true)
 
             if let instructor = course.instructor, !instructor.isEmpty {
