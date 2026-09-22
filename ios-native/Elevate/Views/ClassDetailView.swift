@@ -172,23 +172,33 @@ struct ClassDetailView: View {
             .padding(.bottom, 32)
         }
         .scrollDismissesKeyboard(.interactively)
-        .navigationTitle("Assignments")
+        .background(Color.appBackground.ignoresSafeArea())
+        .navigationTitle(courseName)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
         .toolbar {
-            if isWhatIfActive {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button { showingAddSheet = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("Add what-if assignment")
-                    if !whatIfAssignments.isEmpty || hasFinalExamEstimateForSelectedTerm {
-                        Button(role: .destructive) { showingResetConfirmation = true } label: {
-                            Image(systemName: "arrow.counterclockwise")
-                        }
-                        .accessibilityLabel("Reset what-if changes")
-                    }
-                }
+            ToolbarItem(placement: .principal) {
+                Text(courseName)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+                    .opacity(titleInBar ? 1 : 0)
+                    .accessibilityHidden(!titleInBar)
+                    .accessibilityIdentifier("course.compactTitle")
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: titleInBar)
             }
         }
+        .coordinateSpace(name: "assignmentEditing")
+        .onPreferenceChange(EditableScoreFramesKey.self) { scoreRowFrames = $0 }
+        .simultaneousGesture(SpatialTapGesture().onEnded { tap in
+            // Editable rows decide their own taps (see `AssignmentRow.rowTapped`);
+            // the rest of the page ends editing.
+            guard !scoreRowFrames.values.contains(where: { $0.contains(tap.location) }) else { return }
+            finishScoreEditing()
+        })
+        .sensoryFeedback(.impact(weight: .light), trigger: feedbackRevision)
+        .accessibilityIdentifier("course.detail")
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { gradeViewport = $0 }
+        .onChange(of: gradeViewingObservation) { _, _ in observeVisibleOfficialGrade() }
         .sheet(isPresented: $showingAddSheet) {
             AddAssignmentSheet(
                 categoriesByTerm: addAssignmentCategoriesByTerm,
@@ -197,16 +207,73 @@ struct ClassDetailView: View {
                 var a = assignment
                 a.className = course.courseName
                 WhatIfStore.add(a, classKey: classKey)
-                reloadWhatIf()
+                animateWhatIfChange { reloadWhatIf() }
+                feedbackRevision += 1
             }
-            .presentationDetents([.medium, .large])
+            .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
-        .task(id: store.selectedTerm) {
+        .sheet(item: $reminder) { request in
+            ReminderSheet(request: request)
+        }
+        .sheet(item: $scenarioSheet) { context in
+            WhatIfScenariosSheet(
+                context: context,
+                source: context.term == store.selectedTerm ? whatIfSource(for: context.term) : nil,
+                current: scenarioCurrentState,
+                onApplied: { scenarioApplied(context) }
+            )
+        }
+        .sheet(item: $impactRequest) { request in
+            let current = request.term == store.selectedTerm
+            AssignmentImpactSheet(
+                request: request,
+                quarterSources: current ? impactQuarterSources : [:],
+                semesterSource: current && request.term.isSemester ? whatIfSource(for: request.term) : nil,
+                whatIfIsOn: isWhatIfActive,
+                canTryInWhatIf: semesterCalculationAvailable,
+                localOverrides: gradeOverrides,
+                onTry: { candidate, earned in tryImpact(request, candidate: candidate, earned: earned) }
+            )
+        }
+        .onChange(of: store.accountRevision) { _, _ in
+            openedAssignmentID = nil
+            highlightsLinkedAssignment = false
+            assignmentLinkUnavailable = false
+            reminder = nil
+            scenarioSheet = nil
+            impactRequest = nil
+        }
+        // Both sheets are scoped to the term they opened on.
+        .onChange(of: store.selectedTerm) { _, _ in
+            scenarioSheet = nil
+            impactRequest = nil
+        }
+        .onAppear {
+            if navigationAccountRevision == nil { navigationAccountRevision = store.accountRevision }
+            if openedAssignmentID == nil, let targetTerm, liveCourse.availableTerms.contains(targetTerm) {
+                store.selectedTerm = targetTerm
+            }
+            // A grade goal's "Try in What-if" saves local edits while this
+            // screen is covered; show them on return.
+            guard liveCourse.availableTerms.contains(store.selectedTerm) else { return }
+            reconcileCachedGradeInfo()
+            showCalculated = targetAssignmentID != nil && openedAssignmentID == nil ? false : WhatIfStore.showCalculated(classKey: classKey)
+            reloadWhatIf()
+        }
+        .task(id: "\(store.selectedTerm.bucket)-\(liveCourse.semester.rawValue)") {
+            guard liveCourse.availableTerms.contains(store.selectedTerm) else {
+                // A foreground calendar rollover must not switch a half-year
+                // gradebook to the other course's semester.
+                store.selectedTerm = store.selectedTerm.isFall
+                    ? liveCourse.availableTerms[0]
+                    : liveCourse.availableTerms[liveCourse.availableTerms.count - 1]
+                return
+            }
             categoryFilter.removeAll()
             assignmentFilter.removeAll()
             gradeFilter.removeAll()
-            showCalculated = WhatIfStore.showCalculated(classKey: classKey)
+            showCalculated = targetAssignmentID != nil && openedAssignmentID == nil ? false : WhatIfStore.showCalculated(classKey: classKey)
             reloadWhatIf()
             await load()
         }
