@@ -774,14 +774,108 @@ struct ClassDetailView: View {
 
     // MARK: - Header
 
-    private var headerSection: some View {
-        @Bindable var store = store
-        return VStack(alignment: .leading, spacing: 0) {
+    /// A person's name: `PersonName`, never the course-title formatter.
+    private var instructor: String? {
+        guard let instructor = course.instructor.map(PersonName.display), !instructor.isEmpty else { return nil }
+        return instructor
+    }
+
+    /// The grade with its source, the course beneath it, and for a semester
+    /// the quarters and exam it is built from.
+    private var gradeSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            gradeBlock
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { displayedGradeFrame = $0 }
+            courseLines
+            if store.selectedTerm.isSemester, hasCurrentGradeInfo {
+                semesterComposition
+                    .padding(.top, 4)
+            }
+        }
+    }
+
+    private var visibleOfficialGrade: Double? {
+        hasCurrentGradeInfo && gradePresentation.source == .official ? displayGrade : nil
+    }
+
+    private struct GradeViewingObservation: Equatable {
+        var courseID: String
+        var term: TermLabel
+        var score: Double?
+        var sourceDate: Date?
+        var accountScope: String?
+        var isVisible: Bool
+    }
+
+    private var gradeViewingObservation: GradeViewingObservation {
+        GradeViewingObservation(courseID: liveCourse.id, term: store.selectedTerm,
+            score: visibleOfficialGrade, sourceDate: gradeInfoLastUpdated,
+            accountScope: store.localAccountScope, isVisible: canObserveOfficialGrade)
+    }
+
+    private var canObserveOfficialGrade: Bool {
+        let isTopCourse: Bool
+        switch router.coursesPath.last {
+        case .course(let shown), .assignment(let shown, _, _, _): isTopCourse = shown.id == course.id
+        default: isTopCourse = false
+        }
+        return scenePhase == .active && router.selectedTab == .courses && isTopCourse
+            && isMainContentVisible && !router.isShowingSettings && !showingAddSheet
+            && !showingTermSelector && reminder == nil && scenarioSheet == nil && impactRequest == nil
+            && displayedGradeFrame.height > 0
+            && gradeViewport.contains(CGPoint(x: displayedGradeFrame.midX, y: displayedGradeFrame.midY))
+    }
+
+    private func observeVisibleOfficialGrade() {
+        guard canObserveOfficialGrade, let score = visibleOfficialGrade,
+              let sourceDate = gradeInfoLastUpdated, let scope = store.localAccountScope else { return }
+        store.notifications.markGradeViewed(course: liveCourse, term: store.selectedTerm,
+            score: score, sourceDate: sourceDate, accountScope: scope)
+    }
+
+    /// The teacher on a full-width line, so a long name never squeezes the
+    /// period beneath it. Course level stays in the GPA math, not on screen.
+    private var courseLines: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if let instructor {
+                Text(instructor)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("Teacher")
+                    .accessibilityValue(instructor)
+            }
+            if let period = course.period {
+                Text("Period \(period)")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The two quarter grades and the exam the semester grade combines,
+    /// including any what-if changes, each with the district share it
+    /// counts for: three open figures side by side, a list at large sizes.
+    private var semesterComposition: some View {
+        let quarters = store.selectedTerm.whatIfQuarterTerms
+        let totals = predictedQuarterTotals
+        let exam = effectiveFinalExamGrade
+        let parts: [(name: String, value: Double?, share: String)] = [
+            (quarters[0].displayName, totals.first, "40%"),
+            (quarters[1].displayName, totals.second, "40%"),
+            ("Exam", exam, "20%"),
+        ]
+        return VStack(alignment: .leading, spacing: 8) {
             Group {
                 if dynamicTypeSize.isAccessibilitySize {
-                    VStack(alignment: .leading, spacing: 10) {
-                        courseIdentity
-                        displayGradeLabel
+                    VStack(spacing: 0) {
+                        ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
+                            if index > 0 { InsetDivider() }
+                            compositionCell(part.name, value: part.value, share: part.share)
+                                .padding(.vertical, 10)
+                        }
                     }
                 } else {
                     HStack(alignment: .firstTextBaseline, spacing: 16) {
