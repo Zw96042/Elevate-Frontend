@@ -89,3 +89,124 @@ struct CalendarWeekCanvas: View {
         return Color.dayLoadInk(level: cell.level)
     }
 
+    // MARK: - Drawing
+
+    private func color(_ event: PersonalEvent) -> Color {
+        input.calendars[event.calendarID].map { Color(personal: $0) } ?? Color.muted
+    }
+
+    private func draw(in context: inout GraphicsContext, size: CGSize) {
+        let column = size.width / 7
+        context.fill(Path(CGRect(x: 0, y: 0, width: size.width, height: 0.5)), with: .color(Color.rule))
+
+        for index in 0..<7 {
+            guard let cell = cells[index] else { continue }
+            let center = CGPoint(x: column * (CGFloat(index) + 0.5), y: 0.5 + 5 + numberSize / 2)
+            let circle = CGRect(x: center.x - numberSize / 2, y: center.y - numberSize / 2,
+                                width: numberSize, height: numberSize)
+            if cell.level > 0 {
+                context.fill(Path(ellipseIn: circle), with: .color(Color.dayLoad(level: cell.level)))
+            }
+            if cell.isToday {
+                context.stroke(Path(ellipseIn: circle.insetBy(dx: -2, dy: -2)), with: .color(Color.themeAccent), lineWidth: 2)
+            }
+            if let number = context.resolveSymbol(id: "n\(index)") {
+                context.draw(number, at: center, anchor: .center)
+            }
+            if cell.hasAttendance {
+                let dot = CGRect(x: circle.maxX - 4, y: circle.minY - 1, width: 7, height: 7)
+                context.fill(Path(ellipseIn: dot.insetBy(dx: -1.5, dy: -1.5)), with: .color(Color.appBackground))
+                context.fill(Path(ellipseIn: dot), with: .color(Color.gradeWarning))
+            }
+        }
+
+        guard !layout.spans.isEmpty else { return }
+        let top = 0.5 + numberArea
+        if zoom < 1 {
+            drawCompactToBars(in: &context, column: column, top: top, progress: max(0, zoom))
+        } else {
+            drawLanes(in: &context, column: column, top: top)
+        }
+        drawMore(in: &context, column: column, top: top)
+    }
+
+    /// Compact: each day's events as a short strip of colors. Toward bars,
+    /// every strip piece slides and stretches to its lane bar's place; pieces
+    /// of the same event meet into one bar. Events past the bars' lanes fade.
+    private func drawCompactToBars(in context: inout GraphicsContext, column: CGFloat, top: CGFloat, progress t: Double) {
+        let barHeight = CGFloat(CalendarZoom.laneHeight(.bars)) * scale
+        let spacing = CGFloat(CalendarZoom.laneSpacing) * scale
+        for span in layout.spans {
+            let shownAtBars = span.lane < CalendarDensity.bars.laneCount
+            for day in span.startColumn...span.endColumn {
+                let strip = compactRect(event: span.event, column: day, columnWidth: column, top: top)
+                let bar = barPiece(span: span, column: day, columnWidth: column,
+                                   y: top + CGFloat(span.lane) * (barHeight + spacing), height: barHeight)
+                let rect: CGRect
+                let opacity: Double
+                if shownAtBars {
+                    let from = strip ?? CGRect(x: bar.midX, y: bar.minY, width: 0, height: bar.height)
+                    rect = Self.mix(from, bar, t)
+                    opacity = strip == nil ? t : 1
+                } else {
+                    guard let strip else { continue }
+                    rect = strip
+                    opacity = 1 - t
+                }
+                guard opacity > 0.01, rect.width > 0.1 else { continue }
+                let radius = min(2, rect.height / 2)
+                context.fill(Path(roundedRect: rect, cornerRadius: radius),
+                             with: .color(color(span.event).opacity(opacity)))
+            }
+        }
+    }
+
+    /// Bars through details: each event one shape across its days, its
+    /// lane height growing with the zoom; titles and times fade in.
+    private func drawLanes(in context: inout GraphicsContext, column: CGFloat, top: CGFloat) {
+        let laneHeight = CGFloat(CalendarZoom.laneHeight(at: zoom)) * scale
+        let spacing = CGFloat(CalendarZoom.laneSpacing) * scale
+        let titleProgress = CalendarZoom.progress(zoom, from: 1)
+        let timeProgress = CalendarZoom.progress(zoom, from: 2)
+        let radius = CGFloat(CalendarZoom.mix(2.5, 4, titleProgress))
+        for (index, span) in layout.spans.enumerated() {
+            let opacity = CalendarZoom.laneOpacity(lane: span.lane, at: zoom)
+            guard opacity > 0.01 else { continue }
+            let leading = span.continuesBefore ? 0 : 2.0
+            let trailing = span.continuesAfter ? 0 : 2.0
+            let rect = CGRect(x: column * CGFloat(span.startColumn) + leading,
+                              y: top + CGFloat(span.lane) * (laneHeight + spacing),
+                              width: column * CGFloat(span.columnCount) - leading - trailing,
+                              height: laneHeight)
+            let isBlock = span.isMultiDay || span.event.isAllDay
+            let tint = CalendarZoom.mix(1, isBlock ? 0.30 : 0.18, titleProgress)
+            let shape = UnevenRoundedRectangle(
+                topLeadingRadius: span.continuesBefore ? 0 : radius,
+                bottomLeadingRadius: span.continuesBefore ? 0 : radius,
+                bottomTrailingRadius: span.continuesAfter ? 0 : radius,
+                topTrailingRadius: span.continuesAfter ? 0 : radius,
+                style: .continuous
+            ).path(in: rect)
+            let base = color(span.event)
+            context.fill(shape, with: .color(base.opacity(tint * opacity)))
+            guard titleProgress > 0.01 else { continue }
+            var chip = context
+            chip.clip(to: shape)
+            if !isBlock && !span.continuesBefore {
+                // A timed event keeps a color edge, so its tinted chip
+                // still reads as its calendar.
+                chip.fill(Path(CGRect(x: rect.minX, y: rect.minY, width: 2.5, height: rect.height)),
+                          with: .color(base.opacity(opacity * titleProgress)))
+            }
+            let textX = rect.minX + (isBlock || span.continuesBefore ? 5 : 6)
+            chip.opacity = opacity * titleProgress
+            if let title = chip.resolveSymbol(id: "t\(index)") {
+                chip.draw(title, at: CGPoint(x: textX, y: rect.minY + 1.5), anchor: .topLeading)
+            }
+            if timeProgress > 0.01, let time = chip.resolveSymbol(id: "m\(index)") {
+                chip.opacity = opacity * timeProgress
+                chip.draw(time, at: CGPoint(x: textX, y: rect.minY + 1.5 + 13 * scale), anchor: .topLeading)
+            }
+        }
+    }
+
