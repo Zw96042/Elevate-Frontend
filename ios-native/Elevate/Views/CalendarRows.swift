@@ -192,3 +192,88 @@ struct CalendarAssignmentRow: View {
             .accessibilityHidden(true)
     }
 
+    /// The class, category, due day and Skyward's own status words on one
+    /// quiet line; only Missing and Absent take a color.
+    private var detailText: Text {
+        var parts = [courseName]
+        if let category { parts.append(category) }
+        if let dueDay { parts.append(dueDay) }
+        var text = Text(parts.joined(separator: " · ")).foregroundStyle(Color.muted)
+        if isGraded {
+            text = text + Text("  Graded").fontWeight(.semibold).foregroundStyle(Color.themeAccent)
+        }
+        for status in statuses {
+            let color = status.isMissing ? Color.gradeAttention : (status.isAbsent ? Color.gradeWarning : Color.ink)
+            text = text + Text("  \(status.text)").fontWeight(.semibold).foregroundStyle(color)
+        }
+        return text
+    }
+
+    private func content(showsChevron: Bool) -> some View {
+        let stacked = dynamicTypeSize.isAccessibilitySize
+        return HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                if !stacked {
+                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                        .fill(showsDone ? Color.faint : Color.themeAccent)
+                        .frame(width: 3)
+                        .frame(maxHeight: .infinity)
+                        .accessibilityHidden(true)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.body)
+                        .foregroundStyle(showsDone ? Color.muted : Color.ink)
+                        .strikethrough(showsDone, color: Color.muted)
+                    detailText
+                        .font(.subheadline)
+                    if let sourceDate {
+                        Text(sourceDate)
+                            .font(.footnote)
+                            .foregroundStyle(Color.muted)
+                    }
+                }
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            if showsChevron { chevron }
+        }
+        .padding(.leading, hasLane ? 12 : Metrics.page)
+        .padding(.trailing, Metrics.page)
+        .padding(.vertical, Metrics.rowPadding)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+}
+
+// MARK: - List sheets
+
+/// Assignments grouped by quarter in a sheet: work without a date, or
+/// work Skyward marks missing. Rows keep their Done ring and open the
+/// assignment in Courses.
+struct AssignmentListSheet: View {
+    struct RowGroup: Identifiable {
+        var title: String
+        /// A short token for identifiers, such as `Q1`.
+        var key: String
+        var rows: [CalendarAssignment]
+        var id: String { key }
+    }
+
+    var title: String
+    var identifier: String
+    var groups: [RowGroup]
+    var attendance: [AttendanceRecord]
+    var showsSourceDate = false
+    var showsDueDay = false
+    var isDone: (CalendarAssignment) -> Bool
+    var canToggleDone: (CalendarAssignment) -> Bool
+    var onToggleDone: (CalendarAssignment) -> Void
+    var onOpen: (CalendarAssignment) -> Void
+    var onRemind: (CalendarAssignment) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var themeManager = ThemeManager.shared
+
