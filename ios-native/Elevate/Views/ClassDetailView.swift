@@ -521,15 +521,8 @@ struct ClassDetailView: View {
         for term: TermLabel,
         force: Bool
     ) async -> Result<GradeInfoResult, Error> {
-        let params = GradeInfoParams(
-            stuId: course.stuId,
-            corNumId: course.corNumId,
-            gbId: course.gbId,
-            section: course.section,
-            bucket: term.bucket
-        )
         do {
-            return .success(try await DataService.shared.gradeInfo(params: params, forceRefresh: force))
+            return .success(try await DataService.shared.gradeInfo(params: gradeInfoParams(for: term), forceRefresh: force))
         } catch {
             return .failure(error)
         }
@@ -541,6 +534,7 @@ struct ClassDetailView: View {
 
     private func reloadWhatIf() {
         whatIfAssignments = WhatIfStore.assignments(classKey: classKey, term: store.selectedTerm)
+        gradeOverrides = WhatIfStore.gradeOverrides(classKey: classKey, term: store.selectedTerm)
         finalExamGrades = WhatIfStore.finalExamGrades(classKey: classKey)
     }
 
@@ -553,11 +547,29 @@ struct ClassDetailView: View {
         store.selectedTerm.isSemester && finalExamGrades[examType] != nil
     }
 
-    private var resetConfirmationMessage: String {
-        if store.selectedTerm.isSemester {
-            return "This removes the hypothetical assignments and final exam grade for this term."
+    // MARK: - Local edits to existing assignment scores
+
+    private func overrideScore(of assignment: CalcAssignment, to grade: Double?) {
+        guard let original = editableOfficialAssignments.first(where: { $0.id == assignment.id }) else { return }
+        if grade == original.grade, gradeOverrides[assignment.id]?.noCount == nil {
+            WhatIfStore.removeGradeOverride(assignment: original, classKey: classKey)
+        } else {
+            WhatIfStore.setGradeOverride(grade, assignment: original, classKey: classKey)
         }
-        return "This removes the hypothetical assignments for this term."
+        animateWhatIfChange { reloadWhatIf() }
+    }
+
+    private func restoreSkywardValue(of assignment: CalcAssignment) {
+        guard let original = editableOfficialAssignments.first(where: { $0.id == assignment.id }) else { return }
+        // Restoring the score must not undo an independent no-count choice.
+        overrideScore(of: assignment, to: original.grade)
+    }
+
+    private func skywardOriginal(of assignment: CalcAssignment) -> (grade: Double?, outOf: Double)? {
+        guard let edit = gradeOverrides[assignment.id],
+              let original = editableOfficialAssignments.first(where: { $0.id == assignment.id }),
+              edit.changesScore(of: original) else { return nil }
+        return (original.grade, original.outOf)
     }
 
     // MARK: - Computation
@@ -592,76 +604,38 @@ struct ClassDetailView: View {
     }
 
     private func calcAssignments(from info: GradeInfoResult, term: TermLabel) -> [CalcAssignment] {
-        info.gradebook.flatMap { cat in
-            cat.assignments.enumerated().map { index, a in
-                CalcAssignment(
-                    id: "\(term.shortName)-\(cat.category)-\(index)-\(a.name)",
-                    className: course.courseName,
-                    name: a.name,
-                    term: term.shortName,
-                    category: cat.category,
-                    grade: a.pointsEarned,
-                    outOf: a.pointsTotal ?? 100,
-                    dueDate: a.date,
-                    artificial: false,
-                    meta: a.meta
-                )
-            }
+        AssignmentGradeEdits.assignments(from: info, className: course.courseName, term: term)
+    }
+
+    /// Semester edits belong to the source quarter, so the same saved score
+    /// is used on the quarter screen and in its 40% semester component.
+    private var editableOfficialAssignments: [CalcAssignment] {
+        guard store.selectedTerm.isSemester else { return apiAssignments }
+        return store.selectedTerm.whatIfQuarterTerms.flatMap { term in
+            guard let info = quarterGradeInfo[term.shortName] else { return [CalcAssignment]() }
+            return calcAssignments(from: info, term: term).filter { $0.category != "Final Exam" }
         }
     }
 
-    /// Real assignments plus independently identified hypothetical assignments.
     private var meshedAssignments: [CalcAssignment] {
         guard isWhatIfActive else { return apiAssignments }
-        let whatIf = whatIfAssignments.map(calcAssignment(from:))
-        return whatIf + apiAssignments
+        return whatIfAssignments.map(calcAssignment(from:))
+            + AssignmentGradeEdits.applying(gradeOverrides, to: editableOfficialAssignments)
     }
 
     private func calcAssignment(from assignment: WhatIfAssignment) -> CalcAssignment {
-        CalcAssignment(
-            id: assignment.id,
-            className: assignment.className,
-            name: assignment.name,
-            term: assignment.term,
-            category: assignment.category,
-            grade: assignment.grade,
-            outOf: assignment.outOf,
-            dueDate: assignment.dueDate,
-            artificial: true,
-            meta: metadata(for: assignment.resolvedStatus)
-        )
-    }
-
-    private func metadata(for status: WhatIfAssignmentStatus) -> [AssignmentMeta] {
-        switch status {
-        case .counted:
-            return []
-        case .noCount:
-            return [AssignmentMeta(type: "noCount", note: "Excluded from grade")]
-        case .missing:
-            return [AssignmentMeta(type: "missing", note: "Missing")]
-        case .absent:
-            return [AssignmentMeta(type: "absent", note: "Absent")]
-        }
+        WhatIfQuarterMath.assignment(from: assignment)
     }
 
     private var effectiveFinalExamGrade: Double? {
         if isWhatIfActive, let estimate = finalExamGrades[examType], estimate.isFinite {
             return estimate
         }
-        if let assignment = gradeInfo?.gradebook
-            .first(where: { $0.category == "Final Exam" })?
-            .assignments.first(where: { !$0.meta.contains { $0.type == "noCount" } }) {
-            if let percentage = GradeCalculator.percentage(
-                earned: assignment.pointsEarned,
-                outOf: assignment.pointsTotal
-            ) {
-                return percentage
-            }
-            if let score = assignment.score, score.isFinite { return score }
-            if let grade = assignment.grade { return Double(grade) }
-        }
-        return course.currentScores.first { $0.bucket == examType && $0.score.isFinite }?.score
+        return officialFinalExamGrade
+    }
+
+    private var officialFinalExamGrade: Double? {
+        WhatIfQuarterMath.postedExamGrade(semesterInfo: gradeInfo, course: liveCourse, examType: examType)
     }
 
     private var quarterTotals: (first: Double?, second: Double?) {
