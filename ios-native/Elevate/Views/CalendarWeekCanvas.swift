@@ -210,3 +210,113 @@ struct CalendarWeekCanvas: View {
         }
     }
 
+    /// "+N" beneath the lanes for events a level doesn't show, crossfading
+    /// between the counts of the levels either side of the zoom.
+    private func drawMore(in context: inout GraphicsContext, column: CGFloat, top: CGFloat) {
+        let (lower, upper, t) = CalendarZoom.bracket(zoom)
+        for (level, weight) in [(lower, 1 - t), (upper, t)] where weight > 0.01 && level != .compact {
+            let lanes = CalendarZoom.lanes(level, depth: input.laneDepth)
+            let y = top + CGFloat(lanes) * CGFloat(CalendarZoom.laneHeight(level) + CalendarZoom.laneSpacing) * scale
+            for index in 0..<7 {
+                let hidden = input.hidden[level.rawValue][index]
+                guard hidden > 0 else { continue }
+                guard let symbol = context.resolveSymbol(id: "p\(hidden)") else { continue }
+                var more = context
+                more.opacity = weight
+                more.draw(symbol, at: CGPoint(x: column * (CGFloat(index) + 0.5), y: y), anchor: .top)
+            }
+        }
+    }
+
+    /// Where one event sits in a day's compact strip, or nil past its fifth.
+    private func compactRect(event: PersonalEvent, column: Int, columnWidth: CGFloat, top: CGFloat) -> CGRect? {
+        let list = layout.dayEvents[column].prefix(5)
+        guard let position = list.firstIndex(where: { $0.id == event.id }) else { return nil }
+        let count = CGFloat(list.count)
+        let width: CGFloat = list.count == 1 ? 14 : 7
+        let start = columnWidth * (CGFloat(column) + 0.5) - count * width / 2
+        return CGRect(x: start + CGFloat(position - list.startIndex) * width, y: top + 3, width: width - 1, height: 4)
+    }
+
+    /// One day's part of an event's bar; parts of one event meet.
+    private func barPiece(span: CalendarEventSpan, column: Int, columnWidth: CGFloat, y: CGFloat, height: CGFloat) -> CGRect {
+        let leading = column == span.startColumn && !span.continuesBefore ? 2.0 : -0.5
+        let trailing = column == span.endColumn && !span.continuesAfter ? 2.0 : -0.5
+        return CGRect(x: columnWidth * CGFloat(column) + leading, y: y,
+                      width: columnWidth - leading - trailing, height: height)
+    }
+
+    private static func mix(_ a: CGRect, _ b: CGRect, _ t: Double) -> CGRect {
+        let t = CGFloat(t)
+        return CGRect(x: a.minX + (b.minX - a.minX) * t, y: a.minY + (b.minY - a.minY) * t,
+                      width: a.width + (b.width - a.width) * t, height: a.height + (b.height - a.height) * t)
+    }
+}
+
+/// A week row: the canvas, with the days' tap targets over it. The
+/// targets sit outside the canvas so a zoom frame updates only the drawing;
+/// they don't change with the zoom. Far from the screen the row keeps its
+/// exact height and its targets (for VoiceOver and scrolling to a day) but
+/// draws nothing, so a pinch redraws only the weeks that can be seen.
+struct CalendarWeekRow: View {
+    let input: CalendarWeekInput
+    let zoom: Double
+    let numberSize: CGFloat
+    let scale: CGFloat
+    /// How far beyond the visible area, in points, rows still draw.
+    let reach: CGFloat
+    let onSelect: (CalendarDay) -> Void
+
+    @State private var isNear = true
+
+    var body: some View {
+        Group {
+            if isNear {
+                CalendarWeekCanvas(input: input, zoom: zoom, numberSize: numberSize, scale: scale)
+            } else {
+                Color.clear.frame(height: CalendarWeekCanvas.height(zoom: zoom, input: input,
+                                                                     numberSize: numberSize, scale: scale))
+            }
+        }
+        .overlay { CalendarDayTargets(cells: input.cells, onSelect: onSelect).equatable() }
+        .onGeometryChange(for: Bool.self) { proxy in
+            // In the scroll view's space the visible area starts at 0 and
+            // is `reach` tall (the list passes its own height).
+            let frame = proxy.frame(in: .scrollView)
+            return frame.maxY > -reach && frame.minY < reach * 2
+        } action: { near in
+            isNear = near
+        }
+    }
+}
+
+/// One tap target per day over its whole column, numbers and events alike.
+/// A tap rather than a Button: a Button fires when a finger lifts inside
+/// it, so ending a pinch would open a day; a tap fails once a finger moves.
+struct CalendarDayTargets: View, Equatable {
+    let cells: [CalendarCellInfo?]
+    let onSelect: (CalendarDay) -> Void
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.cells == rhs.cells }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<7, id: \.self) { column in
+                if let cell = cells[column] {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { onSelect(cell.day) }
+                        .accessibilityElement()
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { onSelect(cell.day) }
+                        .accessibilityLabel(cell.spokenTitle)
+                        .accessibilityValue(cell.spokenValue)
+                        .accessibilityHint("Opens this day")
+                        .accessibilityIdentifier("calendar.day.\(cell.day.iso)")
+                } else {
+                    Color.clear.accessibilityHidden(true)
+                }
+            }
+        }
+    }
+}
