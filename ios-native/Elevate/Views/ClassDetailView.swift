@@ -2879,6 +2879,10 @@ struct AddAssignmentSheet: View {
     }
 
     private var statusDescription: String {
+        statusNote(status)
+    }
+
+    private func statusNote(_ status: WhatIfAssignmentStatus) -> String {
         switch status {
         case .counted:
             return "Leave points earned empty for an ungraded assignment."
@@ -2891,3 +2895,112 @@ struct AddAssignmentSheet: View {
         }
     }
 }
+
+/// A pushed list of choice rows; choosing one returns to the form.
+private struct ChoicePage<Value: Hashable>: View {
+    var title: String
+    var options: [ChoiceOption<Value>]
+    @Binding var selection: Value
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ScrollView {
+            ChoiceList(
+                groups: [ChoiceGroup(title: nil, options: options)],
+                isSelected: { $0 == selection }
+            ) { value in
+                selection = value
+                dismiss()
+            }
+            .padding(.horizontal, Metrics.page)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
+        }
+        .background(Color.appBackground.ignoresSafeArea())
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// The decimal pad has no Return key. VoiceOver escape and hardware Escape
+/// offer an explicit dismissal without adding another visible control.
+private final class DismissibleScoreTextField: UITextField {
+    override func accessibilityPerformEscape() -> Bool { resignFirstResponder() }
+    override var keyCommands: [UIKeyCommand]? {
+        (super.keyCommands ?? []) + [UIKeyCommand(input: UIKeyCommand.inputEscape,
+            modifierFlags: [], action: #selector(endScoreEditing))]
+    }
+    @objc private func endScoreEditing() { resignFirstResponder() }
+}
+
+/// A field owned by one assignment row, or the Impact sheet's score well.
+/// UIKit supplies select-all on iOS 17 without searching other text fields,
+/// windows, or SwiftUI's view hierarchy.
+struct AssignmentScoreField: UIViewRepresentable {
+    @Binding var text: String
+    var displayText: String
+    @Binding var focused: Bool
+    var selectionRequest: Int
+    var finishRequest: Int
+    var placeholder = "--"
+    var onCommit: (String) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIView(context: Context) -> UITextField {
+        let field = DismissibleScoreTextField()
+        field.delegate = context.coordinator
+        field.placeholder = placeholder
+        field.keyboardType = .decimalPad
+        field.textAlignment = .right
+        field.font = UIFontMetrics(forTextStyle: .body).scaledFont(
+            for: .monospacedDigitSystemFont(ofSize: 17, weight: .medium)
+        )
+        field.adjustsFontForContentSizeCategory = true
+        field.textColor = UIColor(Color.ink)
+        field.tintColor = UIColor(Color.themeAccent)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        field.addTarget(context.coordinator, action: #selector(Coordinator.textChanged), for: .editingChanged)
+        return field
+    }
+
+    func updateUIView(_ field: UITextField, context: Context) {
+        let coordinator = context.coordinator
+        coordinator.parent = self
+        let selectionChanged = coordinator.lastSelectionRequest != selectionRequest
+        let focusRequested = focused && (!coordinator.lastRequestedFocus || selectionChanged)
+        coordinator.lastRequestedFocus = focused
+        let shownText = field.isFirstResponder || focusRequested ? text : displayText
+        if field.text != shownText { field.text = shownText }
+        field.textColor = UIColor(Color.ink)
+        field.tintColor = UIColor(Color.themeAccent)
+        if coordinator.lastFinishRequest != finishRequest {
+            coordinator.lastFinishRequest = finishRequest
+            // End editing outside SwiftUI's update, committing the row before
+            // its focus callback releases any waiting refresh application.
+            if finishRequest > 0, field.isFirstResponder {
+                let requestedSelection = selectionRequest
+                DispatchQueue.main.async { [weak field, weak coordinator] in
+                    guard let field, let coordinator,
+                          coordinator.parent.selectionRequest == requestedSelection,
+                          field.isFirstResponder else { return }
+                    field.resignFirstResponder()
+                }
+                return
+            }
+        }
+        // A row may still receive its old focus binding while another field
+        // begins editing. Only an explicit focus transition or row tap may
+        // claim the responder, never an incidental grade/model update.
+        if focusRequested, !field.isFirstResponder {
+            field.becomeFirstResponder()
+        } else if !focused, field.isFirstResponder {
+            field.resignFirstResponder()
+        }
+        if coordinator.lastSelectionRequest != selectionRequest {
+            coordinator.lastSelectionRequest = selectionRequest
+            coordinator.selectAllAfterFocus(field)
+        }
+    }
+
