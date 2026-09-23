@@ -2290,43 +2290,109 @@ struct AssignmentRow: View {
     }
 
     @ViewBuilder
+    private var dateText: some View {
+        if !assignment.dueDate.isEmpty {
+            Text(assignment.dueDate)
+                .monospacedDigit()
+                .lineLimit(1)
+                .fixedSize()
+        }
+    }
+
+    private var markerText: String? {
+        switch marker {
+        case .added(let term):
+            return term.map { "What-if, added to \($0)" } ?? "What-if, added"
+        case .edited(let original, let outOf):
+            let score = original.map { "\(GradeFormat.upToTwoDecimals($0))/\(GradeFormat.upToTwoDecimals(outOf))" } ?? "no score"
+            return "What-if, Skyward has \(score)"
+        case .estimate:
+            return "What-if estimate"
+        case nil:
+            return nil
+        }
+    }
+
+    // MARK: Score
+
+    @ViewBuilder
     private var trailingControls: some View {
-        HStack(spacing: 2) {
-            gradeControl
-            if assignment.artificial, onChangeStatus != nil {
-                statusMenu
-            } else {
-                Color.clear
-                    .frame(width: 44, height: 44)
-                    .accessibilityHidden(true)
+        HStack(spacing: 0) {
+            if isEditing || showsOptions {
+                // Options sit before the well so the well's right edge meets
+                // the page margin. The lane is held empty on rows without
+                // options (official rows, the exam) to keep the column fixed.
+                Group {
+                    if showsOptions {
+                        optionsMenu
+                    } else {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { rowTapped() }
+                            .accessibilityHidden(true)
+                    }
+                }
+                .frame(width: Self.optionsLane, height: 44)
             }
+            scoreView
         }
         .fixedSize(horizontal: true, vertical: false)
     }
 
     @ViewBuilder
-    private var gradeControl: some View {
-        if editable, onEditGrade != nil {
-            HStack(spacing: 5) {
-                TextField("--", text: $editingGradeText)
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                    .multilineTextAlignment(.center)
-                    .keyboardType(.decimalPad)
-                    .focused($gradeFieldFocused)
-                    .frame(width: 52, height: 34)
-                    .background(
-                        Color(uiColor: .secondarySystemBackground),
-                        in: RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    )
-                    .frame(minHeight: 44)
+    private var scoreView: some View {
+        if isEditing {
+            // One quiet well holds the score as it reads, "12.5/15": the
+            // typed points end at the slash, and the original denominator,
+            // including a bonus /0, stays beside it. No outline; focus
+            // shifts the well to the selection fill.
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                AssignmentScoreField(
+                    text: $editingGradeText,
+                    displayText: assignment.grade.map { GradeFormat.upToTwoDecimals($0) } ?? "",
+                    focused: $gradeFieldFocused,
+                    selectionRequest: scoreSelectionRequest,
+                    finishRequest: finishScoreRequest,
+                    onCommit: commitGrade
+                )
+                    .padding(.leading, 8)
+                    .frame(width: fieldWidth, height: fieldHeight)
+                    .alignmentGuide(.firstTextBaseline) { dimensions in
+                        let font = UIFontMetrics(forTextStyle: .body).scaledFont(
+                            for: .monospacedDigitSystemFont(ofSize: 17, weight: .medium)
+                        )
+                        return (dimensions.height - font.lineHeight) / 2 + font.ascender
+                    }
                     .accessibilityLabel("Points earned")
+                    .accessibilityHint("Out of \(outOfText) points")
+                    .accessibilityIdentifier("whatif.grade.\(assignment.id)")
 
-                Text("/")
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(.tertiary)
-                Text(outOfText)
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(.secondary)
+                Text("/\(outOfText)")
+                    .font(.figure(.subheadline, weight: .regular))
+                    .foregroundStyle(Color.muted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.leading, 1)
+                    .padding(.trailing, 8)
+                    .frame(width: denominatorWidth, height: fieldHeight, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { focusScore() }
+                    // Spoken in the field's hint and the row's value.
+                    .accessibilityHidden(true)
+            }
+            .background {
+                RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous)
+                    .fill(Color.well)
+                    .padding(.vertical, (fieldHeight - wellHeight) / 2)
+            }
+            .background {
+                // The whole well, including the field's leading inset, is an
+                // explicit score target: it selects this score even while
+                // another is being edited. The field above keeps its caret.
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { focusScore() }
+                    .accessibilityHidden(true)
             }
         } else {
             HStack(spacing: 5) {
