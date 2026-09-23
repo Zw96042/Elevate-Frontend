@@ -89,3 +89,99 @@ extension CollegeProfile {
         }
     }
 
+    /// "weighted GPA", "unweighted GPA" or "reported GPA", mid-sentence.
+    fileprivate var publishedScaleInSentence: String {
+        if publishedGPAScale == .weighted { return "weighted GPA" }
+        if publishedGPAScale == .unweighted { return "unweighted GPA" }
+        return "reported GPA"
+    }
+
+    fileprivate static func mean(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(2...3)))
+    }
+}
+
+fileprivate enum CollegeFormat {
+    static func truncatedGPA(_ value: Double) -> String {
+        truncatedGPA(value, places: 2)
+    }
+
+    private static func truncatedGPA(_ value: Double, places: Int) -> String {
+        var decimal = Decimal(value)
+        var truncated = Decimal()
+        NSDecimalRound(&truncated, &decimal, places, .down)
+        return String(format: "%.*f", places, NSDecimalNumber(decimal: truncated).doubleValue)
+    }
+
+    /// Keep the displayed number consistent with the full-value comparison.
+    /// Extra digits are needed only when truncation lands on a range boundary.
+    static func comparisonGPA(_ value: Double, display: String, quartiles: CollegeGPAQuartiles?,
+                              maximum: Double, position: CollegeRangePosition?) -> String {
+        guard let quartiles, let position, let displayedValue = Double(display),
+              CollegeRangePosition(displayedValue, in: quartiles, maximum: maximum) != position else { return display }
+        for places in 3...6 {
+            let precise = truncatedGPA(value, places: places)
+            if let displayedValue = Double(precise),
+               CollegeRangePosition(displayedValue, in: quartiles, maximum: maximum) == position {
+                return precise
+            }
+        }
+        // Extremely close boundaries still need an accurate visible value.
+        return String(value)
+    }
+
+    /// "1340–1500", "30–34".
+    static func range(_ lower: Double, _ upper: Double) -> String {
+        "\(GradeFormat.upToTwoDecimals(lower))–\(GradeFormat.upToTwoDecimals(upper))"
+    }
+
+    /// "3.58–3.95".
+    static func gpaRange(_ quartiles: CollegeGPAQuartiles) -> String {
+        "\(GradeFormat.gpa(quartiles.lower))–\(GradeFormat.gpa(quartiles.upper))"
+    }
+
+    /// "42%", "3.9%".
+    static func percent(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(0...1))) + "%"
+    }
+
+    /// Credit units: "4", "0.5".
+    static func units(_ value: Double) -> String {
+        GradeFormat.upToTwoDecimals(value)
+    }
+
+    /// "Admitted first-year students" read mid-sentence. Acronyms and
+    /// names keep their capitals.
+    static func midSentence(_ text: String) -> String {
+        let characters = Array(text)
+        guard characters.count > 1, characters[0].isUppercase, characters[1].isLowercase else { return text }
+        return characters[0].lowercased() + String(characters.dropFirst())
+    }
+
+    /// "Fall 2025, admitted first-year students".
+    static func provenance(cohort: String, population: String) -> String {
+        "\(cohort), \(midSentence(population))"
+    }
+
+    /// "October 4, 2026".
+    static func day(_ iso: String) -> String {
+        guard let parts = AttendanceSchoolDate.components(iso),
+              let date = Calendar.current.date(from: DateComponents(year: parts.year, month: parts.month,
+                                                                    day: parts.day, hour: 12)) else { return iso }
+        return date.formatted(.dateTime.month(.wide).day().year())
+    }
+}
+
+/// Where a GPA sits against a published middle 50%. Only ever computed for
+/// figures on the same verified scale; it's a position, not a percentile.
+fileprivate enum CollegeRangePosition: Equatable {
+    case below, inside, above
+
+    init?(_ value: Double, in quartiles: CollegeGPAQuartiles, maximum: Double) {
+        guard value.isFinite, quartiles.lower.isFinite, quartiles.upper.isFinite, quartiles.lower >= 0,
+              quartiles.lower <= quartiles.upper, quartiles.upper <= maximum else { return nil }
+        if value < quartiles.lower { self = .below }
+        else if value > quartiles.upper { self = .above }
+        else { self = .inside }
+    }
+
