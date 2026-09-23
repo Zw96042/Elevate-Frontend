@@ -1142,6 +1142,118 @@ struct ClassDetailView: View {
         )
     }
 
+    private func scenarioApplied(_ context: WhatIfScenarioSheetContext) {
+        guard context.classKey == classKey, context.term == store.selectedTerm,
+              store.localAccountScope == context.accountScope else { return }
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            showCalculated = WhatIfStore.showCalculated(classKey: classKey)
+        }
+        animateWhatIfChange { reloadWhatIf() }
+    }
+
+    /// The gradebook a quarter's official rows come from on this screen.
+    private func loadedGradebook(for quarter: TermLabel) -> GradeInfoResult? {
+        guard hasCurrentGradeInfo else { return nil }
+        return store.selectedTerm.isSemester ? quarterGradeInfo[quarter.shortName] : gradeInfo
+    }
+
+    /// Official quarter rows the tapped row stands for. Quarter rows match by
+    /// ID. Semester rows have semester IDs, so they match quarter rows by
+    /// name, category, date and possible points; any repeat is left for an
+    /// explicit choice.
+    private func impactCandidates(for assignment: CalcAssignment) -> [AssignmentImpactCandidate] {
+        guard hasCurrentGradeInfo, !assignment.artificial, assignment.category != "Final Exam" else { return [] }
+        let official = editableOfficialAssignments.filter { $0.category != "Final Exam" }
+        let exact = official.filter { $0.id == assignment.id }
+        let matches = exact.isEmpty
+            ? official.filter {
+                $0.name == assignment.name && $0.category == assignment.category
+                    && $0.dueDate == assignment.dueDate && $0.outOf == assignment.outOf
+            }
+            : exact
+        return matches.compactMap { row in
+            TermLabel.allCases.first { !$0.isSemester && $0.shortName == row.term }
+                .map { AssignmentImpactCandidate(assignment: row, quarter: $0) }
+        }
+    }
+
+    private func showImpact(for assignment: CalcAssignment) {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        guard let scope = store.localAccountScope else { return }
+        let term = store.selectedTerm
+        let candidates = impactCandidates(for: assignment)
+        var unavailable: String?
+        if candidates.isEmpty {
+            if let missing = term.whatIfQuarterTerms.first(where: { loadedGradebook(for: $0) == nil }) {
+                unavailable = "\(missing.displayName)'s gradebook hasn't loaded, so Elevate can't find this assignment there. Refresh the class and try again."
+            } else {
+                unavailable = "This assignment isn't in the loaded quarter gradebook. Refresh the class and try again."
+            }
+        }
+        impactRequest = AssignmentImpactRequest(
+            accountScope: scope, classKey: classKey, term: term,
+            title: assignment.name, category: assignment.category, dueDate: assignment.dueDate,
+            candidates: candidates, unavailableMessage: unavailable
+        )
+    }
+
+    /// Impact's "Try in What-if": one local override on the official row,
+    /// keeping any independent no-count choice, then What-if on.
+    private func tryImpact(
+        _ request: AssignmentImpactRequest, candidate: AssignmentImpactCandidate, earned: Double
+    ) -> String? {
+        guard request.classKey == classKey, request.term == store.selectedTerm,
+              let scope = store.localAccountScope, scope == request.accountScope,
+              WhatIfStore.accountScope == scope else {
+            return "The account or term changed while this was open. Nothing was changed."
+        }
+        guard WhatIfScenarioEvaluator.validNumber(earned) else { return "Enter a number of points." }
+        guard semesterCalculationAvailable,
+              let original = editableOfficialAssignments.first(where: { $0.id == candidate.assignment.id }) else {
+            return "This assignment is no longer in the loaded gradebook. Refresh the class and try again."
+        }
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        if !isWhatIfActive {
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { showCalculated = true }
+            WhatIfStore.setShowCalculated(true, classKey: classKey)
+        }
+        overrideScore(of: original, to: earned)
+        feedbackRevision += 1
+        return nil
+    }
+
+    // MARK: - What-if
+
+    private var whatIfSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Toggle(isOn: Binding(
+                get: { isWhatIfActive },
+                set: { newValue in
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    // Switching modes changes every lazy row's width and height.
+                    // Apply that layout atomically so offscreen row estimates do
+                    // not churn while the scroll view interpolates its content size.
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        showCalculated = newValue
+                    }
+                    WhatIfStore.setShowCalculated(newValue, classKey: classKey)
+                }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("What-if")
+                        .font(.body.weight(.medium))
+                    Text(isWhatIfActive
+                        ? "Change any score below or add an assignment. Saved on this iPhone only; Skyward is never changed."
+                        : "Try scores without changing Skyward.")
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .frame(minHeight: 46)
