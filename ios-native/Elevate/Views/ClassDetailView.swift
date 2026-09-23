@@ -3004,3 +3004,54 @@ struct AssignmentScoreField: UIViewRepresentable {
         }
     }
 
+    static func dismantleUIView(_ field: UITextField, coordinator: Coordinator) {
+        field.resignFirstResponder()
+        field.delegate = nil
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        var parent: AssignmentScoreField
+        var lastSelectionRequest: Int
+        var lastFinishRequest: Int
+        var lastRequestedFocus = false
+
+        init(_ parent: AssignmentScoreField) {
+            self.parent = parent
+            lastSelectionRequest = parent.selectionRequest
+            lastFinishRequest = parent.finishRequest
+        }
+
+        @objc func textChanged(_ field: UITextField) {
+            parent.text = field.text ?? ""
+        }
+
+        func textFieldShouldReturn(_ field: UITextField) -> Bool {
+            field.resignFirstResponder()
+            return true
+        }
+
+        func textFieldDidBeginEditing(_ field: UITextField) {
+            // Restore the exact editable value before selection. Never commit the rounded display.
+            field.text = parent.text
+            if !parent.focused { parent.focused = true }
+            selectAllAfterFocus(field)
+        }
+
+        func textFieldDidEndEditing(_ field: UITextField) {
+            // Commit while this row still owns the actual field value. During
+            // navigation SwiftUI may remove the row before its focus onChange
+            // runs, so that callback cannot be the persistence boundary.
+            parent.onCommit(field.text ?? "")
+            if parent.focused { parent.focused = false }
+        }
+
+        func selectAllAfterFocus(_ field: UITextField) {
+            // Defer until UIKit has finished placing its initial caret. Do not
+            // reselect on text updates, so normal editing keeps its selection.
+            DispatchQueue.main.async { [weak self, weak field] in
+                guard let self, let field, self.parent.focused, field.isFirstResponder else { return }
+                field.selectAll(nil)
+            }
+        }
+    }
+}
