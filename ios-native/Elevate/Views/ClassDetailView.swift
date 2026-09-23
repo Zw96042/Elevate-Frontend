@@ -1501,6 +1501,7 @@ struct ClassDetailView: View {
     // MARK: - Final exam
 
     private var finalExamSection: some View {
+        let focusID = "\(store.selectedTerm.bucket)|exam|\(examType)"
         let examName = store.selectedTerm == .sm1 ? "Exam 1" : "Exam 2"
         let realAssignment = apiAssignments.first { $0.category == "Final Exam" }
         let dueDate = realAssignment?.dueDate ?? ""
@@ -1508,73 +1509,72 @@ struct ClassDetailView: View {
         let realGrade = effectiveFinalExamGrade
         let shown: Double? = (isWhatIfActive && estimate != nil) ? estimate : realGrade
 
-        return AssignmentRow(
-            assignment: CalcAssignment(
-                id: "final-exam-\(examType)", className: course.courseName, name: examName,
-                term: examType, category: "Final Exam", grade: shown, outOf: 100,
-                dueDate: dueDate, artificial: isWhatIfActive && estimate != nil, meta: []
-            ),
-            editable: isWhatIfActive,
-            onEditGrade: { newGrade in
-                WhatIfStore.setFinalExamGrade(newGrade, examType: examType, classKey: classKey)
-                reloadWhatIf()
-            },
-            onDelete: nil
-        )
-        .padding(.horizontal, 20)
+        let canRemind = officialFinalExamGrade == nil
+        return VStack(alignment: .leading, spacing: 0) {
+            SectionHeading(title: "Semester exam", count: nil) {
+                if canRemind {
+                    Button {
+                        remindAboutExam(name: examName, dueDate: dueDate)
+                    } label: {
+                        Label {
+                            Text("Remind me")
+                        } icon: {
+                            Image(systemName: "bell")
+                                .font(.caption.weight(.bold))
+                        }
+                    }
+                    .buttonStyle(QuietButtonStyle())
+                    .accessibilityLabel("Remind me about \(examName)")
+                    .accessibilityIdentifier("exam.remind")
+                }
+            }
+            Text(verbatim: "Counts for 20% of the semester grade when an exam score exists. Each quarter counts 40%.")
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 10)
+            AssignmentRow(
+                assignment: CalcAssignment(
+                    id: "final-exam-\(examType)", className: course.courseName, name: examName,
+                    term: examType, category: "Final Exam", grade: shown, outOf: 100,
+                    dueDate: dueDate, artificial: isWhatIfActive && estimate != nil, meta: []
+                ),
+                marker: isWhatIfActive && estimate != nil ? .estimate : nil,
+                editable: isWhatIfActive,
+                onEditGrade: { newGrade in
+                    guard isWhatIfActive else { return }
+                    WhatIfStore.setFinalExamGrade(newGrade, examType: examType, classKey: classKey)
+                    animateWhatIfChange { reloadWhatIf() }
+                },
+                onRemind: canRemind ? { remindAboutExam(name: examName, dueDate: dueDate) } : nil,
+                finishScoreRequest: finishScoreTargets.contains(focusID) ? finishScoreRequest : 0,
+                finishActiveScoreEditing: { finishScoreEditing() },
+                onFocusChange: { focused in
+                    scoreFocusChanged(focused, rowID: focusID)
+                }
+            )
+            .id(focusID)
+        }
+        .padding(.top, sectionSpacing)
     }
+
+    // MARK: - Assignments
 
     private var assignmentsSection: some View {
         let assignments = displayedAssignments
         let hasUnfilteredAssignments = meshedAssignments.contains { $0.category != "Final Exam" }
+        // In what-if mode, Add sits with the list it adds to: beside the
+        // filter on the heading line, on its own line at accessibility sizes.
+        let showsAdd = isWhatIfActive
+        let addOnOwnLine = dynamicTypeSize.isAccessibilitySize
         return VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Assignments")
-                    .font(.title3.weight(.semibold))
-                Spacer()
-                if hasUnfilteredAssignments || hasActiveAssignmentControls {
-                    filterMenu
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 18)
-            .padding(.bottom, 8)
-
-            if assignments.isEmpty {
-                EmptyStateView(
-                    systemImage: "magnifyingglass",
-                    title: "No assignments found",
-                    subtitle: categoryFilter.isEmpty
-                        && assignmentFilter.isEmpty
-                        && gradeFilter.isEmpty
-                        ? "No assignments available for this term"
-                        : "Try adjusting your filters to see more results"
-                )
-            } else {
-                LazyVStack(spacing: 0) {
-                    ForEach(assignments) { assignment in
-                        AssignmentRow(
-                            assignment: assignment,
-                            editable: isWhatIfActive && assignment.artificial,
-                            onEditGrade: assignment.artificial ? { newGrade in
-                                if var match = whatIfAssignments.first(where: { $0.id == assignment.id }) {
-                                    match.grade = newGrade
-                                    WhatIfStore.update(match, classKey: classKey)
-                                    reloadWhatIf()
-                                }
-                            } : nil,
-                            onChangeStatus: assignment.artificial ? { status in
-                                if var match = whatIfAssignments.first(where: { $0.id == assignment.id }) {
-                                    match.resolvedStatus = status
-                                    WhatIfStore.update(match, classKey: classKey)
-                                    reloadWhatIf()
-                                }
-                            } : nil,
-                            onDelete: assignment.artificial ? {
-                                WhatIfStore.remove(id: assignment.id, classKey: classKey, term: store.selectedTerm)
-                                reloadWhatIf()
-                            } : nil
-                        )
+            SectionHeading(title: "Assignments", count: "\(assignments.count)") {
+                HStack(spacing: 4) {
+                    if showsAdd && !addOnOwnLine {
+                        addWhatIfButton
+                    }
+                    if hasUnfilteredAssignments || hasActiveAssignmentControls {
+                        filterMenu
                     }
                 }
                 .padding(.horizontal, 20)
