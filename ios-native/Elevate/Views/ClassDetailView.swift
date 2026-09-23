@@ -1640,6 +1640,98 @@ struct ClassDetailView: View {
         .padding(.top, sectionSpacing)
     }
 
+    private func assignmentRow(_ assignment: CalcAssignment) -> some View {
+        let focusID = "\(store.selectedTerm.bucket)|assignment|\(assignment.id)"
+        let added = whatIfAssignments.first { $0.id == assignment.id }
+        let original = isWhatIfActive && added == nil ? skywardOriginal(of: assignment) : nil
+        let marker: AssignmentRow.Marker?
+        if let added {
+            marker = .added(term: store.selectedTerm.isSemester ? added.term : nil)
+        } else if let original {
+            marker = .edited(original: original.grade, outOf: original.outOf)
+        } else {
+            marker = nil
+        }
+
+        return AssignmentRow(
+            assignment: assignment,
+            marker: marker,
+            editable: isWhatIfActive,
+            onEditGrade: { newGrade in
+                // A replaced editable row can still receive a disappearance or
+                // focus callback after the mode has already been turned off.
+                guard isWhatIfActive else { return }
+                if var match = added {
+                    match.grade = newGrade
+                    WhatIfStore.update(match, classKey: classKey)
+                    animateWhatIfChange { reloadWhatIf() }
+                } else {
+                    overrideScore(of: assignment, to: newGrade)
+                }
+            },
+            onChangeStatus: added == nil ? nil : { status in
+                if var match = added {
+                    match.resolvedStatus = status
+                    WhatIfStore.update(match, classKey: classKey)
+                    animateWhatIfChange { reloadWhatIf() }
+                }
+            },
+            onChangeNoCount: added != nil ? nil : { noCount in
+                guard isWhatIfActive else { return }
+                WhatIfStore.setNoCountOverride(noCount, assignment: assignment, classKey: classKey)
+                animateWhatIfChange { reloadWhatIf() }
+            },
+            categoryChoices: addAssignmentCategoriesByTerm[assignment.term] ?? [],
+            onChangeCategory: added == nil ? nil : { category in
+                guard isWhatIfActive, var match = added else { return }
+                match.category = category
+                WhatIfStore.update(match, classKey: classKey)
+                animateWhatIfChange { reloadWhatIf() }
+            },
+            onDelete: added == nil ? nil : {
+                WhatIfStore.remove(id: assignment.id, classKey: classKey, term: store.selectedTerm)
+                animateWhatIfChange { reloadWhatIf() }
+            },
+            onRestore: original == nil ? nil : {
+                restoreSkywardValue(of: assignment)
+            },
+            // Reminders belong to real Skyward work, never to added what-if rows.
+            onRemind: added != nil ? nil : { remind(assignment) },
+            // Impact uses Skyward's rows, so added what-if rows have none.
+            onShowImpact: added != nil ? nil : { showImpact(for: assignment) },
+            finishScoreRequest: finishScoreTargets.contains(focusID) ? finishScoreRequest : 0,
+            finishActiveScoreEditing: { finishScoreEditing() },
+            onFocusChange: { focused in
+                scoreFocusChanged(focused, rowID: focusID)
+            }
+        )
+    }
+
+    private func clearAssignmentControls() {
+        sortOption = .date
+        sortAscending = false
+        categoryFilter.removeAll()
+        assignmentFilter.removeAll()
+        gradeFilter.removeAll()
+    }
+
+    /// "Sorted by grade, lowest first. Showing Missing, Tests."
+    private var activeControlsDescription: String? {
+        guard hasActiveAssignmentControls else { return nil }
+        var sentences: [String] = []
+        if sortOption != .date || sortAscending {
+            sentences.append("Sorted by \(sortOption.rawValue.lowercased()), \((sortAscending ? ascendingLabel : descendingLabel).lowercased()).")
+        }
+        let filters = assignmentFilter.map(\.rawValue).sorted()
+            + categoryFilter.sorted()
+            + AssignmentGradeRange.allCases.filter(gradeFilter.contains).map(\.rawValue)
+        if !filters.isEmpty {
+            sentences.append("Showing \(filters.joined(separator: ", ")).")
+        }
+        return sentences.joined(separator: " ")
+    }
+
+    /// Native menus keep sorting and filtering beside the assignment list.
     private var filterMenu: some View {
         Menu {
             Menu {
@@ -1769,26 +1861,17 @@ struct ClassDetailView: View {
             if hasActiveAssignmentControls {
                 Divider()
                 Button("Reset sort and filters", systemImage: "arrow.counterclockwise") {
-                    sortOption = .date
-                    sortAscending = false
-                    categoryFilter.removeAll()
-                    assignmentFilter.removeAll()
-                    gradeFilter.removeAll()
+                    clearAssignmentControls()
                 }
             }
         } label: {
-            Image(systemName: "slider.horizontal.3")
-                .font(.body.weight(.medium))
-                .foregroundStyle(hasActiveAssignmentControls ? Color.themeAccent : Color.primary)
-                .frame(width: 34, height: 34)
-                .contentShape(Circle())
-                .overlay(alignment: .topTrailing) {
-                    if hasActiveAssignmentControls {
-                        Circle()
-                            .fill(Color.themeAccent)
-                            .frame(width: 7, height: 7)
-                    }
-                }
+            Image(systemName: hasActiveAssignmentControls
+                ? "line.3.horizontal.decrease.circle.fill"
+                : "line.3.horizontal.decrease.circle")
+                .font(.title3)
+                .foregroundStyle(hasActiveAssignmentControls ? Color.themeAccent : Color.ink)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.bordered)
         .buttonBorderShape(.circle)
