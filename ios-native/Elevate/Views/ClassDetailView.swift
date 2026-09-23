@@ -2644,50 +2644,75 @@ struct AddAssignmentSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Assignment") {
-                    TextField("Assignment name", text: $name)
-                        .focused($focusedField, equals: .name)
-                        .submitLabel(.next)
-                        .onSubmit { focusedField = .grade }
-
-                    Picker("Category", selection: $category) {
-                        ForEach(availableCategories, id: \.self) { Text($0).tag($0) }
-                    }
-                }
-
-                if term.isSemester {
-                    Section {
-                        Picker("Counts toward", selection: $assignmentTerm) {
-                            ForEach(term.whatIfQuarterTerms) { quarter in
-                                Text(quarter.shortName).tag(quarter)
-                            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    sheetHeader("Assignment")
+                    VStack(spacing: 0) {
+                        formRow("Name", field: .name) {
+                            TextField("What-if assignment", text: $name)
+                                .accessibilityLabel("Name")
+                                .multilineTextAlignment(.trailing)
+                                .focused($focusedField, equals: .name)
+                                .submitLabel(.next)
+                                .onSubmit { focusedField = .grade }
+                                .accessibilityIdentifier("whatif.add.name")
                         }
-                    } footer: {
-                        Text("Semester predictions recalculate the selected quarter, then apply the 40/40/20 semester formula.")
-                    }
-                }
-
-                Section {
-                    Picker("Status", selection: $status) {
-                        ForEach(WhatIfAssignmentStatus.allCases) { option in
-                            Label(option.rawValue, systemImage: option.systemImage)
-                                .tag(option)
+                        InsetDivider()
+                        choiceLinkRow("Category", value: category) {
+                            ChoicePage(
+                                title: "Category",
+                                options: availableCategories.map { ChoiceOption(value: $0, title: $0) },
+                                selection: $category
+                            )
                         }
+                        .accessibilityIdentifier("whatif.add.category")
                     }
 
-                    LabeledContent("Points earned") {
-                        TextField("Optional", text: $gradeText)
-                            .multilineTextAlignment(.trailing)
-                            .keyboardType(.decimalPad)
-                            .focused($focusedField, equals: .grade)
+                    if term.isSemester {
+                        sheetHeader("Counts toward")
+                            .padding(.top, Metrics.sectionGap - 8)
+                        InlineChoice(
+                            label: "Counts toward",
+                            options: term.whatIfQuarterTerms.map { ChoiceOption(value: $0, title: $0.displayName) },
+                            selection: $assignmentTerm
+                        )
+                        .accessibilityIdentifier("whatif.add.quarter")
+                        sheetFootnote("Semester predictions recalculate the selected quarter, then apply the 40/40/20 semester formula.")
                     }
 
-                    LabeledContent("Points possible") {
-                        TextField("100", text: $outOfText)
-                            .multilineTextAlignment(.trailing)
-                            .keyboardType(.decimalPad)
-                            .focused($focusedField, equals: .points)
+                    sheetHeader("Score")
+                        .padding(.top, Metrics.sectionGap - 8)
+                    VStack(spacing: 0) {
+                        formRow("Points earned", field: .grade) {
+                            TextField("Optional", text: $gradeText)
+                                .multilineTextAlignment(.trailing)
+                                .keyboardType(.decimalPad)
+                                .monospacedDigit()
+                                .focused($focusedField, equals: .grade)
+                                .accessibilityLabel("Points earned")
+                                .accessibilityIdentifier("whatif.add.earned")
+                        }
+                        InsetDivider()
+                        formRow("Points possible", field: .points) {
+                            TextField("100", text: $outOfText)
+                                .multilineTextAlignment(.trailing)
+                                .keyboardType(.decimalPad)
+                                .monospacedDigit()
+                                .focused($focusedField, equals: .points)
+                                .accessibilityLabel("Points possible")
+                                .accessibilityIdentifier("whatif.add.possible")
+                        }
+                        InsetDivider()
+                        choiceLinkRow("Status", value: status.rawValue) {
+                            ChoicePage(
+                                title: "Status",
+                                options: WhatIfAssignmentStatus.allCases.map {
+                                    ChoiceOption(value: $0, title: $0.rawValue, note: statusNote($0))
+                                },
+                                selection: $status
+                            )
+                        }
+                        .accessibilityIdentifier("whatif.add.status")
                     }
                 } header: {
                     Text("Score")
