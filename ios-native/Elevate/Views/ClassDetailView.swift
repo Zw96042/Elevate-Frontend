@@ -1256,9 +1256,140 @@ struct ClassDetailView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .frame(minHeight: 46)
+            .tint(Color.themeAccent)
+            .disabled(!semesterCalculationAvailable)
+            .sensoryFeedback(.selection, trigger: showCalculated)
+            .padding(.vertical, 8)
+            .frame(minHeight: 52)
+            .accessibilityIdentifier("whatif.toggle")
+
+            if store.selectedTerm.isSemester, !semesterCalculationAvailable {
+                whatIfNote("What-if needs both quarter gradebooks. Refresh to try loading them again.")
+            } else if store.selectedTerm.isSemester, semesterCalculationError != nil {
+                whatIfNote("Using previously saved quarter details for this prediction.")
+            }
+
+            if isWhatIfActive {
+                whatIfActions
+            }
         }
     }
+
+    private func whatIfNote(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.bottom, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Reset, once there is something to reset, and Scenarios, which stays
+    /// available without changes so saved scenarios can still be applied.
+    /// Adding an assignment lives with the assignments it adds to.
+    private var whatIfActions: some View {
+        let canReset = !whatIfAssignments.isEmpty || !gradeOverrides.isEmpty || hasFinalExamEstimateForSelectedTerm
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 8))
+        return layout {
+            if canReset {
+                resetWhatIfButton
+            }
+            scenariosButton
+        }
+    }
+
+    private var scenariosButton: some View {
+        Button(action: openScenarios) {
+            Label {
+                Text("Scenarios")
+            } icon: {
+                Image(systemName: "square.stack")
+                    .font(.caption.weight(.bold))
+            }
+        }
+        .buttonStyle(QuietButtonStyle())
+        .disabled(!hasCurrentGradeInfo || store.localAccountScope == nil)
+        .accessibilityLabel("What-if scenarios")
+        .accessibilityHint("Save, compare and apply named what-if changes")
+        .accessibilityIdentifier("scenario.open")
+    }
+
+    /// Opens the add sheet from the Assignments heading, in what-if mode.
+    private var addWhatIfButton: some View {
+        Button {
+            showingAddSheet = true
+        } label: {
+            Label {
+                Text("Add")
+            } icon: {
+                Image(systemName: "plus")
+                    .font(.caption.weight(.bold))
+            }
+        }
+        .buttonStyle(QuietButtonStyle())
+        .accessibilityLabel("Add what-if assignment")
+        .accessibilityIdentifier("whatif.add")
+    }
+
+    private var resetWhatIfButton: some View {
+        Button {
+            // Commit the active field synchronously before clearing the store;
+            // a later blur must not bring an old edit back after reset.
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            animateWhatIfChange { resetWhatIf() }
+            feedbackRevision += 1
+        } label: {
+            Label {
+                Text("Reset changes")
+            } icon: {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.caption.weight(.bold))
+            }
+        }
+        .buttonStyle(QuietButtonStyle())
+        .accessibilityLabel("Reset what-if changes")
+        .accessibilityIdentifier("whatif.reset")
+    }
+
+    // MARK: - Breakdown
+
+    private func schoolDayLabel(_ date: Date) -> String {
+        date.formatted(Date.FormatStyle(date: .omitted, time: .omitted,
+                                      timeZone: TimeZone(identifier: "America/Chicago")!).month(.abbreviated).day())
+    }
+
+    private var futureQuarterStart: Date? {
+        SchoolCalendar.upcomingQuarterStart(term: store.selectedTerm)
+    }
+
+    @ViewBuilder
+    private var categoriesSection: some View {
+        let categories = gradeInfo?.gradebook.filter { $0.category != "Final Exam" } ?? []
+        if !categories.isEmpty {
+            let results = summary.categories
+            VStack(alignment: .leading, spacing: 0) {
+                Button {
+                    if reduceMotion {
+                        showsBreakdown.toggle()
+                    } else {
+                        withAnimation(.snappy(duration: 0.25)) { showsBreakdown.toggle() }
+                    }
+                } label: {
+                    SectionHeading(title: "Grade breakdown", count: "\(categories.count)") {
+                        Image(systemName: "chevron.down")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.muted)
+                            .rotationEffect(.degrees(showsBreakdown ? 0 : -90))
+                            .accessibilityHidden(true)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Grade breakdown, \(categories.count) categories")
+                .accessibilityValue(showsBreakdown ? "Expanded" : "Collapsed")
+                .accessibilityIdentifier("course.breakdown")
 
     private func categoryAverage(_ result: GradeSummary.CategoryResult?) -> String {
         result.map { String(format: "%.1f%%", $0.average) } ?? "Ungraded"
