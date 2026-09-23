@@ -2022,51 +2022,120 @@ private struct EditableScoreFramesKey: PreferenceKey {
 
 // MARK: - Assignment row
 
+/// One ruled assignment line. In what-if mode every row's score becomes a
+/// field and its options menu changes status; added rows can be deleted and
+/// edited Skyward rows can be restored.
 struct AssignmentRow: View {
+    enum Marker: Equatable {
+        /// A hypothetical assignment; the quarter is named on semester views.
+        case added(term: String?)
+        /// A real assignment whose score was changed locally.
+        case edited(original: Double?, outOf: Double)
+        /// A what-if semester exam estimate.
+        case estimate
+    }
+
     var assignment: CalcAssignment
+    var marker: Marker? = nil
     var editable: Bool
     var onEditGrade: ((Double?) -> Void)?
     var onChangeStatus: ((WhatIfAssignmentStatus) -> Void)? = nil
-    var onDelete: (() -> Void)?
+    var onChangeNoCount: ((Bool) -> Void)? = nil
+    var categoryChoices: [String] = []
+    var onChangeCategory: ((String) -> Void)? = nil
+    var onDelete: (() -> Void)? = nil
+    var onRestore: (() -> Void)? = nil
+    /// A personal reminder; offered in the options and context menus and
+    /// as an accessibility action, in either mode.
+    var onRemind: (() -> Void)? = nil
+    /// How a score on this real Skyward row moves the grade; offered in the
+    /// options and context menus and as an accessibility action.
+    var onShowImpact: (() -> Void)? = nil
+    var finishScoreRequest = 0
+    /// Ends whichever score is being edited, returning false if none is.
+    /// Read at tap time so the decision uses current field focus.
+    var finishActiveScoreEditing: (() -> Bool)? = nil
+    var onFocusChange: ((Bool) -> Void)? = nil
 
     @State private var editingGradeText = ""
     @State private var showingDeleteConfirmation = false
-    @FocusState private var gradeFieldFocused: Bool
+    @State private var showingStatusChoices = false
+    @State private var showingCategoryChoices = false
+    @State private var gradeFieldFocused = false
+    @State private var scoreSelectionRequest = 0
+    @State private var scoreCommitRevision = 0
+    @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Editable score lanes: options, then points earned (right-aligned
+    /// against the slash) and the denominator. Every editable row reserves
+    /// all three, so the slash and field sit at the same place whether a
+    /// row is out of 100, 15 or 0, and whether or not it has options.
+    @ScaledMetric(relativeTo: .body) private var fieldWidth: CGFloat = 60
+    @ScaledMetric(relativeTo: .subheadline) private var denominatorWidth: CGFloat = 48
+    @ScaledMetric(relativeTo: .body) private var wellHeight: CGFloat = 36
+    @ScaledMetric(relativeTo: .body) private var scoreColumn: CGFloat = 104
+    private static let optionsLane: CGFloat = 44
 
-    private var usesStackedLayout: Bool { dynamicTypeSize >= .xxxLarge }
+    private var editableScoreColumn: CGFloat { fieldWidth + denominatorWidth + Self.optionsLane }
+    /// The field's hit height; the drawn well is `wellHeight`, centered in it.
+    private var fieldHeight: CGFloat { max(44, wellHeight) }
 
-    private var badge: (label: String, color: Color)? {
-        if assignment.isMissing { return ("MISSING", .red) }
-        if assignment.isNoCount { return ("NO COUNT", .gray) }
-        if assignment.isAbsent { return ("ABSENT", .orange) }
-        if assignment.artificial { return ("WHAT-IF · \(assignment.term)", Color.themeAccent) }
-        return nil
+    private var usesStackedLayout: Bool { dynamicTypeSize >= .xxLarge }
+
+    private var percentage: Double? {
+        GradeCalculator.percentage(earned: assignment.grade, outOf: assignment.outOf)
     }
 
+    private var isEditing: Bool { editable && onEditGrade != nil }
+    private var showsOptions: Bool { onRemind != nil || onShowImpact != nil || (editable && (onChangeStatus != nil || onChangeNoCount != nil || onChangeCategory != nil || onDelete != nil || onRestore != nil)) }
+
     var body: some View {
+        // Fixed score-column widths and the fixed metadata stack keep this
+        // row's height deterministic; no size probing inside the row.
         Group {
             if usesStackedLayout {
-                VStack(alignment: .leading, spacing: 10) {
-                    assignmentDetails
-                    HStack {
-                        Spacer(minLength: 0)
-                        trailingControls
-                    }
+                VStack(alignment: .leading, spacing: 8) {
+                    details
+                    trailingControls
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .trailing)
                 }
             } else {
-                HStack(alignment: .center, spacing: 12) {
-                    assignmentDetails
-                    Spacer(minLength: 8)
+                HStack(alignment: .top, spacing: 12) {
+                    details
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     trailingControls
+                        .frame(width: isEditing ? editableScoreColumn : scoreColumn + (showsOptions ? Self.optionsLane : 0), alignment: .trailing)
                 }
             }
         }
-        .padding(.vertical, 12)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(Color(uiColor: .separator).opacity(0.32))
-                .frame(height: 0.5)
+        .padding(.vertical, Metrics.rowPadding)
+        .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+        .overlay(alignment: .leading) {
+            if marker != nil {
+                // A solid accent edge in the page margin marks local,
+                // hypothetical values without moving the text.
+                Rectangle()
+                    .fill(Color.themeAccent)
+                    .frame(width: 3)
+                    .padding(.vertical, 6)
+                    .offset(x: -(Metrics.page / 2 + 1.5))
+                    .accessibilityHidden(true)
+            }
+        }
+        .background {
+            if isEditing {
+                GeometryReader { geometry in
+                    Color.clear.preference(key: EditableScoreFramesKey.self,
+                        value: [assignment.id: geometry.frame(in: .named("assignmentEditing"))])
+                }
+            }
+        }
+        .background {
+            // The background handles gaps and padding without intercepting
+            // the field's caret gestures or the options button.
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { rowTapped() }
         }
         .contentShape(Rectangle())
         .onAppear {
