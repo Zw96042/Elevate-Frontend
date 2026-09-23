@@ -483,3 +483,105 @@ fileprivate struct CollegeComparison {
     }
 }
 
+/// A saved college ID, resolved against this version's catalog. Unknown IDs
+/// are kept, never dropped, until the student removes them.
+fileprivate enum ChosenCollege: Identifiable {
+    case profile(CollegeProfile)
+    case unavailable(String)
+
+    var id: String {
+        switch self {
+        case .profile(let profile): return profile.id
+        case .unavailable(let id): return id
+        }
+    }
+}
+
+/// The account a picker opened for; it saves only for that account.
+fileprivate struct CollegePickerRequest: Identifiable {
+    var id: String
+}
+
+/// My Colleges: only the colleges the student chose, in the order chosen,
+/// each led by their own GPA as that college reads it beside its published
+/// figures. Choices are saved per account on this iPhone. Nothing here
+/// ranks or predicts admission.
+struct CollegeComparisonView: View {
+    @Environment(AppStore.self) private var store
+    @Environment(AppRouter.self) private var router
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var picker: CollegePickerRequest?
+    @State private var resetScope: String?
+    @State private var confirmingReset = false
+
+    private var planning: StudentPlanningStore { store.planning }
+
+    /// The signed-in account whose saved colleges are loaded, or nil.
+    private var scope: String? {
+        guard let scope = store.localAccountScope, planning.accountScope == scope else { return nil }
+        return scope
+    }
+
+    var body: some View {
+        let input = CollegeEstimateInput(store)
+        let scope = self.scope
+        let chosen: [ChosenCollege] = scope == nil ? [] : planning.selectedCollegeIDs.map { id in
+            CollegeProfileCatalog.byID[id].map(ChosenCollege.profile) ?? .unavailable(id)
+        }
+        let canChoose = scope != nil && !planning.collegeSelectionUnavailable
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if scope == nil {
+                    EmptyStateView(
+                        title: "Connect Skyward to choose colleges",
+                        message: "Your colleges are saved with your account."
+                    )
+                    .accessibilityIdentifier("colleges.noAccount")
+                } else if planning.collegeSelectionUnavailable {
+                    recovery
+                } else if chosen.isEmpty {
+                    emptyState
+                } else {
+                    selectedList(chosen, input: input)
+                }
+
+                VStack(alignment: .leading, spacing: 0) {
+                    converterRow
+                    InsetDivider()
+                    about
+                }
+                .padding(.top, Metrics.sectionGap)
+            }
+            .padding(.horizontal, Metrics.page)
+            .padding(.bottom, 32)
+        }
+        .visibleRefreshable { await store.refreshCourses(force: true) }
+        .background(Color.appBackground.ignoresSafeArea())
+        .navigationTitle("My Colleges")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if canChoose {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(chosen.isEmpty ? "Choose" : "Edit") { openPicker() }
+                        .accessibilityLabel(chosen.isEmpty ? "Choose colleges" : "Edit My Colleges")
+                        .accessibilityIdentifier("colleges.choose")
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                CollegeSearchToolbarButton { router.openCollegeSearch() }
+            }
+        }
+        .sheet(item: $picker) { request in
+            CollegePickerSheet(originScope: request.id)
+        }
+        .confirmationDialog("Reset My Colleges?", isPresented: $confirmingReset, titleVisibility: .visible) {
+            Button("Reset", role: .destructive) { resetSelection() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes your saved college list on this iPhone. Published profiles and your grades aren't affected.")
+        }
+        .onChange(of: store.accountRevision) { _, _ in closeAccountScopedUI() }
+        .onChange(of: scope) { _, _ in closeAccountScopedUI() }
+        .accessibilityIdentifier("collegeProfiles.screen")
+    }
+
