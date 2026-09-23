@@ -185,3 +185,103 @@ fileprivate enum CollegeRangePosition: Equatable {
         else { self = .inside }
     }
 
+    var word: String {
+        switch self {
+        case .below: return "below"
+        case .inside: return "inside"
+        case .above: return "above"
+        }
+    }
+}
+
+/// The student's GPA as one college can read it: its published method's
+/// estimate, or Elevate's 4.0 reference where no method is known.
+fileprivate struct CollegePersonalGPA {
+    var isReference: Bool
+    var value: Double
+    var display: String
+    var maximum: Double
+    var position: CollegeRangePosition?
+
+    static func estimate(_ result: CollegeGPAResult) -> Self? {
+        guard let value = result.value else { return nil }
+        let profile = result.profile
+        let position = profile.comparesWithEstimate
+            ? profile.quartiles.flatMap { CollegeRangePosition(value, in: $0, maximum: profile.method.maximum) } : nil
+        let display = CollegeFormat.comparisonGPA(value, display: result.displayValue, quartiles: profile.quartiles,
+                                                  maximum: profile.method.maximum, position: position)
+        return Self(isReference: false, value: value, display: display,
+                    maximum: profile.method.maximum, position: position)
+    }
+
+    /// Compare the full value; formatting must not move it across a boundary.
+    static func reference(_ report: GPAConversionReport, profile: CollegeProfile) -> Self? {
+        guard let value = report.value else { return nil }
+        let position = profile.comparesWithReference
+            ? profile.quartiles.flatMap { CollegeRangePosition(value, in: $0, maximum: 4) } : nil
+        let display = CollegeFormat.comparisonGPA(value, display: CollegeFormat.truncatedGPA(value),
+                                                  quartiles: profile.quartiles, maximum: 4, position: position)
+        return Self(isReference: true, value: value, display: display, maximum: 4, position: position)
+    }
+
+    /// "Your generic 4.0 reference 3.86, inside the middle 50%".
+    func rowLine(_ profile: CollegeProfile) -> String {
+        let title = isReference ? CollegeComparison.referenceTitle : "Your \(profile.method.title)"
+        guard let position else { return "\(title) \(display)" }
+        return "\(title) \(display), \(position.word) the middle 50%"
+    }
+
+    /// The published figures beside this GPA: its position where the scales
+    /// match, otherwise the college's numbers and why they aren't compared.
+    func comparisonLine(_ profile: CollegeProfile) -> String? {
+        guard profile.showsGPAFigures else { return nil }
+        if let position, let quartiles = profile.quartiles {
+            let scale = profile.publishedGPAScale == .weighted ? "weighted" : "unweighted"
+            return "\(position.word.capitalized) its \(scale) middle 50%, \(CollegeFormat.gpaRange(quartiles))."
+        }
+        let comparable = isReference ? profile.comparesWithReference : profile.comparesWithEstimate
+        if let quartiles = profile.quartiles {
+            guard !comparable else { return nil }
+            let range = CollegeFormat.gpaRange(quartiles)
+            switch profile.publishedGPAScale {
+            case .unspecified: return "Its published \(range) doesn't state a scale, so it isn't compared."
+            case .weighted: return "Its published \(range) is weighted, so it isn't compared."
+            case .unweighted: return "Its published \(range) is unweighted, so it isn't compared."
+            }
+        }
+        if let mean = profile.reportedMean {
+            let scale = profile.publishedGPAScale == .weighted ? "weighted " : profile.publishedGPAScale == .unweighted ? "unweighted " : ""
+            return "Its published \(scale)average is \(CollegeProfile.mean(mean))."
+        }
+        return nil
+    }
+}
+
+/// AP and Honors semesters among the included records, by each course's
+/// actual level.
+fileprivate struct CollegeRigorCount {
+    var ap = 0
+    var honors = 0
+
+    init(_ records: [GPAConversionRecord]) {
+        for record in records {
+            switch record.courseLevel {
+            case .ap: ap += 1
+            case .honors: honors += 1
+            case .regular: break
+            }
+        }
+    }
+
+    /// "4 AP, 6 Honors semesters", or nil with neither.
+    var text: String? {
+        func semesters(_ count: Int) -> String { count == 1 ? "semester" : "semesters" }
+        switch (ap, honors) {
+        case (0, 0): return nil
+        case (_, 0): return "\(ap) AP \(semesters(ap))"
+        case (0, _): return "\(honors) Honors \(semesters(honors))"
+        default: return "\(ap) AP, \(honors) Honors semesters"
+        }
+    }
+}
+
