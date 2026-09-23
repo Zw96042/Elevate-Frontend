@@ -2506,80 +2506,22 @@ struct AssignmentRow: View {
         guard editable else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
+            if assignment.grade != nil { scoreCommitRevision += 1 }
             onEditGrade?(nil)
         } else if let grade = validNumber(trimmed) {
+            if assignment.grade != grade { scoreCommitRevision += 1 }
             onEditGrade?(grade)
         } else {
             editingGradeText = assignment.grade.map { trimNumber($0) } ?? ""
         }
     }
 
-    private var assignmentDetails: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(assignment.name)
-                .font(.body.weight(.semibold))
-                .strikethrough(assignment.isNoCount)
-                .foregroundStyle(assignment.isNoCount ? .secondary : .primary)
-                .lineLimit(usesStackedLayout ? nil : 1)
-                .layoutPriority(1)
-
-            Group {
-                if usesStackedLayout {
-                    VStack(alignment: .leading, spacing: 3) {
-                        badgeView
-                        Text(assignment.category)
-                        if !assignment.dueDate.isEmpty {
-                            Text("Due \(assignment.dueDate)")
-                        }
-                    }
-                } else {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 8) {
-                            badgeView
-                            Text(assignment.category)
-                            if !assignment.dueDate.isEmpty {
-                                Text("Due \(assignment.dueDate)")
-                            }
-                        }
-
-                        HStack(spacing: 8) {
-                            badgeView
-                            if !assignment.dueDate.isEmpty {
-                                Text(assignment.dueDate)
-                            } else {
-                                Text(assignment.category)
-                            }
-                        }
-
-                        badgeView
-                    }
-                }
-            }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-        }
-        .layoutPriority(1)
-    }
-
-    @ViewBuilder
-    private var badgeView: some View {
-        if let badge {
-            Text(badge.label)
-                .font(.caption2.weight(.semibold))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(badge.color.opacity(0.2), in: RoundedRectangle(cornerRadius: 5))
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: true, vertical: false)
-        }
-    }
-
     private var gradeText: String {
         guard let grade = assignment.grade, grade.isFinite else { return "--" }
-        return grade >= 100 ? String(format: "%.0f", grade) : String(format: "%.1f", grade)
+        return GradeFormat.upToTwoDecimals(grade)
     }
 
-    private var outOfText: String { trimNumber(assignment.outOf) }
+    private var outOfText: String { GradeFormat.upToTwoDecimals(assignment.outOf) }
 
     private var assignmentAccessibilityValue: String {
         var values = [assignment.category]
@@ -2588,9 +2530,10 @@ struct AssignmentRow: View {
         } else {
             values.append("No grade, \(outOfText) points possible")
         }
-        if let badge {
-            values.append(badge.label.capitalized)
-        }
+        if assignment.isMissing { values.append("Missing") }
+        if assignment.isNoCount { values.append("No count") }
+        if assignment.isAbsent { values.append("Absent") }
+        if let markerText { values.append(markerText) }
         if !assignment.dueDate.isEmpty {
             values.append("due \(assignment.dueDate)")
         }
@@ -2611,6 +2554,58 @@ struct AssignmentRow: View {
             return nil
         }
         return value
+    }
+}
+
+/// A loading assignment in the official row's columns: the name, then the
+/// category and due date lines, with the score at the top of the trailing
+/// column. Hidden from accessibility; the list announces it is loading.
+private struct AssignmentRowPlaceholder: View {
+    var index: Int
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .body) private var scoreColumn: CGFloat = 104
+
+    private static let names = [16, 12, 19, 10, 14, 17]
+    private static let categories = [7, 9, 6, 8, 7, 9]
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize >= .xxLarge {
+                VStack(alignment: .leading, spacing: 8) {
+                    details
+                    score
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .trailing)
+                }
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    details
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    score
+                        .frame(width: scoreColumn, alignment: .trailing)
+                }
+            }
+        }
+        .padding(.vertical, Metrics.rowPadding)
+        .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+        .accessibilityHidden(true)
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            SkeletonText(.body, length: Self.names[index % Self.names.count])
+            VStack(alignment: .leading, spacing: 2) {
+                // The category label's own inset keeps its line height.
+                SkeletonText(.footnote.weight(.medium), length: Self.categories[index % Self.categories.count],
+                             tone: .secondary)
+                    .padding(.vertical, 2)
+                SkeletonText(.footnote, length: dynamicTypeSize >= .xxLarge ? 12 : 8, tone: .secondary)
+            }
+        }
+    }
+
+    private var score: some View {
+        SkeletonText(.figure(.body), length: 4)
     }
 }
 
