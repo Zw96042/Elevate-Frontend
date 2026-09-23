@@ -678,3 +678,100 @@ struct CollegeComparisonView: View {
                     .padding(.top, 4)
             }
 
+            if planning.collegeSelectionError != nil {
+                Text("Couldn't save your colleges. Try again.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.gradeAttention)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 8)
+                    .accessibilityIdentifier("colleges.selection.error")
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(chosen.enumerated()), id: \.element.id) { index, entry in
+                    if index > 0 { InsetDivider() }
+                    switch entry {
+                    case .profile(let profile):
+                        CollegeSelectedRow(profile: profile, input: input, creditOverrides: corrections) {
+                            remove(profile.id, expectedScope: expectedScope)
+                        }
+                    case .unavailable(let id):
+                        unavailableRow(id, expectedScope: expectedScope)
+                    }
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("colleges.list")
+
+            InsetDivider()
+            chooseRow
+        }
+    }
+
+    /// The page-level grade state, once. Loading shows inside each row.
+    @ViewBuilder
+    private func gradesState(_ input: CollegeEstimateInput) -> some View {
+        switch input {
+        case .loading:
+            EmptyView()
+        case .failed(let error):
+            InlineErrorState(title: "Couldn't load courses", message: error) {
+                await store.refreshCourses(force: true)
+            }
+            .padding(.vertical, 8)
+            .accessibilityIdentifier("colleges.coursesError")
+        case .unavailable:
+            EmptyStateView(
+                title: "Your grades aren't loaded",
+                message: "Published figures are still shown for each college."
+            )
+            .accessibilityIdentifier("colleges.unavailable")
+        case .loaded:
+            if input.reference()?.value == nil {
+                EmptyStateView(
+                    title: "No completed semesters yet",
+                    message: "Your GPA appears after a semester ends and its grades are posted."
+                )
+                .accessibilityIdentifier("colleges.summary.empty")
+            }
+        }
+    }
+
+    /// A saved ID this version's catalog doesn't have. It stays saved until
+    /// removed here, for this account only.
+    private func unavailableRow(_ id: String, expectedScope: String?) -> some View {
+        let text = VStack(alignment: .leading, spacing: 2) {
+            Text("Unavailable college")
+                .font(.body.weight(.medium))
+                .foregroundStyle(Color.muted)
+            Text("This saved college isn't available in this version.")
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+        }
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        let button = Button("Remove") { remove(id, expectedScope: expectedScope) }
+            .buttonStyle(ActionTextButtonStyle())
+            .accessibilityLabel("Remove unavailable college")
+            .accessibilityIdentifier("colleges.selected.\(id).remove")
+        return Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    text
+                    button
+                }
+            } else {
+                HStack(alignment: .center, spacing: 12) {
+                    text
+                    button
+                }
+            }
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("colleges.selected.\(id)")
+    }
+
