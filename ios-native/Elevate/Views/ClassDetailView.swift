@@ -1577,9 +1577,67 @@ struct ClassDetailView: View {
                         filterMenu
                     }
                 }
-                .padding(.horizontal, 20)
+            }
+
+            if showsAdd && addOnOwnLine {
+                addWhatIfButton
+            }
+
+            if let description = activeControlsDescription {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(description)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button("Clear", action: clearAssignmentControls)
+                        .buttonStyle(ActionTextButtonStyle())
+                        .frame(minWidth: 44)
+                        .accessibilityLabel("Clear sort and filters")
+                        .accessibilityIdentifier("assignments.clearFilters")
+                }
+            }
+
+            if assignmentLinkUnavailable {
+                Text("This assignment is no longer in this quarter's gradebook.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 12)
+                    .accessibilityIdentifier("assignment.linkUnavailable")
+            }
+            if assignments.isEmpty {
+                Group {
+                    if hasUnfilteredAssignments {
+                        EmptyStateView(title: "No assignments match these filters")
+                    } else {
+                        EmptyStateView(title: futureQuarterStart == nil ? "No assignments posted" : "\(store.selectedTerm.shortName) hasn't started",
+                                       message: futureQuarterStart.map { "Begins \(schoolDayLabel($0)). Assignments will appear when posted." })
+                    }
+                }
+                .accessibilityIdentifier("assignments.empty")
+            } else {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(assignments) { assignment in
+                        // Keep one lazy child per assignment. The divider must
+                        // travel with its row when keyboard dismissal changes
+                        // which editable rows are inside the viewport.
+                        VStack(spacing: 0) {
+                            if assignment.id != assignments.first?.id { InsetDivider() }
+                            assignmentRow(assignment)
+                        }
+                        .id(assignment.id)
+                        .background(highlightsLinkedAssignment && openedAssignmentID == assignment.id ? Color.well : Color.clear)
+                        .accessibilityFocused($accessibilityAssignmentID, equals: assignment.id)
+                        .accessibilityIdentifier(openedAssignmentID == assignment.id ? "assignment.linked" : "assignment.row")
+                    }
+                }
+                // Each mode has different score widths and row heights. Start
+                // with fresh lazy layout estimates when switching between them.
+                .id(isWhatIfActive)
             }
         }
+        .padding(.top, sectionSpacing)
     }
 
     private var filterMenu: some View {
