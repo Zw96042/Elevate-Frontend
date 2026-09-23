@@ -1873,9 +1873,10 @@ struct ClassDetailView: View {
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.bordered)
-        .buttonBorderShape(.circle)
+        .buttonStyle(ScopePressStyle())
         .accessibilityLabel("Sort and filter assignments")
+        .accessibilityValue(hasActiveAssignmentControls ? "Active" : "")
+        .accessibilityIdentifier("assignments.filter")
     }
 
     private var availableFilterCategories: [String] {
@@ -1905,6 +1906,117 @@ struct ClassDetailView: View {
             || !categoryFilter.isEmpty
             || !assignmentFilter.isEmpty
             || !gradeFilter.isEmpty
+    }
+}
+
+/// Local what-if quarter math shared by class detail and grade goals, so a
+/// goal planned "with what-if" uses exactly the estimate the class shows.
+enum WhatIfQuarterMath {
+    static func assignment(from assignment: WhatIfAssignment) -> CalcAssignment {
+        CalcAssignment(
+            id: assignment.id,
+            className: assignment.className,
+            name: assignment.name,
+            term: assignment.term,
+            category: assignment.category,
+            grade: assignment.grade,
+            outOf: assignment.outOf,
+            dueDate: assignment.dueDate,
+            artificial: true,
+            meta: metadata(for: assignment.resolvedStatus)
+        )
+    }
+
+    static func metadata(for status: WhatIfAssignmentStatus) -> [AssignmentMeta] {
+        switch status {
+        case .counted:
+            return []
+        case .noCount:
+            return [AssignmentMeta(type: "noCount", note: "Excluded from grade")]
+        case .missing:
+            return [AssignmentMeta(type: "missing", note: "Missing")]
+        case .absent:
+            return [AssignmentMeta(type: "absent", note: "Absent")]
+        }
+    }
+
+    /// Skyward's posted semester exam: the semester gradebook's first counted
+    /// exam entry, otherwise the course record's EX score. Nil means none posted.
+    static func postedExamGrade(semesterInfo: GradeInfoResult?, course: UnifiedCourseData, examType: String) -> Double? {
+        if let assignment = semesterInfo?.gradebook
+            .first(where: { $0.category == "Final Exam" })?
+            .assignments.first(where: { !$0.meta.contains { $0.type == "noCount" } }) {
+            if let percentage = GradeCalculator.percentage(
+                earned: assignment.pointsEarned,
+                outOf: assignment.pointsTotal
+            ) {
+                return percentage
+            }
+            if let score = assignment.score, score.isFinite { return score }
+            if let grade = assignment.grade { return Double(grade) }
+        }
+        return course.currentScores.first { $0.bucket == examType && $0.score.isFinite }?.score
+    }
+
+    /// One quarter's grade with saved local edits applied. Without the
+    /// quarter's source, saved edits cannot be reconstructed or proven
+    /// redundant, so the result is unavailable; an untouched quarter can
+    /// still use its posted grade.
+    static func quarterTotal(
+        term: TermLabel,
+        info: GradeInfoResult?,
+        className: String,
+        postedCourseGrade: Double?,
+        whatIfAssignments: [WhatIfAssignment],
+        overrides: [String: AssignmentGradeOverride],
+        hasSavedChanges: @autoclosure () -> Bool
+    ) -> Double? {
+        guard let info else {
+            return WhatIfGradePresentation.resolve(
+                official: postedCourseGrade, calculated: nil, hasEffectiveChanges: hasSavedChanges()
+            ).value
+        }
+        let official = AssignmentGradeEdits.assignments(from: info, className: className, term: term)
+            .filter { $0.category != "Final Exam" }
+        let hasChanges = whatIfAssignments.contains { $0.term == term.shortName }
+            || AssignmentGradeEdits.hasEffectiveChanges(overrides, to: official)
+        if !hasChanges, let posted = info.score ?? postedCourseGrade {
+            return posted
+        }
+        let real = AssignmentGradeEdits.applying(overrides, to: official)
+        let hypothetical = whatIfAssignments
+            .filter { $0.term == term.shortName }
+            .map(assignment(from:))
+            .filter { $0.category != "Final Exam" }
+        let assignments = real + hypothetical
+        let weights = GradeCalculator.normalizedWeights(categories: info.gradebook, assignments: assignments)
+        let hypotheticalCategories = Set(
+            hypothetical
+                .filter { !$0.isNoCount && $0.grade != nil && $0.outOf > 0 }
+                .map(\.category)
+        )
+        let everyHypotheticalHasWeight = hypotheticalCategories.allSatisfy { weights[$0] != nil }
+        if everyHypotheticalHasWeight {
+            if let weighted = GradeCalculator.summary(
+                assignments: assignments,
+                categoryWeights: weights,
+                sourceCategories: info.gradebook
+            ).courseTotal {
+                return weighted
+            }
+        }
+
+        // Some Skyward gradebooks are points-based and omit category weights.
+        // In that case, preserve a predictable what-if result using total points.
+        let countable = assignments.filter { !$0.isNoCount && $0.grade != nil && $0.outOf > 0 }
+        return GradeCalculator.pointsTotal(assignments: countable)
+    }
+}
+
+private struct EditableScoreFramesKey: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
 
