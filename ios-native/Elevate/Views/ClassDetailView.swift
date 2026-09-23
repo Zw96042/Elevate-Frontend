@@ -2395,33 +2395,72 @@ struct AssignmentRow: View {
                     .accessibilityHidden(true)
             }
         } else {
-            HStack(spacing: 5) {
-                Text(gradeText)
-                    .foregroundStyle(assignment.grade == nil ? .secondary : .primary)
-                Text("/")
-                    .foregroundStyle(.tertiary)
-                Text(outOfText)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .trailing, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 1) {
+                    Text(gradeText)
+                        .font(.figure(.body))
+                        .foregroundStyle(assignment.grade == nil ? Color.muted : Color.ink)
+                    Text("/\(outOfText)")
+                        .font(.figure(.footnote, weight: .regular))
+                        .foregroundStyle(Color.muted)
+                }
+                .contentTransition(.numericText(value: assignment.grade ?? 0))
+
+                if let percentage, !assignment.isNoCount, assignment.outOf != 100 {
+                    Text(GradeFormat.twoDecimals(percentage) + "%")
+                        .font(.figure(.caption, weight: .regular))
+                        .foregroundStyle(GradeTier(percentage) == .attention ? Color.gradeAttention : Color.muted)
+                }
             }
-            .font(.subheadline.weight(.semibold).monospacedDigit())
             .lineLimit(1)
         }
     }
 
-    private var statusMenu: some View {
+    private var optionsMenu: some View {
         Menu {
-            ForEach(WhatIfAssignmentStatus.allCases) { status in
-                Button {
-                    onChangeStatus?(status)
-                } label: {
-                    if currentStatus == status {
-                        Label(status.rawValue, systemImage: "checkmark")
-                    } else {
-                        Label(status.rawValue, systemImage: status.systemImage)
+            if editable {
+            if let onChangeNoCount {
+                Button { onChangeNoCount(!assignment.isNoCount) } label: {
+                    Label(assignment.isNoCount ? "Count in estimate" : "Make no count", systemImage: assignment.isNoCount ? "checkmark.circle" : "minus.circle")
+                }
+                .accessibilityIdentifier("whatif.noCount.\(assignment.id)")
+            }
+            if onChangeCategory != nil {
+                Button { showingCategoryChoices = true } label: {
+                    Label("Change category", systemImage: "folder")
+                }
+                .accessibilityIdentifier("whatif.changeCategory.\(assignment.id)")
+            }
+            if onChangeStatus != nil {
+                Button { showingStatusChoices = true } label: {
+                    Label("Change status", systemImage: "checkmark.circle")
+                }
+                .accessibilityIdentifier("whatif.changeStatus.\(assignment.id)")
+            }
+            if let onRestore {
+                Divider()
+                Button(action: onRestore) {
+                    Label("Restore Skyward Score", systemImage: "arrow.uturn.backward")
+                }
+                .accessibilityIdentifier("whatif.restore.\(assignment.id)")
+            }
+            }
+            if onShowImpact != nil || onRemind != nil {
+                if editable { Divider() }
+                if let onShowImpact {
+                    Button(action: onShowImpact) {
+                        Label("See Impact…", systemImage: "function")
                     }
+                    .accessibilityIdentifier("impact.open.\(assignment.id)")
+                }
+                if let onRemind {
+                    Button(action: onRemind) {
+                        Label("Remind Me…", systemImage: "bell")
+                    }
+                    .accessibilityIdentifier("assignment.remind.\(assignment.id)")
                 }
             }
-            if onDelete != nil {
+            if editable, onDelete != nil {
                 Divider()
                 Button(role: .destructive) { showingDeleteConfirmation = true } label: {
                     Label("Delete Assignment", systemImage: "trash")
@@ -2430,12 +2469,14 @@ struct AssignmentRow: View {
         } label: {
             Image(systemName: "ellipsis")
                 .font(.body.weight(.semibold))
+                .foregroundStyle(Color.muted)
                 .frame(width: 44, height: 44)
-                .contentShape(Circle())
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Assignment options")
         .accessibilityValue(currentStatus.rawValue)
+        .accessibilityIdentifier("whatif.options.\(assignment.id)")
     }
 
     private var currentStatus: WhatIfAssignmentStatus {
@@ -2445,8 +2486,25 @@ struct AssignmentRow: View {
         return .counted
     }
 
-    private func commitGrade() {
-        let trimmed = editingGradeText.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Title, metadata, padding and the empty options lane. While any score
+    /// is being edited these only commit and dismiss it; one tap never also
+    /// starts editing here. Score wells are the explicit way to move on.
+    private func rowTapped() {
+        guard isEditing else { return }
+        if finishActiveScoreEditing?() == true { return }
+        focusScore()
+    }
+
+    /// Explicit score intent: the field's well and its denominator.
+    private func focusScore() {
+        guard isEditing else { return }
+        scoreSelectionRequest += 1
+        gradeFieldFocused = true
+    }
+
+    private func commitGrade(_ text: String) {
+        guard editable else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             onEditGrade?(nil)
         } else if let grade = validNumber(trimmed) {
