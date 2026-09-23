@@ -2140,31 +2140,153 @@ struct AssignmentRow: View {
         .contentShape(Rectangle())
         .onAppear {
             editingGradeText = assignment.grade.map { trimNumber($0) } ?? ""
+            if gradeFieldFocused { onFocusChange?(true) }
         }
         .onChange(of: assignment.grade) { _, grade in
-            guard !gradeFieldFocused else { return }
+            // Restore/reset can change the source while this field still has
+            // focus. Reflect that value so a later blur cannot recommit the old edit.
             editingGradeText = grade.map { trimNumber($0) } ?? ""
         }
         .onChange(of: gradeFieldFocused) { _, focused in
-            if !focused { commitGrade() }
+            onFocusChange?(focused)
         }
         .onDisappear {
-            if gradeFieldFocused { commitGrade() }
+            onFocusChange?(false)
         }
         .contextMenu {
-            if onDelete != nil {
+            if editable, let onRestore {
+                Button(action: onRestore) {
+                    Label("Restore Skyward Score", systemImage: "arrow.uturn.backward")
+                }
+            }
+            if editable, onDelete != nil {
                 Button(role: .destructive) { showingDeleteConfirmation = true } label: {
                     Label("Delete", systemImage: "trash")
                 }
             }
+            if let onShowImpact {
+                Button(action: onShowImpact) {
+                    Label("See Impact…", systemImage: "function")
+                }
+            }
+            if let onRemind {
+                Button(action: onRemind) {
+                    Label("Remind Me…", systemImage: "bell")
+                }
+            }
+        }
+        .sheet(isPresented: $showingStatusChoices) {
+            ChoiceSheet(
+                title: "Assignment status",
+                groups: [ChoiceGroup(title: nil, options: WhatIfAssignmentStatus.allCases.map { status in
+                    ChoiceOption(value: status, title: status.rawValue, identifier: "whatif.status.\(status.rawValue)")
+                })],
+                selection: Binding(get: { currentStatus }, set: { onChangeStatus?($0) })
+            )
+        }
+        .sheet(isPresented: $showingCategoryChoices) {
+            ChoiceSheet(
+                title: "Assignment category",
+                groups: [ChoiceGroup(title: nil, options: Array(Set(categoryChoices + [assignment.category])).sorted().map {
+                    ChoiceOption(value: $0, title: $0, identifier: "whatif.category.\($0)")
+                })],
+                selection: Binding(get: { assignment.category }, set: { onChangeCategory?($0) })
+            )
         }
         .alert("Delete what-if assignment?", isPresented: $showingDeleteConfirmation) {
             Button("Delete assignment", role: .destructive) { onDelete?() }
             Button("Cancel", role: .cancel) {}
         }
-        .accessibilityElement(children: editable ? .contain : .combine)
+        .sensoryFeedback(.selection, trigger: scoreCommitRevision)
+        .accessibilityElement(children: editable || onRemind != nil || onShowImpact != nil ? .contain : .combine)
         .accessibilityLabel(assignment.name)
         .accessibilityValue(assignmentAccessibilityValue)
+        .accessibilityActions {
+            if let onShowImpact {
+                Button("See impact", action: onShowImpact)
+            }
+            if let onRemind {
+                Button("Remind me", action: onRemind)
+            }
+        }
+    }
+
+    // MARK: Details
+
+    private var categoryHighlight: some View {
+        Text(verbatim: assignment.category)
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(assignment.isNoCount ? Color.muted : Color.ink)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.selection, in: RoundedRectangle(cornerRadius: 5))
+            .overlay {
+                if contrast == .increased {
+                    RoundedRectangle(cornerRadius: 5).strokeBorder(Color.muted, lineWidth: Metrics.line)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            // Regular weight: names are read, and the semibold section
+            // heading above the list stays the only heavy line.
+            Text(assignment.name)
+                .font(.body)
+                .strikethrough(assignment.isNoCount)
+                .foregroundStyle(assignment.isNoCount ? Color.muted : Color.ink)
+                .lineLimit(usesStackedLayout ? nil : 2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if usesStackedLayout {
+                VStack(alignment: .leading, spacing: 2) {
+                    statusText
+                    categoryHighlight
+                    if !assignment.dueDate.isEmpty {
+                        Text("Due \(assignment.dueDate)").monospacedDigit()
+                    }
+                }
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+            } else {
+                // Keep metadata height deterministic as the score column changes.
+                VStack(alignment: .leading, spacing: 2) {
+                    statusText
+                    categoryHighlight
+                    dateText
+                }
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+            }
+
+            if let markerText {
+                Text(markerText)
+                    .font(.footnote)
+                    .foregroundStyle(Color.themeAccent)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .layoutPriority(1)
+        .contentShape(Rectangle())
+        .onTapGesture { rowTapped() }
+    }
+
+    /// Status as plain words; only Missing is colored.
+    @ViewBuilder
+    private var statusText: some View {
+        if assignment.isMissing {
+            Text("Missing")
+                .fontWeight(.semibold)
+                .foregroundStyle(Color.gradeAttention)
+        } else if assignment.isAbsent {
+            Text("Absent")
+                .fontWeight(.semibold)
+                .foregroundStyle(Color.gradeWarning)
+        } else if assignment.isNoCount {
+            Text("No count")
+                .fontWeight(.semibold)
+        }
     }
 
     @ViewBuilder
