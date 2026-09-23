@@ -1050,18 +1050,98 @@ struct ClassDetailView: View {
                     .accessibilityHidden(true)
             }
             .padding(.vertical, 8)
-        } else {
-            HStack(alignment: .center, spacing: 12) {
-                Text(category.category)
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(1)
-                Spacer(minLength: 12)
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text(categoryAverage(result))
-                        .font(.subheadline.weight(.semibold).monospacedDigit())
-                    Text(categoryWeight(result: result, baseWeight: baseWeight))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
+        .disabled(!liveCourse.availableTerms.contains(store.selectedTerm))
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Plans a target grade for \(store.selectedTerm.displayName)")
+        .accessibilityIdentifier("course.gradeGoal")
+    }
+
+    // MARK: - Reminders
+
+    /// A personal reminder for a real Skyward assignment. Skyward's date is
+    /// offered only when it is a valid school date.
+    private func remind(_ assignment: CalcAssignment) {
+        let candidates = store.selectedTerm.isSemester ? impactCandidates(for: assignment) : []
+        let source = candidates.count == 1 ? candidates[0].assignment : assignment
+        let term = candidates.count == 1 ? candidates[0].quarter
+            : (TermLabel.allCases.first { $0.shortName == assignment.term } ?? store.selectedTerm)
+        reminder = ReminderRequest(
+            accountScope: store.notifications.accountScope ?? "", course: liveCourse, term: term,
+            assignmentID: loadedGradebook(for: term).flatMap {
+                AssignmentLink.sourceAssignmentID(for: source.id, course: liveCourse, term: term, gradeInfo: $0)
+            } ?? source.id,
+            title: assignment.name, dueDay: SchoolCalendarDate.normalize(assignment.dueDate)
+        )
+    }
+
+    private func remindAboutExam(name: String, dueDate: String) {
+        reminder = ReminderRequest(
+            accountScope: store.notifications.accountScope ?? "", course: liveCourse, term: store.selectedTerm, assignmentID: "final-exam-\(examType)",
+            title: name, dueDay: SchoolCalendarDate.normalize(dueDate)
+        )
+    }
+
+    // MARK: - Scenarios and impact
+
+    /// Skyward's live gradebooks and posted values for `term`, the selected
+    /// term or one of its quarters. No local edits; nil until this term's
+    /// gradebook has loaded.
+    private func whatIfSource(for term: TermLabel) -> WhatIfScenarioSource? {
+        let selected = store.selectedTerm
+        guard hasCurrentGradeInfo, let gradeInfo,
+              term == selected || selected.whatIfQuarterTerms.contains(term) else { return nil }
+        var gradebooks: [String: GradeInfoResult] = [:]
+        var posted: [String: Double] = [:]
+        for quarter in term.whatIfQuarterTerms {
+            let info = selected.isSemester ? quarterGradeInfo[quarter.shortName] : gradeInfo
+            if let info { gradebooks[quarter.shortName] = info }
+            if let score = liveCourse.currentScores.first(where: { $0.bucket == quarter.shortName })?.score {
+                posted[quarter.shortName] = score
+            }
+        }
+        let official = term == selected
+            ? gradeInfo.score
+            : quarterGradeInfo[term.shortName]?.score ?? posted[term.shortName]
+        return WhatIfScenarioSource(
+            classKey: classKey,
+            className: course.courseName,
+            term: term,
+            quarterGradebooks: gradebooks,
+            postedQuarterGrades: posted,
+            officialGrade: official,
+            officialExamGrade: term.isSemester ? officialFinalExamGrade : nil
+        )
+    }
+
+    private var impactQuarterSources: [String: WhatIfScenarioSource] {
+        store.selectedTerm.whatIfQuarterTerms.reduce(into: [:]) { sources, quarter in
+            sources[quarter.shortName] = whatIfSource(for: quarter)
+        }
+    }
+
+    /// "Current changes" in Scenarios uses this screen's own estimate.
+    private var scenarioCurrentState: WhatIfScenarioCurrentState {
+        let hasChanges = hasEffectiveWhatIfChanges
+        return WhatIfScenarioCurrentState(
+            officialValue: gradeInfo?.score,
+            hasEffectiveChanges: hasChanges,
+            estimate: hasChanges ? gradePresentation.value : nil
+        )
+    }
+
+    private func openScenarios() {
+        // Commit the active field synchronously, so Save reads the stored edit.
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        guard let scope = store.localAccountScope, hasCurrentGradeInfo else { return }
+        scenarioSheet = WhatIfScenarioSheetContext(
+            accountScope: scope, classKey: classKey, term: store.selectedTerm, courseTitle: courseName
+        )
+    }
+
                 }
             }
             .frame(minHeight: 46)
