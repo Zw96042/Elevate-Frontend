@@ -2714,13 +2714,18 @@ struct AddAssignmentSheet: View {
                         }
                         .accessibilityIdentifier("whatif.add.status")
                     }
-                } header: {
-                    Text("Score")
-                } footer: {
-                    Text(statusDescription)
+                    sheetFootnote(statusDescription)
                         .contentTransition(.opacity)
                 }
+                .padding(.horizontal, Metrics.page)
+                .padding(.bottom, 24)
+                .background {
+                    Color.clear.contentShape(Rectangle())
+                        .onTapGesture { focusedField = nil }
+                }
             }
+            .background(Color.appBackground.ignoresSafeArea())
+            .foregroundStyle(Color.ink)
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Add Assignment")
             .navigationBarTitleDisplayMode(.inline)
@@ -2735,7 +2740,8 @@ struct AddAssignmentSheet: View {
                         formatter.dateFormat = "M/d/yy"
                         onAdd(WhatIfAssignment(
                             className: "",
-                            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                            name: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                ? "What-if assignment" : name.trimmingCharacters(in: .whitespacesAndNewlines),
                             term: assignmentTerm.shortName,
                             category: category,
                             grade: parsedGrade,
@@ -2745,17 +2751,98 @@ struct AddAssignmentSheet: View {
                         ))
                         dismiss()
                     }
+                    .fontWeight(.semibold)
                     .disabled(!canAdd)
+                    .accessibilityIdentifier("whatif.add.confirm")
                 }
             }
             .onAppear {
                 if category.isEmpty { category = availableCategories.first ?? "Assignments" }
+            }
+            .task {
+                focusedField = .grade
             }
             .onChange(of: assignmentTerm) {
                 if !availableCategories.contains(category) {
                     category = availableCategories.first ?? "Assignments"
                 }
             }
+        }
+        .tint(Color.themeAccent)
+    }
+
+    private func sheetHeader(_ title: String) -> some View {
+        GroupLabel(title)
+            .frame(minHeight: 32, alignment: .bottomLeading)
+            .padding(.bottom, 4)
+    }
+
+    /// A form row whose value is chosen on a pushed list of choice rows.
+    private func choiceLinkRow<Destination: View>(
+        _ label: String,
+        value: String,
+        @ViewBuilder destination: @escaping () -> Destination
+    ) -> some View {
+        NavigationLink(destination: destination) {
+            HStack(spacing: 12) {
+                Text(label)
+                    .font(.body)
+                    .foregroundStyle(Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Text(value)
+                    .font(.body)
+                    .foregroundStyle(Color.muted)
+                    .multilineTextAlignment(.trailing)
+                Image(systemName: "chevron.forward")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.faint)
+                    .accessibilityHidden(true)
+            }
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(value)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private func sheetFootnote(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 8)
+    }
+
+    /// A labeled open row. Tapping anywhere in a text row focuses its field;
+    /// the focused row's label takes the action color.
+    private func formRow<Content: View>(
+        _ label: String,
+        field: Field? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        let isFocused = field != nil && focusedField == field
+        return HStack(spacing: 12) {
+            Text(label)
+                .font(.body.weight(isFocused ? .semibold : .regular))
+                .foregroundStyle(isFocused ? Color.themeAccent : Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityHidden(field != nil)
+            Spacer(minLength: 8)
+            content()
+                .font(.body)
+                .foregroundStyle(Color.ink)
+                .frame(maxWidth: field == nil ? nil : .infinity, alignment: .trailing)
+        }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 52)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if let field { focusedField = field }
         }
     }
 
@@ -2786,8 +2873,7 @@ struct AddAssignmentSheet: View {
 
     private var canAdd: Bool {
         let gradeIsEmpty = gradeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !category.isEmpty
+        return !category.isEmpty
             && (gradeIsEmpty || parsedGrade != nil)
             && parsedPointsPossible != nil
     }
