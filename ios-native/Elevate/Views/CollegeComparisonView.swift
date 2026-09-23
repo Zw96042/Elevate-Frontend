@@ -285,3 +285,101 @@ fileprivate struct CollegeRigorCount {
     }
 }
 
+/// Subject preparation for a list row, counted only where the remaining
+/// amount is known. Unavailable subjects are never treated as unmet.
+fileprivate struct CollegePreparationSummary {
+    var met: Int
+    var known: [CollegePreparationRow]
+    var total: Int
+    var reliesOnCurrent: Bool
+
+    init?(_ rows: [CollegePreparationRow]) {
+        let known = rows.filter { $0.remaining != nil }
+        guard !known.isEmpty else { return nil }
+        let met = known.filter { ($0.remaining ?? 1) <= 0 }
+        self.met = met.count
+        self.known = known
+        self.total = rows.count
+        self.reliesOnCurrent = met.contains { ($0.earned ?? 0) < $0.units }
+    }
+
+    /// "Credit targets reached in 3 of 4 checked subjects, if current classes are passed",
+    /// or "English credit target reached" for a single checked subject.
+    var text: String {
+        let current = reliesOnCurrent ? ", if current classes are passed" : ""
+        if known.count == 1, let row = known.first {
+            return met == 1 ? "\(row.subject) credit target reached\(current)"
+                : "\(row.subject): \(CollegeFormat.units(row.remaining ?? 0)) more to reach \(CollegeFormat.units(row.units))"
+        }
+        let scope = known.count == total ? "subjects" : "checked subjects"
+        let count = met == known.count ? "all \(known.count)" : "\(met) of \(known.count)"
+        return "Credit targets reached in \(count) \(scope)\(current)"
+    }
+}
+
+fileprivate extension CollegeGPAResult {
+    /// The published band holding this estimate, for its class share. Only
+    /// where the published scale matches the estimate's.
+    var band: CollegeGPABand? {
+        guard profile.comparesWithEstimate, let label = standing?.bandLabel else { return nil }
+        return profile.bands.first { $0.label == label }
+    }
+
+    /// The college's bonus on one record, beyond its plain 4.0 points.
+    func bonus(_ record: GPAConversionRecord) -> Double? {
+        guard let base = GPAConversionPolicy.unweighted4Point.points(for: record.percentage, level: .regular),
+              record.points > base else { return nil }
+        return record.points - base
+    }
+
+    /// Exactly the top of an unweighted scale; weighted scales run higher.
+    var isAtUnweightedCeiling: Bool {
+        guard let value, profile.method.isUnweighted else { return false }
+        return value == profile.method.maximum
+    }
+}
+
+/// Whether completed grades can be estimated. Published figures never wait
+/// on this; only each estimate does.
+enum CollegeEstimateInput {
+    case loading
+    case failed(String)
+    case unavailable
+    case loaded([UnifiedCourseData])
+
+    @MainActor init(_ store: AppStore) {
+        if let courses = store.courses { self = .loaded(courses) }
+        else if store.coursesLoading { self = .loading }
+        else if let error = store.coursesError { self = .failed(error) }
+        else { self = .unavailable }
+    }
+
+    /// A college-specific estimate, only where the college published how it
+    /// calculates GPA. Other colleges get none, never a generic stand-in.
+    @MainActor func result(for profile: CollegeProfile) -> CollegeGPAResult? {
+        guard profile.method.hasPublishedCalculation, case .loaded(let courses) = self else { return nil }
+        return CollegeGPACalculator.calculate(profile: profile, courses: courses,
+                                              manualClassesByYear: GPAConversionInputs.manualClassesByYear)
+    }
+
+    var isLoading: Bool {
+        if case .loading = self { return true }
+        return false
+    }
+
+    /// Elevate's generic 4.0 over every completed semester: the reference
+    /// shown where a college publishes no GPA method. Never a college's
+    /// calculation.
+    @MainActor func reference() -> GPAConversionReport? {
+        guard case .loaded(let courses) = self else { return nil }
+        return GPAConversionInputs.completedReport(courses: courses, policy: .unweighted4Point)
+    }
+
+    /// Completed and current credits against a college's published subject
+    /// preparation, or nil until courses load.
+    @MainActor func preparation(_ details: CollegeAdmissionsDetails?, creditOverrides: [TranscriptCreditOverride] = []) -> [CollegePreparationRow]? {
+        guard case .loaded(let courses) = self, let details, !details.preparation.isEmpty else { return nil }
+        return CollegePreparationContext.rows(details: details, courses: courses, creditOverrides: creditOverrides, asOf: Date())
+    }
+}
+
