@@ -585,3 +585,96 @@ struct CollegeComparisonView: View {
         .accessibilityIdentifier("collegeProfiles.screen")
     }
 
+    /// Nothing opened for one account stays open for another.
+    private func closeAccountScopedUI() {
+        picker = nil
+        confirmingReset = false
+        resetScope = nil
+    }
+
+    private func openPicker() {
+        guard let scope, !planning.collegeSelectionUnavailable else { return }
+        picker = CollegePickerRequest(id: scope)
+    }
+
+    private func remove(_ id: String, expectedScope: String?) {
+        guard let expectedScope, expectedScope == scope else { return }
+        planning.setCollegeSelected(false, collegeID: id, expectedAccountScope: expectedScope)
+    }
+
+    private func resetSelection() {
+        guard let resetScope, resetScope == scope else { return }
+        planning.resetCollegeSelection(expectedAccountScope: resetScope)
+        self.resetScope = nil
+    }
+
+    // MARK: States
+
+    /// Nothing chosen yet: one sentence on what the page does and one way in.
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            EmptyStateView(
+                title: "Choose colleges to compare",
+                message: "See how your record compares at the colleges you choose."
+            )
+            .accessibilityIdentifier("colleges.selection.empty")
+            Button("Choose Colleges") { openPicker() }
+                .buttonStyle(PrimaryButtonStyle())
+                .accessibilityIdentifier("colleges.choose.empty")
+        }
+    }
+
+    /// A saved list that can't be read is never shown, merged or
+    /// overwritten. Only an explicit, confirmed reset removes it.
+    private var recovery: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Your saved colleges can't be read")
+                .font(.title3.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            Text("Elevate isn't showing or changing them. Reset to choose colleges again.")
+                .font(.body)
+                .foregroundStyle(Color.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                resetScope = scope
+                confirmingReset = resetScope != nil
+            } label: {
+                Text("Reset My Colleges…")
+                    .foregroundStyle(Color.gradeAttention)
+            }
+            .buttonStyle(ActionTextButtonStyle())
+            .accessibilityIdentifier("colleges.selection.reset")
+        }
+        .frame(maxWidth: 440, alignment: .leading)
+        .padding(.top, 12)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("colleges.selection.recovery")
+    }
+
+    // MARK: Chosen colleges
+
+    /// The chosen colleges in the order chosen. Freshness and grade states
+    /// appear only when a row actually reads the student's grades.
+    private func selectedList(_ chosen: [ChosenCollege], input: CollegeEstimateInput) -> some View {
+        // A menu can outlive the row that opened it; retain that row's account.
+        let expectedScope = scope
+        let corrections = planning.accountScope == store.localAccountScope ? planning.coursePlan.creditOverrides : []
+        let usesGrades = chosen.contains { entry in
+            guard case .profile(let profile) = entry else { return false }
+            return profile.method.hasPublishedCalculation || profile.comparesWithReference
+                || !(profile.admissions?.preparation.isEmpty ?? true)
+        }
+        return VStack(alignment: .leading, spacing: 0) {
+            if usesGrades {
+                StatusStrip(
+                    lastUpdated: store.coursesLastUpdated,
+                    isRefreshing: store.coursesLoading && store.courses != nil,
+                    error: store.courses != nil ? store.coursesError : nil
+                ) {
+                    await store.refreshCourses(force: true)
+                }
+                gradesState(input)
+                    .padding(.top, 4)
+            }
+
