@@ -383,3 +383,103 @@ enum CollegeEstimateInput {
     }
 }
 
+fileprivate extension CollegeProfileCatalog {
+    /// Profiles by ID; the first wins, as in route resolution.
+    static let byID: [String: CollegeProfile] = Dictionary(profiles.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+}
+
+/// One college's comparison, shared by its My Colleges row and its profile
+/// so the two always say the same thing: which GPA leads, where it sits
+/// against the published figures, or why nothing is compared. It only
+/// reads the existing estimate, reference and scale guards.
+fileprivate struct CollegeComparison {
+    enum Lead {
+        /// Courses are loading; the row keeps its shape.
+        case loading
+        /// Grades aren't loaded or failed to load. Published figures still show.
+        case gradesMissing
+        /// The college's own estimate, or the generic 4.0 reference where it
+        /// publishes no method and its figures are unweighted.
+        case gpa(CollegePersonalGPA, title: String)
+        /// The college's estimate, withheld by the calculator.
+        case withheld(title: String)
+        /// No completed semesters in the years it reads.
+        case notYet(title: String)
+        /// No published method, and no figures the reference can sit beside.
+        case notCompared
+    }
+
+    static let referenceTitle = "Your generic 4.0 reference"
+
+    var lead: Lead
+    /// Where the GPA sits against the published figures, or why there's no
+    /// GPA to place.
+    var standing: String?
+
+    /// Whether the GPA is placed in a published range on the same scale.
+    var isPlaced: Bool {
+        if case .gpa(let gpa, _) = lead { return gpa.position != nil }
+        return false
+    }
+
+    /// Whether the standing quotes a published figure, so its cohort and
+    /// source go with it.
+    var quotesPublishedFigure: Bool {
+        if case .gpa = lead { return standing != nil }
+        return false
+    }
+
+    @MainActor init(profile: CollegeProfile, input: CollegeEstimateInput) {
+        self.init(profile: profile, input: input, result: input.result(for: profile),
+                  reference: profile.comparesWithReference ? input.reference() : nil)
+    }
+
+    @MainActor init(profile: CollegeProfile, input: CollegeEstimateInput,
+                    result: CollegeGPAResult?, reference: GPAConversionReport?) {
+        let hasMethod = profile.method.hasPublishedCalculation
+        guard hasMethod || profile.comparesWithReference else {
+            lead = .notCompared
+            standing = Self.notComparedReason(profile)
+            return
+        }
+        switch input {
+        case .loading:
+            lead = .loading
+            standing = nil
+        case .failed, .unavailable:
+            lead = .gradesMissing
+            standing = nil
+        case .loaded:
+            if hasMethod {
+                let title = "Your \(profile.method.title)"
+                if let result, let gpa = CollegePersonalGPA.estimate(result) {
+                    lead = .gpa(gpa, title: title)
+                    standing = gpa.comparisonLine(profile)
+                } else if let reason = result?.unavailableReason {
+                    lead = .withheld(title: title)
+                    standing = reason
+                } else {
+                    lead = .notYet(title: title)
+                    standing = "No completed semesters from \(profile.method.yearsLabel.lowercased()) yet."
+                }
+            } else if let reference, let gpa = CollegePersonalGPA.reference(reference, profile: profile) {
+                lead = .gpa(gpa, title: Self.referenceTitle)
+                standing = gpa.comparisonLine(profile)
+            } else {
+                lead = .notYet(title: Self.referenceTitle)
+                standing = "No completed semesters yet."
+            }
+        }
+    }
+
+    /// Why a college without a published method gets no GPA beside it. The
+    /// reference is placed only against unweighted figures.
+    private static func notComparedReason(_ profile: CollegeProfile) -> String {
+        guard profile.showsGPAFigures else { return "No verified GPA formula or class GPA figures here." }
+        if profile.publishedGPAScale == .weighted {
+            return "Its GPA figures are weighted; no matching formula is verified here."
+        }
+        return "Its GPA figures don't state a comparable scale."
+    }
+}
+
