@@ -1391,17 +1391,114 @@ struct ClassDetailView: View {
                 .accessibilityValue(showsBreakdown ? "Expanded" : "Collapsed")
                 .accessibilityIdentifier("course.breakdown")
 
-    private func categoryAverage(_ result: GradeSummary.CategoryResult?) -> String {
-        result.map { String(format: "%.1f%%", $0.average) } ?? "Ungraded"
+                if showsBreakdown {
+                    // Open rows like the rest of the screen: each category's
+                    // share of the grade and its points beneath the name,
+                    // the average as the one trailing figure.
+                    VStack(spacing: 0) {
+                        ForEach(Array(categories.enumerated()), id: \.element.category) { index, category in
+                            if index > 0 { InsetDivider() }
+                            categoryRow(category, result: results[category.category])
+                        }
+                    }
+                }
+            }
+            .padding(.top, sectionSpacing)
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                SectionHeading("Grade breakdown")
+                Text(futureQuarterStart == nil ? "No category grades posted yet." : "Available when this quarter's grades are posted.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, sectionSpacing)
+            .accessibilityIdentifier("course.breakdown.empty")
+        }
     }
 
-    private func categoryWeight(result: GradeSummary.CategoryResult?, baseWeight: Double) -> String {
-        guard let result else { return String(format: "%.0f%% weight, inactive", baseWeight) }
-        if abs(result.weight - baseWeight) >= 0.05 {
-            return String(format: "%.0f%% weight, %.1f%% active", baseWeight, result.weight)
+    @ViewBuilder
+    private func categoryRow(_ category: GradeCategory, result: GradeSummary.CategoryResult?) -> some View {
+        let baseWeight = category.weight ?? 0
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(category.category)
+                        .font(.body)
+                        .foregroundStyle(Color.ink)
+                    Text(categoryAverage(result))
+                        .font(.figure(.title3))
+                        .foregroundStyle(GradeTier(result?.average).textColor)
+                    Text(categoryDetail(result: result, baseWeight: baseWeight))
+                        .font(.figure(.footnote, weight: .regular))
+                        .foregroundStyle(Color.muted)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(category.category)
+                            .font(.body)
+                            .foregroundStyle(Color.ink)
+                            .lineLimit(2)
+                        Text(categoryDetail(result: result, baseWeight: baseWeight))
+                            .font(.figure(.footnote, weight: .regular))
+                            .foregroundStyle(Color.muted)
+                            .lineLimit(2)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(categoryAverage(result))
+                        .font(.figure(.body))
+                        .foregroundStyle(GradeTier(result?.average).textColor)
+                        .contentTransition(.numericText(value: result?.average ?? 0))
+                        .lineLimit(1)
+                        .frame(minWidth: averageColumn, alignment: .trailing)
+                }
+            }
         }
-        return String(format: "%.0f%% weight", baseWeight)
+        .padding(.vertical, 10)
+        .frame(minHeight: 44)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(category.category)
+        .accessibilityValue(categoryAccessibilityValue(result: result, baseWeight: baseWeight))
     }
+
+    private func categoryAverage(_ result: GradeSummary.CategoryResult?) -> String {
+        GradeFormat.twoDecimals(result?.average)
+    }
+
+    /// The category's share of the grade, the weight in effect when other
+    /// categories have nothing graded yet, and the points behind the
+    /// average: "30% of grade, 19/20 pts", "20% of grade (counts 40% now),
+    /// 19/20 pts", "0% of grade, 4/5 pts", "20% of grade, nothing graded".
+    private func categoryDetail(result: GradeSummary.CategoryResult?, baseWeight: Double) -> String {
+        let share = "\(GradeFormat.upToTwoDecimals(baseWeight))% of grade"
+        guard let result else { return share + ", nothing graded" }
+        let points = "\(GradeFormat.upToTwoDecimals(result.rawPoints))/\(GradeFormat.upToTwoDecimals(result.rawTotal)) pts"
+        if abs(result.weight - baseWeight) >= 0.05 {
+            return share + " (counts \(GradeFormat.upToTwoDecimals(result.weight))% now), " + points
+        }
+        return share + ", " + points
+    }
+
+    private func categoryAccessibilityValue(result: GradeSummary.CategoryResult?, baseWeight: Double) -> String {
+        guard let result else {
+            return "\(GradeFormat.upToTwoDecimals(baseWeight)) percent weight, nothing graded yet"
+        }
+        var parts = [
+            GradeFormat.spokenCourseGrade(result.average),
+            "\(GradeFormat.upToTwoDecimals(baseWeight)) percent weight",
+            "\(GradeFormat.upToTwoDecimals(result.rawPoints)) of \(GradeFormat.upToTwoDecimals(result.rawTotal)) points",
+        ]
+        if abs(result.weight - baseWeight) >= 0.05 {
+            parts.append("counts \(GradeFormat.upToTwoDecimals(result.weight)) percent until other categories are graded")
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    // MARK: - Final exam
 
     private var finalExamSection: some View {
         let examName = store.selectedTerm == .sm1 ? "Exam 1" : "Exam 2"
