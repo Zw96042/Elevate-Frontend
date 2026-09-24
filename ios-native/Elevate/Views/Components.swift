@@ -689,13 +689,107 @@ struct Rule: View {
 struct InsetDivider: View {
     var leading: CGFloat = 0
 
+    var body: some View {
+        Rule()
+            .padding(.leading, leading)
+    }
+}
+
+/// Column names over figures: muted footnote text, no band.
+struct TableHeaderStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .accessibilityHidden(true)
+    }
+}
+
+/// A label and its value.
+struct GridFact: Hashable {
+    var label: String
+    var value: String
+}
+
+/// A muted label over a value, set openly on the page.
+struct LabeledValue: View {
+    var label: String
+    var value: String
+    var valueColor: Color?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+            Text(value)
+                .font(.figure(.body))
+                .foregroundStyle(valueColor ?? Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .contentTransition(.numericText())
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// A section title with an optional count and trailing control.
+struct SectionHeading<Trailing: View>: View {
+    var title: String
+    var count: String?
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            if let count {
+                Text(count)
+                    .font(.figure(.subheadline, weight: .regular))
+                    .foregroundStyle(Color.muted)
+                    .contentTransition(.numericText())
+            }
+            Spacer(minLength: 8)
+            trailing()
+        }
+        .frame(minHeight: 44)
+        .padding(.bottom, 2)
+    }
+}
+
+extension SectionHeading where Trailing == EmptyView {
+    init(_ title: String, count: String? = nil) {
+        self.init(title: title, count: count) { EmptyView() }
+    }
+}
+
+// MARK: - Button styles
+
+// Press feedback appears on touch-down and settles back on release. Each
+// style animates only its own feedback modifiers, never the label's content,
+// so text, focus and layout changes made by the action stay unanimated.
+
+/// Row feedback: the whole row takes the pressed fill. No scaling.
 struct RowPressStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .opacity(configuration.isPressed ? 0.55 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: configuration.isPressed)
+            .background {
+                Rectangle()
+                    .fill(Color.pressed)
+                    .opacity(configuration.isPressed ? 1 : 0)
+                    .animation(
+                        Motion.pressFeedback(reduceMotion, isPressed: configuration.isPressed),
+                        value: configuration.isPressed
+                    )
+            }
+            .opacity(isEnabled ? 1 : 0.45)
     }
 }
 
