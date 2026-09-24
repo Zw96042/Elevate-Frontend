@@ -1168,3 +1168,102 @@ struct CollegeProfileRow: View {
     var input: CollegeEstimateInput
     var onOpen: (() -> Void)? = nil
 
+    @Environment(AppStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let corrections = store.planning.accountScope == store.localAccountScope ? store.planning.coursePlan.creditOverrides : []
+        let content = CollegeRowContent(profile: profile, input: input, creditOverrides: corrections)
+        if let onOpen {
+            Button(action: onOpen) { label(content) }
+                .buttonStyle(RowPressStyle())
+                .modifier(RowAccessibility(profile: profile, spoken: content.spoken))
+        } else {
+            NavigationLink(value: CoursesRoute.collegeProfile(profile.id)) { label(content) }
+                .buttonStyle(RowPressStyle())
+                .modifier(RowAccessibility(profile: profile, spoken: content.spoken))
+        }
+    }
+
+    private var stacks: Bool { dynamicTypeSize >= .xxLarge }
+
+    private func label(_ content: CollegeRowContent) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(profile.name)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(Color.ink)
+                if stacks, let figure = content.figure {
+                    Text("\(figure.label) \(figure.value)")
+                        .font(.figure(.subheadline))
+                        .foregroundStyle(Color.ink)
+                }
+                Text(content.context)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.muted)
+                switch content.personal {
+                case .empty:
+                    EmptyView()
+                case .loading:
+                    SkeletonText(.footnote, length: 24)
+                        .padding(.top, 2)
+                case .line(let line):
+                    Text(line)
+                        .font(.footnote)
+                        .foregroundStyle(Color.ink)
+                        .padding(.top, 2)
+                }
+            }
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if !stacks, let figure = content.figure {
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text(figure.value)
+                        .font(.figure(.body))
+                        .foregroundStyle(Color.ink)
+                    Text(figure.label)
+                        .font(.caption)
+                        .foregroundStyle(Color.muted)
+                }
+                .lineLimit(1)
+                .fixedSize()
+            }
+            RowChevron()
+        }
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct RowAccessibility: ViewModifier {
+    var profile: CollegeProfile
+    var spoken: String
+
+    func body(content: Content) -> some View {
+        content
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(profile.name)
+            .accessibilityValue(spoken)
+            .accessibilityHint("Shows your GPA beside published figures, preparation, and sources")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("colleges.profile.\(profile.id)")
+    }
+}
+
+/// The navigation bar's way into college search, on the list and on each
+/// college.
+private struct CollegeSearchToolbarButton: View {
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "magnifyingglass")
+        }
+        .accessibilityLabel("Search colleges")
+        .accessibilityIdentifier("colleges.search.toolbar")
+    }
+}
+
