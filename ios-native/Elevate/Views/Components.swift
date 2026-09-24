@@ -408,6 +408,101 @@ private struct DeliberatePullObserver: UIViewRepresentable {
             }
         }
 
+    }
+}
+
+/// Observes touch-down and immediately fails, leaving the scroll view's own
+/// pan recognizer in control. It never delays or cancels content touches.
+private final class RefreshTouchOrigin: UIGestureRecognizer {
+    private let onTouch: () -> Void
+
+    init(onTouch: @escaping () -> Void) {
+        self.onTouch = onTouch
+        super.init(target: nil, action: nil)
+        cancelsTouchesInView = false
+        delaysTouchesBegan = false
+        delaysTouchesEnded = false
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        onTouch()
+        state = .failed
+    }
+}
+
+/// Explicit native color keeps refresh feedback legible on every theme.
+private struct RefreshSpinner: UIViewRepresentable {
+    var color: Color
+
+    func makeUIView(context: Context) -> UIActivityIndicatorView {
+        let indicator = UIActivityIndicatorView(style: .medium)
+        indicator.color = UIColor(color)
+        indicator.startAnimating()
+        return indicator
+    }
+
+    func updateUIView(_ indicator: UIActivityIndicatorView, context: Context) {
+        indicator.color = UIColor(color)
+    }
+}
+
+private struct MainContentVisibleKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// A root presentation can hide the tab content without changing its path.
+    var isMainContentVisible: Bool {
+        get { self[MainContentVisibleKey.self] }
+        set { self[MainContentVisibleKey.self] = newValue }
+    }
+}
+
+// MARK: - Metrics tokens
+
+enum Metrics {
+    /// Horizontal page margin shared by every screen. Content aligns to it.
+    static let page: CGFloat = 16
+    /// Corner radius of real controls: buttons and text fields.
+    static let controlRadius: CGFloat = 6
+    /// Width of separators and control outlines.
+    static let line: CGFloat = 1
+    /// Vertical padding of an open list row.
+    static let rowPadding: CGFloat = 12
+    /// Space between the sections of a screen.
+    static let sectionGap: CGFloat = 28
+}
+
+// MARK: - Motion
+//
+// Every animation goes through one of these, so Reduce Motion is decided in
+// one place: selections and values change instantly, and nothing draws in.
+
+enum Motion {
+    /// Choosing an option.
+    static func select(_ reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .snappy(duration: 0.2)
+    }
+
+    /// A number changing to a new value.
+    static func value(_ reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .snappy(duration: 0.35)
+    }
+
+    /// The GPA curve drawing in from the left. A heavily damped spring, close
+    /// to the legacy chart's reveal but shorter.
+    static func reveal(_ reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .spring(response: 1.6, dampingFraction: 0.92)
+    }
+
+    /// The GPA curve reshaping for another year or series. A timing curve
+    /// rather than a spring: it never passes its target, and an interrupting
+    /// change adds on from where the line is drawn, so the line stays between
+    /// curves it is moving between and never overshoots a real value.
+    static func morph(_ reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .timingCurve(0.4, 0, 0.2, 1, duration: 0.55)
+    }
+
 struct RowPressStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
