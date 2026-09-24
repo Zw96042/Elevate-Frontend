@@ -1,4 +1,119 @@
 import SwiftUI
+import UIKit
+
+extension View {
+    /// Explicitly retain the blurred transition across system releases whose
+    /// automatic scroll-edge style can otherwise become a hard boundary.
+    @ViewBuilder
+    func softScrollEdges() -> some View {
+        if #available(iOS 26.0, *) {
+            scrollEdgeEffectStyle(.soft, for: [.top, .bottom])
+        } else {
+            self
+        }
+    }
+}
+
+extension View {
+    /// Pull to refresh for a scroll view. Only a pull that begins with the
+    /// page at rest at its top refreshes. Returning from lower content stops
+    /// at the top; another touch and pull is required to stretch past it.
+    func visibleRefreshable(action: @escaping () async -> Void) -> some View {
+        modifier(VisibleRefreshModifier(action: action))
+    }
+}
+
+private struct VisibleRefreshModifier: ViewModifier {
+    var action: () async -> Void
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.isMainContentVisible) private var isMainContentVisible
+    @State private var refreshing = false
+    @State private var pullDistance: CGFloat = 0
+    @State private var refreshTask: Task<Void, Never>?
+
+    /// Overscroll a deliberate pull must reach for its release to refresh.
+    private static let threshold: CGFloat = 72
+    /// Pulls shorter than this are the drag's own slack and show nothing.
+    private static let feedbackStart: CGFloat = 8
+
+    func body(content: Content) -> some View {
+        source(content)
+            .scrollBounceBehavior(.always, axes: .vertical)
+            .accessibilityValue(refreshing ? "Refreshing" : "")
+            .onChange(of: !voiceOverEnabled && scenePhase == .active && isMainContentVisible) {
+                pullDistance = 0
+            }
+            .onDisappear {
+                refreshTask?.cancel()
+                refreshTask = nil
+                refreshing = false
+                pullDistance = 0
+            }
+            .overlay(alignment: .top) {
+                // The one indicator: the pull's progress, then the refresh.
+                // VoiceOver uses the system control's own.
+                if !voiceOverEnabled, refreshing || pullDistance > Self.feedbackStart {
+                    Group {
+                        if refreshing {
+                            RefreshSpinner(color: Color.ink)
+                        } else {
+                            PullProgressRing(progress: min(pullDistance / Self.threshold, 1))
+                        }
+                    }
+                    .frame(width: 20, height: 20)
+                    .padding(10)
+                    .background(Color.appBackground, in: Circle())
+                    .padding(.top, 6)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                }
+            }
+    }
+
+    @ViewBuilder
+    private func source(_ content: Content) -> some View {
+        if voiceOverEnabled {
+            // VoiceOver scrolls a page at a time and refreshes with a
+            // three-finger swipe at the top, already a deliberate gesture
+            // that the system control supports and announces.
+            content.refreshable { await performRefresh() }
+        } else {
+            content.background {
+                DeliberatePullObserver(isEnabled: scenePhase == .active && isMainContentVisible,
+                                       threshold: Self.threshold) { distance in
+                    pullDistance = distance
+                } onRelease: { reachedThreshold in
+                    pullDistance = 0
+                    if reachedThreshold { startRefresh() }
+                }
+            }
+        }
+    }
+
+    /// Some system releases cancel the refresh callback on release. Own the
+    /// request/indicator lifetime, and cancel it when this screen disappears.
+    @MainActor
+    private func startRefresh() {
+        guard refreshTask == nil else { return }
+        refreshing = true
+        refreshTask = Task { @MainActor in
+            let started = ContinuousClock.now
+            await action()
+            do {
+                try await Task.sleep(until: started + .milliseconds(500), clock: .continuous)
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("-SampleData"),
+                   ProcessInfo.processInfo.arguments.contains("-SlowRefreshPreview") {
+                    try await Task.sleep(for: .seconds(8))
+                }
+                #endif
+            } catch { return }
+            guard !Task.isCancelled else { return }
+            refreshing = false
+            refreshTask = nil
+        }
+    }
 
 struct RowPressStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
