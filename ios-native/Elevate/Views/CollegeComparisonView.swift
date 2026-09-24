@@ -1924,3 +1924,104 @@ struct CollegeProfileDetailView: View {
         .accessibilityIdentifier("colleges.classShare")
     }
 
+    private func quartileFigures(_ quartiles: CollegeGPAQuartiles) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            figureRow("Middle 50%", value: CollegeFormat.gpaRange(quartiles),
+                      detail: "25th to 75th percentile of \(profile.population.classDescription). "
+                        + (quartiles.upper == 4 ? "Many students tie at 4.00." : "Students can tie at either end."))
+            if let median = quartiles.median {
+                InsetDivider()
+                figureRow("Median", value: GradeFormat.gpa(median))
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("colleges.quartiles")
+    }
+
+    private func bandFigures(highlighting yours: String?) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            GroupLabel("Share of the class in each \(profile.publishedScaleInSentence) band")
+                .padding(.top, 12)
+            ForEach(Array(profile.bands.enumerated()), id: \.element.id) { index, band in
+                if index > 0 { InsetDivider() }
+                bandRow(band, isYours: band.label == yours)
+            }
+        }
+    }
+
+    private func footnote(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 8)
+    }
+
+    private func figureRow(_ label: String, value: String, detail: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if dynamicTypeSize.isAccessibilitySize {
+                Text(label).font(.body).foregroundStyle(Color.ink)
+                Text(value).font(.figure(.body)).foregroundStyle(Color.ink)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(label)
+                        .font(.body)
+                        .foregroundStyle(Color.ink)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(value)
+                        .font(.figure(.body))
+                        .foregroundStyle(Color.ink)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+            }
+            if let detail {
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, 10)
+        .frame(minHeight: 44)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// One published band and its share of the class. The band holding a
+    /// comparable estimate is named in words.
+    private func bandRow(_ band: CollegeGPABand, isYours: Bool) -> some View {
+        let percent = "\(CollegeGPAStanding.percent(band.percent))%"
+        return Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(band.label)
+                        .font(.figure(.body, weight: isYours ? .semibold : .regular))
+                    Text(percent)
+                        .font(.figure(.body, weight: .regular))
+                    if isYours { yoursLabel }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(band.label)
+                        .font(.figure(.body, weight: isYours ? .semibold : .regular))
+                    if isYours { yoursLabel }
+                    Spacer(minLength: 8)
+                    Text(percent)
+                        .font(.figure(.body, weight: .regular))
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+            }
+        }
+        .foregroundStyle(Color.ink)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, 10)
+        .frame(minHeight: 44)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("GPA \(band.label)")
+        .accessibilityValue("\(percent) of the class" + (isYours ? ". Includes your estimate" : ""))
+        .accessibilityIdentifier(isYours ? "colleges.band.yours" : "colleges.band")
+    }
+
