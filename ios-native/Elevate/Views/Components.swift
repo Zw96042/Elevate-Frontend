@@ -793,7 +793,102 @@ struct RowPressStyle: ButtonStyle {
     }
 }
 
-// MARK: - Login prompt / error states
+/// The single filled call to action on a screen.
+struct PrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed
+        configuration.label
+            .font(.body.weight(.semibold))
+            .foregroundStyle(isEnabled ? Color.onProminentFill : Color.muted)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .background(
+                isEnabled ? Color.prominentFill : Color.pressed,
+                in: RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous)
+            )
+            .animation(Motion.pressFeedback(reduceMotion, isPressed: pressed)) {
+                $0.opacity(pressed ? 0.78 : 1)
+            }
+            .animation(Motion.press(reduceMotion)) {
+                $0.scaleEffect(Motion.pressScale(reduceMotion, isPressed: pressed, to: 0.98))
+            }
+            // Outside the scale, so the hit area keeps its full size.
+            .contentShape(RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous))
+    }
+}
+
+/// A quiet secondary control: ink text on the well fill, small enough to sit
+/// in a line of text. Scope buttons and the what-if Add and Reset actions use
+/// it. The drawn surface is compact; the hit area is at least 44 points tall.
+struct QuietButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed
+        configuration.label
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Color.ink)
+            .multilineTextAlignment(.leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background {
+                RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous)
+                    .fill(pressed ? Color.selection : Color.well)
+                    .animation(Motion.pressFeedback(reduceMotion, isPressed: pressed), value: pressed)
+            }
+            .animation(Motion.press(reduceMotion)) {
+                $0.scaleEffect(Motion.pressScale(reduceMotion, isPressed: pressed, to: 0.97))
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+            .opacity(isEnabled ? 1 : 0.45)
+    }
+}
+
+/// A text action in the action color: Retry, Clear.
+struct ActionTextButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed
+        configuration.label
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Color.themeAccent)
+            .multilineTextAlignment(.leading)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+            .opacity(isEnabled ? 1 : 0.45)
+            .animation(Motion.pressFeedback(reduceMotion, isPressed: pressed)) {
+                $0.opacity(pressed ? 0.55 : 1)
+            }
+    }
+}
+
+// MARK: - Grade numerals
+
+/// A grade in SF Pro with tabular figures. Only failing grades change color.
+struct GradeNumber: View {
+    var score: Double?
+    var style: Font.TextStyle = .title2
+    var showsPercent = false
+
+    var body: some View {
+        Text(GradeFormat.compact(score) + (showsPercent && score != nil ? "%" : ""))
+            .font(.figure(style))
+            .foregroundStyle(GradeTier(score).textColor)
+            .contentTransition(.numericText(value: score ?? 0))
+            .lineLimit(1)
+            .fixedSize()
+    }
+}
+
 
 struct LoginPromptView: View {
     var message: String
