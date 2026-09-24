@@ -1358,3 +1358,113 @@ struct CollegeProfileDetailView: View {
     @State private var selectionChanges = 0
     @State private var selectionFailed = false
 
+    /// The signed-in account whose readable college list is loaded, or nil.
+    private var selectionScope: String? {
+        guard let scope = store.localAccountScope, store.planning.accountScope == scope,
+              !store.planning.collegeSelectionUnavailable else { return nil }
+        return scope
+    }
+
+    var body: some View {
+        let input = CollegeEstimateInput(store)
+        let details = profile.admissions
+        let result = input.result(for: profile)
+        let reference = input.reference()
+        let comparison = CollegeComparison(profile: profile, input: input, result: result, reference: reference)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                StatusStrip(
+                    lastUpdated: store.coursesLastUpdated,
+                    isRefreshing: store.coursesLoading && store.courses != nil,
+                    error: store.courses != nil ? store.coursesError : nil
+                ) {
+                    await store.refreshCourses(force: true)
+                }
+
+                if let location = details?.location, !location.isEmpty {
+                    Text(location)
+                        .font(.subheadline)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
+                        .accessibilityIdentifier("colleges.location")
+                }
+
+                you(input, details: details, comparison: comparison, result: result, reference: reference)
+                    .padding(.top, 12)
+                published(result, details: details)
+                    .padding(.top, Metrics.sectionGap)
+                InsetDivider()
+                method(result, reference: reference, details: details)
+                InsetDivider()
+                sources(details)
+                InsetDivider()
+                searchAnother
+            }
+            .padding(.horizontal, Metrics.page)
+            .padding(.bottom, 32)
+        }
+        .visibleRefreshable { await store.refreshCourses(force: true) }
+        .background(Color.appBackground.ignoresSafeArea())
+        .navigationTitle(profile.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let scope = selectionScope {
+                ToolbarItem(placement: .topBarTrailing) {
+                    let isChosen = store.planning.selectedCollegeIDs.contains(profile.id)
+                    Button { toggleSelection(!isChosen, scope: scope) } label: {
+                        Image(systemName: isChosen ? "checkmark" : "plus")
+                    }
+                    .accessibilityLabel(isChosen ? "Remove from My Colleges" : "Add to My Colleges")
+                    .accessibilityIdentifier("colleges.detail.selection")
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                CollegeSearchToolbarButton { router.openCollegeSearch() }
+            }
+        }
+        .sensoryFeedback(.selection, trigger: selectionChanges)
+        .alert("Couldn't save your colleges", isPresented: $selectionFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Try again.")
+        }
+        .onChange(of: store.accountRevision) { _, _ in selectionFailed = false }
+        .accessibilityIdentifier("colleges.detail.\(profile.id)")
+    }
+
+    /// Saves only for the account shown when the button was tapped.
+    private func toggleSelection(_ selected: Bool, scope: String) {
+        guard selectionScope == scope else { return }
+        if store.planning.setCollegeSelected(selected, collegeID: profile.id, expectedAccountScope: scope) {
+            selectionChanges += 1
+        } else {
+            selectionFailed = true
+        }
+    }
+
+    // MARK: You and the college
+
+    /// Published figures don't depend on the account, so only the personal
+    /// lines wait for courses or report their failure.
+    private func you(_ input: CollegeEstimateInput, details: CollegeAdmissionsDetails?, comparison: CollegeComparison,
+                     result: CollegeGPAResult?, reference: GPAConversionReport?) -> some View {
+        let corrections = store.planning.accountScope == store.localAccountScope ? store.planning.coursePlan.creditOverrides : []
+        let preparation = preparationLines(details, rows: input.preparation(details, creditOverrides: corrections))
+        let rigor = reference.flatMap { $0.includedRecords.isEmpty ? nil : CollegeRigorCount($0.includedRecords) }
+        return VStack(alignment: .leading, spacing: 0) {
+            SectionHeading("You and \(profile.name)")
+            yourGPA(input, comparison: comparison, result: result)
+            if let rigor {
+                InsetDivider()
+                rigorRow(rigor)
+            }
+            if !preparation.isEmpty {
+                preparationBlock(preparation, scope: details?.preparationScope)
+                    .padding(.top, 16)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("colleges.you")
+    }
+
