@@ -1821,3 +1821,106 @@ struct CollegeProfileDetailView: View {
         }
     }
 
+    /// The college's own guidance, unless it's already one of the GPA
+    /// policy facts shown under How it reads GPA.
+    private func guidanceText(_ details: CollegeAdmissionsDetails?) -> String? {
+        guard let summary = profile.publishedSummary, !summary.isEmpty else { return nil }
+        if details?.gpaPolicyFacts.contains(where: { $0.text == summary }) == true { return nil }
+        return summary
+    }
+
+    /// SAT and ACT ranges, SAT sections and averages, each with its own
+    /// cohort and population. Sections are never a total.
+    private func testFacts(_ details: CollegeAdmissionsDetails?) -> [CollegeFact] {
+        guard let details else { return [] }
+        var facts: [CollegeFact] = []
+        if let sat = details.satRange {
+            facts.append(CollegeFact(id: "sat", label: "SAT middle 50%", value: CollegeFormat.range(sat.lower, sat.upper),
+                                     source: .init(cohort: sat.cohort, population: sat.population, url: sat.sourceURL)))
+        }
+        for (index, section) in details.satSections.enumerated() {
+            let name = section.section.lowercased().hasSuffix("section") ? section.section : "\(section.section) section"
+            facts.append(CollegeFact(id: "sat.section.\(index)", label: "SAT \(name), middle 50%",
+                                     value: CollegeFormat.range(section.lower, section.upper),
+                                     source: .init(cohort: section.cohort, population: section.population, url: section.sourceURL)))
+        }
+        if let act = details.actRange {
+            facts.append(CollegeFact(id: "act", label: "ACT middle 50%", value: CollegeFormat.range(act.lower, act.upper),
+                                     source: .init(cohort: act.cohort, population: act.population, url: act.sourceURL)))
+        }
+        for (index, mean) in details.testMeans.enumerated() {
+            facts.append(CollegeFact(id: "mean.\(index)", label: "\(mean.test) average", value: GradeFormat.upToTwoDecimals(mean.value),
+                                     source: .init(cohort: mean.cohort, population: mean.population, url: mean.sourceURL)))
+        }
+        return facts
+    }
+
+    /// The admission rate with its counts, and enrollment. Approximate
+    /// counts say so and never yield a rate.
+    private func admissionFacts(_ details: CollegeAdmissionsDetails?) -> [CollegeFact] {
+        guard let details else { return [] }
+        var facts: [CollegeFact] = []
+        if let acceptance = details.acceptance {
+            let source = CollegeFact.Source(cohort: acceptance.cohort, population: acceptance.population, url: acceptance.sourceURL)
+            let suffix = acceptance.isApproximate ? "+" : ""
+            if let rate = acceptance.resolvedRatePercent {
+                var detail: String?
+                if let admitted = acceptance.admitted, let applicants = acceptance.applicants {
+                    detail = "\(admitted.formatted())\(suffix) of \(applicants.formatted())\(suffix) applicants."
+                }
+                facts.append(CollegeFact(id: "rate", label: "Admitted", value: CollegeFormat.percent(rate), detail: detail, source: source))
+            } else if let admitted = acceptance.admitted {
+                let detail = acceptance.applicants.map { "Of \($0.formatted())\(suffix) applicants. No exact rate." }
+                facts.append(CollegeFact(id: "admitted", label: "Admitted", value: "\(admitted.formatted())\(suffix)",
+                                         detail: detail, source: source))
+            } else if let applicants = acceptance.applicants {
+                facts.append(CollegeFact(id: "applicants", label: "Applicants", value: "\(applicants.formatted())\(suffix)",
+                                         source: source))
+            }
+        }
+        if let enrollment = details.enrollment {
+            facts.append(CollegeFact(id: "enrolled", label: "Enrolled", value: enrollment.count.formatted(),
+                                     source: .init(cohort: enrollment.cohort, population: enrollment.population, url: enrollment.sourceURL)))
+        }
+        return facts
+    }
+
+    /// Figures in runs that share a source, each run captioned once.
+    private func factRuns(_ facts: [CollegeFact], subject: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(CollegeFact.runs(facts).enumerated()), id: \.offset) { _, run in
+                ForEach(Array(run.enumerated()), id: \.element.id) { index, fact in
+                    if index > 0 { InsetDivider() }
+                    figureRow(fact.label, value: fact.value, detail: fact.detail)
+                }
+                if let source = run.first?.source {
+                    ProvenanceLink(caption: source.caption, url: source.url, subject: subject)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    /// The published share of the class in the estimate's band, labeled in
+    /// full so it can't read as a percentile.
+    private func classShare(_ band: CollegeGPABand) -> some View {
+        let described = band.maximum == nil ? "a GPA of \(band.label)" : "a GPA in the \(band.label) band"
+        return VStack(alignment: .leading, spacing: 2) {
+            Text("\(CollegeGPAStanding.percent(band.percent))%")
+                .font(.figure(.title3, weight: .semibold))
+                .foregroundStyle(Color.ink)
+            Text("of \(profile.population.classDescription) had \(described), the band holding your estimate")
+                .font(.body)
+                .foregroundStyle(Color.ink)
+            Text("This describes that class, not your percentile or rank.")
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .padding(.top, 2)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("colleges.classShare")
+    }
+
