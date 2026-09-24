@@ -1704,3 +1704,120 @@ struct CollegeProfileDetailView: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// "You: 3 completed, 1 current." Muted when the plan meets the subject;
+    /// ink with the gap in words when it doesn't. Nothing where credits are
+    /// unknown, so an unchecked subject never reads as unmet.
+    private func preparationStatus(_ line: CollegePreparationLine) -> (text: String, hasGap: Bool)? {
+        guard let row = line.personal else { return nil }
+        var parts: [String] = []
+        if let earned = row.earned { parts.append("\(CollegeFormat.units(earned)) completed") }
+        if let current = row.current, current > 0 { parts.append("\(CollegeFormat.units(current)) current") }
+        guard !parts.isEmpty else { return nil }
+        let text = "You: \(parts.joined(separator: ", "))."
+        if let remaining = row.remaining, remaining > 0 {
+            return ("\(text) \(CollegeFormat.units(remaining)) more to reach \(CollegeFormat.units(row.units)).", true)
+        }
+        return (text, false)
+    }
+
+    // MARK: Published class data
+
+    /// Each group of figures keeps its own cohort and source; SAT, ACT and
+    /// admission counts can describe different students. The disclosure's
+    /// note says what all of it is.
+    private func published(_ result: CollegeGPAResult?, details: CollegeAdmissionsDetails?) -> some View {
+        let comparable = profile.comparesWithEstimate ? result : nil
+        let tests = testFacts(details)
+        let admission = admissionFacts(details)
+        let guidance = guidanceText(details)
+        let detailsNote = details?.publicationNote.flatMap { $0 == profile.publicationNote ? nil : $0 }
+        return GPADisclosure(title: "Published class", note: "Past class, not a cutoff.", identifier: "colleges.published") {
+            VStack(alignment: .leading, spacing: 0) {
+                GroupLabel("GPA")
+                if profile.showsGPAFigures {
+                    gpaFigures(comparable)
+                } else {
+                    EmptyStateView(
+                        title: "No verified GPA figures here",
+                        message: guidance == nil ? (profile.publicationNote ?? "The linked source has no class GPA figures.") : nil
+                    )
+                    .accessibilityIdentifier("colleges.noPublished")
+                }
+                if let guidance {
+                    // Already inside a disclosure, so the guidance reads
+                    // openly under its own label.
+                    let cohort = profile.cohort.localizedCaseInsensitiveContains("guidance") ? nil : profile.cohort
+                    GroupLabel(cohort.map { "Admissions guidance, \(CollegeFormat.midSentence($0))" } ?? "Admissions guidance")
+                        .padding(.top, 12)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(guidance)
+                        if !profile.showsGPAFigures, let note = profile.publicationNote { Text(note) }
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("colleges.guidance")
+                }
+
+                if details != nil {
+                    GroupLabel("Tests")
+                        .padding(.top, 20)
+                    if tests.isEmpty {
+                        Text("No verified test-score figures here.")
+                            .font(.subheadline)
+                            .foregroundStyle(Color.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.vertical, 8)
+                            .accessibilityIdentifier("colleges.noTests")
+                    } else {
+                        factRuns(tests, subject: "Test score")
+                            .accessibilityIdentifier("colleges.tests")
+                    }
+                }
+
+                if !admission.isEmpty {
+                    GroupLabel("Admission")
+                        .padding(.top, 20)
+                    factRuns(admission, subject: "Admission")
+                        .accessibilityIdentifier("colleges.admission")
+                }
+
+                if let detailsNote {
+                    footnote(detailsNote)
+                }
+            }
+        }
+    }
+
+    /// The college's published GPA figures, their source caption, and any
+    /// note that changes what they mean. The band holding a comparable
+    /// estimate is marked; its share leads under You and the college.
+    @ViewBuilder
+    private func gpaFigures(_ comparable: CollegeGPAResult?) -> some View {
+        if let quartiles = profile.quartiles {
+            quartileFigures(quartiles)
+        }
+        if !profile.bands.isEmpty {
+            bandFigures(highlighting: comparable?.band?.label)
+        }
+        if let mean = profile.reportedMean {
+            if profile.quartiles != nil || !profile.bands.isEmpty { InsetDivider() }
+            figureRow("Average", value: CollegeProfile.mean(mean))
+        }
+        ProvenanceLink(caption: "\(profile.publishedGPAScale.title), \(profile.cohortDescription)",
+                       url: profile.sourceURL, subject: "GPA")
+            .accessibilityIdentifier("colleges.publishedScale")
+        if profile.publishedGPAScale == .unspecified, profile.publicationNote == nil {
+            footnote("The source doesn't say whether these GPAs are weighted.")
+        }
+        if let note = profile.publicationNote {
+            footnote(note)
+                .accessibilityIdentifier("colleges.publicationNote")
+        }
+        if let reporting = profile.reportingPercent {
+            footnote("\(CollegeGPAStanding.percent(reporting))% of enrolled first-year students reported a GPA.")
+        }
+    }
+
