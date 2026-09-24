@@ -1598,3 +1598,109 @@ struct CollegeProfileDetailView: View {
         .accessibilityIdentifier("colleges.result")
     }
 
+    private func rigorRow(_ rigor: CollegeRigorCount) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Rigor")
+                .font(.body)
+                .foregroundStyle(Color.ink)
+            Text(rigor.text.map { "\($0) completed." } ?? "No AP or Honors semesters completed.")
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("colleges.rigor")
+    }
+
+    // MARK: Preparation
+
+    /// The published subjects, with local credits once courses load.
+    private func preparationLines(_ details: CollegeAdmissionsDetails?,
+                                  rows: [CollegePreparationRow]?) -> [CollegePreparationLine] {
+        if let rows {
+            return rows.map {
+                CollegePreparationLine(id: $0.id, subject: $0.subject, units: $0.units, kind: $0.kind,
+                                       note: $0.note, sourceURL: $0.sourceURL, personal: $0)
+            }
+        }
+        guard let details else { return [] }
+        return details.preparation.enumerated().map { index, requirement in
+            CollegePreparationLine(id: "\(details.id)|\(index)", subject: requirement.subject, units: requirement.units,
+                                   kind: requirement.kind, note: requirement.note, sourceURL: requirement.sourceURL,
+                                   personal: nil)
+        }
+    }
+
+    /// One row per subject. A reason several subjects share is said once
+    /// beneath them; one subject's own reason stays on its row.
+    private func preparationBlock(_ lines: [CollegePreparationLine], scope: String?) -> some View {
+        let sources = lines.map(\.sourceURL).reduce(into: [URL]()) { if !$0.contains($1) { $0.append($1) } }
+        return VStack(alignment: .leading, spacing: 0) {
+            GroupLabel("Preparation")
+            if let scope { footnote(scope).padding(.vertical, 8) }
+            ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
+                if index > 0 { InsetDivider() }
+                preparationRow(line)
+            }
+            footnote("Local credit estimates. Current classes assume passing.")
+            GPADisclosure(title: "Course eligibility and notes", identifier: "colleges.preparationNotes") {
+                ForEach(lines) { line in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(line.subject).font(.footnote.weight(.semibold))
+                        if !line.note.isEmpty { footnote(line.note) }
+                        if let reason = line.personal?.availabilityReason { footnote(reason) }
+                    }
+                    .padding(.vertical, 8)
+                }
+            }
+            ForEach(sources, id: \.self) { url in
+                ProvenanceLink(caption: sources.count == 1 ? "Preparation guidelines" : "Preparation guidelines, \(url.host() ?? "source")",
+                               url: url, subject: "Preparation")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("colleges.preparation")
+    }
+
+    private func preparationRow(_ line: CollegePreparationLine) -> some View {
+        let requirement = "\(CollegeFormat.units(line.units)) \(line.kind == .required ? "required" : "recommended")"
+        let status = preparationStatus(line)
+        return VStack(alignment: .leading, spacing: 2) {
+            if dynamicTypeSize.isAccessibilitySize {
+                Text(line.subject)
+                    .font(.body)
+                Text(requirement)
+                    .font(.figure(.subheadline, weight: .regular))
+                    .foregroundStyle(Color.muted)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(line.subject)
+                        .font(.body)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(requirement)
+                        .font(.figure(.subheadline, weight: .regular))
+                        .foregroundStyle(Color.muted)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+            }
+            if let status {
+                Text(status.text)
+                    .font(.footnote)
+                    .foregroundStyle(status.hasGap ? Color.ink : Color.muted)
+            }
+            if line.personal != nil, line.personal?.remaining == nil {
+                Text("Course eligibility needs review")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+            }
+        }
+        .foregroundStyle(Color.ink)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
