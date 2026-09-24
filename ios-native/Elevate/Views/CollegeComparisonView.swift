@@ -1267,3 +1267,94 @@ private struct CollegeSearchToolbarButton: View {
     }
 }
 
+/// A sourced caption under a group of figures: who and when they describe,
+/// opening the primary source. One per run of figures sharing a source.
+private struct ProvenanceLink: View {
+    var caption: String
+    var url: URL
+    var subject: String
+
+    var body: some View {
+        Link(destination: url) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(caption)
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Image(systemName: "arrow.up.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.faint)
+                    .accessibilityHidden(true)
+            }
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(subject) source")
+        .accessibilityValue(caption)
+        .accessibilityHint("Opens \(url.host() ?? "the source") in Safari")
+        .accessibilityAddTraits(.isLink)
+    }
+}
+
+/// One published figure and who it describes.
+fileprivate struct CollegeFact: Identifiable {
+    struct Source: Hashable {
+        var cohort: String
+        var population: String
+        var url: URL
+        var caption: String { CollegeFormat.provenance(cohort: cohort, population: population) }
+    }
+
+    var id: String
+    var label: String
+    var value: String
+    var detail: String? = nil
+    var source: Source
+
+    /// Consecutive figures sharing a source, so each run takes one caption.
+    static func runs(_ facts: [CollegeFact]) -> [[CollegeFact]] {
+        var runs: [[CollegeFact]] = []
+        for fact in facts {
+            if let last = runs.last?.last, last.source == fact.source {
+                runs[runs.count - 1].append(fact)
+            } else {
+                runs.append([fact])
+            }
+        }
+        return runs
+    }
+}
+
+// MARK: - Detail
+
+/// A published preparation subject, with the student's local credits once
+/// courses load.
+fileprivate struct CollegePreparationLine: Identifiable {
+    var id: String
+    var subject: String
+    var units: Double
+    var kind: CollegePreparationKind
+    var note: String
+    var sourceURL: URL
+    var personal: CollegePreparationRow?
+}
+
+/// One college. "You and [college]" leads with the same comparison as its
+/// My Colleges row: the student's estimate on its published method, or
+/// Elevate's generic 4.0 reference beside unweighted figures, placed in the
+/// published range only on a matching scale, with that range's source; then
+/// rigor and subject preparation. The published class, how the college
+/// reads GPA, every record used and the sources sit behind disclosures.
+struct CollegeProfileDetailView: View {
+    var profile: CollegeProfile
+
+    @Environment(AppStore.self) private var store
+    @Environment(AppRouter.self) private var router
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var selectionChanges = 0
+    @State private var selectionFailed = false
+
