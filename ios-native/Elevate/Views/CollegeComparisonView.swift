@@ -1076,3 +1076,95 @@ private struct CollegePickerSheet: View {
         }
     }
 
+    @ViewBuilder
+    private func group(_ title: String, _ profiles: [CollegeProfile], isFirst: Bool) -> some View {
+        GroupLabel(title)
+            .padding(.top, isFirst ? 8 : 20)
+        ForEach(Array(profiles.enumerated()), id: \.element.id) { index, profile in
+            if index > 0 { InsetDivider() }
+            row(profile)
+        }
+    }
+
+    private func row(_ profile: CollegeProfile) -> some View {
+        let isSelected = planning.selectedCollegeIDs.contains(profile.id)
+        let location = profile.admissions?.location
+        return ChoiceRow(title: profile.name, note: (location?.isEmpty ?? true) ? nil : location,
+                         isSelected: isSelected) {
+            toggle(profile.id, selected: !isSelected)
+        }
+        .disabled(!canSave)
+        .accessibilityIdentifier("colleges.picker.row.\(profile.id)")
+    }
+
+    private func toggle(_ id: String, selected: Bool) {
+        guard canSave else { dismiss(); return }
+        if planning.setCollegeSelected(selected, collegeID: id, expectedAccountScope: originScope) {
+            changes += 1
+        }
+    }
+}
+
+// MARK: - Row
+
+/// What one list row says: a lead published figure, where the college is
+/// and how many it admitted, and at most one personal line.
+fileprivate struct CollegeRowContent {
+    enum Personal {
+        case empty
+        case loading
+        case line(String)
+    }
+
+    var figure: (label: String, value: String)?
+    var context: String
+    var personal: Personal
+
+    @MainActor init(profile: CollegeProfile, input: CollegeEstimateInput, creditOverrides: [TranscriptCreditOverride] = []) {
+        let details = profile.admissions
+        figure = profile.headlineFigure(details)
+
+        var parts: [String] = []
+        if let location = details?.location, !location.isEmpty { parts.append(location) }
+        // A resolved rate is published or exact; approximate counts give none.
+        if let rate = details?.acceptance?.resolvedRatePercent {
+            parts.append("Admitted \(CollegeFormat.percent(rate))")
+        }
+        context = parts.isEmpty ? profile.rowDescription : parts.joined(separator: ". ")
+
+        // Only a placed GPA or a college's own estimate earns the line; the
+        // same 4.0 reference on every row would say nothing new.
+        let placesReference = profile.comparesWithReference && profile.quartiles != nil
+        if input.isLoading, profile.method.hasPublishedCalculation || placesReference {
+            personal = .loading
+            return
+        }
+        if profile.method.hasPublishedCalculation,
+           let result = input.result(for: profile), let gpa = CollegePersonalGPA.estimate(result) {
+            personal = .line(gpa.rowLine(profile))
+        } else if placesReference, let report = input.reference(),
+                  let gpa = CollegePersonalGPA.reference(report, profile: profile), gpa.position != nil {
+            personal = .line(gpa.rowLine(profile))
+        } else if let rows = input.preparation(details, creditOverrides: creditOverrides), let summary = CollegePreparationSummary(rows) {
+            personal = .line(summary.text)
+        } else {
+            personal = .empty
+        }
+    }
+
+    var spoken: String {
+        var parts = [context]
+        if let figure { parts.append("\(figure.label), \(figure.value)") }
+        if case .line(let line) = personal { parts.append(line) }
+        return parts.joined(separator: ". ")
+    }
+}
+
+/// A college's name and lead published figure, where it is and how many it
+/// admitted, and one personal line where there's something to say. Opens
+/// the profile by route, or through `onOpen` from Search.
+struct CollegeProfileRow: View {
+    var profile: CollegeProfile
+    var input: CollegeEstimateInput
+    var onOpen: (() -> Void)? = nil
+
