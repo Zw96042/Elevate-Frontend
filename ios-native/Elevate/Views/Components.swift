@@ -115,6 +115,98 @@ private struct VisibleRefreshModifier: ViewModifier {
         }
     }
 
+    /// The system control's callback: its spinner stays until the owned
+    /// refresh, or one already running, finishes.
+    @MainActor
+    private func performRefresh() async {
+        startRefresh()
+        await refreshTask?.value
+    }
+}
+
+/// How far a deliberate pull has gone: a ring that closes at the threshold
+/// and turns from muted to ink once letting go will refresh.
+private struct PullProgressRing: View {
+    var progress: CGFloat
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.rule, lineWidth: 2)
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(progress >= 1 ? Color.ink : Color.muted, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .padding(2)
+    }
+}
+
+/// Follows the enclosing scroll view's own pan as an added target, without
+/// replacing its delegate or competing with its recognizers. Only a fresh
+/// pull from the resting top can overscroll there; returning from content
+/// stops at the boundary while preserving normal bottom bounce.
+private struct DeliberatePullObserver: UIViewRepresentable {
+    var isEnabled: Bool
+    var threshold: CGFloat
+    var onPull: (CGFloat) -> Void
+    var onRelease: (Bool) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> ProbeView {
+        let view = ProbeView()
+        view.coordinator = context.coordinator
+        return view
+    }
+
+    func updateUIView(_ view: ProbeView, context: Context) {
+        context.coordinator.threshold = threshold
+        context.coordinator.onPull = onPull
+        context.coordinator.onRelease = onRelease
+        view.setSearchEnabled(isEnabled)
+    }
+
+    static func dismantleUIView(_ view: ProbeView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    /// An invisible view behind the scroll view. It looks for that scroll
+    /// view only while unattached after joining a window, never per render.
+    final class ProbeView: UIView {
+        weak var coordinator: Coordinator?
+        private var searchesLeft = 0
+        private var searchEnabled = false
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            backgroundColor = .clear
+            isUserInteractionEnabled = false
+            isAccessibilityElement = false
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) is not supported")
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window == nil {
+                coordinator?.detach()
+            } else if searchEnabled {
+                searchesLeft = 8
+                DispatchQueue.main.async { [weak self] in self?.attachIfNeeded() }
+            }
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            attachIfNeeded()
+        }
+
 struct RowPressStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
