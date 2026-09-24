@@ -108,3 +108,64 @@ struct CollegeSearchView: View {
         .background(Color.appBackground)
     }
 
+    // MARK: - Page
+
+    private var page: some View {
+        let input = CollegeEstimateInput(store)
+        let search = trimmedQuery
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if search.isEmpty {
+                    EmptyStateView(
+                        title: "Search \(CollegeProfileCatalog.profiles.count) colleges",
+                        message: "Names and common abbreviations, like UCLA or UIUC. Published figures don't need your grades."
+                    )
+                    .accessibilityIdentifier("colleges.search.prompt")
+                } else {
+                    // Matching is local and alphabetical; estimates are
+                    // calculated only for rows on screen.
+                    let results = CollegeProfileCatalog.search(search)
+                    if results.isEmpty {
+                        noResults(search)
+                    } else {
+                        GroupLabel("\(results.count) \(results.count == 1 ? "match" : "matches")")
+                            .padding(.top, 8)
+                            .accessibilityIdentifier("colleges.count")
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(results.enumerated()), id: \.element.id) { index, profile in
+                                if index > 0 { InsetDivider() }
+                                CollegeProfileRow(profile: profile, input: input) { open(profile) }
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, Metrics.page)
+            .padding(.bottom, 24)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("colleges.search")
+        }
+        .scrollDismissesKeyboard(.immediately)
+    }
+
+    private func noResults(_ search: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            EmptyStateView(
+                title: "No colleges found",
+                message: "No college name or abbreviation matches “\(search)”. Profiles are available for \(CollegeProfileCatalog.profiles.count) colleges."
+            )
+            .accessibilityIdentifier("colleges.search.empty")
+            Button("Clear search") {
+                router.collegeQuery = ""
+                if usesOwnField { fieldFocused = true }
+            }
+            .buttonStyle(ActionTextButtonStyle())
+            .accessibilityIdentifier("colleges.search.clear")
+        }
+    }
+
+    private func open(_ profile: CollegeProfile) {
+        fieldFocused = false
+        router.showCollege(profile.id)
+    }
+}
