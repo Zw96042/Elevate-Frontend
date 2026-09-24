@@ -775,3 +775,100 @@ struct CollegeComparisonView: View {
         .accessibilityIdentifier("colleges.selected.\(id)")
     }
 
+    private var chooseRow: some View {
+        Button { openPicker() } label: {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "plus")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.themeAccent)
+                    .accessibilityHidden(true)
+                Text("Add or remove colleges")
+                    .font(.body)
+                    .foregroundStyle(Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityIdentifier("colleges.choose.list")
+    }
+
+    private var converterRow: some View {
+        NavigationLink(value: CoursesRoute.gpaConverter) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("GPA converter")
+                        .font(.body)
+                        .foregroundStyle(Color.ink)
+                    Text("Generic unweighted and weighted, by year")
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                }
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                RowChevron()
+            }
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("colleges.summary.converter")
+    }
+
+    /// What the list does and doesn't say, behind one row. Its note keeps
+    /// the admissions limit in view.
+    private var about: some View {
+        GPADisclosure(title: "About these comparisons", note: "Past classes, not chances.",
+                      identifier: "colleges.about") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Figures describe a past class, each labeled with its cohort and source. A range isn't a cutoff.")
+                Text("A college-specific estimate appears only where the college publishes its GPA method. Elsewhere, Elevate's generic 4.0 reference is placed only against unweighted figures; it's never the college's calculation or an official GPA.")
+                Text("Estimates use completed semester grades only. Current classes and What-if changes aren't included.")
+                Text("Your colleges are saved with your account on this iPhone.")
+            }
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+// MARK: - Chosen college row
+
+/// One chosen college, led by the student's own GPA as that college reads
+/// it, then where it sits against the published figures and who they
+/// describe. Opens the profile; Remove is in the context menu and a
+/// VoiceOver action.
+private struct CollegeSelectedRow: View {
+    var profile: CollegeProfile
+    var input: CollegeEstimateInput
+    var creditOverrides: [TranscriptCreditOverride]
+    var onRemove: () -> Void
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// The row's second line: a GPA, why it's missing, or, without grades,
+    /// the college's own lead figure.
+    private struct LeadFigure {
+        var label: String
+        var value: String
+        var isMuted: Bool
+        var spoken: String
+    }
+
+    var body: some View {
+        let comparison = CollegeComparison(profile: profile, input: input)
+        let figure = leadFigure(comparison)
+        let cohort = comparison.quotesPublishedFigure ? profile.cohortDescription : nil
+        let preparation = input.preparation(profile.admissions, creditOverrides: creditOverrides)
+            .flatMap(CollegePreparationSummary.init)?.text
+        let isLoading: Bool = { if case .loading = comparison.lead { return true }; return false }()
+        let spoken = isLoading ? "Loading your GPA"
+            : ([figure?.spoken, comparison.standing, cohort, preparation].compactMap { $0 }).joined(separator: ". ")
+
