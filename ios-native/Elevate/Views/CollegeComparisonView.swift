@@ -1468,3 +1468,133 @@ struct CollegeProfileDetailView: View {
         .accessibilityIdentifier("colleges.you")
     }
 
+    /// The same comparison as the college's My Colleges row. A college with
+    /// nothing comparable says why, whatever the state of the grades.
+    @ViewBuilder
+    private func yourGPA(_ input: CollegeEstimateInput, comparison: CollegeComparison,
+                         result: CollegeGPAResult?) -> some View {
+        switch input {
+        case .loading:
+            if case .notCompared = comparison.lead {
+                notCompared(comparison)
+            } else {
+                SkeletonRow(lines: [SkeletonLine(.body, 16), SkeletonLine(.footnote, 26)],
+                            trailing: [SkeletonLine(.figure(.title2), 4)])
+                    .loadingPlaceholder("Loading your GPA")
+            }
+        case .failed(let error):
+            InlineErrorState(title: "Couldn't load courses", message: error) {
+                await store.refreshCourses(force: true)
+            }
+            .padding(.vertical, 8)
+            .accessibilityIdentifier("colleges.coursesError")
+        case .unavailable:
+            EmptyStateView(
+                title: "Your grades aren't loaded",
+                message: "Refresh to see your GPA here. Published figures below don't depend on it."
+            )
+            .accessibilityIdentifier("colleges.unavailable")
+        case .loaded:
+            switch comparison.lead {
+            case .gpa(let gpa, let title):
+                if !gpa.isReference, let result {
+                    gpaRow(gpa, title: title, lines: estimateLines(comparison, result: result))
+                } else {
+                    gpaRow(gpa, title: title, lines: referenceLines(comparison, gpa: gpa))
+                }
+                if comparison.quotesPublishedFigure {
+                    // The range or average the GPA is read against, with
+                    // its cohort and source, right where it's used.
+                    ProvenanceLink(caption: "\(profile.publishedGPAScale.title), \(profile.cohortDescription)",
+                                   url: profile.sourceURL, subject: "GPA comparison")
+                        .accessibilityIdentifier("colleges.comparisonSource")
+                }
+                if !gpa.isReference, let band = result?.band {
+                    classShare(band)
+                }
+            case .withheld:
+                EmptyStateView(title: "Estimate unavailable",
+                               message: "\(comparison.standing ?? "") Details are under How \(profile.name) reads GPA.")
+                    .accessibilityIdentifier("colleges.estimateUnavailable")
+            case .notYet:
+                EmptyStateView(
+                    title: "No completed grades",
+                    message: profile.method.hasPublishedCalculation
+                        ? "This estimate uses semesters that have ended in \(profile.method.yearsLabel.lowercased()). None are posted yet."
+                        : "Your generic 4.0 reference appears after a semester ends and its grades are posted."
+                )
+                .accessibilityIdentifier("colleges.empty")
+            case .notCompared:
+                notCompared(comparison)
+            case .loading, .gradesMissing:
+                EmptyView()
+            }
+        }
+    }
+
+    private func notCompared(_ comparison: CollegeComparison) -> some View {
+        EmptyStateView(title: "Your GPA isn't compared here", message: comparison.standing)
+            .accessibilityIdentifier("colleges.notCompared")
+    }
+
+    /// Placement first, since it's what the number means here; then how
+    /// the method reads GPA.
+    private func estimateLines(_ comparison: CollegeComparison, result: CollegeGPAResult) -> [(text: String, isEmphasized: Bool)] {
+        var lines: [(text: String, isEmphasized: Bool)] = []
+        if let standing = comparison.standing { lines.append((standing, comparison.isPlaced)) }
+        if let summary = profile.methodSummary { lines.append((summary, false)) }
+        if result.isAtUnweightedCeiling { lines.append(("4.00 is this scale's ceiling.", false)) }
+        return lines
+    }
+
+    /// Its title already names it Elevate's generic reference, never the
+    /// college's calculation.
+    private func referenceLines(_ comparison: CollegeComparison, gpa: CollegePersonalGPA) -> [(text: String, isEmphasized: Bool)] {
+        var lines: [(text: String, isEmphasized: Bool)] = []
+        if let standing = comparison.standing { lines.append((standing, comparison.isPlaced)) }
+        if gpa.value == 4 { lines.append(("4.00 is this scale's ceiling.", false)) }
+        return lines
+    }
+
+    private func gpaRow(_ gpa: CollegePersonalGPA, title: String,
+                        lines: [(text: String, isEmphasized: Bool)]) -> some View {
+        let value = HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(gpa.display)
+                .font(.figure(.title2))
+                .foregroundStyle(Color.ink)
+            Text("of \(GradeFormat.gpa(gpa.maximum))")
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+        }
+        .lineLimit(1)
+        .fixedSize()
+        return VStack(alignment: .leading, spacing: 2) {
+            if dynamicTypeSize.isAccessibilitySize {
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(Color.ink)
+                value
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(title)
+                        .font(.body)
+                        .foregroundStyle(Color.ink)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    value
+                }
+            }
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                Text(line.text)
+                    .font(.footnote)
+                    .foregroundStyle(line.isEmphasized ? Color.ink : Color.muted)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue((["\(gpa.display) of \(GradeFormat.gpa(gpa.maximum))"] + lines.map(\.text)).joined(separator: ". "))
+        .accessibilityIdentifier("colleges.result")
+    }
+
