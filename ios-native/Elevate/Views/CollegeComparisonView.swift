@@ -2025,3 +2025,100 @@ struct CollegeProfileDetailView: View {
         .accessibilityIdentifier(isYours ? "colleges.band.yours" : "colleges.band")
     }
 
+    private var yoursLabel: some View {
+        Text("Your estimate")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(Color.ink)
+    }
+
+    // MARK: How the college reads GPA
+
+    /// The method, the college's own GPA policy facts and every record used,
+    /// collapsed. A college without a published formula says so in the
+    /// disclosure's note.
+    private func method(_ result: CollegeGPAResult?, reference: GPAConversionReport?,
+                        details: CollegeAdmissionsDetails?) -> some View {
+        let hasMethod = profile.method.hasPublishedCalculation
+        let records: [GPAConversionRecord] = hasMethod
+            ? (result?.value != nil ? result?.records ?? [] : [])
+            : reference?.includedRecords ?? []
+        let skipped = GPAConversionInputs.notConverted(hasMethod ? result?.skipped ?? [] : reference?.skippedRecords ?? [])
+        let facts = details?.gpaPolicyFacts ?? []
+        let factSources = facts.map(\.sourceURL).reduce(into: [URL]()) { if !$0.contains($1) { $0.append($1) } }
+        return VStack(alignment: .leading, spacing: 0) {
+            GPADisclosure(title: "How \(profile.name) reads GPA",
+                          note: hasMethod ? profile.method.title : "Generic 4.0 reference. Formula not verified.",
+                          identifier: "colleges.calculation") {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(facts.enumerated()), id: \.offset) { _, fact in
+                        Text(fact.text)
+                    }
+                    ForEach(factSources, id: \.self) { url in
+                        ProvenanceLink(caption: factSources.count == 1 ? "GPA policy source" : "GPA policy, \(url.host() ?? "source")",
+                                       url: url, subject: "GPA policy")
+                    }
+                    if hasMethod {
+                        Text(profile.method.explanation)
+                        ForEach(Array((result?.calculationNotes ?? []).enumerated()), id: \.offset) { _, note in
+                            Text(note)
+                        }
+                        if result?.value != nil {
+                            Text(countsText(included: records.count, skipped: skipped))
+                        }
+                    } else {
+                        Text("No verified admissions GPA formula is available here. The 4.0 reference converts each completed semester grade (90 and above is 4, then 3, 2, 1 and 0 by tens) with no AP or Honors bonus, counting every semester equally. It's placed in a published range only when that range is unweighted, using the full value before display rounding.")
+                    }
+                }
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("colleges.calculationNotes")
+            }
+            if !records.isEmpty {
+                InsetDivider()
+                GPADisclosure(title: "Semester grades used", note: GPAConversionInputs.yearScope(records),
+                              count: records.count, identifier: "colleges.records") {
+                    recordList(records) { record in hasMethod ? result?.bonus(record) : nil }
+                }
+            }
+            if hasMethod, let omitted = result?.omittedRecords, !omitted.isEmpty {
+                InsetDivider()
+                GPADisclosure(title: "Outside this method", note: "Courses it doesn't count or Elevate can't place",
+                              count: omitted.count, identifier: "colleges.omitted") {
+                    omittedList(omitted)
+                }
+            }
+            if !skipped.isEmpty {
+                InsetDivider()
+                GPADisclosure(title: "Not counted", note: hasMethod ? "Kept out of this estimate" : "Kept out of the reference",
+                              count: skipped.count, identifier: "colleges.skipped") {
+                    GPANotConvertedList(skipped: skipped)
+                }
+            }
+        }
+    }
+
+    /// "Uses 16 completed semester grades from grades 10–11. 3 aren't counted."
+    private func countsText(included: Int, skipped: [GPAConversionSkippedRecord]) -> String {
+        var text = "Uses \(included) completed semester \(included == 1 ? "grade" : "grades") from \(profile.method.yearsLabel.lowercased())."
+        if !skipped.isEmpty {
+            text += " \(skipped.count) \(skipped.count == 1 ? "isn't" : "aren't") counted."
+        }
+        return text
+    }
+
+    private func recordList(_ records: [GPAConversionRecord], bonus: @escaping (GPAConversionRecord) -> Double?) -> some View {
+        let years = Array(Set(records.map(\.gradeYear))).sorted()
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(years.enumerated()), id: \.element) { index, year in
+                GroupLabel("Grade \(year)")
+                    .padding(.top, index == 0 ? 2 : 18)
+                let shown = records.filter { $0.gradeYear == year }
+                ForEach(Array(shown.enumerated()), id: \.element.id) { row, record in
+                    if row > 0 { InsetDivider() }
+                    GPAConversionRecordRow(record: record, note: note(record, bonus: bonus(record)))
+                }
+            }
+        }
+    }
+
