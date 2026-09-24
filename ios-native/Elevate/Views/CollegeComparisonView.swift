@@ -972,3 +972,107 @@ private struct CollegeSelectedRow: View {
     }
 }
 
+// MARK: - Picker
+
+/// Choosing colleges for My Colleges: the whole catalog on its own search
+/// field, separate from Search's college query. Each tap saves at once.
+/// It opens for one account and saves only for that account; switching
+/// accounts closes it.
+private struct CollegePickerSheet: View {
+    var originScope: String
+
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var themeManager = ThemeManager.shared
+    @State private var query = ""
+    /// The choices when the sheet opened, so rows don't move as they're tapped.
+    @State private var openedWith: [String]?
+    @State private var changes = 0
+
+    private var planning: StudentPlanningStore { store.planning }
+
+    private var canSave: Bool {
+        store.localAccountScope == originScope && planning.accountScope == originScope
+            && !planning.collegeSelectionUnavailable
+    }
+
+    private var queryBinding: Binding<String> {
+        Binding(get: { query }, set: { query = String($0.prefix(AppRouter.searchQueryLimit)) })
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    content
+                }
+                .padding(.horizontal, Metrics.page)
+                .padding(.bottom, 24)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("colleges.picker")
+            }
+            .softScrollEdges()
+            .scrollDismissesKeyboard(.immediately)
+            .background(Color.appBackground.ignoresSafeArea())
+            .navigationTitle("Choose Colleges")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: queryBinding, placement: .navigationBarDrawer(displayMode: .always),
+                        prompt: "College name or abbreviation")
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .accessibilityIdentifier("colleges.picker.done")
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Color.appBackground)
+        .tint(Color.themeAccent)
+        .foregroundStyle(Color.ink)
+        .preferredColorScheme(themeManager.appearance.colorScheme)
+        .sensoryFeedback(.selection, trigger: changes)
+        .onAppear {
+            guard canSave else { dismiss(); return }
+            if openedWith == nil { openedWith = planning.selectedCollegeIDs }
+        }
+        .onChange(of: store.accountRevision) { _, _ in dismiss() }
+        .onChange(of: store.localAccountScope) { _, _ in dismiss() }
+        .onChange(of: planning.accountScope) { _, _ in dismiss() }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if planning.collegeSelectionError != nil {
+            Text("Couldn't save your colleges. Try again.")
+                .font(.footnote)
+                .foregroundStyle(Color.gradeAttention)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
+                .accessibilityIdentifier("colleges.picker.error")
+        }
+        if search.isEmpty {
+            let chosen = (openedWith ?? []).compactMap { CollegeProfileCatalog.byID[$0] }
+            let chosenIDs = Set(chosen.map(\.id))
+            if !chosen.isEmpty {
+                group("Chosen", chosen, isFirst: true)
+            }
+            group(chosen.isEmpty ? "All colleges" : "Other colleges",
+                  CollegeProfileCatalog.profiles.filter { !chosenIDs.contains($0.id) }, isFirst: chosen.isEmpty)
+        } else {
+            let results = CollegeProfileCatalog.search(search)
+            if results.isEmpty {
+                EmptyStateView(
+                    title: "No colleges found",
+                    message: "No college name or abbreviation matches “\(search)”."
+                )
+                .accessibilityIdentifier("colleges.picker.empty")
+            } else {
+                group("\(results.count) \(results.count == 1 ? "match" : "matches")", results, isFirst: true)
+            }
+        }
+    }
+
