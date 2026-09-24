@@ -872,3 +872,103 @@ private struct CollegeSelectedRow: View {
         let spoken = isLoading ? "Loading your GPA"
             : ([figure?.spoken, comparison.standing, cohort, preparation].compactMap { $0 }).joined(separator: ". ")
 
+        NavigationLink(value: CoursesRoute.collegeProfile(profile.id)) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(profile.name)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(Color.ink)
+                    if isLoading {
+                        SkeletonText(.subheadline, length: 24)
+                            .padding(.top, 2)
+                        SkeletonText(.footnote, length: 30, tone: .secondary)
+                    } else {
+                        if let figure { lead(figure) }
+                        if let standing = comparison.standing {
+                            Text(standing)
+                                .font(.footnote)
+                                .foregroundStyle(comparison.isPlaced ? Color.ink : Color.muted)
+                        }
+                        if let cohort {
+                            Text(cohort)
+                                .font(.footnote)
+                                .foregroundStyle(Color.muted)
+                        }
+                    }
+                    if let preparation {
+                        Text(preparation)
+                            .font(.footnote)
+                            .foregroundStyle(Color.muted)
+                            .padding(.top, 2)
+                    }
+                }
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                RowChevron()
+            }
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(profile.name)
+        .accessibilityValue(spoken)
+        .accessibilityHint("Opens its profile")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(named: "Remove from My Colleges", onRemove)
+        .accessibilityIdentifier("colleges.selected.\(profile.id)")
+        .contextMenu {
+            Button(role: .destructive, action: onRemove) {
+                Label("Remove from My Colleges", systemImage: "minus.circle")
+            }
+        }
+    }
+
+    private func leadFigure(_ comparison: CollegeComparison) -> LeadFigure? {
+        switch comparison.lead {
+        case .gpa(let gpa, let title):
+            return LeadFigure(label: title, value: gpa.display, isMuted: false,
+                              spoken: "\(title), \(gpa.display) of \(GradeFormat.gpa(gpa.maximum))")
+        case .withheld(let title):
+            return LeadFigure(label: title, value: "Unavailable", isMuted: true, spoken: "\(title), unavailable")
+        case .notYet(let title):
+            return LeadFigure(label: title, value: "Not yet", isMuted: true, spoken: "\(title), not yet")
+        case .gradesMissing:
+            // Published figures don't wait on grades; the page says why
+            // the student's GPA is missing.
+            return profile.headlineFigure(profile.admissions).map {
+                LeadFigure(label: $0.label, value: $0.value, isMuted: true, spoken: "\($0.label), \($0.value)")
+            }
+        case .loading, .notCompared:
+            return nil
+        }
+    }
+
+    @ViewBuilder
+    private func lead(_ figure: LeadFigure) -> some View {
+        let tone = figure.isMuted ? Color.muted : Color.ink
+        if dynamicTypeSize.isAccessibilitySize {
+            Text(figure.label)
+                .font(.subheadline)
+                .foregroundStyle(tone)
+            Text(figure.value)
+                .font(.figure(.body))
+                .foregroundStyle(tone)
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(figure.label)
+                    .font(.subheadline)
+                    .foregroundStyle(tone)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(figure.value)
+                    .font(.figure(.body))
+                    .foregroundStyle(tone)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+        }
+    }
+}
+
