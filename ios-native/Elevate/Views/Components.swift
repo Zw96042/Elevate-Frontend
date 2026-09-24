@@ -503,6 +503,101 @@ enum Motion {
         reduceMotion ? nil : .timingCurve(0.4, 0, 0.2, 1, duration: 0.55)
     }
 
+    /// Content replaced in place, such as another month: a brief crossfade,
+    /// with anything that moves settling on the same curve. Nothing slides.
+    static func replace(_ reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .smooth(duration: 0.25)
+    }
+
+    /// A pressed control's scale, both ways: a critically damped spring that
+    /// starts from wherever the control is, so a quick second tap retargets.
+    static func press(_ reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 1)
+    }
+
+    /// A pressed fill or dim: shown at once on touch-down, settling back on
+    /// release instead of snapping off.
+    static func pressFeedback(_ reduceMotion: Bool, isPressed: Bool) -> Animation? {
+        isPressed ? nil : press(reduceMotion)
+    }
+
+    /// The scale of a pressed compact control. Rows never scale, and Reduce
+    /// Motion keeps every control at full size.
+    static func pressScale(_ reduceMotion: Bool, isPressed: Bool, to scale: CGFloat) -> CGFloat {
+        isPressed && !reduceMotion ? scale : 1
+    }
+
+    /// Runs a state change with the given animation, or immediately.
+    static func perform(_ animation: Animation?, _ change: () -> Void) {
+        if let animation {
+            withAnimation(animation, change)
+        } else {
+            change()
+        }
+    }
+}
+
+// MARK: - Typography
+//
+// SF Pro throughout, always from a Dynamic Type text style. Hierarchy comes
+// from size and a small set of weights: semibold for headings and controls,
+// medium for names and figures, regular for reading text, and light only for
+// the single large figure on a screen. Figures use tabular digits.
+
+extension Font {
+    /// Numbers set in SF Pro with tabular digits.
+    static func figure(_ style: Font.TextStyle, weight: Font.Weight = .medium) -> Font {
+        .system(style).weight(weight).monospacedDigit()
+    }
+
+    /// The one large figure on a screen. `size` should come from `@ScaledMetric`.
+    static func display(size: CGFloat) -> Font {
+        .system(size: size, weight: .light).monospacedDigit()
+    }
+}
+
+// MARK: - Grade formatting
+//
+// One set of number formats: compact grades in lists ("96", "93.5"), one
+// decimal where explicitly requested, up to two inside a course, two for GPA.
+
+enum GradeFormat {
+    /// "96" for whole numbers, "93.5" otherwise.
+    static func compact(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "—" }
+        if abs(value - value.rounded()) < 0.05 { return String(format: "%.0f", value.rounded()) }
+        return String(format: "%.1f", value)
+    }
+
+    static func oneDecimal(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "—" }
+        return String(format: "%.1f", value)
+    }
+
+    /// Course-detail display only; calculations and editing retain full precision.
+    static func upToTwoDecimals(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "—" }
+        let normalized = abs(value) < 0.005 ? 0 : value
+        return normalized.formatted(.number.precision(.fractionLength(0...2)).grouping(.never))
+    }
+
+    /// Course averages always show hundredths, including trailing zeros.
+    static func twoDecimals(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "—" }
+        let normalized = abs(value) < 0.005 ? 0 : value
+        return normalized.formatted(.number.precision(.fractionLength(2)).grouping(.never))
+    }
+
+    static func spokenCourseGrade(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "No grade" }
+        return "\(twoDecimals(value)) percent"
+    }
+
+    static func gpa(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "—" }
+        return String(format: "%.2f", value)
+    }
+
 struct RowPressStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
