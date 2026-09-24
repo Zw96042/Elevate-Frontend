@@ -598,6 +598,97 @@ enum GradeFormat {
         return String(format: "%.2f", value)
     }
 
+    static func spoken(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "No grade" }
+        return "\(compact(value)) percent"
+    }
+
+    /// "+0.42" / "−1.10" for a change between two values.
+    static func signedChange(_ value: Double, digits: Int = 2) -> String {
+        let magnitude = String(format: "%.\(digits)f", abs(value))
+        if abs(value) < pow(10, Double(-digits)) / 2 { return magnitude }
+        return (value > 0 ? "+" : "−") + magnitude
+    }
+}
+
+/// Band for a 0–100 grade, using the same thresholds as the assignment grade
+/// filter. Only failing grades change color; the number carries the meaning.
+enum GradeTier {
+    case strong, steady, caution, attention, none
+
+    init(_ score: Double?) {
+        guard let score, score.isFinite else { self = .none; return }
+        switch score {
+        case 80...: self = score >= 90 ? .strong : .steady
+        case 70..<80: self = .caution
+        default: self = .attention
+        }
+    }
+
+    @MainActor var textColor: Color {
+        switch self {
+        case .attention: return .gradeAttention
+        case .none: return .muted
+        default: return .ink
+        }
+    }
+}
+
+extension TermLabel {
+    var displayName: String {
+        switch self {
+        case .q1: return "Quarter 1"
+        case .q2: return "Quarter 2"
+        case .sm1: return "Semester 1"
+        case .q3: return "Quarter 3"
+        case .q4: return "Quarter 4"
+        case .sm2: return "Semester 2"
+        }
+    }
+
+    static let fallTerms: [TermLabel] = [.q1, .q2, .sm1]
+    static let springTerms: [TermLabel] = [.q3, .q4, .sm2]
+}
+
+enum UpdatedText {
+    /// "Updated 2:14 PM" today, otherwise "Updated Oct 1". Static text, no timers.
+    static func describe(_ date: Date) -> String {
+        "Updated \(short(date))"
+    }
+
+    /// "2:14 PM" today, otherwise "Oct 1".
+    static func short(_ date: Date) -> String {
+        if Calendar.current.isDateInToday(date) {
+            return date.formatted(date: .omitted, time: .shortened)
+        }
+        return date.formatted(.dateTime.month(.abbreviated).day())
+    }
+}
+
+// MARK: - Separators
+//
+// Content sits directly on the page. Rows are divided by hairlines that start
+// at the content edge they belong to. Nothing is framed: figures that add up
+// to a whole (the grade breakdown, the semester composition) are open rows
+// and side-by-side values too.
+
+/// A full-width hairline.
+struct Rule: View {
+    var color: Color?
+    @Environment(\.displayScale) private var displayScale
+
+    var body: some View {
+        Rectangle()
+            .fill(color ?? Color.rule)
+            .frame(height: 1 / max(1, displayScale))
+            .accessibilityHidden(true)
+    }
+}
+
+/// A hairline between list rows, starting at the row's text edge.
+struct InsetDivider: View {
+    var leading: CGFloat = 0
+
 struct RowPressStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
