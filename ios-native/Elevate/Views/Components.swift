@@ -300,6 +300,114 @@ private struct DeliberatePullObserver: UIViewRepresentable {
         private var offsetObservation: NSKeyValueObservation?
         private var isClampingOffset = false
 
+        private static let topTolerance: CGFloat = 2
+        /// A touch can stop UIKit deceleration before our recognizer sees it.
+        private static let restInterval: CFTimeInterval = 0.1
+
+        func isAttached(in window: UIWindow) -> Bool {
+            scrollView?.window === window
+        }
+
+        func attach(to scrollView: UIScrollView) {
+            guard scrollView !== self.scrollView else { return }
+            detach()
+            scrollView.panGestureRecognizer.addTarget(self, action: #selector(panChanged(_:)))
+            self.scrollView = scrollView
+            let observer = RefreshTouchOrigin { [weak self, weak scrollView] in
+                guard let self, let scrollView else { return }
+                self.touchBegan(in: scrollView)
+            }
+            scrollView.addGestureRecognizer(observer)
+            touchObserver = observer
+            offsetObservation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] scrollView, _ in
+                // UIKit offset changes arrive synchronously on the UI thread;
+                // deferring this clamp would expose a frame of overscroll.
+                MainActor.assumeIsolated { self?.enforceTopBoundary(in: scrollView) }
+            }
+        }
+
+        func detach() {
+            offsetObservation?.invalidate()
+            offsetObservation = nil
+            scrollView?.panGestureRecognizer.removeTarget(self, action: #selector(panChanged(_:)))
+            if let touchObserver { scrollView?.removeGestureRecognizer(touchObserver) }
+            touchObserver = nil
+            scrollView = nil
+            phase = .clamped
+            reported = 0
+            settleLimit = 0
+            lastMomentum = 0
+        }
+
+        private func touchBegan(in scrollView: UIScrollView) {
+            let overscroll = -(scrollView.contentOffset.y + scrollView.adjustedContentInset.top)
+            if overscroll > Self.topTolerance {
+                // Grabbing a returning pull must not snap it to the top or
+                // deepen it into a second refresh gesture.
+                phase = .settling
+                settleLimit = overscroll
+            } else {
+                let resting = !scrollView.isDecelerating
+                    && CACurrentMediaTime() - lastMomentum > Self.restInterval
+                phase = abs(overscroll) <= Self.topTolerance && resting ? .pulling : .clamped
+            }
+            reported = 0
+        }
+
+        private func enforceTopBoundary(in scrollView: UIScrollView) {
+            guard !isClampingOffset else { return }
+            let decelerating = scrollView.isDecelerating
+            if decelerating { lastMomentum = CACurrentMediaTime() }
+            // Leave layout, inset changes and programmatic scrolling alone.
+            guard scrollView.isTracking || decelerating else { return }
+            let top = -scrollView.adjustedContentInset.top
+            let overscroll = top - scrollView.contentOffset.y
+            switch phase {
+            case .pulling:
+                // Once this touch moves into content, reversing direction
+                // cannot turn it into a fresh pull from the top.
+                guard overscroll < -Self.topTolerance else { return }
+                phase = .clamped
+                if reported > 0 { reported = 0; onRelease(false) }
+            case .settling:
+                if overscroll <= 0 {
+                    phase = .clamped
+                } else if overscroll > settleLimit {
+                    clamp(scrollView, toY: top - settleLimit)
+                } else {
+                    settleLimit = overscroll
+                }
+            case .clamped:
+                if overscroll > 0 { clamp(scrollView, toY: top) }
+            }
+        }
+
+        private func clamp(_ scrollView: UIScrollView, toY y: CGFloat) {
+            isClampingOffset = true
+            scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: y), animated: false)
+            isClampingOffset = false
+        }
+
+        @objc private func panChanged(_ pan: UIPanGestureRecognizer) {
+            guard let scrollView, phase == .pulling else { return }
+            let overscroll = -(scrollView.contentOffset.y + scrollView.adjustedContentInset.top)
+            switch pan.state {
+            case .began:
+                reported = 0
+            case .changed:
+                let distance = max(overscroll, 0)
+                guard abs(distance - reported) >= 0.5 else { return }
+                reported = distance
+                onPull(distance)
+            case .ended, .cancelled, .failed:
+                phase = overscroll > 0 ? .settling : .clamped
+                settleLimit = max(overscroll, 0)
+                onRelease(pan.state == .ended && overscroll >= threshold)
+            default:
+                break
+            }
+        }
+
 struct RowPressStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
