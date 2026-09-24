@@ -207,6 +207,99 @@ private struct DeliberatePullObserver: UIViewRepresentable {
             attachIfNeeded()
         }
 
+        func setSearchEnabled(_ enabled: Bool) {
+            searchEnabled = enabled
+            guard enabled else {
+                searchesLeft = 0
+                coordinator?.detach()
+                return
+            }
+            guard let window, coordinator?.isAttached(in: window) != true, searchesLeft == 0 else { return }
+            // Activation or uncovering can happen without moving this page to
+            // a new window. Start a fresh bounded search on that update.
+            searchesLeft = 8
+            DispatchQueue.main.async { [weak self] in self?.attachIfNeeded() }
+        }
+
+        private func attachIfNeeded() {
+            guard searchEnabled, let coordinator, let window, !bounds.isEmpty, searchesLeft > 0,
+                  !coordinator.isAttached(in: window) else { return }
+            searchesLeft -= 1
+            if let scrollView = enclosingScrollView() {
+                coordinator.attach(to: scrollView)
+            } else {
+                // SwiftUI may still be assembling the hierarchy.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.attachIfNeeded() }
+            }
+        }
+
+        /// The scroll view this probe sits behind: from the nearest ancestor
+        /// outward, the shallowest scroll view among its other subviews that
+        /// covers the probe's center. Use the page's own geometry: a sheet or
+        /// transition can cover it while this background view first attaches.
+        private func enclosingScrollView() -> UIScrollView? {
+            let center = convert(CGPoint(x: bounds.midX, y: bounds.midY), to: nil)
+            var child: UIView = self
+            var ancestor = superview
+            for _ in 0..<8 {
+                guard let current = ancestor else { return nil }
+                if let scrollView = current as? UIScrollView,
+                   Self.isVerticalInputSurface(scrollView, windowCenter: center) {
+                    return scrollView
+                }
+                if let match = Self.outermostScrollView(in: current, skipping: child, windowCenter: center) { return match }
+                // Stay inside the controller that owns this page. Other tabs
+                // can retain laid-out scroll views in the same window.
+                if current.next is UIViewController { return nil }
+                child = current
+                ancestor = current.superview
+            }
+            return nil
+        }
+
+        private static func outermostScrollView(
+            in root: UIView,
+            skipping skipped: UIView,
+            windowCenter: CGPoint
+        ) -> UIScrollView? {
+            var queue = root.subviews.filter { $0 !== skipped }
+            var index = 0
+            while index < queue.count, index < 256 {
+                let view = queue[index]
+                index += 1
+                if let scrollView = view as? UIScrollView,
+                   isVerticalInputSurface(scrollView, windowCenter: windowCenter) { return scrollView }
+                queue.append(contentsOf: view.subviews)
+            }
+            return nil
+        }
+
+        private static func isVerticalInputSurface(_ scrollView: UIScrollView, windowCenter: CGPoint) -> Bool {
+            guard !(scrollView is UITextView), scrollView.isScrollEnabled,
+                  scrollView.panGestureRecognizer.isEnabled, !scrollView.isPagingEnabled,
+                  scrollView.bounds.contains(scrollView.convert(windowCenter, from: nil)) else { return false }
+            return scrollView.alwaysBounceVertical
+                || scrollView.contentSize.height + scrollView.adjustedContentInset.top
+                    + scrollView.adjustedContentInset.bottom > scrollView.bounds.height + 1
+        }
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var threshold: CGFloat = 0
+        var onPull: (CGFloat) -> Void = { _ in }
+        var onRelease: (Bool) -> Void = { _ in }
+
+        private enum Phase { case clamped, pulling, settling }
+        private weak var scrollView: UIScrollView?
+        private var phase: Phase = .clamped
+        private var reported: CGFloat = 0
+        private var settleLimit: CGFloat = 0
+        private var lastMomentum: CFTimeInterval = 0
+        private var touchObserver: RefreshTouchOrigin?
+        private var offsetObservation: NSKeyValueObservation?
+        private var isClampingOffset = false
+
 struct RowPressStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
