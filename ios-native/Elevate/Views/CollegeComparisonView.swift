@@ -2122,3 +2122,114 @@ struct CollegeProfileDetailView: View {
         }
     }
 
+    private func omittedList(_ records: [GPAConversionRecord]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(records.enumerated()), id: \.element.id) { row, record in
+                if row > 0 { InsetDivider() }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(GPAConversionInputs.courseName(record.courseName))
+                        .font(.body)
+                        .foregroundStyle(Color.ink)
+                    Text(GPAConversionInputs.recordName(year: record.gradeYear, semester: record.semester))
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .padding(.vertical, 8)
+                .accessibilityElement(children: .combine)
+            }
+        }
+    }
+
+    /// The semester and source, and the method's bonus where it applied.
+    private func note(_ record: GPAConversionRecord, bonus: Double?) -> String {
+        var parts = [record.semester.displayName, record.source.rawValue]
+        if let bonus { parts.append("Bonus +\(GradeFormat.upToTwoDecimals(bonus))") }
+        return parts.joined(separator: ", ")
+    }
+
+    // MARK: Sources
+
+    /// Every primary source once, by what it supports, behind one row whose
+    /// note says when each set of figures was checked.
+    private func sources(_ details: CollegeAdmissionsDetails?) -> some View {
+        var links: [(title: String, url: URL)] = []
+        func add(_ title: String, _ url: URL?) {
+            guard let url, !links.contains(where: { $0.url == url }) else { return }
+            links.append((title, url))
+        }
+        add(profile.showsGPAFigures ? "Published GPA figures" : "GPA guidance", profile.sourceURL)
+        add("GPA definition", profile.definitionSourceURL)
+        add("Admissions figures", details?.sourceURL)
+        add("Admissions page", details?.admissionsURL)
+        add("Location", details?.locationSourceURL)
+        let shown = links
+        let checked: String
+        if let details, details.checkedOn != profile.verifiedOn {
+            checked = "GPA figures checked \(CollegeFormat.day(profile.verifiedOn)). Admissions figures checked \(CollegeFormat.day(details.checkedOn))."
+        } else {
+            checked = "Checked \(CollegeFormat.day(profile.verifiedOn))."
+        }
+        return GPADisclosure(title: "Sources", note: checked, count: shown.count, identifier: "colleges.sources") {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(shown.enumerated()), id: \.offset) { index, link in
+                    if index > 0 { InsetDivider() }
+                    sourceLink(link.title, url: link.url)
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("colleges.sources.links")
+        }
+    }
+
+    /// The way on to another college, at the end of this one.
+    private var searchAnother: some View {
+        Button { router.openCollegeSearch() } label: {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "magnifyingglass")
+                    .font(.body)
+                    .foregroundStyle(Color.muted)
+                    .accessibilityHidden(true)
+                Text("Search another college")
+                    .font(.body)
+                    .foregroundStyle(Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                RowChevron()
+            }
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityIdentifier("colleges.detail.search")
+    }
+
+    private func sourceLink(_ title: String, url: URL) -> some View {
+        Link(destination: url) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.body)
+                        .foregroundStyle(Color.ink)
+                    Text(url.host() ?? url.absoluteString)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "arrow.up.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.muted)
+                    .accessibilityHidden(true)
+            }
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens in Safari")
+    }
+}
