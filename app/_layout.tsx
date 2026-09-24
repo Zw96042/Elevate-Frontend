@@ -17,6 +17,7 @@ import { FilterProvider } from '@/context/FilterContext';
 import { SettingSheetProvider } from '@/context/SettingSheetContext';
 import * as SplashScreen from 'expo-splash-screen';
 import { padding } from "@expo/ui/swift-ui/modifiers";
+import { getAllTerms } from '@/utils/academicCalendar';
 
 SplashScreen.setOptions({
   duration: 200,
@@ -24,7 +25,7 @@ SplashScreen.setOptions({
 });
 
 
-const terms: TermLabel[] = ['Q1 Grades', 'Q2 Grades', 'SM1 Grade', 'Q3 Grades', 'Q4 Grades', 'SM2 Grades'];
+const terms: TermLabel[] = getAllTerms();
 
 function InnerLayout() {
   const { selectedCategory, setSelectedCategory, bottomSheetRef } = useBottomSheet();
