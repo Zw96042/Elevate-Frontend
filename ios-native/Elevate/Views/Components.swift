@@ -1610,17 +1610,26 @@ struct LoginPromptView: View {
                 Button(action: onLogin) {
                     Text("Connect Skyward")
                 }
-                .frame(maxWidth: 420)
-                .frame(maxWidth: .infinity, minHeight: proxy.size.height)
-                .padding(.horizontal, 32)
-                .padding(.vertical, 24)
+                .buttonStyle(PrimaryButtonStyle())
+                .padding(.top, 8)
+                .accessibilityIdentifier("login.prompt.connect")
+                Text("Your login is kept in the iOS Keychain on this iPhone.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxWidth: 440, alignment: .leading)
+            .padding(.horizontal, Metrics.page)
+            .padding(.top, 12)
+            .padding(.bottom, 24)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .scrollBounceBehavior(.basedOnSize)
     }
 }
 
-struct ErrorStateView: View {
+/// A failure with nothing saved to show. Embeds inside an existing scroll view.
+struct InlineErrorState: View {
     var title: String
     var message: String
     var onRetry: () async -> Void
@@ -1628,79 +1637,32 @@ struct ErrorStateView: View {
     @State private var isRetrying = false
 
     var body: some View {
-        GeometryReader { proxy in
-            ScrollView {
-                VStack(spacing: 14) {
-                    Image(systemName: "wifi.exclamationmark")
-                        .font(.system(size: 38, weight: .medium))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.red)
-                        .frame(width: 80, height: 80)
-                        .background(.red.opacity(0.1), in: Circle())
-                    Text(title)
-                        .font(.title3.bold())
-                        .multilineTextAlignment(.center)
-                    Text(message)
-                        .font(.body)
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button {
-                        Task {
-                            guard !isRetrying else { return }
-                            isRetrying = true
-                            await onRetry()
-                            isRetrying = false
-                        }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if isRetrying {
-                                ProgressView()
-                                    .accessibilityHidden(true)
-                            }
-                            Text(isRetrying ? "Trying again…" : "Try again")
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.roundedRectangle(radius: 14))
-                    .tint(Color.prominentFill)
-                    .disabled(isRetrying)
-                }
-                .frame(maxWidth: 420)
-                .frame(maxWidth: .infinity, minHeight: proxy.size.height)
-                .padding(.horizontal, 32)
-                .padding(.vertical, 24)
-            }
-            .scrollBounceBehavior(.basedOnSize)
-        }
-    }
-}
-
-struct StaleDataBanner: View {
-    var lastUpdated: Date?
-    var onRetry: () async -> Void
-
-    @State private var isRetrying = false
-
-    var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Showing saved data", systemImage: "exclamationmark.triangle.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.orange)
-            Text(updateDescription)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.title3.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
-            Button(isRetrying ? "Trying again…" : "Try again") {
+                .accessibilityAddTraits(.isHeader)
+            Text(message)
+                .font(.body)
+                .foregroundStyle(Color.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
                 Task {
                     guard !isRetrying else { return }
                     isRetrying = true
                     await onRetry()
                     isRetrying = false
                 }
+            } label: {
+                HStack(spacing: 8) {
+                    if isRetrying {
+                        ProgressView()
+                            .accessibilityHidden(true)
+                    }
+                    Text(isRetrying ? "Trying again…" : "Try again")
+                }
             }
-            .font(.subheadline.weight(.semibold))
-            .frame(minHeight: 44)
+            .buttonStyle(ActionTextButtonStyle())
             .disabled(isRetrying)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
