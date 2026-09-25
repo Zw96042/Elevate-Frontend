@@ -1089,6 +1089,130 @@ struct ScopePicker<Value: Hashable>: View {
     }
 }
 
+/// A short sheet of choice rows under a centered title. Its height follows
+/// its content, up to the full screen at large text sizes, where the rows
+/// scroll.
+struct ChoiceSheet<Value: Hashable>: View {
+    var title: String
+    var groups: [ChoiceGroup<Value>]
+    @Binding var selection: Value
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var themeManager = ThemeManager.shared
+    @State private var contentHeight: CGFloat?
+    @ScaledMetric(relativeTo: .body) private var rowEstimate: CGFloat = 53
+    @ScaledMetric(relativeTo: .footnote) private var labelEstimate: CGFloat = 40
+    @ScaledMetric(relativeTo: .headline) private var titleEstimate: CGFloat = 64
+
+    /// Close to the measured height, so the sheet opens at nearly its final
+    /// size before the content has been laid out once.
+    private var estimatedHeight: CGFloat {
+        let rows = groups.reduce(0) { $0 + $1.options.count }
+        let labels = groups.filter { $0.title != nil }.count
+        return titleEstimate + CGFloat(rows) * rowEstimate + CGFloat(labels) * labelEstimate + 16
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(Color.ink)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 24)
+                    .padding(.bottom, 8)
+                    .accessibilityAddTraits(.isHeader)
+
+                ChoiceList(groups: groups, isSelected: { $0 == selection }) { value in
+                    selection = value
+                    dismiss()
+                }
+            }
+            .padding(.horizontal, Metrics.page)
+            .padding(.bottom, 16)
+            .background {
+                // Reads the content's own height; the sheet's height never
+                // changes the content's, so this settles in one pass.
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear { contentHeight = proxy.size.height }
+                        .onChange(of: proxy.size.height) { _, height in contentHeight = height }
+                }
+            }
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .background(Color.appBackground.ignoresSafeArea())
+        .presentationDetents([.height(contentHeight ?? estimatedHeight)])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Color.appBackground)
+        .tint(Color.themeAccent)
+        .foregroundStyle(Color.ink)
+        .preferredColorScheme(themeManager.appearance.colorScheme)
+    }
+}
+
+/// Two or three values chosen in place: plain buttons, the chosen one on a
+/// quiet selection fill. Each keeps the same weight so nothing shifts. The
+/// fill moves to the new choice with the selection animation.
+struct InlineChoice<Value: Hashable>: View {
+    var label: String
+    var options: [ChoiceOption<Value>]
+    @Binding var selection: Value
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Namespace private var selectionFill
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                ChoiceList(groups: [ChoiceGroup(title: nil, options: options)], isSelected: { $0 == selection }) { value in
+                    Motion.perform(Motion.select(reduceMotion)) { selection = value }
+                }
+            } else {
+                compactChoices
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(label)
+        .sensoryFeedback(.selection, trigger: selection)
+    }
+
+    private var compactChoices: some View {
+        HStack(spacing: 4) {
+            ForEach(options) { option in
+                let isSelected = option.value == selection
+                Button {
+                    guard !isSelected else { return }
+                    Motion.perform(Motion.select(reduceMotion)) { selection = option.value }
+                } label: {
+                    Text(option.title)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(isSelected ? Color.ink : Color.muted)
+                        .lineLimit(1)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background {
+                            if isSelected {
+                                RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous)
+                                    .fill(Color.selection)
+                                    .matchedGeometryEffect(id: "selection", in: selectionFill)
+                            }
+                        }
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(ScopePressStyle())
+                .accessibilityLabel(option.title)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+                .accessibilityIdentifier(option.identifier ?? option.title)
+            }
+        }
+        .fixedSize()
+    }
+}
+
 
 struct LoginPromptView: View {
     var message: String
