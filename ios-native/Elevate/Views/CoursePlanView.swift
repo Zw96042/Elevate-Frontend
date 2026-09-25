@@ -835,3 +835,99 @@ struct CoursePlanView: View {
                 .accessibilityIdentifier("plan.add.planned")
             }
 
+            if isFull {
+                Text("You can keep up to \(CoursePlanEntryKind.recordLimit) entries in a plan.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 4)
+            }
+
+            if held > 0 {
+                Text(held == 1
+                     ? "1 planned semester matches a current class and isn't counted. Edit it to choose a future year or semester."
+                     : "\(held) planned semesters match current classes and aren't counted. Edit each to choose a future year or semester.")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 4)
+                    .accessibilityIdentifier("plan.planned.review")
+            }
+
+            if courses.isEmpty {
+                EmptyStateView(
+                    title: "No planned semesters",
+                    message: "Add each future semester. Credits assume you pass."
+                )
+                .accessibilityIdentifier("plan.empty.planned")
+            } else {
+                ForEach(Array(courses.enumerated()), id: \.element.id) { index, course in
+                    if index > 0 { InsetDivider() }
+                    entryRow(course, kind: .planned, report: report, identifier: "plan.edit.planned.\(index)")
+                }
+            }
+        }
+    }
+
+    private func entryRow(_ course: CoursePlanCourse, kind: CoursePlanEntryKind, report: CoursePlanReport, identifier: String) -> some View {
+        let detail = entryDetail(course, kind: kind, report: report)
+        return Button {
+            sheet = .entry(CoursePlanEditRequest(kind: kind, course: course))
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(course.name)
+                        .font(.body)
+                        .foregroundStyle(Color.ink)
+                    Text(detail)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                }
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                RowChevron()
+            }
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(course.name)
+        .accessibilityValue(detail)
+        .accessibilityHint("Edits this entry")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier(identifier)
+    }
+
+    /// "Mathematics, 0.5 credit", any saved semester and school year, then
+    /// the report's counting status and any reason the calculator set the
+    /// entry's credits aside.
+    private func entryDetail(_ course: CoursePlanCourse, kind: CoursePlanEntryKind, report: CoursePlanReport) -> String {
+        var text = "\(course.subject.title), \(PlanFormat.creditCount(course.credits))"
+        if let semester = course.semester { text += ", \(semester.displayName)" }
+        if let year = course.academicYear { text += ", \(PlanFormat.enrollmentYear(year))" }
+        var notes: [String] = []
+        if kind == .earned, let status = EarnedEntryStatus(course, in: report).summary {
+            notes.append(status)
+        }
+        if kind == .planned, report.manualPlannedReviewCourses.contains(where: { $0.id == course.id }) {
+            notes.append("Not counted: matches a current class.")
+        }
+        let creditReasons: [CoursePlanIssueReason] = [.invalidCredits, .emptyName, .duplicateID, .invalidScope]
+        notes += report.issues
+            .filter { $0.courseID == course.id && $0.isPlanned == (kind == .planned) && creditReasons.contains($0.reason) }
+            .map(\.reason.rawValue)
+        return notes.isEmpty ? text : text + ". " + notes.joined(separator: " ")
+    }
+}
+
+// MARK: - Grouping
+
+/// Semester records under their school year, in the planner's order.
+private struct TranscriptYearGroup: Identifiable {
+    var id: String
+    var title: String
+    var records: [TranscriptCreditRecord]
+
