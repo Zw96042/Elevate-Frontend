@@ -633,3 +633,107 @@ struct CoursePlanView: View {
         }
     }
 
+    // MARK: - Current classes
+
+    /// Classes Skyward lists as current enrollment. Expected credit only
+    /// reduces what's still needed. A class the planner can't credit stays
+    /// listed with its reason under review, never as zero earned.
+    private func currentSection(_ report: CoursePlanReport, source: TranscriptSource) -> some View {
+        let expected = report.currentCourses.filter { $0.status == .expected }
+        let held = report.currentCourses.filter { $0.status != .expected }
+        return VStack(alignment: .leading, spacing: 0) {
+            SectionHeading("Currently taking", count: report.currentCourses.isEmpty ? nil : "\(report.currentCourses.count)")
+            if report.currentCourses.isEmpty {
+                currentEmpty
+            } else {
+                currentTotal(report, source: source)
+                    .padding(.bottom, 4)
+                ForEach(Array(expected.enumerated()), id: \.element.id) { index, course in
+                    if index > 0 { InsetDivider() }
+                    currentRow(course, report: report)
+                }
+                if !held.isEmpty {
+                    if !expected.isEmpty { InsetDivider() }
+                    GPADisclosure(
+                        title: "Not counted yet",
+                        note: heldNote(held),
+                        count: held.count,
+                        identifier: "plan.current.review"
+                    ) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(held.enumerated()), id: \.element.id) { index, course in
+                                if index > 0 { InsetDivider() }
+                                currentRow(course, report: report)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("plan.currentCourses")
+    }
+
+    private func currentTotal(_ report: CoursePlanReport, source: TranscriptSource) -> some View {
+        var notes = ["Not earned until Skyward posts semester grades."]
+        if source == .unavailable {
+            notes.append("Completed semesters haven't loaded, so earlier credit can't be ruled out.")
+        }
+        return VStack(alignment: .leading, spacing: 2) {
+            if report.currentTotal > 0 {
+                Text("\(PlanFormat.creditCount(report.currentTotal)) expected if you pass")
+                    .font(.figure(.body))
+                    .foregroundStyle(Color.ink)
+                    .contentTransition(.numericText())
+            } else {
+                Text("No expected credits yet")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(Color.ink)
+            }
+            Text(notes.joined(separator: " "))
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("plan.currentTotal")
+    }
+
+    private func heldNote(_ held: [CurrentCourseCredit]) -> String {
+        let review = held.filter { $0.status == .needsReview }.count
+        if review == held.count { return review == 1 ? "Needs review" : "All need review" }
+        if review == 0 { return "No credit expected" }
+        return "\(review) \(review == 1 ? "needs" : "need") review"
+    }
+
+    @ViewBuilder
+    private var currentEmpty: some View {
+        if store.courses == nil, store.coursesLoading {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityHidden(true)
+                Text("Loading current classes")
+            }
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .frame(minHeight: 44)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("plan.current.loading")
+        } else if store.courses == nil {
+            EmptyStateView(
+                title: "Current classes aren't available",
+                message: "They appear here once your Skyward classes load."
+            )
+            .accessibilityIdentifier("plan.current.unavailable")
+        } else {
+            EmptyStateView(
+                title: "No current classes",
+                message: "This school year's classes appear here with their expected credit."
+            )
+            .accessibilityIdentifier("plan.current.empty")
+        }
+    }
+
