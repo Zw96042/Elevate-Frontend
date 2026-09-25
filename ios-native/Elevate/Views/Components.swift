@@ -991,6 +991,104 @@ struct ChoiceRow: View {
     }
 }
 
+/// Groups of choice rows set openly on the page, divided by hairlines.
+struct ChoiceList<Value: Hashable>: View {
+    var groups: [ChoiceGroup<Value>]
+    var isSelected: (Value) -> Bool
+    var choose: (Value) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+                if let title = group.title {
+                    GroupLabel(title)
+                        .padding(.top, index == 0 ? 4 : 20)
+                } else if index > 0 {
+                    Rule()
+                        .padding(.vertical, 8)
+                }
+                ForEach(Array(group.options.enumerated()), id: \.element.id) { row, option in
+                    if row > 0 { InsetDivider() }
+                    ChoiceRow(
+                        title: option.title,
+                        note: option.note,
+                        detail: option.detail,
+                        spokenDetail: option.spokenDetail,
+                        isSelected: isSelected(option.value)
+                    ) {
+                        choose(option.value)
+                    }
+                    .accessibilityIdentifier(option.identifier ?? option.title)
+                }
+            }
+        }
+    }
+}
+
+/// The face of a scope button: the current value and a small muted down
+/// chevron, set by `QuietButtonStyle` on the well fill at the leading edge
+/// of a screen's first line. Term and school year share this face.
+struct ScopeButtonLabel: View {
+    var value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(value)
+                .fixedSize(horizontal: false, vertical: true)
+            Image(systemName: "chevron.down")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(Color.muted)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+/// Dims an inline choice or icon button while pressed.
+struct ScopePressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed
+        configuration.label
+            .animation(Motion.pressFeedback(reduceMotion, isPressed: pressed)) {
+                $0.opacity(pressed ? 0.55 : 1)
+            }
+    }
+}
+
+/// A scope button and the sheet it opens. Choosing a row applies it and
+/// closes the sheet; swiping down closes it unchanged.
+struct ScopePicker<Value: Hashable>: View {
+    /// Names the choice: the sheet title and the button's spoken label.
+    var title: String
+    var valueName: String
+    var hint: String
+    var identifier: String
+    var groups: [ChoiceGroup<Value>]
+    @Binding var selection: Value
+
+    var onPresentationChange: (Bool) -> Void = { _ in }
+    @State private var isPresented = false
+
+    var body: some View {
+        Button {
+            isPresented = true
+        } label: {
+            ScopeButtonLabel(value: valueName)
+        }
+        .buttonStyle(QuietButtonStyle())
+        .accessibilityLabel(title)
+        .accessibilityValue(valueName)
+        .accessibilityHint(hint)
+        .accessibilityIdentifier(identifier)
+        .sensoryFeedback(.selection, trigger: selection)
+        .sheet(isPresented: $isPresented) {
+            ChoiceSheet(title: title, groups: groups, selection: $selection)
+        }
+        .onChange(of: isPresented) { _, presented in onPresentationChange(presented) }
+    }
+}
+
 
 struct LoginPromptView: View {
     var message: String
