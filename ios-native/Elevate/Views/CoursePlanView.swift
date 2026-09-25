@@ -1398,3 +1398,117 @@ private struct TranscriptCorrectionSheet: View {
         return value
     }
 
+    private var isValid: Bool { fields.subject != nil && credits != nil }
+
+    private var source: String { PlanFormat.recordSource(record) }
+
+    private var status: String {
+        [record.status.rawValue, record.detail.trimmingCharacters(in: .whitespacesAndNewlines)]
+            .filter { !$0.isEmpty }
+            .joined(separator: ". ")
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(record.name)
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(Color.ink)
+                        Text(source)
+                            .font(.footnote)
+                            .foregroundStyle(Color.muted)
+                        Text(status)
+                            .font(.footnote)
+                            .foregroundStyle(record.status == .needsReview ? Color.gradeAttention : Color.muted)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("plan.correction.record")
+
+                    PlanChoiceField(
+                        label: "Subject",
+                        valueName: fields.subject?.title ?? "Choose a subject",
+                        isPlaceholder: fields.subject == nil,
+                        hint: "Opens subject choices",
+                        identifier: "plan.correction.subject",
+                        groups: PlanForm.subjectGroups(identifier: "plan.correction.subject"),
+                        selection: $fields.subject
+                    )
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        PlanForm.label("Credits")
+                        PlanForm.well {
+                            TextField("Credits", text: $fields.credits)
+                                .keyboardType(.decimalPad)
+                                .monospacedDigit()
+                                .focused($creditsFocused)
+                                .accessibilityLabel("Credits")
+                                .accessibilityHint("0 to 4")
+                                .accessibilityIdentifier("plan.correction.credits")
+                        }
+                        if credits == nil {
+                            PlanForm.error(PlanInput.parse(fields.credits) == .empty
+                                           ? "Enter the credits for this semester."
+                                           : "Enter 0 to 4 credits.")
+                        }
+                        PlanForm.note("Use 0 if this semester didn't earn credit.")
+                    }
+
+                    if let saveError {
+                        PlanForm.saveError(saveError, identifier: "plan.correction.saveError")
+                    }
+
+                    if request.correction != nil {
+                        Button(role: .destructive) {
+                            creditsFocused = false
+                            confirmingRemove = true
+                        } label: {
+                            Text("Remove correction")
+                                .foregroundStyle(Color.gradeAttention)
+                        }
+                        .buttonStyle(ActionTextButtonStyle())
+                        .accessibilityIdentifier("plan.correction.remove")
+                    }
+
+                    PlanForm.note("Your correction stays on this iPhone and applies only to this semester.")
+                }
+                .padding(.horizontal, Metrics.page)
+                .padding(.top, 8)
+                .padding(.bottom, 32)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .softScrollEdges()
+            .background(Color.appBackground.ignoresSafeArea())
+            .navigationTitle(request.correction == nil ? "Correct Credits" : "Corrected Credits")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("plan.correction.cancel")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(!isValid)
+                        .accessibilityIdentifier("plan.correction.save")
+                }
+            }
+            .confirmationDialog("Remove correction?", isPresented: $confirmingRemove, titleVisibility: .visible) {
+                Button("Remove", role: .destructive) { remove() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Elevate's automatic estimate is used for this semester again.")
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Color.appBackground)
+        .interactiveDismissDisabled(fields != initialFields)
+        .tint(Color.themeAccent)
+        .foregroundStyle(Color.ink)
+        .preferredColorScheme(themeManager.appearance.colorScheme)
+        .onChange(of: store.accountRevision) { _, _ in dismiss() }
+    }
+
