@@ -1409,6 +1409,98 @@ struct StatusStrip<Control: View>: View {
     }
     private var showsFailure: Bool { showsRefresh && error != nil && !isBusy }
 
+    var body: some View {
+        if hasControl || showsStatus {
+            VStack(alignment: .leading, spacing: 2) {
+                if dynamicTypeSize.isAccessibilitySize || !hasControl {
+                    if hasControl { control() }
+                    if showsStatus { status }
+                } else {
+                    HStack(alignment: .center, spacing: 12) {
+                        control()
+                            .layoutPriority(1)
+                        Spacer(minLength: 8)
+                        if showsStatus { status }
+                    }
+                }
+                if showsFailure, showsFailureDetail, let error {
+                    Text(failureDetail(error))
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, 4)
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("refresh.status")
+        }
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        if isBusy {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityHidden(true)
+                Text("Updating")
+            }
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .frame(minHeight: 44)
+            .accessibilityElement(children: .combine)
+        } else if showsFailure {
+            HStack(alignment: .center, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(Color.gradeAttention)
+                        .accessibilityHidden(true)
+                    Text("Couldn't refresh")
+                        .foregroundStyle(Color.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .font(.footnote)
+                .accessibilityElement(children: .combine)
+                Button("Retry") {
+                    Task {
+                        guard !isRetrying else { return }
+                        isRetrying = true
+                        await onRetry()
+                        isRetrying = false
+                    }
+                }
+                .buttonStyle(ActionTextButtonStyle())
+                .frame(minWidth: 44)
+                .accessibilityLabel("Retry refresh")
+                .accessibilityIdentifier("refresh.retry")
+            }
+        } else if let lastUpdated {
+            // Proportional digits: tabular figures space the clock's colon
+            // apart, and this time never changes in place.
+            Text(UpdatedText.describe(lastUpdated))
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                .frame(minHeight: 44)
+                .accessibilityValue("Last updated \(lastUpdated.formatted(date: .abbreviated, time: .standard))")
+                .accessibilityIdentifier("refresh.timestamp")
+        }
+    }
+
+    private func failureDetail(_ error: String) -> String {
+        let saved: String
+        if let lastUpdated {
+            saved = "Showing data from \(lastUpdated.formatted(date: .abbreviated, time: .shortened))."
+        } else {
+            saved = "Showing saved data."
+        }
+        let reason = error
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return reason.isEmpty ? saved : "\(reason). \(saved)"
+    }
+}
+
 
 struct LoginPromptView: View {
     var message: String
