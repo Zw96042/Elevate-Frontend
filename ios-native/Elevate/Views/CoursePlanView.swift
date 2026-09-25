@@ -737,3 +737,101 @@ struct CoursePlanView: View {
         }
     }
 
+    /// The planner's reason a current class isn't expected to earn credit,
+    /// shortened where its known wording maps to a plain fact. Any other
+    /// wording is shown in full.
+    private func currentReason(_ course: CurrentCourseCredit, report: CoursePlanReport) -> String {
+        let detail = course.detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        if detail.hasPrefix("Current enrollment evidence is unavailable") { return "Enrollment not confirmed for this semester." }
+        if detail.hasPrefix("The enrolled semester is unknown") { return "Semester unknown or conflicting." }
+        if detail.hasPrefix("This pre-high-school enrollment") { return "Not high-school credit." }
+        if detail.hasPrefix("Course subject or credit value is not recognized") { return "Not in the district catalog." }
+        if detail.hasPrefix("Source grade level is unavailable") { return "Grade level unavailable or conflicting." }
+        if detail.hasPrefix("This course is not a recognized credit-bearing course") { return "No credit at this grade level." }
+        if detail.hasPrefix("The enrolled semesters have ended") {
+            // The planner caps PE at 4 credits; at the cap, that is the reason.
+            if course.subject == .physicalEducation {
+                let expectedPE = report.currentCourses
+                    .filter { $0.status == .expected && $0.subject == .physicalEducation }
+                    .reduce(0) { $0 + $1.credits }
+                if report.transcriptCredits.credits(for: .physicalEducation) + expectedPE >= 4 {
+                    return "PE credit limit (4) reached."
+                }
+            }
+            return "Semesters ended or credit already counted."
+        }
+        return detail
+    }
+
+    /// Name, then subject, semesters and school year. Only an expected class
+    /// shows a figure; others show the planner's status and a short reason.
+    private func currentRow(_ course: CurrentCourseCredit, report: CoursePlanReport) -> some View {
+        let expected = course.status == .expected
+        let source = [course.subject?.title ?? "No subject", PlanFormat.semesters(course.semesters),
+                      PlanFormat.enrollmentYear(course.academicYear)].joined(separator: ", ")
+        let status: String?
+        if expected {
+            if let subject = course.subject, subject != .elective,
+               report.requirements.first(where: { $0.subject == subject })?.earnedRemaining == 0 {
+                status = "Requirement met; counts toward electives."
+            } else { status = nil }
+        } else {
+            let reason = currentReason(course, report: report)
+            if course.status == .needsReview {
+                status = reason.isEmpty ? "Needs review." : "Needs review. \(reason)"
+            } else {
+                status = reason.isEmpty ? course.status.rawValue : reason
+            }
+        }
+        let compact = dynamicTypeSize.isAccessibilitySize
+        let spokenCredits = "\(PlanFormat.creditCount(course.credits)) expected if passed"
+        return HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(course.name)
+                    .font(.body)
+                    .foregroundStyle(Color.ink)
+                Text(compact && expected ? "\(source), \(PlanFormat.creditCount(course.credits)) expected" : source)
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                if let status {
+                    Text(status)
+                        .font(.footnote)
+                        .foregroundStyle(course.status == .needsReview ? Color.gradeAttention : Color.muted)
+                }
+            }
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if expected, !compact {
+                Text(PlanFormat.credits(course.credits))
+                    .font(.figure(.body))
+                    .foregroundStyle(Color.ink)
+                    .fixedSize()
+            }
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(course.name)
+        .accessibilityValue(([expected ? spokenCredits : nil, source, status].compactMap { $0 }).joined(separator: ". "))
+        .accessibilityIdentifier("plan.current.\(course.id)")
+    }
+
+    // MARK: - Planned entries
+
+    private func plannedSection(_ report: CoursePlanReport) -> some View {
+        let courses = planning.coursePlan.plannedCourses
+        let held = report.manualPlannedReviewCourses.count
+        return VStack(alignment: .leading, spacing: 0) {
+            SectionHeading(title: "Planned semesters", count: courses.isEmpty ? nil : "\(courses.count)") {
+                Button {
+                    sheet = .entry(CoursePlanEditRequest(kind: .planned, course: nil))
+                } label: {
+                    Label("Add", systemImage: "plus")
+                }
+                .buttonStyle(QuietButtonStyle())
+                .disabled(isFull)
+                .accessibilityLabel("Add planned semester")
+                .accessibilityIdentifier("plan.add.planned")
+            }
+
