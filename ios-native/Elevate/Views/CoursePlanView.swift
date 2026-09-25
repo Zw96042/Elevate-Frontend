@@ -1119,3 +1119,94 @@ private enum PlanFormat {
         year.map { $0.replacingOccurrences(of: "-", with: "–") } ?? "Current enrollment"
     }
 
+    /// "SM1, 2024–2025, grade 10"; a record without a verified year omits it.
+    static func recordSource(_ record: TranscriptCreditRecord) -> String {
+        var parts = [record.semester.displayName]
+        if !record.academicYear.isEmpty { parts.append(record.academicYear.replacingOccurrences(of: "-", with: "–")) }
+        if let grade = record.gradeYear { parts.append("grade \(grade)") }
+        return parts.joined(separator: ", ")
+    }
+
+    /// Full precision for editing, in the person's decimal format.
+    static func editable(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(0...12)).grouping(.never))
+    }
+}
+
+private enum PlanInput {
+    enum Parsed: Equatable {
+        case empty, value(Double), invalid
+    }
+
+    /// Digits and one decimal separator; anything else is invalid rather
+    /// than guessed at.
+    static func parse(_ text: String) -> Parsed {
+        var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .empty }
+        let separator = Locale.current.decimalSeparator ?? "."
+        if separator != "." { trimmed = trimmed.replacingOccurrences(of: separator, with: ".") }
+        guard trimmed.allSatisfy({ $0.isASCII && ($0.isNumber || $0 == ".") }),
+              trimmed.filter({ $0 == "." }).count <= 1,
+              let value = Double(trimmed), value.isFinite else { return .invalid }
+        return .value(value)
+    }
+
+    static let nameLimit = 256
+    static let creditLimit = 4.0
+}
+
+// MARK: - Rows
+
+/// An open row with a trailing figure and an optional emphasized note under
+/// it. At accessibility sizes the figure moves beneath the text.
+private struct PlanValueRow: View {
+    var title: String
+    var detail: String?
+    var value: String
+    var valueNote: String?
+    var identifier: String
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    titleStack
+                    valueStack(alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    titleStack
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    valueStack(alignment: .trailing)
+                        .fixedSize()
+                }
+            }
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue([value, valueNote, detail].compactMap { $0 }.joined(separator: ". "))
+        .accessibilityIdentifier(identifier)
+    }
+
+    private var titleStack: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.body)
+                .foregroundStyle(Color.ink)
+            if let detail {
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+            }
+        }
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
