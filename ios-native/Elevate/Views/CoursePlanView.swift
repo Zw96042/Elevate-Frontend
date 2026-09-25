@@ -224,3 +224,123 @@ struct CoursePlanView: View {
         }
     }
 
+    /// A source row: its title and site, opening in the browser.
+    private func sourceLink(_ source: CoursePlanSource, url: URL) -> some View {
+        Link(destination: url) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(source.title)
+                        .font(.body)
+                        .foregroundStyle(Color.ink)
+                    Text(url.host() ?? source.url)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                }
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "arrow.up.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.muted)
+                    .accessibilityHidden(true)
+            }
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens in Safari")
+    }
+
+    // MARK: - Earned credits
+
+    private func earnedSection(_ report: CoursePlanReport, source: TranscriptSource) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeading("Earned credits")
+            if source == .unavailable {
+                transcriptUnavailable
+            } else {
+                creditTotal(report, source: source)
+            }
+        }
+    }
+
+    private func creditTotal(_ report: CoursePlanReport, source: TranscriptSource) -> some View {
+        let total = "\(PlanFormat.credits(report.earnedTotal)) of \(PlanFormat.credits(report.path.totalRequired)) credits"
+        var details: [String] = []
+        if source == .skyward { details.append("Estimated from completed Skyward semesters.") }
+        details += PlanFormat.outlook(report)
+        let review = report.transcriptCredits.unresolved.count
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(total)
+                .font(.figure(.title3))
+                .foregroundStyle(Color.ink)
+                .contentTransition(.numericText())
+            if source == .savedSemesters {
+                Text("Using saved high-school semesters. Refresh to include older records.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+            }
+            if !details.isEmpty {
+                Text(details.joined(separator: " "))
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+            }
+            if review > 0 {
+                Text("\(review) \(review == 1 ? "semester needs" : "semesters need") review")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.ink)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("plan.creditTotal")
+    }
+
+    /// Without transcript rows or saved posted semesters there is no
+    /// estimate, so no total or subject figures are shown rather than zeros.
+    private var transcriptUnavailable: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if store.coursesLoading {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityHidden(true)
+                    Text("Loading completed semesters")
+                }
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .frame(minHeight: 44)
+                .accessibilityElement(children: .combine)
+            } else {
+                Text("Credit totals are unavailable")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(Color.ink)
+                Text(unavailableDetail)
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                Button {
+                    Task {
+                        guard !isRetrying else { return }
+                        isRetrying = true
+                        await store.refreshCourses(force: true)
+                        isRetrying = false
+                    }
+                } label: {
+                    Text("Try again")
+                }
+                .buttonStyle(ActionTextButtonStyle())
+                .disabled(isRetrying)
+                .accessibilityIdentifier("plan.transcript.retry")
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("plan.transcript.unavailable")
+    }
+
