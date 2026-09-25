@@ -931,3 +931,97 @@ private struct TranscriptYearGroup: Identifiable {
     var title: String
     var records: [TranscriptCreditRecord]
 
+    static func groups(_ records: [TranscriptCreditRecord]) -> [TranscriptYearGroup] {
+        var groups: [TranscriptYearGroup] = []
+        var indexes: [String: Int] = [:]
+        for record in records {
+            let key = "\(record.academicYear)|\(record.gradeYear.map { String($0) } ?? "")"
+            if let index = indexes[key] {
+                groups[index].records.append(record)
+            } else {
+                var title = record.academicYear.replacingOccurrences(of: "-", with: "–")
+                if let grade = record.gradeYear { title += ", grade \(grade)" }
+                indexes[key] = groups.count
+                groups.append(TranscriptYearGroup(id: key, title: title, records: [record]))
+            }
+        }
+        return groups
+    }
+}
+
+// MARK: - Report
+
+/// The one planner call the screen and its sheets share, so a sheet's checks
+/// match what the screen shows. Live courses and the transcript projection
+/// are passed separately, so current enrollment comes from live gradebook
+/// courses and earned credit from history. A nil transcript projection uses
+/// the planner's saved-semester fallback, whose record IDs corrections target.
+@MainActor
+private enum PlanReport {
+    static func current(_ store: AppStore) -> CoursePlanReport {
+        calculate(store.planning.coursePlan, store: store)
+    }
+
+    static func calculate(_ plan: CoursePlan, store: AppStore) -> CoursePlanReport {
+        CoursePlanner.calculate(plan: plan, officialCourses: store.courses ?? [],
+                                planningTranscriptCourses: store.planningTranscriptCourses)
+    }
+
+    /// The imported semester an entry's name duplicates under the planner's
+    /// catalog equivalence. The planner never counts an entry that has one.
+    nonisolated static func skywardMatch(for name: String, in report: CoursePlanReport) -> TranscriptCreditRecord? {
+        let key = TranscriptCreditCalculator.equivalenceKey(for: name)
+        return report.transcriptCredits.records.first { TranscriptCreditCalculator.equivalenceKey(for: $0.name) == key }
+    }
+
+    /// The current class an entry's name matches under the same catalog
+    /// equivalence. The planner never counts an earned entry that has one,
+    /// and holds an unscoped planned entry that has one for review.
+    nonisolated static func currentMatch(for name: String, in report: CoursePlanReport) -> CurrentCourseCredit? {
+        let key = TranscriptCreditCalculator.equivalenceKey(for: name)
+        return report.currentCourses.first { TranscriptCreditCalculator.equivalenceKey(for: $0.name) == key }
+    }
+}
+
+/// Whether the report counts an earned entry, and why not.
+private enum EarnedEntryStatus {
+    case counted
+    /// Saved before automatic estimates; counted only while the report has
+    /// no Skyward semesters.
+    case countedWithoutSkyward
+    /// Skyward already lists an equivalent course, so it's never counted,
+    /// whatever the entry's flag says.
+    case listedInSkyward(TranscriptCreditRecord)
+    /// An equivalent class is current enrollment, so it's never counted as
+    /// earned; its expected credit is under Currently taking.
+    case currentClass(CurrentCourseCredit)
+    /// Saved before automatic estimates; counts once confirmed missing.
+    case savedBeforeEstimates
+    /// Set aside for invalid values; the issue reason says why.
+    case invalid
+
+    init(_ course: CoursePlanCourse, in report: CoursePlanReport) {
+        if report.manualEarnedCourses.contains(where: { $0.id == course.id }) {
+            self = course.isSupplemental == true ? .counted : .countedWithoutSkyward
+        } else if !report.manualReviewCourses.contains(where: { $0.id == course.id }) {
+            self = .invalid
+        } else if let match = PlanReport.currentMatch(for: course.name, in: report) {
+            self = .currentClass(match)
+        } else if let match = PlanReport.skywardMatch(for: course.name, in: report) {
+            self = .listedInSkyward(match)
+        } else {
+            self = .savedBeforeEstimates
+        }
+    }
+
+    var summary: String? {
+        switch self {
+        case .counted, .invalid: return nil
+        case .countedWithoutSkyward: return "Counted while no Skyward semesters are available."
+        case .listedInSkyward(let record): return "Not counted because Skyward lists \(record.name)."
+        case .currentClass(let current): return "Not counted because you're taking \(current.name) now."
+        case .savedBeforeEstimates: return "Not counted until you confirm Skyward doesn't show it."
+        }
+    }
+}
+
