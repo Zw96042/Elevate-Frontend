@@ -1025,3 +1025,97 @@ private enum EarnedEntryStatus {
     }
 }
 
+// MARK: - Saving
+
+private enum CoursePlanEntryKind: String {
+    case earned, planned
+
+    static let recordLimit = 500
+}
+
+private struct CoursePlanEditRequest: Identifiable {
+    var id = UUID()
+    var kind: CoursePlanEntryKind
+    /// Nil when adding.
+    var course: CoursePlanCourse?
+}
+
+private struct TranscriptCorrectionRequest: Identifiable {
+    var id = UUID()
+    var record: TranscriptCreditRecord
+    /// The saved correction for this record, if any.
+    var correction: TranscriptCreditOverride?
+}
+
+private enum CoursePlanSheet: Identifiable {
+    case entry(CoursePlanEditRequest)
+    case correction(TranscriptCorrectionRequest)
+
+    var id: UUID {
+        switch self {
+        case .entry(let request): return request.id
+        case .correction(let request): return request.id
+        }
+    }
+}
+
+/// The single save path for the plan screen and its forms. It confirms the
+/// account the screen opened for is still the active one before writing, and
+/// passes the store a freshly read scope.
+@MainActor
+private enum CoursePlanCommit {
+    enum Outcome { case saved, accountChanged, rejected }
+
+    static func apply(store: AppStore, originScope: String?, originRevision: Int?,
+                      _ change: (inout CoursePlan) -> Bool) -> Outcome {
+        guard let originScope, let current = store.localAccountScope, current == originScope,
+              store.planning.accountScope == current, originRevision == store.accountRevision else {
+            return .accountChanged
+        }
+        guard !store.planning.planUnavailable else { return .rejected }
+        var plan = store.planning.coursePlan
+        guard change(&plan) else { return .rejected }
+        return store.planning.saveCoursePlan(plan, expectedAccountScope: store.localAccountScope) ? .saved : .rejected
+    }
+}
+
+// MARK: - Formatting and input
+
+private enum PlanFormat {
+    static func credits(_ value: Double) -> String {
+        GradeFormat.upToTwoDecimals(value)
+    }
+
+    /// "0.5 credit", "1 credit", "0 credits", "1.5 credits".
+    static func creditCount(_ value: Double) -> String {
+        "\(credits(value)) \(value > 0 && value <= 1 ? "credit" : "credits")"
+    }
+
+    /// What current and planned classes add toward the total, then what's
+    /// still needed counting them. They're named apart from the earned
+    /// figure, never folded into it.
+    static func outlook(_ report: CoursePlanReport) -> [String] {
+        guard report.earnedRemainingTotal > 0 else { return [] }
+        var pending: [String] = []
+        if report.currentTotal > 0 { pending.append("\(credits(report.currentTotal)) current") }
+        if report.plannedTotal > 0 { pending.append("\(credits(report.plannedTotal)) planned") }
+        guard !pending.isEmpty else {
+            return ["\(credits(report.remainingTotal)) more needed."]
+        }
+        var lines = ["With \(pending.joined(separator: " and ")): \(credits(report.combinedTotal)) of \(credits(report.path.totalRequired)) if passed."]
+        if report.remainingTotal > 0 { lines.append("\(credits(report.remainingTotal)) more needed.") }
+        return lines
+    }
+
+    /// "Semester 1", "Semesters 1 and 2", or unknown.
+    static func semesters(_ terms: [TermLabel]) -> String {
+        let semesters = terms.filter(\.isSemester)
+        if semesters.count > 1 { return "Semesters 1 and 2" }
+        return semesters.first?.displayName ?? "Semester unknown"
+    }
+
+    /// "2026–2027"; nil is live enrollment without a dated school year.
+    static func enrollmentYear(_ year: String?) -> String {
+        year.map { $0.replacingOccurrences(of: "-", with: "–") } ?? "Current enrollment"
+    }
+
