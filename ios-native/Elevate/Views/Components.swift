@@ -1664,40 +1664,102 @@ struct InlineErrorState: View {
             }
             .buttonStyle(ActionTextButtonStyle())
             .disabled(isRetrying)
+            .accessibilityIdentifier("error.retry")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    private var updateDescription: String {
-        guard let lastUpdated else {
-            return "Skyward couldn't refresh. The last successful update time isn't available."
-        }
-        return "Skyward couldn't refresh. Last updated \(lastUpdated.formatted(date: .abbreviated, time: .shortened))."
+        .frame(maxWidth: 440, alignment: .leading)
     }
 }
 
-struct EmptyStateView: View {
-    var systemImage: String
+/// Full-screen version of `InlineErrorState`, set from the top of the page.
+struct ErrorStateView: View {
     var title: String
-    var subtitle: String
+    var message: String
+    var onRetry: () async -> Void
 
     var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .font(.system(size: 28, weight: .medium))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(Color.highlightText)
-                .frame(width: 64, height: 64)
-                .background(Color.ringHighlight, in: Circle())
+        ScrollView {
+            InlineErrorState(title: title, message: message, onRetry: onRetry)
+                .padding(.horizontal, Metrics.page)
+                .padding(.top, 12)
+                .padding(.bottom, 24)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+    }
+}
+
+/// A valid empty result, stated plainly in sentence text.
+struct EmptyStateView: View {
+    var title: String
+    var message: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.headline)
-                .padding(.top, 6)
-            Text(subtitle)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                .font(.body.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+            if let message {
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 16)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Loading placeholders
+//
+// A first load shows the shape of what is coming: quiet, static bars set on
+// the line boxes of the real text styles, so they scale with Dynamic Type
+// and a row keeps its height when the text arrives. No shimmer or pulse.
+// Each screen lays out its own placeholder rows in its loaded structure;
+// the container is not interactive and is one accessibility element that
+// says what is loading. Saved content is never replaced by placeholders.
+
+/// One line of text that hasn't loaded: a bar inside the line box of
+/// `font`, about as wide as `length` figures and never wider than its
+/// container. It keeps the line's height and baseline, so it aligns and
+/// sizes exactly like the text it stands in for.
+struct SkeletonText: View {
+    enum Tone {
+        /// Names, titles and figures: the hairline tone, as on the ring track.
+        case primary
+        /// Supporting lines beneath them, one step quieter.
+        case secondary
+    }
+
+    var font: Font
+    var length: Int
+    var tone: Tone
+
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    init(_ font: Font, length: Int, tone: Tone = .primary) {
+        self.font = font
+        self.length = length
+        self.tone = tone
+    }
+
+    var body: some View {
+        // Hidden figures measure the real line; they are never drawn or read.
+        Text(verbatim: String(repeating: "0", count: max(1, length)))
+            .font(font)
+            .lineLimit(1)
+            .hidden()
+            .overlay { SkeletonBar().fill(color) }
+            .accessibilityHidden(true)
+    }
+
+    private var color: Color {
+        switch (tone, contrast == .increased) {
+        case (.primary, false): return Color.rule
+        case (.secondary, false): return Color.well
+        case (.primary, true): return Color.muted.opacity(0.4)
+        case (.secondary, true): return Color.rule
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 28)
