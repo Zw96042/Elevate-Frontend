@@ -1304,3 +1304,97 @@ private enum PlanForm {
             .background(Color.well, in: RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous))
     }
 
+    static func note(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    static func error(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Color.gradeAttention)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    static func saveError(_ text: String, identifier: String) -> some View {
+        Label(text, systemImage: "exclamationmark.circle")
+            .font(.footnote)
+            .foregroundStyle(Color.gradeAttention)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier(identifier)
+    }
+}
+
+/// Bounded choices for a planned entry's optional scope: the school year in
+/// progress and the next four, plus a year already saved on the entry.
+@MainActor
+private enum PlanScope {
+    static func yearGroups(saved: String?, identifier: String, asOf: Date = Date()) -> [ChoiceGroup<String?>] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Chicago") ?? .current
+        let start = calendar.component(.year, from: asOf) - (calendar.component(.month, from: asOf) < 8 ? 1 : 0)
+        var years = (start...(start + 4)).map { "\($0)-\($0 + 1)" }
+        if let saved, AcademicYearKey.startYear(saved) != nil, !years.contains(saved) {
+            years.insert(saved, at: 0)
+        }
+        let options = [ChoiceOption<String?>(value: nil, title: "Not chosen", identifier: "\(identifier).none")]
+            + years.map { ChoiceOption(value: Optional($0), title: PlanFormat.enrollmentYear($0), identifier: "\(identifier).\($0)") }
+        return [ChoiceGroup(title: nil, options: options)]
+    }
+
+    static func semesterGroups(identifier: String) -> [ChoiceGroup<TermLabel?>] {
+        let options = [ChoiceOption<TermLabel?>(value: nil, title: "Not chosen", identifier: "\(identifier).none")]
+            + [TermLabel.sm1, .sm2].map { ChoiceOption(value: Optional($0), title: $0.displayName, identifier: "\(identifier).\($0.historicalKey)") }
+        return [ChoiceGroup(title: nil, options: options)]
+    }
+}
+
+// MARK: - Correction form
+
+/// Corrects one automatic semester estimate. The correction is saved under
+/// the record's own ID, replaces only that record's credits and subject, and
+/// removing it restores the automatic estimate.
+private struct TranscriptCorrectionSheet: View {
+    var request: TranscriptCorrectionRequest
+    var originScope: String?
+    var originRevision: Int?
+    var onCommitted: () -> Void
+
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var themeManager = ThemeManager.shared
+    @State private var fields: Fields
+    @State private var saveError: String?
+    @State private var confirmingRemove = false
+    @FocusState private var creditsFocused: Bool
+    private let initialFields: Fields
+
+    private struct Fields: Equatable {
+        var subject: CoursePlanSubject?
+        var credits: String
+    }
+
+    init(request: TranscriptCorrectionRequest, originScope: String?, originRevision: Int?, onCommitted: @escaping () -> Void) {
+        self.request = request
+        self.originScope = originScope
+        self.originRevision = originRevision
+        self.onCommitted = onCommitted
+        let initial = Fields(
+            subject: request.correction?.subject ?? request.record.subject,
+            credits: PlanFormat.editable(request.correction?.credits ?? request.record.credits)
+        )
+        initialFields = initial
+        _fields = State(initialValue: initial)
+    }
+
+    private var record: TranscriptCreditRecord { request.record }
+
+    private var credits: Double? {
+        guard case .value(let value) = PlanInput.parse(fields.credits), value >= 0, value <= PlanInput.creditLimit else { return nil }
+        return value
+    }
+
