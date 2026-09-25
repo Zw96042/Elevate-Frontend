@@ -889,6 +889,108 @@ struct GradeNumber: View {
     }
 }
 
+// MARK: - Choosing
+//
+// Every choice in the app is one family. A choice is a plain row: its name,
+// an optional note beneath, an optional figure, and a check in the action
+// color on the chosen row. What a screen shows (the grading term, the school
+// year) is set from a scope button: the current value with a down chevron,
+// which opens a short sheet of those rows sized to its content. A choice
+// between two values that changes something already on screen, such as the
+// chart's series, is an inline pair: two plain buttons, the chosen one on
+// a quiet selection fill. No menus, segmented tracks, or tabs.
+
+/// One option in a choice list.
+struct ChoiceOption<Value: Hashable>: Identifiable {
+    var value: Value
+    var title: String
+    var note: String?
+    /// A trailing figure, such as the grade for a term.
+    var detail: String?
+    var spokenDetail: String?
+    var identifier: String?
+
+    var id: Value { value }
+}
+
+/// Options under an optional quiet label, such as "Fall semester".
+struct ChoiceGroup<Value: Hashable> {
+    var title: String?
+    var options: [ChoiceOption<Value>]
+}
+
+/// The label above a group of rows: quiet sentence-case footnote text that
+/// names the group. It is a heading for VoiceOver, never decoration.
+struct GroupLabel: View {
+    var title: String
+
+    init(_ title: String) {
+        self.title = title
+    }
+
+    var body: some View {
+        Text(title)
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 2)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// One choosable row. The check keeps its width when hidden so names and
+/// figures stay aligned from row to row.
+struct ChoiceRow: View {
+    var title: String
+    var note: String?
+    var detail: String?
+    var spokenDetail: String?
+    var isSelected: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.body)
+                        .foregroundStyle(Color.ink)
+                    if let note {
+                        Text(note)
+                            .font(.footnote)
+                            .foregroundStyle(Color.muted)
+                    }
+                }
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let detail {
+                    Text(detail)
+                        .font(.figure(.body, weight: .regular))
+                        .foregroundStyle(Color.muted)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+                Image(systemName: "checkmark")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.themeAccent)
+                    .opacity(isSelected ? 1 : 0)
+                    .accessibilityHidden(true)
+            }
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityLabel(title)
+        .accessibilityValue(spokenDetail ?? detail ?? "")
+        .accessibilityHint(note ?? "")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
 
 struct LoginPromptView: View {
     var message: String
