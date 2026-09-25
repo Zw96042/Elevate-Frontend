@@ -344,3 +344,96 @@ struct CoursePlanView: View {
         .accessibilityIdentifier("plan.transcript.unavailable")
     }
 
+    private var unavailableDetail: String {
+        guard let error = store.coursesError?.trimmingCharacters(in: .whitespacesAndNewlines), !error.isEmpty else {
+            return "Credits are estimated from your Skyward transcript, which hasn't loaded."
+        }
+        let reason = error.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return "Your Skyward transcript couldn't load. \(reason)."
+    }
+
+    private func subjectsSection(_ report: CoursePlanReport) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            GroupLabel("By subject for the \(report.path.title)")
+                .accessibilityIdentifier("plan.pathway")
+            if report.currentTotal > 0 || report.plannedTotal > 0 {
+                Text("Figures are earned. More needed assumes current and planned classes pass.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 4)
+                    .accessibilityIdentifier("plan.requirement.note")
+            }
+            ForEach(Array(report.requirements.enumerated()), id: \.element.id) { index, requirement in
+                if index > 0 { InsetDivider() }
+                requirementRow(requirement)
+            }
+        }
+    }
+
+    /// The figure is earned credit only; current and planned credits are
+    /// listed beside it and only reduce what's still needed.
+    private func requirementRow(_ requirement: CoursePlanRequirementProgress) -> some View {
+        var parts = ["\(PlanFormat.credits(requirement.earned)) earned"]
+        if requirement.current > 0 { parts.append("\(PlanFormat.credits(requirement.current)) current") }
+        if requirement.planned > 0 { parts.append("\(PlanFormat.credits(requirement.planned)) planned") }
+        let note: String?
+        if requirement.remaining > 0 {
+            note = "\(PlanFormat.credits(requirement.remaining)) more needed"
+        } else if requirement.earnedRemaining > 0 {
+            note = "Met if completed"
+        } else {
+            note = nil
+        }
+        return PlanValueRow(
+            title: requirement.subject.title,
+            detail: parts.joined(separator: ", "),
+            value: "\(PlanFormat.credits(requirement.earned)) of \(PlanFormat.credits(requirement.required))",
+            valueNote: note,
+            identifier: "plan.requirement.\(requirement.subject.rawValue)"
+        )
+    }
+
+    // MARK: - Semester records
+
+    /// Counted and unresolved records once each, in the planner's order.
+    private func semesterRecords(_ report: CoursePlanReport) -> [TranscriptCreditRecord] {
+        var seen = Set<String>()
+        return (report.transcriptCredits.records + report.transcriptCredits.unresolved).filter {
+            // Ordinary middle-school schedules aren't graduation-credit work.
+            // Source records and explicit corrections remain in the calculator.
+            !($0.status == .excluded && ($0.gradeYear ?? 9) < 9) && seen.insert($0.id).inserted
+        }
+    }
+
+    @ViewBuilder
+    private func semesterDetails(_ report: CoursePlanReport) -> some View {
+        let records = semesterRecords(report)
+        let review = report.transcriptCredits.unresolved.count
+        if records.isEmpty {
+            EmptyStateView(
+                title: "No completed semesters yet",
+                message: "Credits appear here after Skyward posts semester grades."
+            )
+            .accessibilityIdentifier("plan.transcript.empty")
+        } else {
+            GPADisclosure(
+                title: "Semester credits",
+                note: review > 0 ? "\(review) \(review == 1 ? "needs" : "need") review" : nil,
+                count: records.count,
+                identifier: "plan.transcript"
+            ) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(TranscriptYearGroup.groups(records).enumerated()), id: \.element.id) { index, group in
+                        GroupLabel(group.title)
+                            .padding(.top, index > 0 ? 16 : 0)
+                        ForEach(Array(group.records.enumerated()), id: \.element.id) { recordIndex, record in
+                            if recordIndex > 0 { InsetDivider() }
+                            recordRow(record)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
