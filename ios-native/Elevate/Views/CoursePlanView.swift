@@ -1210,3 +1210,97 @@ private struct PlanValueRow: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
+    private func valueStack(alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 2) {
+            Text(value)
+                .font(.figure(.body))
+                .foregroundStyle(Color.ink)
+                .contentTransition(.numericText())
+                .animation(Motion.value(reduceMotion), value: value)
+            if let valueNote {
+                Text(valueNote)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.ink)
+            }
+        }
+    }
+}
+
+/// A labeled quiet well showing the current choice with a small chevron.
+/// It opens the shared `ChoiceSheet`.
+private struct PlanChoiceField<Value: Hashable>: View {
+    var label: String
+    var valueName: String
+    var isPlaceholder = false
+    var hint: String
+    var identifier: String
+    var groups: [ChoiceGroup<Value>]
+    @Binding var selection: Value
+
+    @State private var isPresented = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .accessibilityHidden(true)
+            Button {
+                isPresented = true
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(valueName)
+                        .font(.body)
+                        .foregroundStyle(isPlaceholder ? Color.muted : Color.ink)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(Color.muted)
+                        .accessibilityHidden(true)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .background(Color.well, in: RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(ScopePressStyle())
+            .accessibilityLabel(label)
+            .accessibilityValue(isPlaceholder ? "Not chosen" : valueName)
+            .accessibilityHint(hint)
+            .accessibilityIdentifier(identifier)
+        }
+        .sensoryFeedback(.selection, trigger: selection)
+        .sheet(isPresented: $isPresented) {
+            ChoiceSheet(title: label, groups: groups, selection: $selection)
+        }
+    }
+}
+
+/// Shared form pieces for the plan's sheets.
+@MainActor
+private enum PlanForm {
+    static func subjectGroups(identifier: String) -> [ChoiceGroup<CoursePlanSubject?>] {
+        [ChoiceGroup(title: nil, options: CoursePlanSubject.allCases.map {
+            ChoiceOption(value: Optional($0), title: $0.title, identifier: "\(identifier).\($0.rawValue)")
+        })]
+    }
+
+    static func label(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .accessibilityHidden(true)
+    }
+
+    static func well<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .font(.body)
+            .textFieldStyle(.plain)
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(Color.well, in: RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous))
+    }
+
