@@ -537,3 +537,99 @@ struct CoursePlanView: View {
         }
     }
 
+    private func orphanRow(_ correction: TranscriptCreditOverride) -> some View {
+        let detail = "\(PlanFormat.creditCount(correction.credits)), \(correction.subject.title)"
+        return HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Saved correction")
+                    .font(.body)
+                    .foregroundStyle(Color.ink)
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            Button("Remove") { removeOrphan(correction.id) }
+                .buttonStyle(ActionTextButtonStyle())
+                .accessibilityLabel("Remove saved correction, \(detail)")
+                .accessibilityIdentifier("plan.correction.orphan.\(correction.id)")
+        }
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+    }
+
+    private func removeOrphan(_ id: String) {
+        let outcome = CoursePlanCommit.apply(store: store, originScope: originScope, originRevision: originRevision) { plan in
+            let before = plan.creditOverrides.count
+            plan.creditOverrides.removeAll { $0.id == id }
+            return plan.creditOverrides.count < before
+        }
+        switch outcome {
+        case .saved:
+            correctionError = nil
+            commits += 1
+        case .accountChanged:
+            dismiss()
+        case .rejected:
+            correctionError = "Couldn't remove this correction. Nothing was changed."
+        }
+    }
+
+    // MARK: - Added and planned entries
+
+    private var recordCount: Int {
+        planning.coursePlan.earnedCourses.count + planning.coursePlan.plannedCourses.count
+    }
+
+    private var isFull: Bool { recordCount >= CoursePlanEntryKind.recordLimit }
+
+    /// Entries the planner counts, then every entry it holds: ones saved
+    /// before automatic estimates, ones Skyward already lists, and invalid
+    /// ones. The split follows the report, never the entry's own flag, so a
+    /// course isn't counted twice. Nothing is deleted automatically.
+    private func addedCreditsSection(_ report: CoursePlanReport) -> some View {
+        let countedIDs = Set(report.manualEarnedCourses.map(\.id))
+        let added = planning.coursePlan.earnedCourses.filter { countedIDs.contains($0.id) }
+        let saved = planning.coursePlan.earnedCourses.filter { !countedIDs.contains($0.id) }
+        return VStack(alignment: .leading, spacing: 0) {
+            SectionHeading(title: "Credits not in Skyward", count: added.isEmpty ? nil : "\(added.count)") {
+                Button {
+                    sheet = .entry(CoursePlanEditRequest(kind: .earned, course: nil))
+                } label: {
+                    Label("Add", systemImage: "plus")
+                }
+                .buttonStyle(QuietButtonStyle())
+                .disabled(isFull)
+                .accessibilityLabel("Add a credit not in Skyward")
+                .accessibilityIdentifier("plan.add.earned")
+            }
+            Text("Credit by exam or from another school.")
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 4)
+            ForEach(Array(added.enumerated()), id: \.element.id) { index, course in
+                if index > 0 { InsetDivider() }
+                entryRow(course, kind: .earned, report: report, identifier: "plan.edit.earned.\(index)")
+            }
+            if !saved.isEmpty {
+                if !added.isEmpty { InsetDivider() }
+                GPADisclosure(
+                    title: "Review saved credits",
+                    note: "Not counted, so nothing is counted twice",
+                    count: saved.count,
+                    identifier: "plan.review"
+                ) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(saved.enumerated()), id: \.element.id) { index, course in
+                            if index > 0 { InsetDivider() }
+                            entryRow(course, kind: .earned, report: report, identifier: "plan.edit.review.\(index)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
