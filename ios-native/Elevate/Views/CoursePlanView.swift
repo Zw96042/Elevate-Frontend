@@ -437,3 +437,103 @@ struct CoursePlanView: View {
         }
     }
 
+    private func recordRow(_ record: TranscriptCreditRecord) -> some View {
+        let needsReview = record.status == .needsReview
+        let value = needsReview ? "Review" : PlanFormat.credits(record.credits)
+        let detail = "\(record.semester.displayName), \(record.subject?.title ?? "No subject")"
+        let status = record.status == .estimated
+            ? nil
+            : [record.status.rawValue, record.detail.trimmingCharacters(in: .whitespacesAndNewlines)]
+                .filter { !$0.isEmpty }
+                .joined(separator: ". ")
+        let compact = dynamicTypeSize.isAccessibilitySize
+        return Button {
+            sheet = .correction(TranscriptCorrectionRequest(
+                record: record,
+                correction: planning.coursePlan.creditOverrides.first { $0.id == record.id }
+            ))
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(record.name)
+                        .font(.body)
+                        .foregroundStyle(Color.ink)
+                    Text(compact ? "\(detail), \(value)" : detail)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                    if let status {
+                        Text(status)
+                            .font(.footnote)
+                            .foregroundStyle(needsReview ? Color.gradeAttention : Color.muted)
+                    }
+                }
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if !compact {
+                    Text(value)
+                        .font(.figure(.body))
+                        .foregroundStyle(Color.ink)
+                        .fixedSize()
+                }
+                RowChevron()
+            }
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(record.name)
+        .accessibilityValue(([needsReview ? "Needs review" : PlanFormat.creditCount(record.credits), detail] + [status].compactMap { $0 })
+            .joined(separator: ". "))
+        .accessibilityHint("Opens credit and subject correction")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("plan.transcript.\(record.id)")
+    }
+
+    /// Corrections whose semester is no longer on the transcript are listed
+    /// and never applied to another record. Saved semesters are only part of
+    /// the transcript, so there they're kept without offering removal.
+    @ViewBuilder
+    private func orphanedCorrections(_ report: CoursePlanReport, source: TranscriptSource) -> some View {
+        let orphans = report.transcriptCredits.orphanedOverrideIDs.compactMap { id in
+            planning.coursePlan.creditOverrides.first { $0.id == id }
+        }
+        if !orphans.isEmpty, source == .savedSemesters {
+            VStack(alignment: .leading, spacing: 0) {
+                GroupLabel("Corrections not applied")
+                Text(orphans.count == 1
+                     ? "1 saved correction is for a record that isn't loaded. Refresh to apply it."
+                     : "\(orphans.count) saved corrections are for records that aren't loaded. Refresh to apply them.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("plan.correction.pending")
+            }
+            .padding(.top, 16)
+        } else if !orphans.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                GroupLabel("Corrections not applied")
+                Text("These semesters are no longer on your Skyward transcript, so their corrections aren't counted.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 4)
+                ForEach(Array(orphans.enumerated()), id: \.element.id) { index, correction in
+                    if index > 0 { InsetDivider() }
+                    orphanRow(correction)
+                }
+                if let correctionError {
+                    Label(correctionError, systemImage: "exclamationmark.circle")
+                        .font(.footnote)
+                        .foregroundStyle(Color.gradeAttention)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 8)
+                        .accessibilityIdentifier("plan.correction.error")
+                }
+            }
+            .padding(.top, 16)
+        }
+    }
+
