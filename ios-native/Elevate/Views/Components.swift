@@ -1761,33 +1761,69 @@ struct SkeletonText: View {
         case (.primary, true): return Color.muted.opacity(0.4)
         case (.secondary, true): return Color.rule
         }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 28)
-        .padding(.vertical, 32)
     }
 }
 
-// MARK: - Skeleton shimmer
+/// A bar about as tall as lowercase letters, centered in a line box, with
+/// slightly rounded ends rather than a pill.
+private struct SkeletonBar: Shape {
+    func path(in rect: CGRect) -> Path {
+        let height = max(2, (rect.height * 0.46).rounded())
+        let bar = CGRect(x: rect.minX, y: rect.midY - height / 2, width: rect.width, height: height)
+        return Path(roundedRect: bar, cornerRadius: height * 0.3, style: .continuous)
+    }
+}
 
+/// A line of a `SkeletonRow`: the text style it stands in for and its
+/// approximate length in figures.
+struct SkeletonLine {
+    var font: Font
+    var length: Int
+
+    init(_ font: Font, _ length: Int) {
+        self.font = font
+        self.length = length
+    }
+}
+
+/// A loading open row: stacked leading lines and optional trailing lines,
+/// such as an amount over its label, on shared baselines. The first line of
+/// each stack is primary and the rest secondary. At accessibility sizes the
+/// trailing lines move beneath, as the loaded rows' values do. Horizontal
+/// padding comes from the caller, matching its loaded rows.
 struct SkeletonRow: View {
-    var height: CGFloat = 76
+    var lines: [SkeletonLine]
+    var trailing: [SkeletonLine] = []
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                Capsule().fill(Color.skeletonFill).frame(width: 152, height: 14)
-                Capsule().fill(Color.skeletonFill.opacity(0.65)).frame(width: 104, height: 10)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    stack(lines, alignment: .leading)
+                    if !trailing.isEmpty { stack(trailing, alignment: .leading) }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    stack(lines, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if !trailing.isEmpty { stack(trailing, alignment: .trailing) }
+                }
             }
-            Spacer()
-            Capsule().fill(Color.skeletonFill.opacity(0.75)).frame(width: 42, height: 18)
         }
-        .frame(height: height)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(Color(uiColor: .separator))
-                .frame(height: 0.5)
-        }
+        .padding(.vertical, Metrics.rowPadding)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         .accessibilityHidden(true)
+    }
+
+    private func stack(_ lines: [SkeletonLine], alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 3) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                SkeletonText(line.font, length: line.length, tone: index == 0 ? .primary : .secondary)
+            }
+        }
     }
 }
 
