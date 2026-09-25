@@ -1213,6 +1213,110 @@ struct InlineChoice<Value: Hashable>: View {
     }
 }
 
+// MARK: - Term selector
+
+/// The grading term shown across the app. The scope button names the
+/// current term; its sheet lists each semester's two quarters and the
+/// semester they make up. `grades` optionally shows each term's grade.
+struct TermSelector: View {
+    @Binding var selection: TermLabel
+    var grades: [TermLabel: Double] = [:]
+    var allowedTerms: [TermLabel] = TermLabel.allCases
+    var onPresentationChange: (Bool) -> Void = { _ in }
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ScopePicker(
+            title: "Grading term",
+            valueName: selection.displayName,
+            hint: "Shows quarters and semesters",
+            identifier: "term.selector",
+            groups: [
+                ChoiceGroup(title: "Fall semester", options: TermLabel.fallTerms.filter(allowedTerms.contains).map(option)),
+                ChoiceGroup(title: "Spring semester", options: TermLabel.springTerms.filter(allowedTerms.contains).map(option)),
+            ].filter { !$0.options.isEmpty },
+            selection: Binding(get: { selection }, set: { choose($0) }),
+            onPresentationChange: onPresentationChange
+        )
+    }
+
+    private func option(_ term: TermLabel) -> ChoiceOption<TermLabel> {
+        let grade = grades[term].flatMap { $0.isFinite ? $0 : nil }
+        return ChoiceOption(
+            value: term,
+            title: term.displayName,
+            note: semesterNote(term),
+            detail: grade.map { GradeFormat.compact($0) },
+            spokenDetail: grade.map { GradeFormat.spoken($0) },
+            identifier: "term.option.\(term.shortName)"
+        )
+    }
+
+    /// Names the quarters a semester is built from.
+    private func semesterNote(_ term: TermLabel) -> String? {
+        switch term {
+        case .sm1: return "Quarters 1 and 2 with the exam"
+        case .sm2: return "Quarters 3 and 4 with the exam"
+        default: return nil
+        }
+    }
+
+    /// Choosing the current term again leaves it selected.
+    private func choose(_ term: TermLabel) {
+        guard term != selection else { return }
+        Motion.perform(reduceMotion ? nil : .snappy(duration: 0.25)) {
+            selection = term
+        }
+    }
+}
+
+// MARK: - Viewport fill
+
+/// A vertical stack that uses the visible height of its scroll view.
+/// Children keep their natural heights. When together they need less than
+/// `minHeight`, the children marked `.fillsViewport()` share the difference
+/// equally, each growing to at most `maxGrowth` times its natural height.
+/// When they need more, nothing grows and the scroll view scrolls.
+/// `minHeight` comes from outside the scroll view, so the layout never feeds
+/// back into its own input.
+struct ViewportFillStack: Layout {
+    var minHeight: CGFloat
+    var maxGrowth: CGFloat = 1.75
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width
+            ?? subviews.map { $0.sizeThatFits(.unspecified).width }.max()
+            ?? 0
+        return CGSize(width: width, height: heights(width: width, subviews: subviews).reduce(0, +))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for (subview, height) in zip(subviews, heights(width: bounds.width, subviews: subviews)) {
+            subview.place(
+                at: CGPoint(x: bounds.minX, y: y),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(width: bounds.width, height: height)
+            )
+            y += height
+        }
+    }
+
+    private func heights(width: CGFloat, subviews: Subviews) -> [CGFloat] {
+        var heights = subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }
+        let natural = heights.reduce(0, +)
+        let growing = subviews.indices.filter { subviews[$0][FillsViewportKey.self] }
+        guard !growing.isEmpty, minHeight > natural else { return heights }
+        let share = (minHeight - natural) / CGFloat(growing.count)
+        for index in growing {
+            let cap = maxGrowth.isFinite ? heights[index] * (maxGrowth - 1) : share
+            heights[index] += min(share, cap)
+        }
+        return heights
+    }
+}
+
 
 struct LoginPromptView: View {
     var message: String
