@@ -1501,43 +1501,114 @@ struct StatusStrip<Control: View>: View {
     }
 }
 
+extension StatusStrip where Control == EmptyView {
+    init(
+        lastUpdated: Date?,
+        isRefreshing: Bool = false,
+        error: String?,
+        showsFailureDetail: Bool = true,
+        onRetry: @escaping () async -> Void
+    ) {
+        self.init(
+            lastUpdated: lastUpdated,
+            isRefreshing: isRefreshing,
+            error: error,
+            showsFailureDetail: showsFailureDetail,
+            onRetry: onRetry
+        ) { EmptyView() }
+    }
+}
+
+// MARK: - Shared chrome
+
+extension View {
+    /// A tab's first screen: the navigation bar is hidden and `RootHeader`
+    /// sits above the content in its place, so the heading never collapses,
+    /// moves, or centers as the content scrolls. Screens pushed onto the
+    /// stack must restore the bar with `.toolbar(.visible, for: .navigationBar)`.
+    func screenTitle(_ title: String, onSettings: @escaping () -> Void) -> some View {
+        navigationTitle(title)
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                RootHeader(title: title, onSettings: onSettings)
+            }
+    }
+}
+
+/// The fixed first row of a root screen: the title at the page margin and
+/// Settings at the trailing edge. Content scrolls beneath its opaque page
+/// background, which also fills the status bar area.
+struct RootHeader: View {
+    var title: String
+    var onSettings: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(title)
+                .font(.title.bold())
+                .foregroundStyle(Color.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("screen.heading")
+            Spacer(minLength: 8)
+            Button(action: onSettings) {
+                Image(systemName: "gearshape")
+                    .font(.title3)
+                    .foregroundStyle(Color.ink)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(ScopePressStyle())
+            .accessibilityLabel("Settings")
+            .accessibilityIdentifier("settings.button")
+        }
+        .padding(.leading, Metrics.page)
+        // The gear's 44-point target overhangs its glyph by about 12 points,
+        // so the glyph itself ends at the page margin.
+        .padding(.trailing, Metrics.page - 12)
+        .padding(.vertical, 4)
+        // The header never scrolls away, so very large text sizes stop
+        // growing it before it crowds the content.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+        .background(Color.appBackground.ignoresSafeArea(edges: .top))
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// Settings gear in the inline navigation bar of a pushed screen. Root
+/// screens show theirs in `RootHeader`.
+struct SettingsToolbarButton: View {
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "gearshape")
+        }
+        .accessibilityLabel("Settings")
+        .accessibilityIdentifier("settings.button")
+    }
+}
+
+// MARK: - Login prompt / error / empty states
 
 struct LoginPromptView: View {
     var message: String
     var onLogin: () -> Void
 
     var body: some View {
-        GeometryReader { proxy in
-            ScrollView {
-                VStack(spacing: 16) {
-                    Image(systemName: "person.crop.circle.badge.questionmark")
-                        .font(.system(size: 34, weight: .medium))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(Color.highlightText)
-                        .frame(width: 68, height: 68)
-                        .background(Color.ringHighlight, in: Circle())
-                    VStack(spacing: 8) {
-                        Text("Connect Skyward")
-                            .font(.title3.weight(.semibold))
-                            .multilineTextAlignment(.center)
-                        Text(message)
-                            .font(.body)
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Button(action: onLogin) {
-                        Label("Open settings", systemImage: "gearshape")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 10)
-                            .frame(minHeight: 44)
-                            .background(Color.prominentFill, in: RoundedRectangle(cornerRadius: 14))
-                    }
-                    .buttonStyle(RowPressStyle())
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Connect Skyward")
+                    .font(.title2.weight(.bold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                Text(message)
+                    .font(.body)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(action: onLogin) {
+                    Text("Connect Skyward")
                 }
                 .frame(maxWidth: 420)
                 .frame(maxWidth: .infinity, minHeight: proxy.size.height)
