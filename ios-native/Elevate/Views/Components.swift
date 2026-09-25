@@ -1317,6 +1317,98 @@ struct ViewportFillStack: Layout {
     }
 }
 
+private struct FillsViewportKey: LayoutValueKey {
+    static let defaultValue = false
+}
+
+extension View {
+    /// Marks a child of `ViewportFillStack` that takes a share of unused
+    /// height. The child should accept extra height, for example with
+    /// `.frame(maxHeight: .infinity)`.
+    func fillsViewport(_ fills: Bool = true) -> some View {
+        layoutValue(key: FillsViewportKey.self, value: fills)
+    }
+}
+
+// MARK: - Person names
+
+/// The display form of a person's name from Skyward. A name that arrives in
+/// a single case ("ISAAC GROMBACHER-BROWN", "karen chong") is set in
+/// proper-noun case: each part after a space, hyphen, or apostrophe starts
+/// with a capital, initials stay capitals, and II/III/IV stay numerals. A
+/// name that already mixes cases ("McDonald", "DeLeon", "van Dyke") is kept
+/// as written, since its capitalization can't be guessed. Course-title rules
+/// such as acronyms never apply to people.
+enum PersonName {
+    static func display(_ raw: String) -> String {
+        let words = raw.split(whereSeparator: \.isWhitespace).map(String.init)
+        let collapsed = words.joined(separator: " ")
+        let hasUpper = collapsed.contains { $0.isUppercase }
+        let hasLower = collapsed.contains { $0.isLowercase }
+        // Mixed case is kept; so is text without letters.
+        guard hasUpper != hasLower else { return collapsed }
+        return words.map(word).joined(separator: " ")
+    }
+
+    private static let numerals: Set<String> = ["II", "III", "IV"]
+
+    private static func word(_ word: String) -> String {
+        let bare = word.uppercased().trimmingCharacters(in: .punctuationCharacters)
+        if numerals.contains(bare) { return word.uppercased() }
+        // "J", "J.", "A.J.": every part between periods is a single letter.
+        let isInitials = word.split(separator: ".").allSatisfy { $0.filter(\.isLetter).count <= 1 }
+        if isInitials { return word.uppercased() }
+
+        var result = ""
+        var part = ""
+        for character in word {
+            if character == "-" || character == "'" || character == "’" {
+                result += capitalized(part) + String(character)
+                part = ""
+            } else {
+                part.append(character)
+            }
+        }
+        return result + capitalized(part)
+    }
+
+    private static func capitalized(_ part: String) -> String {
+        guard let first = part.firstIndex(where: \.isLetter) else { return part.lowercased() }
+        return part[..<first].lowercased()
+            + part[first].uppercased()
+            + part[part.index(after: first)...].lowercased()
+    }
+}
+
+// MARK: - Control line
+
+/// The first line of a screen: the scope control (term or school year) at
+/// the leading edge and when the data was fetched at the trailing edge. A
+/// failed refresh says so in the same place with a Retry action, and a line
+/// beneath it explains which saved data is still shown. Saved content stays
+/// on screen throughout.
+struct StatusStrip<Control: View>: View {
+    /// When false the line shows no refresh state at all.
+    var showsRefresh = true
+    var lastUpdated: Date?
+    var isRefreshing = false
+    var error: String?
+    /// False when the page explains the failure in its own line beneath,
+    /// so the strip shows only "Couldn't refresh" and Retry.
+    var showsFailureDetail = true
+    var onRetry: () async -> Void
+    @ViewBuilder var control: () -> Control
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var isRetrying = false
+
+    private var hasControl: Bool { Control.self != EmptyView.self }
+    private var isBusy: Bool { isRefreshing || isRetrying }
+    private var showsStatus: Bool {
+        showsRefresh && (isBusy || lastUpdated != nil || error != nil)
+    }
+    private var showsFailure: Bool { showsRefresh && error != nil && !isBusy }
+
 
 struct LoginPromptView: View {
     var message: String
