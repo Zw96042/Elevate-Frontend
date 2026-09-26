@@ -428,49 +428,64 @@ struct CoursesView: View {
     }
 }
 
-struct ClassCardView: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    var course: UnifiedCourseData
-    var term: TermLabel
-    var rowHeight: CGFloat = 70
-
-    private var usesStackedLayout: Bool { dynamicTypeSize >= .xxxLarge }
-
-    private var termScore: Double? {
-        course.currentScores.first { $0.bucket == bucketLabel }?.score
-            ?? AcademicScoreValue.finiteDouble(course.historicalGrades[term.historicalKey])
+extension UnifiedCourseData {
+    /// The grade Skyward reports for a term: the current score when posted,
+    /// otherwise the historical report-card value.
+    func termScore(_ term: TermLabel) -> Double? {
+        GradeChangeTracker.officialScore(for: self, term: term)
     }
 
-    private var bucketLabel: String {
-        switch term {
-        case .q1: return "Q1"; case .q2: return "Q2"; case .sm1: return "S1"
-        case .q3: return "Q3"; case .q4: return "Q4"; case .sm2: return "S2"
+    /// Every term Skyward has a grade for, for the term picker.
+    var termScores: [TermLabel: Double] {
+        var scores: [TermLabel: Double] = [:]
+        for term in TermLabel.allCases {
+            if let score = termScore(term), score.isFinite { scores[term] = score }
         }
+        return scores
+    }
+}
+
+/// One course as an open row: the period in a narrow gutter, the class and
+/// teacher, and the term grade set inside a thin ring that traces its share
+/// of 100, with any change since last viewed just before it. At
+/// accessibility sizes the period joins the details and the grade moves
+/// beneath them.
+/// Teacher names go through `PersonName`, never the course-title formatter.
+struct CourseRow: View {
+    var course: UnifiedCourseData
+    var term: TermLabel
+    var periodGutter: CGFloat
+    /// Signed change in the official course grade since the student last
+    /// saw it, supplied by the caller; nil shows nothing.
+    var gradeChange: Double? = nil
+    var gradeViewport: CGRect = .zero
+    var onGradeVisibilityChange: (Bool) -> Void = { _ in }
+
+    private var termScore: Double? { course.termScore(term) }
+
+    /// The change, when it is large enough to show as a compact figure.
+    private var shownChange: Double? {
+        guard let gradeChange, gradeChange.isFinite, abs(gradeChange) >= 0.05 else { return nil }
+        return gradeChange
+    }
+
+    private var name: String {
+        ClassNameFormatter.format(course.courseName.replacingOccurrences(of: " ", with: "_"))
+    }
+
+    private var instructor: String? {
+        guard let instructor = course.instructor.map(PersonName.display), !instructor.isEmpty else { return nil }
+        return instructor
     }
 
     var body: some View {
-        Group {
-            if usesStackedLayout {
-                VStack(alignment: .leading, spacing: 10) {
-                    courseDetails
-                    HStack {
-                        Spacer()
-                        gradeIndicator
-                        chevron
-                    }
-                }
-            } else {
-                HStack(spacing: 12) {
-                    courseDetails
-                    Spacer(minLength: 8)
-                    gradeIndicator
-                    chevron
-                }
-            }
-        }
-        .frame(minHeight: rowHeight)
-        .accessibilityElement(children: .combine)
-        .accessibilityValue(termScore.map { String(format: "%.0f percent", $0) } ?? "No grade")
+        CourseRowLayout(period: course.period, name: name, instructor: instructor,
+                        periodGutter: periodGutter, score: termScore, change: changeText,
+                        gradeViewport: gradeViewport, onGradeVisibilityChange: onGradeVisibilityChange)
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(accessibilityName)
+            .accessibilityValue(accessibilityValue)
     }
 
     private var courseDetails: some View {
