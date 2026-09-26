@@ -1605,3 +1605,49 @@ private struct CoursePlanEntrySheet: View {
         case name, credits
     }
 
+    init(request: CoursePlanEditRequest, originScope: String?, originRevision: Int?, onCommitted: @escaping () -> Void) {
+        self.request = request
+        self.originScope = originScope
+        self.originRevision = originRevision
+        self.onCommitted = onCommitted
+        let course = request.course
+        let initial = Fields(
+            name: course?.name ?? "",
+            subject: course?.subject,
+            credits: PlanFormat.editable(course?.credits ?? (request.kind == .planned ? 0.5 : 1)),
+            academicYear: course?.academicYear,
+            semester: course?.semester
+        )
+        initialFields = initial
+        _fields = State(initialValue: initial)
+    }
+
+    private var isEditing: Bool { request.course != nil }
+    private var isPlanned: Bool { request.kind == .planned }
+    /// Saved before automatic estimates and never confirmed missing from
+    /// Skyward. Whether it counts is the report's decision, not this flag's.
+    private var isLegacyEntry: Bool {
+        request.kind == .earned && request.course.map { $0.isSupplemental != true } == true
+    }
+
+    private var title: String {
+        if isPlanned { return isEditing ? "Planned Semester" : "Add Planned Semester" }
+        if isLegacyEntry { return "Saved Credit" }
+        return isEditing ? "Credit Not in Skyward" : "Add Credit"
+    }
+
+    // MARK: Validation
+
+    private var trimmedName: String { fields.name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    private var nameIsValid: Bool { !trimmedName.isEmpty && trimmedName.count <= PlanInput.nameLimit }
+
+    private var credits: Double? {
+        guard case .value(let value) = PlanInput.parse(fields.credits), value > 0, value <= PlanInput.creditLimit else { return nil }
+        return value
+    }
+
+    private var isValid: Bool { nameIsValid && fields.subject != nil && credits != nil }
+
+    // MARK: Body
+
