@@ -1853,3 +1853,109 @@ private struct CoursePlanEntrySheet: View {
         }
     }
 
+    private var creditsField: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            PlanForm.label("Credits")
+            PlanForm.well {
+                TextField("Credits", text: $fields.credits)
+                    .keyboardType(.decimalPad)
+                    .monospacedDigit()
+                    .focused($focus, equals: .credits)
+                    .accessibilityLabel("Credits")
+                    .accessibilityHint("More than 0 and no more than 4")
+                    .accessibilityIdentifier("plan.credits")
+            }
+            if credits == nil {
+                PlanForm.error(PlanInput.parse(fields.credits) == .empty
+                               ? "Enter the credits for this entry."
+                               : "Enter more than 0 and no more than 4 credits.")
+            }
+            PlanForm.note(isPlanned
+                          ? "One semester is usually 0.5 credit. Planned credits assume you complete the course."
+                          : "Use the credits on your official transcript or confirmed by your counselor.")
+        }
+    }
+
+    // MARK: Commit
+
+    /// `confirmMissing` marks a saved-for-review entry as a credit missing
+    /// from Skyward. New earned entries are always missing ones. Either is
+    /// saved only if the planner then counts it, so a confirmation never
+    /// claims a credit the report still holds.
+    private func save(confirmMissing: Bool = false) {
+        guard isValid, let subject = fields.subject, let credits else { return }
+        let kind = request.kind
+        var course = request.course ?? CoursePlanCourse(name: trimmedName, credits: credits, subject: subject)
+        course.name = trimmedName
+        course.credits = credits
+        course.subject = subject
+        if kind == .planned {
+            course.academicYear = fields.academicYear
+            course.semester = fields.semester
+        }
+        let mustCount = kind == .earned && (request.course == nil || confirmMissing)
+        if mustCount { course.isSupplemental = true }
+        let replacesExisting = request.course != nil
+        var missing = false
+        var listedInSkyward = false
+        let outcome = CoursePlanCommit.apply(store: store, originScope: originScope, originRevision: originRevision) { plan in
+            var records = kind == .earned ? plan.earnedCourses : plan.plannedCourses
+            if replacesExisting {
+                guard let index = records.firstIndex(where: { $0.id == course.id }) else {
+                    missing = true
+                    return false
+                }
+                records[index] = course
+            } else {
+                guard plan.earnedCourses.count + plan.plannedCourses.count < CoursePlanEntryKind.recordLimit else { return false }
+                records.append(course)
+            }
+            if kind == .earned { plan.earnedCourses = records } else { plan.plannedCourses = records }
+            if mustCount, !PlanReport.calculate(plan, store: store).manualEarnedCourses.contains(where: { $0.id == course.id }) {
+                listedInSkyward = true
+                return false
+            }
+            return true
+        }
+        if listedInSkyward {
+            saveError = "Skyward already lists this course, so it can't be counted as a credit not in Skyward. Nothing was changed. If its credit is wrong, correct that semester under Semester credits."
+            return
+        }
+        finish(outcome, missing: missing)
+    }
+
+    private func delete() {
+        guard let id = request.course?.id else { return }
+        let kind = request.kind
+        var missing = false
+        let outcome = CoursePlanCommit.apply(store: store, originScope: originScope, originRevision: originRevision) { plan in
+            let before = plan.earnedCourses.count + plan.plannedCourses.count
+            if kind == .earned {
+                plan.earnedCourses.removeAll { $0.id == id }
+            } else {
+                plan.plannedCourses.removeAll { $0.id == id }
+            }
+            missing = plan.earnedCourses.count + plan.plannedCourses.count == before
+            return !missing
+        }
+        finish(outcome, missing: missing)
+    }
+
+    private func finish(_ outcome: CoursePlanCommit.Outcome, missing: Bool) {
+        switch outcome {
+        case .saved:
+            onCommitted()
+            dismiss()
+        case .accountChanged:
+            dismiss()
+        case .rejected:
+            if missing {
+                saveError = "This entry is no longer in your plan."
+            } else if store.planning.planUnavailable {
+                saveError = "The saved course plan can't be read, so nothing was changed."
+            } else {
+                saveError = store.planning.error ?? "Couldn't save this entry. You can keep up to \(CoursePlanEntryKind.recordLimit) entries."
+            }
+        }
+    }
+}
