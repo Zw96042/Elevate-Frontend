@@ -2,15 +2,23 @@ import SwiftUI
 
 struct CoursesView: View {
     @Environment(AppStore.self) private var store
-    @State private var showingSettings = false
+    @Environment(AppRouter.self) private var router
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.isMainContentVisible) private var isMainContentVisible
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .subheadline) private var periodGutter: CGFloat = 28
+    @State private var showingConnect = false
+    @State private var showingTermSelector = false
+    @State private var manualClasses: [ManualClass] = []
+    @State private var displayedCourseIDs: Set<String> = []
 
     var body: some View {
-        @Bindable var store = store
-        NavigationStack {
+        @Bindable var router = router
+        return NavigationStack(path: $router.coursesPath) {
             Group {
                 if !store.canShowData {
-                    LoginPromptView(message: "Connect your Skyward account in Settings to view courses.") {
-                        showingSettings = true
+                    LoginPromptView(message: "Connect your Skyward account to see your classes, grades, and assignments.") {
+                        showingConnect = true
                     }
                 } else if let error = store.coursesError, store.courses == nil {
                     ErrorStateView(title: "Couldn't load courses", message: error) {
@@ -20,25 +28,67 @@ struct CoursesView: View {
                     courseList
                 }
             }
-            .navigationTitle("Courses")
-            .navigationBarTitleDisplayMode(.inline)
+            .screenTitle("Courses") { router.isShowingSettings = true }
             .background(Color.appBackground.ignoresSafeArea())
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
+            .accessibilityIdentifier("courses.screen")
+            .sheet(isPresented: $showingConnect) {
+                SkywardConnectSheet()
+            }
+            .navigationDestination(for: CoursesRoute.self) { route in
+                // The root hides the bar for its own header; pushed screens
+                // keep their centered inline titles and Back.
+                Group {
+                    switch route {
+                    case .course(let course):
+                        ClassDetailView(course: course)
+                    case .assignment(let course, let term, let token, let requestID):
+                        ClassDetailView(course: course, targetAssignmentID: token, targetTerm: term)
+                            .task(id: assignmentNavigationTrigger) {
+                                guard assignmentNavigationTrigger.canNavigate, router.coursesPath.last == route else { return }
+                                router.acknowledgeAssignment(route)
+                            }
+                            .id(requestID)
+                    case .gpa:
+                        GPAView()
+                    case .gradeGoal(let course, let term):
+                        GradeGoalView(course: course, term: term)
+                    case .missingWork:
+                        MissingWorkView()
+                    case .gpaConverter:
+                        GPAConversionView()
+                    case .gpaConverterYear(let year, let policy):
+                        GPAConversionYearView(year: year, policy: policy)
+                    case .collegeProfiles:
+                        CollegeComparisonView()
+                    case .collegeProfile(let id):
+                        if let profile = CollegeProfileCatalog.profiles.first(where: { $0.id == id }) {
+                            CollegeProfileDetailView(profile: profile)
+                        } else {
+                            CollegeComparisonView()
+                        }
+                    case .gradeChanges:
+                        GradeChangesView()
                     }
-                    .accessibilityLabel("Settings")
+                }
+                .toolbar(.visible, for: .navigationBar)
+            }
+            .onAppear(perform: observeDisplayedGrades)
+            .onChange(of: store.courses) { _, _ in observeDisplayedGrades() }
+            .onChange(of: store.selectedTerm) { _, _ in observeDisplayedGrades() }
+            .onChange(of: router.coursesPath.isEmpty) { _, isEmpty in
+                observeDisplayedGrades()
+                // A class may have recorded assignment changes while open.
+                if isEmpty, store.planning.accountScope == store.localAccountScope {
+                    store.planning.reloadHistory()
                 }
             }
-            .sheet(isPresented: $showingSettings) {
-                SettingsView()
-            }
-            .navigationDestination(for: UnifiedCourseData.self) { course in
-                ClassDetailView(course: course)
-            }
+            .onChange(of: router.selectedTab) { _, _ in observeDisplayedGrades() }
+            .onChange(of: scenePhase) { _, _ in observeDisplayedGrades() }
+            .onChange(of: router.isShowingSettings) { _, _ in observeDisplayedGrades() }
+            .onChange(of: showingConnect) { _, _ in observeDisplayedGrades() }
+            .onChange(of: showingTermSelector) { _, _ in observeDisplayedGrades() }
+            .onChange(of: isMainContentVisible) { _, _ in observeDisplayedGrades() }
+            .onChange(of: store.notifications.accountScope) { _, _ in observeDisplayedGrades() }
         }
     }
 
