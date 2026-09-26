@@ -1651,3 +1651,111 @@ private struct CoursePlanEntrySheet: View {
 
     // MARK: Body
 
+    var body: some View {
+        let report = PlanReport.current(store)
+        // The planner never counts an earned entry whose name matches an
+        // imported semester or a current class, so confirming or adding one
+        // would be a trap.
+        let match = request.kind == .earned ? PlanReport.skywardMatch(for: trimmedName, in: report) : nil
+        let current = trimmedName.isEmpty ? nil : PlanReport.currentMatch(for: trimmedName, in: report)
+        let blocked = match != nil || (request.kind == .earned && current != nil)
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    if request.kind == .earned {
+                        earnedNote(report: report, match: match, current: current)
+                    }
+                    nameField
+                    if isPlanned, current != nil || fields.academicYear != nil || fields.semester != nil {
+                        scopeFields(current: current)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        PlanChoiceField(
+                            label: "Subject",
+                            valueName: fields.subject?.title ?? "Choose a subject",
+                            isPlaceholder: fields.subject == nil,
+                            hint: "Opens subject choices",
+                            identifier: "plan.subject",
+                            groups: PlanForm.subjectGroups(identifier: "plan.subject"),
+                            selection: $fields.subject
+                        )
+                        PlanForm.note("These credits count toward this one subject. Use separate entries to split a course between subjects.")
+                    }
+                    creditsField
+                    if let saveError {
+                        PlanForm.saveError(saveError, identifier: "plan.saveError")
+                    }
+                    if isLegacyEntry, !blocked {
+                        Button {
+                            focus = nil
+                            confirmingMissing = true
+                        } label: {
+                            Text("Count as a credit not in Skyward…")
+                        }
+                        .buttonStyle(ActionTextButtonStyle())
+                        .disabled(!isValid)
+                        .accessibilityIdentifier("plan.review.confirm")
+                        .confirmationDialog(
+                            "Count “\(trimmedName)”?",
+                            isPresented: $confirmingMissing,
+                            titleVisibility: .visible
+                        ) {
+                            Button("Count Credit") { save(confirmMissing: true) }
+                            Button("Cancel", role: .cancel) {}
+                        } message: {
+                            Text("Only count credits that aren't on your Skyward transcript. Otherwise this course is counted twice.")
+                        }
+                    }
+                    if isEditing {
+                        Button(role: .destructive) {
+                            focus = nil
+                            confirmingDelete = true
+                        } label: {
+                            Text(isPlanned ? "Delete planned semester" : "Delete saved credit")
+                                .foregroundStyle(Color.gradeAttention)
+                        }
+                        .buttonStyle(ActionTextButtonStyle())
+                        .accessibilityIdentifier("plan.delete")
+                    }
+                }
+                .padding(.horizontal, Metrics.page)
+                .padding(.top, 8)
+                .padding(.bottom, 32)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .softScrollEdges()
+            .background(Color.appBackground.ignoresSafeArea())
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("plan.cancel")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(!isValid || (request.kind == .earned && !isEditing && blocked))
+                        .accessibilityIdentifier("plan.save")
+                }
+            }
+            .confirmationDialog(
+                "Delete “\(request.course?.name ?? "")”?",
+                isPresented: $confirmingDelete,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) { delete() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This removes the entry from your course plan on this iPhone.")
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Color.appBackground)
+        .interactiveDismissDisabled(fields != initialFields)
+        .tint(Color.themeAccent)
+        .foregroundStyle(Color.ink)
+        .preferredColorScheme(themeManager.appearance.colorScheme)
+        .onChange(of: store.accountRevision) { _, _ in dismiss() }
+    }
+
