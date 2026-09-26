@@ -296,6 +296,136 @@ struct CoursesView: View {
         .accessibilityIdentifier("courses.gpa")
     }
 
+    /// The line's fixed heading is real text; the caption and figures, which
+    /// depend on the response, are bars on their own type styles. This is the
+    /// screen's one loading announcement; the placeholder rows are hidden.
+    private var gpaPlaceholder: some View {
+        gpaLine(showsChevron: false) {
+            EmptyView()
+        } values: { alignment in
+            VStack(alignment: alignment, spacing: 2) {
+                SkeletonText(.figure(.title3), length: 4)
+                SkeletonText(.figure(.footnote, weight: .regular), length: 12, tone: .secondary)
+            }
+        }
+        .loadingPlaceholder("Loading courses")
+        .accessibilityIdentifier("courses.loading")
+    }
+
+    /// Shared geometry prevents the loading summary from shifting the list.
+    private func gpaLine<Caption: View, Values: View>(
+        showsChevron: Bool = true,
+        @ViewBuilder caption: () -> Caption,
+        @ViewBuilder values: (HorizontalAlignment) -> Values
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Weighted GPA")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.ink)
+                caption()
+                if dynamicTypeSize.isAccessibilitySize {
+                    values(.leading)
+                        .padding(.top, 4)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if !dynamicTypeSize.isAccessibilitySize {
+                values(.trailing)
+            }
+            Image(systemName: "chevron.forward")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.faint)
+                .opacity(showsChevron ? 1 : 0)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, Metrics.page)
+        .padding(.vertical, 12)
+        .frame(minHeight: 60)
+    }
+
+    // MARK: - Missing work
+
+    /// Opens Skyward's missing flags for the selected term's quarter. A count
+    /// shows only when Calendar's saved data already covers every class in
+    /// that quarter; otherwise the line names the quarter and loads nothing.
+    private var missingWorkLine: some View {
+        let quarter = SchoolCalendar.quarter(for: store.selectedTerm)
+        let count = knownMissingCount(quarter)
+        let countText = count.map { $0 == 0 ? "None" : "\($0)" }
+        return Button {
+            router.coursesPath.append(.missingWork)
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Missing work")
+                        .font(.body)
+                        .foregroundStyle(Color.ink)
+                    if quarter != store.selectedTerm {
+                        Text(quarter.displayName)
+                            .font(.subheadline)
+                            .foregroundStyle(Color.muted)
+                    }
+                    if dynamicTypeSize.isAccessibilitySize, let countText {
+                        Text(countText)
+                            .font(.figure(.body))
+                            .foregroundStyle(count == 0 ? Color.muted : Color.gradeAttention)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if !dynamicTypeSize.isAccessibilitySize, let countText {
+                    Text(countText)
+                        .font(.figure(.body))
+                        .foregroundStyle(count == 0 ? Color.muted : Color.gradeAttention)
+                        .lineLimit(1)
+                }
+                Image(systemName: "chevron.forward")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.faint)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, Metrics.page)
+            .padding(.vertical, 10)
+            .frame(minHeight: 52)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Missing work, \(quarter.displayName)")
+        .accessibilityValue(count.map { $0 == 0 ? "None marked" : "\($0) marked missing" } ?? "")
+        .accessibilityHint("Lists assignments Skyward marks missing")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("courses.missingWork")
+    }
+
+    /// Counts only Skyward's missing flags, and only from saved Calendar data
+    /// for this quarter that resolved every eligible class without a failure.
+    private func knownMissingCount(_ quarter: TermLabel) -> Int? {
+        guard let data = store.calendarQuarter(quarter).data, data.term == quarter, data.failedCourseNames.isEmpty,
+              let courses = store.courses else { return nil }
+        let eligible = Set(SchoolCalendar.eligibleCourses(courses, term: quarter).map(\.id))
+        guard !eligible.isEmpty, eligible.isSubset(of: data.resolvedCourseIDs) else { return nil }
+        return data.assignments.filter { assignment in
+            eligible.contains(assignment.course.id) && assignment.meta.contains { $0.type == "missing" }
+        }.count
+    }
+
+    private func summaryValues(_ data: GPAData, alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 2) {
+            Text(GradeFormat.gpa(data.weighted))
+                .font(.figure(.title3))
+                .foregroundStyle(Color.ink)
+                .contentTransition(.numericText(value: data.weighted))
+            Text("Unweighted \(GradeFormat.gpa(data.unweighted))")
+                .font(.figure(.footnote, weight: .regular))
+                .foregroundStyle(Color.muted)
+                .contentTransition(.numericText(value: data.unweighted))
+        }
+        .lineLimit(1)
+    }
 }
 
 struct ClassCardView: View {
