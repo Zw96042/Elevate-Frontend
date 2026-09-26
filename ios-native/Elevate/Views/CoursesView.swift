@@ -169,16 +169,133 @@ struct CoursesView: View {
                     Group {
                         if isFirstLoad { gpaPlaceholder } else { gpaSummary }
                     }
+                    .padding(.top, 4)
+                    InsetDivider()
+                        .padding(.horizontal, Metrics.page)
+                    missingWorkLine
+                    Rule()
+                        .padding(.horizontal, Metrics.page)
+                        .padding(.bottom, 4)
+
+                    courseRows(in: viewport.frame(in: .global))
                 }
-                .padding(.horizontal, 20)
+                .padding(.bottom, Self.bottomGap)
             }
-            .contentMargins(.vertical, 0, for: .scrollContent)
-            .refreshable {
+            .visibleRefreshable {
                 await store.refreshCourses(force: true)
             }
-            .background(Color.appBackground)
+            .onAppear(perform: loadManualClasses)
+            .onChange(of: store.currentGradeLevel) { _, _ in loadManualClasses() }
         }
     }
+
+    /// Each class is its own child of the fill layout, so every row receives
+    /// the same share of spare height on top of its natural height.
+    @ViewBuilder
+    private func courseRows(in viewport: CGRect) -> some View {
+        let courses = store.visibleCourses
+        if isFirstLoad {
+            ForEach(0..<7, id: \.self) { index in
+                VStack(spacing: 0) {
+                    if index > 0 { InsetDivider(leading: rowDividerInset).padding(.trailing, Metrics.page) }
+                    CourseRowPlaceholder(index: index, periodGutter: periodGutter)
+                }
+                .fillsViewport()
+            }
+        } else if courses.isEmpty {
+            EmptyStateView(
+                title: "No classes",
+                message: "Skyward has no classes for \(store.selectedTerm.displayName)."
+            )
+            .padding(.horizontal, Metrics.page)
+        } else {
+            ForEach(Array(courses.enumerated()), id: \.element.id) { index, course in
+                VStack(spacing: 0) {
+                    if index > 0 { InsetDivider(leading: rowDividerInset).padding(.trailing, Metrics.page) }
+                    NavigationLink(value: CoursesRoute.course(course)) {
+                        CourseRow(course: course, term: store.selectedTerm, periodGutter: periodGutter,
+                                  gradeChange: store.courseGradeDelta(for: course.id), gradeViewport: viewport) { visible in
+                            if visible { displayedCourseIDs.insert(course.id) }
+                            else { displayedCourseIDs.remove(course.id) }
+                            observeDisplayedGrades()
+                        }
+                    }
+                    .buttonStyle(RowPressStyle())
+                    .accessibilityIdentifier("course.row.\(course.corNumId)")
+                }
+                .fillsViewport()
+            }
+        }
+    }
+
+    // MARK: - GPA summary
+
+    private func loadManualClasses() {
+        let level = store.currentGradeLevel
+        manualClasses = level.gradeYear == nil ? [] : WhatIfStore.manualClasses(gradeLevel: level)
+    }
+
+    /// The current year's GPA for the selected term, read from the same table
+    /// as the GPA screen. When that term has no GPA yet, the latest posted
+    /// term is shown and named.
+    private var summary: (label: String, data: GPAData, isSelectedTerm: Bool)? {
+        let level = store.currentGradeLevel
+        let data = GPAReport.termGPAs(
+            level: level,
+            courses: store.courses(for: level),
+            manualClasses: manualClasses
+        )
+        let key = GPAReport.key(for: store.selectedTerm)
+        if let value = data[key] {
+            return (key, value, true)
+        }
+        if let latest = GPAReport.latest(in: data) {
+            return (latest.label, latest.data, false)
+        }
+        return nil
+    }
+
+    private var gpaSummary: some View {
+        let shown = summary
+        let caption: String
+        if let shown {
+            caption = shown.isSelectedTerm
+                ? GPAReport.termName(shown.label)
+                : "Latest posted: \(GPAReport.termName(shown.label))"
+        } else {
+            caption = "Not posted yet"
+        }
+
+        return Button {
+            // The GPA screen opens on the same year this line summarizes.
+            store.selectedGradeLevel = store.currentGradeLevel
+            router.coursesPath.append(.gpa)
+        } label: {
+            gpaLine {
+                if shown?.isSelectedTerm != true {
+                    Text(caption)
+                        .font(.subheadline)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } values: { alignment in
+                if let data = shown?.data {
+                    summaryValues(data, alignment: alignment)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("GPA, \(caption)")
+        .accessibilityValue(shown.map {
+            "Weighted \(GradeFormat.gpa($0.data.weighted)), unweighted \(GradeFormat.gpa($0.data.unweighted))"
+        } ?? "")
+        .accessibilityHint("Opens GPA history")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("courses.gpa")
+    }
+
 }
 
 struct ClassCardView: View {
