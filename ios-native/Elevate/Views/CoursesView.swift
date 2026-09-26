@@ -601,22 +601,40 @@ private struct CourseRowLayout: View {
     }
 
     @ViewBuilder
-    private var gradeIndicator: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            Text(termScore.map { String(format: "%.0f%%", $0) } ?? "No grade")
-                .font(.headline.monospacedDigit())
-                .foregroundStyle(termScore == nil ? .secondary : Color.highlightText)
+    private var details: some View {
+        if let placeholder {
+            VStack(alignment: .leading, spacing: 2) {
+                if dynamicTypeSize.isAccessibilitySize {
+                    SkeletonText(.footnote, length: 6, tone: .secondary)
+                }
+                SkeletonText(.body.weight(.medium), length: placeholder.name)
+                SkeletonText(.subheadline, length: placeholder.instructor, tone: .secondary)
+            }
         } else {
-            GradeProgressRing(score: termScore)
+            loadedDetails
         }
     }
 
-    private var chevron: some View {
-        Image(systemName: "chevron.right")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.tertiary)
-            .frame(width: 16)
-            .accessibilityHidden(true)
+    private var loadedDetails: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if dynamicTypeSize.isAccessibilitySize, let period = period {
+                Text("Period \(period)")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+            }
+            Text(name)
+                .font(.body.weight(.medium))
+                .foregroundStyle(Color.ink)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+            if let instructor {
+                Text(instructor)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.muted)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(dynamicTypeSize >= .xxxLarge ? nil : 1)
+            }
+        }
     }
 
 }
