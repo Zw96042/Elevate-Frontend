@@ -97,3 +97,100 @@ struct DocumentsView: View {
         }
     }
 
+    private var statusStrip: some View {
+        let hasData = store.documents != nil
+        return StatusStrip(
+            lastUpdated: store.documentsLastUpdated,
+            isRefreshing: store.documentsLoading && hasData,
+            error: hasData ? store.documentsError : nil
+        ) {
+            await store.refreshDocuments(force: true)
+        }
+        .padding(.horizontal, Metrics.page)
+    }
+
+    /// The open failure, when no request is running and it hasn't been
+    /// superseded by a preview.
+    private var openFailure: String? {
+        guard store.documentLoadingID == nil, store.documentPreview == nil,
+              let error = store.documentOpenError else { return nil }
+        return error
+    }
+
+    private func documentRows(_ documents: [SkywardDocument]) -> some View {
+        let failure = openFailure
+        let failureHasRow = documents.contains { $0.id == requestedID }
+        return LazyVStack(alignment: .leading, spacing: 0) {
+            if let failure, !failureHasRow {
+                OpenFailureNote(error: failure)
+                    .padding(.horizontal, Metrics.page)
+                    .padding(.top, 4)
+            }
+            ForEach(Array(documents.enumerated()), id: \.element.id) { index, document in
+                if index > 0 { InsetDivider().padding(.horizontal, Metrics.page) }
+                documentRow(document, index: index)
+                if let failure, document.id == requestedID {
+                    OpenFailureNote(error: failure)
+                        .padding(.horizontal, Metrics.page)
+                        .padding(.bottom, Metrics.rowPadding)
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    @ViewBuilder
+    private func documentRow(_ document: SkywardDocument, index: Int) -> some View {
+        let isOpening = store.documentLoadingID == document.id
+        let row = DocumentRow(document: document, isOpening: isOpening)
+        if document.canOpen {
+            Button {
+                open(document)
+            } label: {
+                row
+            }
+            .buttonStyle(RowPressStyle())
+            .accessibilityLabel(row.spokenTitle)
+            .accessibilityValue(isOpening ? row.spokenDetails(appending: "Opening") : row.spokenDetails())
+            .accessibilityHint("Opens a preview")
+            .accessibilityIdentifier("documents.record.\(index)")
+        } else {
+            row
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(row.spokenTitle)
+                .accessibilityValue(row.spokenDetails(appending: "Requires Skyward"))
+                .accessibilityIdentifier("documents.record.\(index)")
+        }
+    }
+
+    /// One request at a time; the store owns fetching and the preview file.
+    private func open(_ document: SkywardDocument) {
+        guard document.canOpen, store.documentLoadingID == nil else { return }
+        requestedID = document.id
+        Task { await store.openDocument(document) }
+    }
+
+    /// `DocumentRow`'s shape: the title over its type and date.
+    private var loadingRows: some View {
+        let titles = [17, 13, 19, 11]
+        return VStack(spacing: 0) {
+            ForEach(titles.indices, id: \.self) { index in
+                if index > 0 { InsetDivider().padding(.horizontal, Metrics.page) }
+                SkeletonRow(lines: [SkeletonLine(.body, titles[index]), SkeletonLine(.subheadline, 16)])
+                    .padding(.horizontal, Metrics.page)
+            }
+        }
+        .padding(.top, 4)
+        .loadingPlaceholder("Loading documents")
+        .accessibilityIdentifier("documents.loading")
+    }
+}
+
+/// One document as an open row: its title, then its type and date beneath.
+/// The trailing edge shows progress while it opens, or that Skyward is
+/// needed to view it.
+private struct DocumentRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    var document: SkywardDocument
+    var isOpening: Bool
+
