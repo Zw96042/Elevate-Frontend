@@ -1759,3 +1759,97 @@ private struct CoursePlanEntrySheet: View {
         .onChange(of: store.accountRevision) { _, _ in dismiss() }
     }
 
+    // MARK: Fields
+
+    /// Explains how the report treats this earned entry. A name Skyward
+    /// already lists needs a correction to that semester instead.
+    @ViewBuilder
+    private func earnedNote(report: CoursePlanReport, match: TranscriptCreditRecord?, current: CurrentCourseCredit?) -> some View {
+        if let current {
+            PlanForm.error("You're taking \(current.name) now, so this entry can't be counted as earned. Its expected credit is under Currently taking.")
+                .accessibilityIdentifier("plan.entry.currentClass")
+        } else if let match {
+            PlanForm.error("Skyward already lists \(match.name) (\(PlanFormat.recordSource(match))), so this entry can't be counted. If that semester's credit is wrong, correct it under Semester credits instead.")
+                .accessibilityIdentifier("plan.entry.listedInSkyward")
+        } else if isLegacyEntry {
+            PlanForm.note(report.transcriptCredits.records.isEmpty
+                          ? "You saved this before Elevate estimated credits from Skyward. It's counted while no Skyward semesters are available, then held for review so a course isn't counted twice."
+                          : "You saved this before Elevate estimated credits from Skyward. It isn't counted, so a course on your Skyward transcript isn't counted twice.")
+                .accessibilityIdentifier("plan.review.note")
+        } else {
+            PlanForm.note("Add only credits your Skyward transcript doesn't show. Courses on your transcript are already counted.")
+        }
+    }
+
+    /// Optional school year and semester for a planned entry. Shown only when
+    /// its name matches a current class or it already has a saved scope, so
+    /// a future repeat can be told apart from current enrollment.
+    private func scopeFields(current: CurrentCourseCredit?) -> some View {
+        let held = current != nil && wouldBeHeld
+        return VStack(alignment: .leading, spacing: 12) {
+            if let current {
+                PlanForm.note("You're taking \(current.name) now (\(PlanFormat.semesters(current.semesters)), \(PlanFormat.enrollmentYear(current.academicYear))). To plan it again, choose the future school year or semester.")
+                    .accessibilityIdentifier("plan.scope.note")
+            }
+            PlanChoiceField(
+                label: "School year",
+                valueName: fields.academicYear.map { PlanFormat.enrollmentYear($0) } ?? "Not chosen",
+                isPlaceholder: fields.academicYear == nil,
+                hint: "Opens school year choices",
+                identifier: "plan.scope.year",
+                groups: PlanScope.yearGroups(saved: request.course?.academicYear, identifier: "plan.scope.year"),
+                selection: $fields.academicYear
+            )
+            PlanChoiceField(
+                label: "Semester",
+                valueName: fields.semester?.displayName ?? "Not chosen",
+                isPlaceholder: fields.semester == nil,
+                hint: "Opens semester choices",
+                identifier: "plan.scope.semester",
+                groups: PlanScope.semesterGroups(identifier: "plan.scope.semester"),
+                selection: $fields.semester
+            )
+            if held {
+                PlanForm.error("This still matches the class you're taking now, so it won't be counted.")
+                    .accessibilityIdentifier("plan.scope.held")
+            }
+        }
+    }
+
+    /// Whether the planner would hold this planned entry, as filled in, for
+    /// overlapping current enrollment.
+    private var wouldBeHeld: Bool {
+        guard isPlanned, nameIsValid, let subject = fields.subject, let credits else { return false }
+        var course = request.course ?? CoursePlanCourse(name: trimmedName, credits: credits, subject: subject)
+        course.name = trimmedName
+        course.credits = credits
+        course.subject = subject
+        course.academicYear = fields.academicYear
+        course.semester = fields.semester
+        var plan = store.planning.coursePlan
+        if let index = plan.plannedCourses.firstIndex(where: { $0.id == course.id }) {
+            plan.plannedCourses[index] = course
+        } else {
+            plan.plannedCourses.append(course)
+        }
+        return PlanReport.calculate(plan, store: store).manualPlannedReviewCourses.contains { $0.id == course.id }
+    }
+
+    private var nameField: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            PlanForm.label("Course name")
+            PlanForm.well {
+                TextField("Course name", text: $fields.name)
+                    .textInputAutocapitalization(.words)
+                    .submitLabel(.next)
+                    .focused($focus, equals: .name)
+                    .onSubmit { focus = .credits }
+                    .accessibilityLabel("Course name")
+                    .accessibilityIdentifier("plan.name")
+            }
+            if trimmedName.count > PlanInput.nameLimit {
+                PlanForm.error("Use \(PlanInput.nameLimit) characters or fewer.")
+            }
+        }
+    }
+
