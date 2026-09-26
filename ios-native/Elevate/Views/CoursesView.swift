@@ -488,20 +488,116 @@ struct CourseRow: View {
             .accessibilityValue(accessibilityValue)
     }
 
-    private var courseDetails: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(ClassNameFormatter.format(course.courseName.replacingOccurrences(of: " ", with: "_")))
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(usesStackedLayout ? nil : 1)
-            if let instructor = course.instructor, !instructor.isEmpty {
-                Text(ClassNameFormatter.format(instructor.replacingOccurrences(of: " ", with: "_")))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(usesStackedLayout ? nil : 1)
+    /// "+1" or "−0.5": the sign carries the direction, so it stays muted.
+    private var changeText: String? {
+        shownChange.map { ($0 > 0 ? "+" : "−") + GradeFormat.compact(abs($0)) }
+    }
+
+    private var accessibilityValue: String {
+        let grade = GradeFormat.spoken(termScore)
+        guard let shownChange else { return grade }
+        let amount = GradeFormat.compact(abs(shownChange))
+        let unit = amount == "1" ? "point" : "points"
+        let direction = shownChange > 0 ? "up" : "down"
+        return "\(grade), \(direction) \(amount) \(unit) since you last checked"
+    }
+
+    private var accessibilityName: String {
+        var parts = [name]
+        if let period = course.period { parts.append("period \(period)") }
+        if let instructor { parts.append(instructor) }
+        return parts.joined(separator: ", ")
+    }
+}
+
+/// The real and loading course rows share type, columns and viewport behavior.
+private struct CourseRowLayout: View {
+    /// Approximate name and teacher lengths, in figures, of a loading row.
+    struct Placeholder {
+        var name: Int
+        var instructor: Int
+    }
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    var period: Int?
+    var name: String
+    var instructor: String?
+    var periodGutter: CGFloat
+    var score: Double?
+    var change: String?
+    /// A loading row: bars on the name and teacher lines, an empty period
+    /// gutter, and the ring's bare track.
+    var placeholder: Placeholder? = nil
+    var gradeViewport: CGRect = .zero
+    var onGradeVisibilityChange: (Bool) -> Void = { _ in }
+
+    /// Room above and below the ring. At the default size the ring plus
+    /// this clearance matches the name and teacher lines with the usual row
+    /// padding, so neither one sets the row taller than the other.
+    private static let ringClearance: CGFloat = 7
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    details
+                    grade
+                }
+                .padding(.vertical, Metrics.rowPadding - Self.ringClearance)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .center, spacing: 0) {
+                    Text(period.map(String.init) ?? "")
+                        .font(.figure(.subheadline, weight: .regular))
+                        .foregroundStyle(Color.muted)
+                        .frame(width: periodGutter, alignment: .leading)
+                    details
+                        .padding(.vertical, Metrics.rowPadding - Self.ringClearance)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    // Rings keep the trailing edge, so grades and arcs line
+                    // up from row to row whether or not a change shows.
+                    grade
+                        .padding(.leading, 12)
+                }
             }
         }
-        .layoutPriority(1)
+        .padding(.horizontal, Metrics.page)
+        .padding(.vertical, Self.ringClearance)
+        // Natural height when unconstrained; takes any spare height the
+        // course list gives it, with the content centered.
+        .frame(maxHeight: .infinity)
+    }
+
+    /// The ring, and the change beside it rather than squeezed into the
+    /// hole: before the ring in the trailing column, after it once the
+    /// grade sits beneath the details. Both stop growing at the second
+    /// accessibility size, where the ring is already wide for the row;
+    /// names and teachers keep growing.
+    private var grade: some View {
+        HStack(spacing: 8) {
+            if !dynamicTypeSize.isAccessibilitySize { changeLabel }
+            GradeRing(score: score, isLoading: placeholder != nil)
+                .onGeometryChange(for: Bool.self) { geometry in
+                    let frame = geometry.frame(in: .global)
+                    return gradeViewport.contains(CGPoint(x: frame.midX, y: frame.midY))
+                } action: { onGradeVisibilityChange($0) }
+            if dynamicTypeSize.isAccessibilitySize { changeLabel }
+        }
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+    }
+
+    /// Muted at every size; the sign carries the direction. The row speaks
+    /// the change in its accessibility value.
+    @ViewBuilder
+    private var changeLabel: some View {
+        if let change {
+            Text(change)
+                .font(.figure(.footnote, weight: .regular))
+                .foregroundStyle(Color.muted)
+                .lineLimit(1)
+                .fixedSize()
+                .accessibilityHidden(true)
+        }
     }
 
     @ViewBuilder
