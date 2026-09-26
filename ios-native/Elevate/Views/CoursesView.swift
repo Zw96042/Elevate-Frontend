@@ -638,3 +638,106 @@ private struct CourseRowLayout: View {
     }
 
 }
+
+/// The term grade in the open center of a thin ring. The figure leads; the
+/// ring is a pencil line in the theme's secondary-text tone over a hairline
+/// track, tracing the average's share of 100 clockwise from the top. Only
+/// the arc is clamped to 0...100; the figure keeps the true value in the
+/// list's compact format, colored only when it needs attention. Without a
+/// grade there is no ring at all, just a muted dash, so a missing grade
+/// never reads as zero progress. A loading ring is the bare track around a
+/// short figure bar: no arc, grade or dash it could be mistaken for. The
+/// ring itself is hidden from VoiceOver; the row speaks the grade.
+private struct GradeRing: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
+    // Sized to hold "103.8" at full size; scales with the figure's style.
+    @ScaledMetric(relativeTo: .body) private var diameter: CGFloat = 54
+    @ScaledMetric(relativeTo: .body) private var lineWidth: CGFloat = 1.5
+    var score: Double?
+    var isLoading = false
+
+    private var fraction: Double? {
+        guard let score, score.isFinite else { return nil }
+        return min(max(score / 100, 0), 1)
+    }
+
+    /// Width of the open center inside the stroke.
+    private var hole: CGFloat { max(diameter - 2 * lineWidth, 1) }
+
+    /// Increased Contrast darkens both lines a step, as the loading bars do.
+    private var arcColor: Color { contrast == .increased ? .ink : .muted }
+    private var trackColor: Color { contrast == .increased ? Color.muted.opacity(0.4) : .rule }
+
+    var body: some View {
+        ZStack {
+            ring
+                .accessibilityHidden(true)
+            if isLoading {
+                // Two figures wide on the grade's own line: a quiet number
+                // shape, well inside the hole.
+                SkeletonText(.figure(.body), length: 2)
+            } else {
+                figure
+            }
+        }
+        .frame(width: diameter, height: diameter)
+        .animation(Motion.value(reduceMotion), value: score)
+    }
+
+    /// The width keeps the figure's corners inside the stroke; a value wider
+    /// than expected scales down rather than touching the ring.
+    private var figure: some View {
+        Text(GradeFormat.compact(score))
+            .font(.figure(.body))
+            .foregroundStyle(GradeTier(score).textColor)
+            .contentTransition(.numericText(value: score ?? 0))
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
+            .frame(maxWidth: hole * 0.9)
+    }
+
+    @ViewBuilder
+    private var ring: some View {
+        if isLoading {
+            track
+        } else if let fraction {
+            ZStack {
+                track
+                // Butt ends keep 95 visibly short of a closed 100.
+                Circle()
+                    .inset(by: lineWidth / 2)
+                    .trim(from: 0, to: fraction)
+                    .stroke(arcColor, lineWidth: lineWidth)
+                    .rotationEffect(.degrees(-90))
+            }
+        }
+    }
+
+    private var track: some View {
+        Circle()
+            .inset(by: lineWidth / 2)
+            .stroke(trackColor, lineWidth: lineWidth)
+    }
+}
+
+/// A loading course row in the real row's layout, so its height matches a
+/// loaded one-line row and it takes its own share of the viewport.
+private struct CourseRowPlaceholder: View {
+    var index: Int
+    var periodGutter: CGFloat
+
+    /// Varied lengths, in figures, read as a list of different classes.
+    private static let names = [15, 11, 17, 9, 13, 16, 12]
+    private static let teachers = [11, 9, 13, 10, 12, 8, 11]
+
+    var body: some View {
+        CourseRowLayout(
+            period: nil, name: "", instructor: nil, periodGutter: periodGutter, score: nil, change: nil,
+            placeholder: CourseRowLayout.Placeholder(name: Self.names[index % Self.names.count],
+                                                     instructor: Self.teachers[index % Self.teachers.count])
+        )
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
