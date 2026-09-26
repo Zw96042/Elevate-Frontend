@@ -1512,3 +1512,96 @@ private struct TranscriptCorrectionSheet: View {
         .onChange(of: store.accountRevision) { _, _ in dismiss() }
     }
 
+    /// A correction is only saved for a semester the planner still lists,
+    /// from the transcript or its saved-semester fallback. Record IDs are
+    /// source signatures, so it can't attach to a different record.
+    private var recordStillListed: Bool {
+        PlanReport.current(store).transcriptCredits.records.contains { $0.id == record.id }
+    }
+
+    private func save() {
+        guard let subject = fields.subject, let credits, credits.isFinite else { return }
+        guard recordStillListed else {
+            saveError = "This semester is no longer in your Skyward records, so nothing was saved."
+            return
+        }
+        let correction = TranscriptCreditOverride(id: record.id, credits: credits, subject: subject)
+        let outcome = CoursePlanCommit.apply(store: store, originScope: originScope, originRevision: originRevision) { plan in
+            if let index = plan.creditOverrides.firstIndex(where: { $0.id == correction.id }) {
+                plan.creditOverrides[index] = correction
+            } else {
+                guard plan.creditOverrides.count < CoursePlanEntryKind.recordLimit else { return false }
+                plan.creditOverrides.append(correction)
+            }
+            return true
+        }
+        finish(outcome, missing: false)
+    }
+
+    private func remove() {
+        let id = record.id
+        var missing = false
+        let outcome = CoursePlanCommit.apply(store: store, originScope: originScope, originRevision: originRevision) { plan in
+            let before = plan.creditOverrides.count
+            plan.creditOverrides.removeAll { $0.id == id }
+            missing = plan.creditOverrides.count == before
+            return !missing
+        }
+        finish(outcome, missing: missing)
+    }
+
+    private func finish(_ outcome: CoursePlanCommit.Outcome, missing: Bool) {
+        switch outcome {
+        case .saved:
+            onCommitted()
+            dismiss()
+        case .accountChanged:
+            dismiss()
+        case .rejected:
+            if missing {
+                saveError = "This correction is no longer in your plan."
+            } else if store.planning.planUnavailable {
+                saveError = "The saved course plan can't be read, so nothing was changed."
+            } else {
+                saveError = store.planning.error ?? "Couldn't save this correction. Nothing was changed."
+            }
+        }
+    }
+}
+
+// MARK: - Entry form
+
+/// Adds or edits a credit missing from Skyward, a credit saved before
+/// automatic estimates, or a planned semester. Saving changes only the
+/// name, subject and credits, plus a planned entry's optional school year
+/// and semester, so other saved values are kept.
+private struct CoursePlanEntrySheet: View {
+    var request: CoursePlanEditRequest
+    var originScope: String?
+    var originRevision: Int?
+    var onCommitted: () -> Void
+
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var themeManager = ThemeManager.shared
+    @State private var fields: Fields
+    @State private var saveError: String?
+    @State private var confirmingDelete = false
+    @State private var confirmingMissing = false
+    @FocusState private var focus: Field?
+    private let initialFields: Fields
+
+    private struct Fields: Equatable {
+        var name: String
+        var subject: CoursePlanSubject?
+        var credits: String
+        /// Planned entries only, and optional: tells a future repeat of a
+        /// class apart from current enrollment.
+        var academicYear: String?
+        var semester: TermLabel?
+    }
+
+    private enum Field: Hashable {
+        case name, credits
+    }
+
