@@ -90,58 +90,84 @@ struct CoursesView: View {
             .onChange(of: isMainContentVisible) { _, _ in observeDisplayedGrades() }
             .onChange(of: store.notifications.accountScope) { _, _ in observeDisplayedGrades() }
         }
+        .task(id: assignmentNavigationTrigger) {
+            let trigger = assignmentNavigationTrigger
+            guard trigger.canNavigate, let id = trigger.requestID else { return }
+            await Task.yield()
+            guard !Task.isCancelled, assignmentNavigationTrigger == trigger else { return }
+            router.applyPendingAssignment(id)
+        }
+    }
+
+    private struct AssignmentNavigationTrigger: Hashable {
+        let requestID: UUID?
+        let accountRevision: Int
+        let pathIsEmpty: Bool
+        let canNavigate: Bool
+    }
+
+    private var assignmentNavigationTrigger: AssignmentNavigationTrigger {
+        AssignmentNavigationTrigger(requestID: router.pendingAssignment?.id,
+            accountRevision: store.accountRevision, pathIsEmpty: router.coursesPath.isEmpty,
+            canNavigate: router.selectedTab == .courses && scenePhase == .active && isMainContentVisible
+                && store.canShowData && !router.isShowingSettings && !showingConnect && !showingTermSelector)
+    }
+
+    /// Background hydration and hidden navigation destinations are not views
+    /// of the Courses list. Only presented official grades advance history;
+    /// the shared Settings sheet covers the list like any other sheet.
+    private func observeDisplayedGrades() {
+        guard scenePhase == .active, router.selectedTab == .courses,
+              router.coursesPath.isEmpty, isMainContentVisible,
+              !router.isShowingSettings, !showingConnect, !showingTermSelector else { return }
+        store.observeVisibleCourseGrades(displayedCourseIDs: displayedCourseIDs)
+    }
+
+    private var isFirstLoad: Bool {
+        #if DEBUG
+        if store.isUsingSampleData, ProcessInfo.processInfo.arguments.contains("-SampleData"),
+           ProcessInfo.processInfo.arguments.contains("-PreviewCourseLoading") { return true }
+        #endif
+        return store.coursesLoading && store.courses == nil
+    }
+
+    /// Divider inset: hairlines start where the class names start.
+    private var rowDividerInset: CGFloat {
+        Metrics.page + (dynamicTypeSize.isAccessibilitySize ? 0 : periodGutter)
+    }
+
+    /// Space between the last class and the tab bar when the list fills the
+    /// screen.
+    private static let bottomGap: CGFloat = 16
+
+    /// The height the class list fills: the scroll view's visible height,
+    /// already inside the root header and tab bar. At accessibility sizes
+    /// rows keep their natural heights and the list scrolls.
+    private func fillHeight(_ viewportHeight: CGFloat) -> CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 0 : max(0, viewportHeight - Self.bottomGap)
     }
 
     private var courseList: some View {
         @Bindable var store = store
-        return GeometryReader { proxy in
-            let courseCount = max(store.visibleCourses.count, 1)
-            let availableForRows = max(proxy.size.height - 49, 0)
-            let rowHeight = min(max(availableForRows / CGFloat(courseCount), 70), 82)
-
+        return GeometryReader { viewport in
             ScrollView {
-                LazyVStack(spacing: 0) {
-                    TermPickerPill(selectedTerm: $store.selectedTerm, showsDescriptor: false)
-
-                    if store.coursesError != nil, store.courses != nil {
-                        StaleDataBanner(lastUpdated: store.coursesLastUpdated) {
-                            await store.refreshCourses(force: true)
-                        }
-                        .padding(.vertical, 12)
+                // The control line and GPA line keep their heights; a full
+                // schedule's rows share what is left of the screen, so the
+                // list ends just above the tab bar rather than partway down.
+                ViewportFillStack(minHeight: fillHeight(viewport.size.height)) {
+                    StatusStrip(
+                        lastUpdated: store.coursesLastUpdated,
+                        isRefreshing: store.coursesLoading && store.courses != nil,
+                        error: store.courses != nil ? store.coursesError : nil
+                    ) {
+                        await store.refreshCourses(force: true)
+                    } control: {
+                        TermSelector(selection: $store.selectedTerm) { showingTermSelector = $0 }
                     }
+                    .padding(.horizontal, Metrics.page)
 
-                    Rectangle()
-                        .fill(Color(uiColor: .separator).opacity(0.32))
-                        .frame(height: 0.5)
-
-                    if store.coursesLoading && store.courses == nil {
-                        ForEach(0..<7, id: \.self) { _ in
-                            SkeletonRow(height: rowHeight)
-                        }
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("Loading courses")
-                    } else if store.visibleCourses.isEmpty {
-                        EmptyStateView(
-                            systemImage: "graduationcap",
-                            title: "No courses found",
-                            subtitle: "Try selecting a different term"
-                        )
-                    } else {
-                        ForEach(store.visibleCourses) { course in
-                            NavigationLink(value: course) {
-                                VStack(spacing: 0) {
-                                    ClassCardView(
-                                        course: course,
-                                        term: store.selectedTerm,
-                                        rowHeight: rowHeight
-                                    )
-                                    Rectangle()
-                                        .fill(Color(uiColor: .separator).opacity(0.32))
-                                        .frame(height: 0.5)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
+                    Group {
+                        if isFirstLoad { gpaPlaceholder } else { gpaSummary }
                     }
                 }
                 .padding(.horizontal, 20)
