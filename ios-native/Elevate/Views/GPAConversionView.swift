@@ -537,3 +537,115 @@ struct GPAEstimateHero: View {
         .accessibilityIdentifier(identifier)
     }
 
+    private var figure: some View {
+        Text(displayValue)
+            .font(.display(size: min(heroSize, 88)))
+            .tracking(-1)
+            .foregroundStyle(Color.ink)
+            .lineLimit(1)
+            .contentTransition(.numericText(value: value))
+            .animation(Motion.value(reduceMotion), value: value)
+    }
+
+    private var maximumText: some View {
+        Text("of \(GradeFormat.gpa(maximum))")
+            .font(.title3)
+            .foregroundStyle(Color.muted)
+    }
+}
+
+/// The estimate screens' first load: the hero's lines and a few open rows on
+/// their real type styles. One loading announcement, no interaction.
+struct GPAEstimatePlaceholder: View {
+    var label: String
+    var rows: Int
+    var showsHero = true
+
+    @ScaledMetric(relativeTo: .largeTitle) private var heroSize: CGFloat = 56
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if showsHero {
+                    VStack(alignment: .leading, spacing: 2) {
+                        SkeletonText(.footnote, length: 16, tone: .secondary)
+                        SkeletonText(.display(size: min(heroSize, 88)), length: 4)
+                        SkeletonText(.footnote, length: 28, tone: .secondary)
+                            .padding(.top, 4)
+                    }
+                    .padding(.top, 16)
+                    .padding(.bottom, Metrics.sectionGap)
+                }
+                ForEach(0..<rows, id: \.self) { index in
+                    if index > 0 { InsetDivider() }
+                    SkeletonRow(
+                        lines: [SkeletonLine(.body, [8, 11, 7, 12, 9, 10][index % 6]), SkeletonLine(.footnote, 14)],
+                        trailing: [SkeletonLine(.figure(.body), 4)]
+                    )
+                }
+            }
+            .padding(.horizontal, Metrics.page)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .loadingPlaceholder(label)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+    }
+}
+
+/// An open row that reveals detail beneath it: title, optional note and
+/// count, and a chevron that turns down when open. Collapsed by default;
+/// Reduce Motion changes it at once.
+struct GPADisclosure<Content: View>: View {
+    var title: String
+    var note: String?
+    var count: Int?
+    var identifier: String
+    @ViewBuilder var content: () -> Content
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                Motion.perform(Motion.replace(reduceMotion)) { isExpanded.toggle() }
+            } label: {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(.body)
+                            .foregroundStyle(Color.ink)
+                        if let note {
+                            Text(note)
+                                .font(.footnote)
+                                .foregroundStyle(Color.muted)
+                        }
+                    }
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    if let count {
+                        Text("\(count)")
+                            .font(.figure(.body, weight: .regular))
+                            .foregroundStyle(Color.muted)
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
+                    Image(systemName: "chevron.down")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.faint)
+                        .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                        .accessibilityHidden(true)
+                }
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(RowPressStyle())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(count.map { "\(title), \($0)" } ?? title)
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            .accessibilityHint(note ?? "")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier(identifier)
+
