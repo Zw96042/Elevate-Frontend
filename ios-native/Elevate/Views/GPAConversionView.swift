@@ -649,3 +649,106 @@ struct GPADisclosure<Content: View>: View {
             .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier(identifier)
 
+            if isExpanded {
+                content()
+                    .padding(.top, 4)
+                    .padding(.bottom, 12)
+                    .transition(.opacity)
+            }
+        }
+    }
+}
+
+/// One converted semester grade: the course and a note, then the source
+/// percentage turning into its points.
+struct GPAConversionRecordRow: View {
+    var record: GPAConversionRecord
+    var note: String?
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let name = GPAConversionInputs.courseName(record.courseName)
+        let grade = GradeFormat.upToTwoDecimals(record.percentage)
+        let points = GradeFormat.upToTwoDecimals(record.points)
+        return Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(name).font(.body)
+                    if let note {
+                        Text(note).font(.footnote).foregroundStyle(Color.muted)
+                    }
+                    Text("\(grade) converts to \(points)")
+                        .font(.figure(.body))
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(name)
+                            .font(.body)
+                        if let note {
+                            Text(note)
+                                .font(.footnote)
+                                .foregroundStyle(Color.muted)
+                        }
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(grade)
+                            .font(.figure(.subheadline, weight: .regular))
+                            .foregroundStyle(Color.muted)
+                        Image(systemName: "arrow.forward")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.faint)
+                        Text(points)
+                            .font(.figure(.body))
+                            .foregroundStyle(Color.ink)
+                    }
+                    .lineLimit(1)
+                    .fixedSize()
+                }
+            }
+        }
+        .foregroundStyle(Color.ink)
+        .padding(.vertical, 10)
+        .frame(minHeight: 44)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(name)
+        .accessibilityValue([note, "\(grade) converts to \(points) points"].compactMap { $0 }.joined(separator: ". "))
+    }
+}
+
+/// Skipped records grouped by reason, in the calculator's reason order.
+struct GPANotConvertedList: View {
+    var skipped: [GPAConversionSkippedRecord]
+
+    var body: some View {
+        let reasons = GPAConversionSkipReason.allCases.filter { reason in skipped.contains { $0.reason == reason } }
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(reasons.enumerated()), id: \.element) { index, reason in
+                let records = skipped.filter { $0.reason == reason }
+                GroupLabel("\(reason.rawValue) (\(records.count))")
+                    .padding(.top, index == 0 ? 2 : 18)
+                ForEach(Array(records.enumerated()), id: \.element.id) { row, record in
+                    if row > 0 { InsetDivider() }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(GPAConversionInputs.courseName(record.courseName))
+                            .font(.body)
+                            .foregroundStyle(Color.ink)
+                        Text(GPAConversionInputs.recordName(year: record.gradeYear, semester: record.semester))
+                            .font(.footnote)
+                            .foregroundStyle(Color.muted)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(.vertical, 8)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        }
+    }
+}
+
