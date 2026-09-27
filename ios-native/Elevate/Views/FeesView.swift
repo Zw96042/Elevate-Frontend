@@ -420,3 +420,105 @@ private struct FeeRecordDetailView: View {
     }
 }
 
+// MARK: - Source fields
+
+/// Skyward's labelled text on read-only pages (fees, student info). Values
+/// are trimmed and otherwise kept as written; a blank value is a dash,
+/// spoken "Not provided". Labels only gain readable spacing.
+enum SourceFieldText {
+    static func value(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    static func shown(_ raw: String) -> String {
+        value(raw) ?? "—"
+    }
+
+    static func spoken(_ raw: String) -> String {
+        value(raw) ?? "Not provided"
+    }
+
+    /// "AmountCharged" reads "Amount Charged"; "Graduation Year:" reads
+    /// "Graduation Year". Words and case are otherwise the source's.
+    static func label(_ raw: String) -> String {
+        var spaced = ""
+        var previous: Character?
+        for character in raw {
+            if let previous, previous.isLowercase, character.isUppercase {
+                spaced.append(" ")
+            }
+            spaced.append(character)
+            previous = character
+        }
+        var collapsed = spaced.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        while collapsed.hasSuffix(":") {
+            collapsed.removeLast()
+            collapsed = collapsed.trimmingCharacters(in: .whitespaces)
+        }
+        return collapsed
+    }
+
+    /// Letters and digits only, lowercased, for matching a label regardless
+    /// of spacing, case, or a trailing colon.
+    static func key(_ raw: String) -> String {
+        String(raw.lowercased().filter { $0.isLetter || $0.isNumber })
+    }
+
+    /// "2026-2027" read as a span rather than a subtraction.
+    static func spokenSchoolYear(_ year: String) -> String {
+        year.replacingOccurrences(of: "-", with: " to ")
+    }
+}
+
+/// One labelled source value as an open line: the label leading and the
+/// value trailing, or the value beneath its label at accessibility sizes.
+/// A blank value is a muted dash, spoken "Not provided".
+struct SourceFieldLine: View {
+    var label: String
+    var value: String
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var shown: String? { SourceFieldText.value(value) }
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 2) {
+                    labelText
+                        .font(.subheadline)
+                    valueText
+                        .multilineTextAlignment(.leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 16) {
+                    labelText
+                        .font(.body)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    valueText
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(SourceFieldText.spoken(value))
+    }
+
+    private var labelText: some View {
+        Text(label)
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var valueText: some View {
+        Text(shown ?? "—")
+            .font(.body)
+            .foregroundStyle(shown == nil ? Color.muted : Color.ink)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
