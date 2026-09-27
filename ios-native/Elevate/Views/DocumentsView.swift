@@ -194,3 +194,100 @@ private struct DocumentRow: View {
     var document: SkywardDocument
     var isOpening: Bool
 
+    private var title: String? { SourceFieldText.value(document.title) }
+    private var kind: String? { document.kind.flatMap(SourceFieldText.value) }
+    private var created: String? { document.created.flatMap(SourceFieldText.value) }
+
+    var spokenTitle: String { title ?? "Untitled document" }
+
+    func spokenDetails(appending status: String? = nil) -> String {
+        var parts: [String] = []
+        if let kind { parts.append(kind) }
+        if let created { parts.append("Created \(created)") }
+        if let status { parts.append(status) }
+        return parts.joined(separator: ", ")
+    }
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    details
+                    trailing
+                }
+            } else {
+                HStack(alignment: .center, spacing: 12) {
+                    details
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    trailing
+                }
+            }
+        }
+        .padding(.horizontal, Metrics.page)
+        .padding(.vertical, Metrics.rowPadding)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(spokenTitle)
+                .font(.body)
+                .foregroundStyle(title == nil ? Color.muted : Color.ink)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+            if kind != nil || created != nil {
+                metadata
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var metadata: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 2) {
+                if let kind { metadataText(kind) }
+                if let created { metadataText(created) }
+            }
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                if let kind { metadataText(kind) }
+                if let created { metadataText(created) }
+            }
+        }
+    }
+
+    private func metadataText(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(Color.muted)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private var trailing: some View {
+        if isOpening {
+            ProgressView()
+                .accessibilityHidden(true)
+        } else if !document.canOpen {
+            Text("Requires Skyward")
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// A failed open, stated in place. Tapping the row again retries.
+private struct OpenFailureNote: View {
+    var error: String
+
+    private var message: String {
+        let reason = error
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        let lead = "Couldn't open this document."
+        return reason.isEmpty ? "\(lead) Tap it to try again." : "\(lead) \(reason). Tap it to try again."
+    }
+
