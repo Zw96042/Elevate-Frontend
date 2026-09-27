@@ -291,3 +291,106 @@ private struct OpenFailureNote: View {
         return reason.isEmpty ? "\(lead) Tap it to try again." : "\(lead) \(reason). Tap it to try again."
     }
 
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "exclamationmark.circle")
+                .foregroundStyle(Color.gradeAttention)
+                .accessibilityHidden(true)
+            Text(message)
+                .foregroundStyle(Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(.footnote)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("documents.openError")
+    }
+}
+
+// MARK: - Preview
+
+/// The opened file under its title, with a close button. Quick Look renders
+/// a PDF or a supported image from the store's local file.
+private struct DocumentPreviewSheet: View {
+    var preview: DocumentPreview
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var theme = ThemeManager.shared
+
+    var body: some View {
+        NavigationStack {
+            QuickLookPreview(url: preview.url, title: preview.title)
+                .ignoresSafeArea(edges: .bottom)
+                .background(Color.appBackground.ignoresSafeArea())
+                .navigationTitle(preview.title)
+                .navigationBarTitleDisplayMode(.inline)
+                .accessibilityIdentifier("documents.preview")
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        ShareLink(item: preview.url, preview: SharePreview(preview.title)) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                        .accessibilityLabel("Save or share document")
+                        .accessibilityIdentifier("documents.preview.share")
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button { dismiss() } label: {
+                            Image(systemName: "xmark")
+                        }
+                        .accessibilityLabel("Close preview")
+                        .accessibilityIdentifier("documents.preview.close")
+                    }
+                }
+        }
+        .tint(Color.themeAccent)
+        .foregroundStyle(Color.ink)
+        .preferredColorScheme(theme.appearance.colorScheme)
+    }
+}
+
+/// Quick Look for exactly one local file.
+private struct QuickLookPreview: UIViewControllerRepresentable {
+    var url: URL
+    var title: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(item: PreviewItem(url: url, title: title))
+    }
+
+    func makeUIViewController(context: Context) -> QLPreviewController {
+        let controller = QLPreviewController()
+        controller.dataSource = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ controller: QLPreviewController, context: Context) {
+        let current = context.coordinator.item
+        guard current.previewItemURL != url || current.previewItemTitle != title else { return }
+        context.coordinator.item = PreviewItem(url: url, title: title)
+        controller.reloadData()
+    }
+
+    final class Coordinator: NSObject, QLPreviewControllerDataSource {
+        var item: PreviewItem
+
+        init(item: PreviewItem) {
+            self.item = item
+        }
+
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
+
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> any QLPreviewItem {
+            item
+        }
+    }
+
+    final class PreviewItem: NSObject, QLPreviewItem {
+        let previewItemURL: URL?
+        let previewItemTitle: String?
+
+        init(url: URL, title: String) {
+            previewItemURL = url
+            previewItemTitle = title
+        }
+    }
+}
