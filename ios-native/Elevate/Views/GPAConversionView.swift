@@ -318,3 +318,100 @@ struct GPAConversionView: View {
     }
 }
 
+// MARK: - Year detail
+
+/// One high-school year on both scales, then each semester's converted
+/// grades with any weighted bonus. Opened from the converter's By year rows.
+struct GPAConversionYearView: View {
+    var year: Int
+    /// The route's legacy scale. Both scales are always shown, so it no
+    /// longer changes this screen.
+    var policy: GPAConversionPolicy = .unweighted4Point
+
+    @Environment(AppStore.self) private var store
+
+    var body: some View {
+        Group {
+            if store.coursesLoading && store.courses == nil {
+                GPAEstimatePlaceholder(label: "Loading grade \(year)", rows: 5)
+            } else if let error = store.coursesError, store.courses == nil {
+                ErrorStateView(title: "Couldn't load courses", message: error) {
+                    await store.refreshCourses(force: true)
+                }
+            } else {
+                content(GPAConversionInputs.completedScales(courses: store.courses, gradeYears: [year]))
+            }
+        }
+        .background(Color.appBackground.ignoresSafeArea())
+        .navigationTitle("Grade \(year)")
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("gpaConverter.yearDetail")
+    }
+
+    private func content(_ scales: GPAScaleReports) -> some View {
+        let skipped = scales.notConverted
+        let bonuses = scales.bonuses
+        let report = scales.unweighted
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                StatusStrip(
+                    lastUpdated: store.coursesLastUpdated,
+                    isRefreshing: store.coursesLoading && store.courses != nil,
+                    error: store.courses != nil ? store.coursesError : nil
+                ) {
+                    await store.refreshCourses(force: true)
+                }
+
+                if let values = scales.values {
+                    GPAScalePair(unweighted: values.unweighted, weighted: values.weighted,
+                                 isProminent: true, identifier: "gpaConverter.result")
+                        .padding(.top, 12)
+                    Text(yearSummary(count: report.includedCount, advanced: scales.advancedCount))
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 8)
+
+                    ForEach([TermLabel.sm1, .sm2], id: \.self) { semester in
+                        let records = report.includedRecords.filter { $0.semester == semester }
+                        if !records.isEmpty {
+                            GroupLabel(semester.displayName)
+                                .padding(.top, Metrics.sectionGap)
+                            ForEach(Array(records.enumerated()), id: \.element.id) { row, record in
+                                if row > 0 { InsetDivider() }
+                                GPAConversionRecordRow(record: record, note: note(record, bonus: bonuses[record.id]))
+                            }
+                        }
+                    }
+                } else {
+                    EmptyStateView(
+                        title: "No completed semesters in grade \(year)",
+                        message: "Grades appear here after a semester ends and its grade is posted."
+                    )
+                    .padding(.top, 4)
+                    .accessibilityIdentifier("gpaConverter.empty")
+                }
+
+                if !skipped.isEmpty {
+                    GPADisclosure(title: "Not converted", note: "Kept out of both scales", count: skipped.count,
+                                  identifier: "gpaConverter.skipped") {
+                        GPANotConvertedList(skipped: skipped)
+                    }
+                    .padding(.top, Metrics.sectionGap)
+                }
+            }
+            .padding(.horizontal, Metrics.page)
+            .padding(.bottom, 32)
+        }
+        .visibleRefreshable { await store.refreshCourses(force: true) }
+    }
+
+    /// "From 12 semester grades, each counted equally. 4 received an AP or Honors bonus."
+    private func yearSummary(count: Int, advanced: Int) -> String {
+        var text = "From \(GPAConversionInputs.semesterGrades(count)), each counted equally."
+        if advanced > 0 {
+            text += " \(advanced) received an AP or Honors bonus on the weighted scale."
+        }
+        return text
+    }
+
