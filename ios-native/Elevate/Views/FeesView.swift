@@ -207,3 +207,99 @@ private enum FeeScope: Hashable, CaseIterable {
         }
     }
 
+    /// The source column a row shows beside its description.
+    var amountKey: String {
+        switch self {
+        case .fees: "remainingdue"
+        case .payments: "paymentamount"
+        }
+    }
+
+    /// Names the record's source date: a fee's due date or a payment's date.
+    var datePrefix: String {
+        switch self {
+        case .fees: "Due"
+        case .payments: "Paid"
+        }
+    }
+
+    var untitled: String {
+        switch self {
+        case .fees: "Fee"
+        case .payments: "Payment"
+        }
+    }
+
+    var detailTitle: String { untitled }
+
+    var emptyTitle: String {
+        switch self {
+        case .fees: "No fees"
+        case .payments: "No payments"
+        }
+    }
+
+    var emptyMessage: String {
+        switch self {
+        case .fees: "Skyward lists no fees for this account."
+        case .payments: "Skyward lists no payments for this account."
+        }
+    }
+}
+
+/// One record as an open row: the description, its school year and date
+/// beneath, and the remaining due or payment amount as posted, with its
+/// label. At accessibility sizes the amount moves beneath the description.
+private struct FeeRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    var record: FeeRecord
+    var scope: FeeScope
+
+    private var descriptionText: String? { SourceFieldText.value(record.description) }
+    private var year: String? { record.schoolYear.flatMap(SourceFieldText.value) }
+    private var date: String? { record.date.flatMap(SourceFieldText.value) }
+    private var amount: FeeField? {
+        record.fields.first { SourceFieldText.key($0.label) == scope.amountKey }
+    }
+
+    private var spokenValue: String {
+        var parts: [String] = []
+        if let amount {
+            parts.append("\(SourceFieldText.label(amount.label)) \(SourceFieldText.spoken(amount.value))")
+        }
+        if let year { parts.append("School year \(SourceFieldText.spokenSchoolYear(year))") }
+        if let date { parts.append("\(scope.datePrefix) \(date)") }
+        return parts.joined(separator: ", ")
+    }
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    details
+                    if let amount {
+                        LabeledValue(
+                            label: SourceFieldText.label(amount.label),
+                            value: SourceFieldText.shown(amount.value),
+                            valueColor: SourceFieldText.value(amount.value) == nil ? Color.muted : nil
+                        )
+                    }
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    details
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if let amount { amountColumn(amount) }
+                }
+            }
+        }
+        .padding(.horizontal, Metrics.page)
+        .padding(.vertical, Metrics.rowPadding)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(descriptionText ?? scope.untitled)
+        .accessibilityValue(spokenValue)
+        .accessibilityHint("Shows every detail")
+    }
+
