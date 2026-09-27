@@ -113,3 +113,97 @@ struct FeesView: View {
         }
     }
 
+    /// The Fees/Payments choice at the leading edge and when the records
+    /// were fetched at the trailing edge. A failed refresh keeps the saved
+    /// records and says when they are from.
+    @ViewBuilder
+    private var statusLine: some View {
+        let hasData = store.fees != nil
+        let isRefreshing = store.feesLoading && hasData
+        let error = hasData ? store.feesError : nil
+        if let fees = store.fees, fees.availability == .available {
+            StatusStrip(
+                lastUpdated: store.feesLastUpdated,
+                isRefreshing: isRefreshing,
+                error: error
+            ) {
+                await store.refreshFees(force: true)
+            } control: {
+                InlineChoice(
+                    label: "Fees or payments",
+                    options: FeeScope.allCases.map(\.option),
+                    selection: $scope
+                )
+            }
+        } else {
+            StatusStrip(
+                lastUpdated: store.feesLastUpdated,
+                isRefreshing: isRefreshing,
+                error: error
+            ) {
+                await store.refreshFees(force: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func recordRows(_ records: [FeeRecord]) -> some View {
+        if records.isEmpty {
+            EmptyStateView(title: scope.emptyTitle, message: scope.emptyMessage)
+                .padding(.horizontal, Metrics.page)
+                .accessibilityIdentifier("\(scope.identifierPrefix).empty")
+        } else {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                    if index > 0 { InsetDivider().padding(.horizontal, Metrics.page) }
+                    NavigationLink {
+                        FeeRecordDetailView(recordID: record.id, scope: scope)
+                    } label: {
+                        FeeRow(record: record, scope: scope)
+                    }
+                    .buttonStyle(RowPressStyle())
+                    .accessibilityIdentifier("\(scope.identifierPrefix).record.\(index)")
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    /// `FeeRow`'s shape: the description over its year and date, and the
+    /// amount over its label at the trailing edge.
+    private var loadingRows: some View {
+        let descriptions = [15, 11, 18, 13, 9]
+        return VStack(spacing: 0) {
+            ForEach(descriptions.indices, id: \.self) { index in
+                if index > 0 { InsetDivider().padding(.horizontal, Metrics.page) }
+                SkeletonRow(
+                    lines: [SkeletonLine(.body, descriptions[index]), SkeletonLine(.subheadline, 17)],
+                    trailing: [SkeletonLine(.figure(.body), 5), SkeletonLine(.footnote, 9)]
+                )
+                .padding(.horizontal, Metrics.page)
+            }
+        }
+        .padding(.top, 4)
+        .loadingPlaceholder("Loading fees")
+        .accessibilityIdentifier("fees.loading")
+    }
+}
+
+/// Which of Skyward's two lists is shown, and how its rows are labelled.
+private enum FeeScope: Hashable, CaseIterable {
+    case fees, payments
+
+    var option: ChoiceOption<FeeScope> {
+        switch self {
+        case .fees: ChoiceOption(value: self, title: "Fees", identifier: "fees.scope.fees")
+        case .payments: ChoiceOption(value: self, title: "Payments", identifier: "fees.scope.payments")
+        }
+    }
+
+    var identifierPrefix: String {
+        switch self {
+        case .fees: "fees"
+        case .payments: "payments"
+        }
+    }
+
