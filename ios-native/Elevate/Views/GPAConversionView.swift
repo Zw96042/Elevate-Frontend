@@ -203,3 +203,118 @@ struct GPAConversionView: View {
         }
     }
 
+    // MARK: - By year
+
+    private func yearsSection(_ report: GPAConversionReport) -> some View {
+        let years = Array(Set(report.includedRecords.map(\.gradeYear))).sorted()
+        return VStack(alignment: .leading, spacing: 0) {
+            GroupLabel("By year")
+            ForEach(Array(years.enumerated()), id: \.element) { index, year in
+                if index > 0 { InsetDivider() }
+                yearRow(year, scales: GPAConversionInputs.completedScales(courses: store.courses, gradeYears: [year]))
+            }
+        }
+    }
+
+    /// Stacks its figures under the name from xxLarge text, where two
+    /// labeled figures beside a name stop fitting a phone's width.
+    private func yearRow(_ year: Int, scales: GPAScaleReports) -> some View {
+        let unweighted = GradeFormat.gpa(scales.unweighted.value)
+        let weighted = GradeFormat.gpa(scales.weighted.value)
+        let records = scales.unweighted.includedRecords
+        var note = GPAConversionInputs.semesterGrades(records.count)
+        if !records.isEmpty, records.allSatisfy({ $0.source == .manual }) {
+            note += ", added by you"
+        }
+        let stacks = dynamicTypeSize >= .xxLarge
+        return NavigationLink(value: CoursesRoute.gpaConverterYear(year, .unweighted4Point)) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Grade \(year)")
+                        .font(.body)
+                        .foregroundStyle(Color.ink)
+                    Text(note)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                    if stacks {
+                        Group {
+                            Text("Unweighted \(unweighted)")
+                            Text("Weighted \(weighted)")
+                        }
+                        .font(.figure(.body))
+                        .foregroundStyle(Color.ink)
+                        .padding(.top, 2)
+                    }
+                }
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if !stacks {
+                    HStack(alignment: .firstTextBaseline, spacing: 16) {
+                        yearFigure(unweighted, caption: "Unweighted")
+                        yearFigure(weighted, caption: "Weighted")
+                    }
+                    .fixedSize()
+                }
+                RowChevron()
+            }
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Grade \(year)")
+        .accessibilityValue("Unweighted \(unweighted) of 4.0, weighted \(weighted) of 5.0. \(note)")
+        .accessibilityHint("Shows each semester grade")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("gpaConverter.year.\(year)")
+    }
+
+    private func yearFigure(_ value: String, caption: String) -> some View {
+        VStack(alignment: .trailing, spacing: 0) {
+            Text(value)
+                .font(.figure(.body))
+                .foregroundStyle(Color.ink)
+                .contentTransition(.numericText())
+            Text(caption)
+                .font(.caption)
+                .foregroundStyle(Color.muted)
+        }
+        .lineLimit(1)
+    }
+
+    // MARK: - Details
+
+    private func detailsSection(_ scales: GPAScaleReports, skipped: [GPAConversionSkippedRecord]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            GroupLabel("Details")
+            GPADisclosure(title: "How grades convert", note: "Letter bands and AP or Honors bonuses",
+                          identifier: "gpaConverter.details") {
+                VStack(alignment: .leading, spacing: 0) {
+                    GPAConversionMapping()
+                    if let values = scales.values {
+                        weightingSection(scales, unweighted: values.unweighted)
+                            .padding(.top, 20)
+                    }
+                    GPAGradeCheck()
+                        .padding(.top, 20)
+                    Text(scales.unweighted.scopeExplanation)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 16)
+                }
+            }
+            if !skipped.isEmpty {
+                InsetDivider()
+                GPADisclosure(title: "Not converted", note: "Kept out of both scales", count: skipped.count,
+                              identifier: "gpaConverter.skipped") {
+                    GPANotConvertedList(skipped: skipped)
+                }
+            }
+        }
+    }
+}
+
