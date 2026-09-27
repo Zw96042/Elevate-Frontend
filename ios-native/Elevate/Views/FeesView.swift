@@ -303,3 +303,120 @@ private struct FeeRow: View {
         .accessibilityHint("Shows every detail")
     }
 
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(descriptionText ?? scope.untitled)
+                .font(.body)
+                .foregroundStyle(descriptionText == nil ? Color.muted : Color.ink)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+            if year != nil || date != nil {
+                metadata
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var metadata: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 2) {
+                if let year { metadataText(year) }
+                if let date { metadataText("\(scope.datePrefix) \(date)") }
+            }
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                if let year { metadataText(year) }
+                if let date { metadataText("\(scope.datePrefix) \(date)") }
+            }
+        }
+    }
+
+    private func metadataText(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(Color.muted)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// The posted amount over its source label, aligned to the trailing edge.
+    private func amountColumn(_ field: FeeField) -> some View {
+        let value = SourceFieldText.value(field.value)
+        return VStack(alignment: .trailing, spacing: 3) {
+            Text(value ?? "—")
+                .font(.figure(.body))
+                .foregroundStyle(value == nil ? Color.muted : Color.ink)
+                .lineLimit(1)
+            Text(SourceFieldText.label(field.label))
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .lineLimit(1)
+        }
+        .fixedSize()
+    }
+}
+
+/// Every field of one fee or payment, in Skyward's order, read from the
+/// store so a refresh is reflected and another account's record is never
+/// left on screen.
+private struct FeeRecordDetailView: View {
+    var recordID: String
+    var scope: FeeScope
+
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    private var record: FeeRecord? {
+        guard let fees = store.fees else { return nil }
+        return (scope == .fees ? fees.fees : fees.payments).first { $0.id == recordID }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if let record {
+                    Text(SourceFieldText.value(record.description) ?? scope.untitled)
+                        .font(.title2.bold())
+                        .foregroundStyle(Color.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                        .padding(.top, 12)
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(record.fields.enumerated()), id: \.offset) { index, field in
+                            if index > 0 { InsetDivider() }
+                            SourceFieldLine(label: SourceFieldText.label(field.label), value: field.value)
+                                .accessibilityIdentifier("\(scope.identifierPrefix).field.\(index)")
+                        }
+                    }
+                    .padding(.top, 16)
+
+                    Text("As posted in Skyward.")
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 16)
+                } else {
+                    EmptyStateView(
+                        title: "No longer listed",
+                        message: "Skyward changed or removed this record. Go back to see the current list."
+                    )
+                    .padding(.top, 12)
+                }
+            }
+            .padding(.horizontal, Metrics.page)
+            .padding(.bottom, 32)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .softScrollEdges()
+        .background(Color.appBackground.ignoresSafeArea())
+        .navigationTitle(scope.detailTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .accessibilityIdentifier("\(scope.identifierPrefix).detail")
+        .onChange(of: store.accountRevision) { _, _ in
+            dismiss()
+        }
+    }
+}
+
