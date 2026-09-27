@@ -92,3 +92,114 @@ struct GPAScaleReports {
     }
 }
 
+/// Elevate's two generic scales from every completed semester grade, shown
+/// together and separate from the district GPA. Each year opens its own
+/// semesters; conversion rules, the student's AP and Honors bonuses, and
+/// skipped records wait behind a tap. Percentages are never divided down
+/// to a scale.
+struct GPAConversionView: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        Group {
+            if store.coursesLoading && store.courses == nil {
+                GPAEstimatePlaceholder(label: "Loading GPA converter", rows: 3)
+            } else if let error = store.coursesError, store.courses == nil {
+                ErrorStateView(title: "Couldn't load courses", message: error) {
+                    await store.refreshCourses(force: true)
+                }
+            } else {
+                content(GPAConversionInputs.completedScales(courses: store.courses))
+            }
+        }
+        .background(Color.appBackground.ignoresSafeArea())
+        .navigationTitle("GPA Converter")
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("gpaConverter.screen")
+    }
+
+    private func content(_ scales: GPAScaleReports) -> some View {
+        let skipped = scales.notConverted
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                StatusStrip(
+                    lastUpdated: store.coursesLastUpdated,
+                    isRefreshing: store.coursesLoading && store.courses != nil,
+                    error: store.courses != nil ? store.coursesError : nil
+                ) {
+                    await store.refreshCourses(force: true)
+                }
+
+                if let values = scales.values {
+                    GPAScalePair(unweighted: values.unweighted, weighted: values.weighted,
+                                 isProminent: true, identifier: "gpaConverter.result")
+                        .padding(.top, 12)
+                    Text(summary(scales.unweighted, skipped: skipped.count))
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 8)
+                        .accessibilityIdentifier("gpaConverter.scope")
+
+                    yearsSection(scales.unweighted)
+                        .padding(.top, 20)
+                } else {
+                    EmptyStateView(
+                        title: "No completed semesters yet",
+                        message: "The converter uses posted grades from semesters that have ended. Semesters in progress aren't converted."
+                    )
+                    .padding(.top, 4)
+                    .accessibilityIdentifier("gpaConverter.empty")
+                }
+
+                detailsSection(scales, skipped: skipped)
+                    .padding(.top, Metrics.sectionGap)
+            }
+            .padding(.horizontal, Metrics.page)
+            .padding(.bottom, 32)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .visibleRefreshable { await store.refreshCourses(force: true) }
+    }
+
+    /// "Grades 9–11, from 40 completed semester grades, each counted equally. 3 not converted."
+    private func summary(_ report: GPAConversionReport, skipped: Int) -> String {
+        let count = report.includedCount
+        var text = "\(GPAConversionInputs.yearScope(report.includedRecords)), from \(count) completed semester \(count == 1 ? "grade" : "grades"), each counted equally."
+        if skipped > 0 { text += " \(skipped) not converted." }
+        return text
+    }
+
+    // MARK: - Weighting
+
+    /// What separates the two figures, under the bonus rule in How grades
+    /// convert: how many of the student's semesters received it, and that
+    /// the scales are Elevate's own.
+    private func weightingSection(_ scales: GPAScaleReports, unweighted: Double) -> some View {
+        let advanced = scales.advancedCount
+        let total = scales.weighted.includedCount
+        let yours: String
+        if advanced == 0 {
+            yours = "None of your completed semester grades received a bonus, so both scales show the same grades."
+        } else if unweighted == 4 {
+            yours = "Every completed grade is an A, so unweighted is at its 4.00 ceiling. Weighted is higher because \(advanced) of your \(total) semester grades received a bonus."
+        } else {
+            yours = "\(advanced) of your \(total) semester grades received a bonus."
+        }
+        return VStack(alignment: .leading, spacing: 0) {
+            GroupLabel("Your AP and Honors grades")
+            Text(yours)
+                .font(.body)
+                .foregroundStyle(Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 6)
+                .accessibilityIdentifier("gpaConverter.advanced")
+            Text("These are Elevate's generic scales, not any college's formula. Colleges that recalculate GPA choose their own courses and bonuses.")
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
+        }
+    }
+
