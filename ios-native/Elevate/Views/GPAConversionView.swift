@@ -415,3 +415,125 @@ struct GPAConversionYearView: View {
         return text
     }
 
+    /// Provenance, and the weighted bonus where one applied. Rows show the
+    /// unweighted points; the bonus is added only on the weighted scale.
+    private func note(_ record: GPAConversionRecord, bonus: Double?) -> String {
+        var parts = [record.source.rawValue]
+        if let bonus {
+            let level = record.courseLevel == .ap ? "AP-level" : "Honors"
+            parts.append("\(level) +\(GradeFormat.upToTwoDecimals(bonus)) weighted")
+        }
+        return parts.joined(separator: ", ")
+    }
+}
+
+// MARK: - Shared pieces
+
+/// Elevate's two generic scales over the same semesters: unweighted out of
+/// 4.0 and weighted out of 5.0, each named in words. Side by side where
+/// both fit; stacked from xxLarge text. The prominent form is a screen's
+/// lead figure; the compact form sits inside a page.
+struct GPAScalePair: View {
+    var unweighted: Double
+    var weighted: Double
+    var isProminent: Bool
+    var identifier: String
+    var formatValue: (Double) -> String = GradeFormat.gpa
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .largeTitle) private var heroSize: CGFloat = 48
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize >= .xxLarge {
+                VStack(alignment: .leading, spacing: 12) { columns }
+            } else {
+                HStack(alignment: .top, spacing: 24) { columns }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(identifier)
+    }
+
+    @ViewBuilder
+    private var columns: some View {
+        column("Unweighted", value: unweighted, maximum: 4, suffix: "unweighted")
+        column("Weighted", value: weighted, maximum: 5, suffix: "weighted")
+    }
+
+    private func column(_ title: String, value: Double, maximum: Double, suffix: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(Color.ink)
+            Text(formatValue(value))
+                .font(isProminent ? Font.display(size: min(heroSize, 80)) : .figure(.title2))
+                .tracking(isProminent ? -1 : 0)
+                .foregroundStyle(Color.ink)
+                .lineLimit(1)
+                .contentTransition(.numericText(value: value))
+                .animation(Motion.value(reduceMotion), value: value)
+            Text("out of \(maximum.formatted(.number.precision(.fractionLength(1))))")
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+        }
+        .frame(maxWidth: dynamicTypeSize >= .xxLarge ? nil : .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title) GPA")
+        .accessibilityValue("\(formatValue(value)) out of \(GradeFormat.gpa(maximum))")
+        .accessibilityIdentifier("\(identifier).\(suffix)")
+    }
+}
+
+/// A scale estimate as the screen's one large figure: what it is and which
+/// years in a footnote, the value over its maximum, then one summary line.
+struct GPAEstimateHero: View {
+    var label: String
+    var scope: String
+    var value: Double
+    /// Formatted by the caller, which owns any truncation rule.
+    var displayValue: String
+    var maximum: Double
+    var summary: String
+    var identifier: String
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .largeTitle) private var heroSize: CGFloat = 56
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if dynamicTypeSize.isAccessibilitySize {
+                Text(label).foregroundStyle(Color.ink).font(.footnote)
+                Text(scope).foregroundStyle(Color.muted).font(.footnote)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(label).foregroundStyle(Color.ink)
+                    Text(scope).foregroundStyle(Color.muted)
+                }
+                .font(.footnote)
+            }
+            if dynamicTypeSize.isAccessibilitySize {
+                figure
+                maximumText
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    figure
+                    maximumText
+                }
+            }
+            Text(summary)
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label), \(scope)")
+        .accessibilityValue("\(displayValue) of \(GradeFormat.gpa(maximum)). \(summary)")
+        .accessibilityIdentifier(identifier)
+    }
+
