@@ -752,3 +752,142 @@ struct GPANotConvertedList: View {
     }
 }
 
+// MARK: - Conversion rules
+
+/// The letter bands as open rows, then the weighted scale's bonuses.
+private struct GPAConversionMapping: View {
+    private static let bands: [(String, String)] = [
+        ("90 and above", "4"),
+        ("80 to below 90", "3"),
+        ("70 to below 80", "2"),
+        ("60 to below 70", "1"),
+        ("Below 60", "0"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(Self.bands.enumerated()), id: \.offset) { index, band in
+                if index > 0 { InsetDivider() }
+                row(band.0, band.1)
+            }
+            GroupLabel("Weighted bonus")
+                .padding(.top, 16)
+            row("AP-level course, 60 or above", "+1")
+            InsetDivider()
+            row("Honors course, 60 or above", "+0.5")
+            Text("Percentages aren't rounded before converting. Unweighted ignores course level. AP and Honors come from Elevate's course-name detector, including district advanced-course exceptions, not any college's honors list.")
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
+        }
+    }
+
+    private func row(_ range: String, _ points: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(range)
+                .font(.body)
+                .foregroundStyle(Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(points)
+                .font(.figure(.body))
+                .foregroundStyle(Color.ink)
+        }
+        .padding(.vertical, 10)
+        .frame(minHeight: 44)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Converts one typed percentage on both scales, for checking the rule.
+/// It is never saved and never changes the estimate.
+private struct GPAGradeCheck: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .body) private var fieldWidth: CGFloat = 88
+    @State private var text = ""
+    @State private var level: CourseLevel = .regular
+
+    private var grade: Double? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")
+        guard let value = Double(trimmed), value.isFinite, (0...110).contains(value) else { return nil }
+        return value
+    }
+
+    private func levelName(_ level: CourseLevel) -> String {
+        switch level {
+        case .regular: return "Regular"
+        case .honors: return "Honors"
+        case .ap: return "AP-level"
+        }
+    }
+
+    /// "4 unweighted, 5 weighted".
+    private var converted: String? {
+        guard let grade,
+              let unweighted = GPAConversionPolicy.unweighted4Point.points(for: grade, level: level),
+              let weighted = GPAConversionPolicy.weighted5Point.points(for: grade, level: level) else { return nil }
+        return "\(GradeFormat.upToTwoDecimals(unweighted)) unweighted, \(GradeFormat.upToTwoDecimals(weighted)) weighted"
+    }
+
+    // The answer sits above the field, so scrolling the caret into view above
+    // the keyboard keeps it visible. At accessibility sizes the course level
+    // comes first too, never below the focused field.
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            GroupLabel("Check a grade")
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    levelPicker
+                    answer
+                    field.frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                answer
+                HStack(alignment: .center, spacing: 12) {
+                    field.frame(width: fieldWidth)
+                    levelPicker
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+
+    /// Blank or out-of-range input reads as unavailable, never as zero.
+    private var answer: some View {
+        Text(converted ?? "Enter 0 to 110")
+            .font(converted == nil ? Font.subheadline : .figure(.body))
+            .foregroundStyle(converted == nil ? Color.muted : Color.ink)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel("Converted grade")
+            .accessibilityValue(converted ?? "Unavailable. Enter a percentage from 0 to 110.")
+            .accessibilityIdentifier("gpaConverter.checkResult")
+    }
+
+    private var field: some View {
+        TextField("Grade", text: $text)
+            .keyboardType(.decimalPad)
+            .monospacedDigit()
+            .font(.body)
+            .textFieldStyle(.plain)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 44)
+            .background(Color.well, in: RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous))
+            .accessibilityLabel("Grade to check")
+            .accessibilityHint("A percentage from 0 to 110. Not saved.")
+            .accessibilityIdentifier("gpaConverter.checkGrade")
+    }
+
+    private var levelPicker: some View {
+        ScopePicker(
+            title: "Course level",
+            valueName: levelName(level),
+            hint: "Selects the course level for the weighted bonus",
+            identifier: "gpaConverter.checkLevel",
+            groups: [ChoiceGroup(title: nil, options: [CourseLevel.regular, .honors, .ap].map {
+                ChoiceOption(value: $0, title: levelName($0), identifier: "gpaConverter.checkLevel.\(levelName($0))")
+            })],
+            selection: $level
+        )
+    }
+}
