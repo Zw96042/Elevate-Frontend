@@ -82,64 +82,85 @@ struct GPAView: View {
                 SettingsToolbarButton { router.isShowingSettings = true }
             }
         }
+        .sheet(isPresented: $showingConnect) { SkywardConnectSheet() }
+        .task {
+            validateSelectedYear()
+            loadManualClasses()
+        }
+        .onChange(of: store.courses) { _, _ in validateSelectedYear() }
+        .onChange(of: store.selectedGradeLevel) { _, _ in
+            loadManualClasses()
+        }
+    }
+
+    private func validateSelectedYear() {
+        if !selectableGradeLevels.contains(store.selectedGradeLevel) {
+            store.selectedGradeLevel = store.currentGradeLevel
+        }
     }
 
     private var content: some View {
-        @Bindable var store = store
+        let data = gpaData
+        let points = graphPoints(data)
         return ScrollView {
-            VStack(spacing: 0) {
-                if store.coursesError != nil, store.courses != nil {
-                    StaleDataBanner(lastUpdated: store.coursesLastUpdated) {
-                        await store.refreshCourses(force: true)
-                    }
-                    .padding(.bottom, 16)
-                }
-
-                if selectableGradeLevels.count > 1 {
-                    Group {
-                        if dynamicTypeSize >= .xxxLarge {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("School year")
-                                    .font(.subheadline.weight(.semibold))
-                                gradeLevelPicker(selection: $store.selectedGradeLevel)
-                            }
-                        } else {
-                            HStack {
-                                Text("School year")
-                                    .font(.subheadline.weight(.semibold))
-                                Spacer()
-                                gradeLevelPicker(selection: $store.selectedGradeLevel)
-                            }
-                        }
-                    }
-                    .accessibilityHint("Selects the school year used for GPA")
-                    .padding(.bottom, 20)
+            VStack(alignment: .leading, spacing: 0) {
+                StatusStrip(
+                    lastUpdated: store.coursesLastUpdated,
+                    isRefreshing: store.coursesLoading && store.courses != nil,
+                    error: store.courses != nil ? store.coursesError : nil
+                ) {
+                    await store.refreshCourses(force: true)
+                } control: {
+                    schoolYearSelector
                 }
 
                 if store.coursesLoading && store.courses == nil {
-                    VStack(spacing: 0) {
-                        ForEach(0..<5, id: \.self) { _ in SkeletonRow(height: 70) }
+                    // A semester's group of the term table: two quarters,
+                    // then the semester set off by a hairline.
+                    VStack(alignment: .leading, spacing: 0) {
+                        SkeletonText(.footnote.weight(.medium), length: 11, tone: .secondary)
+                            .padding(.bottom, 2)
+                        GPATableRowPlaceholder(name: 8)
+                        GPATableRowPlaceholder(name: 8)
+                        InsetDivider()
+                        GPATableRowPlaceholder(name: 9)
                     }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Loading GPA")
-                } else if gpaData.isEmpty && !supportsManualEntry {
+                    .padding(.top, 16)
+                    .loadingPlaceholder("Loading GPA")
+                } else if data.isEmpty && !supportsManualEntry {
                     EmptyStateView(
-                        systemImage: "chart.line.uptrend.xyaxis",
-                        title: "No GPA data yet",
-                        subtitle: "GPA will appear when graded terms are available in Skyward"
+                        title: "No GPA yet",
+                        message: "GPA appears when Skyward posts graded terms for this school year."
                     )
-                    .padding(.top, 40)
                 } else {
-                    if graphPoints.count >= 2 {
-                        graphCard
+                    if let latest = GPAReport.latest(in: data) {
+                        hero(label: latest.label, data: latest.data, change: latestChange(in: data, latest: latest.label))
+                            .padding(.top, 16)
                     }
-                    gpaCards
+                    if points.count >= 2 {
+                        trendSection(points)
+                    } else if !data.isEmpty {
+                        Text("The trend appears after two graded terms.")
+                            .font(.footnote)
+                            .foregroundStyle(Color.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 16)
+                    }
+                    termTable(data)
                     if supportsManualEntry {
                         ManualGradeEntryView(
                             gradeLevel: store.selectedGradeLevel,
                             classes: $manualClasses
                         )
+                        .padding(.top, Metrics.sectionGap)
                     }
+                }
+
+                if !(store.coursesLoading && store.courses == nil) {
+                    otherScales
+                        .padding(.top, Metrics.sectionGap)
+                    planning
+                        .padding(.top, Metrics.sectionGap)
                 }
             }
             .padding(.horizontal, 16)
