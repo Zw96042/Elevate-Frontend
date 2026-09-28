@@ -419,94 +419,32 @@ struct GPAView: View {
                 .accessibilityLabel("\(series.rawValue) GPA by term")
                 .accessibilityIdentifier("gpa.chart")
             } else {
-                let values = graphPoints.map(\.weighted)
-                let minY = (values.min() ?? 0) - 1
-                let maxY = (values.max() ?? 100) + 1
-                Chart(graphPoints) { point in
-                    LineMark(x: .value("Term", point.label), y: .value("GPA", point.weighted))
-                        .foregroundStyle(Color.themeAccent)
-                        .interpolationMethod(.catmullRom)
-                        .lineStyle(StrokeStyle(lineWidth: 2))
-                    PointMark(x: .value("Term", point.label), y: .value("GPA", point.weighted))
-                        .foregroundStyle(Color.themeAccent)
-                    if point.label == selectedGraphTerm {
-                        PointMark(x: .value("Term", point.label), y: .value("GPA", point.weighted))
-                            .foregroundStyle(Color.themeAccent)
-                            .annotation(position: .top) {
-                                Text("\(graphDisplayName(point.label)): \(point.weighted, specifier: "%.2f")")
-                                    .font(.caption.monospacedDigit().bold())
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-                            }
-                    }
-                }
-                .chartYScale(domain: minY...maxY)
-                .chartYAxis(.hidden)
-                .chartXAxis {
-                    AxisMarks(values: graphAxisLabels) { value in
-                        AxisGridLine().foregroundStyle(.clear)
-                        AxisTick().foregroundStyle(.tertiary)
-                        AxisValueLabel {
-                            if let label = value.as(String.self) {
-                                Text(graphDisplayName(label))
-                            }
-                        }
-                    }
-                }
-                .chartXSelection(value: $selectedGraphTerm)
-                .chartPlotStyle { plotArea in plotArea.clipped() }
-                .frame(height: 130)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Weighted GPA trend")
-                .accessibilityValue(graphAccessibilityValue)
+                // One retained chart: another year or series reshapes the
+                // line in place instead of drawing it in again.
+                GPATrendChart(points: points, seriesName: series.rawValue)
+                    .padding(.top, 4)
+                Text("Touch and drag along the curve to read each term.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.vertical, 16)
-        .overlay(alignment: .bottom) { Divider() }
+        .padding(.top, Metrics.sectionGap)
     }
 
-    private var graphAxisLabels: [String] {
-        let labels = graphPoints.map(\.label)
-        guard labels.count > 5 else { return labels }
-        let preferred = ["RC1", "RC2", "RC3", "RC4"]
-            .filter(labels.contains)
-        if preferred.count >= 2 { return preferred }
-        return labels.enumerated().compactMap { index, label in
-            index == 0 || index == labels.count - 1 || index.isMultiple(of: 3) ? label : nil
-        }
+    // MARK: - Term table
+
+    private struct TermEntry: Identifiable {
+        var label: String
+        var data: GPAData?
+        var id: String { label }
+        var isSummary: Bool { label.hasPrefix("SM") || label == "FIN" }
     }
 
-    private func gradeLevelPicker(selection: Binding<GradeLevel>) -> some View {
-        Picker("School year", selection: selection) {
-            ForEach(selectableGradeLevels) { level in
-                Text(level.rawValue)
-                    .tag(level)
-            }
-        }
-        .pickerStyle(.menu)
-    }
-
-    private var graphAccessibilityValue: String {
-        graphPoints
-            .map { "\(graphDisplayName($0.label)) \(String(format: "%.2f", $0.weighted))" }
-            .joined(separator: ", ")
-    }
-
-    private func graphDisplayName(_ label: String) -> String {
-        switch label {
-        case "RC1": return "Q1"
-        case "RC2": return "Q2"
-        case "RC3": return "Q3"
-        case "RC4": return "Q4"
-        default: return label.replacingOccurrences(of: "PR", with: "P")
-        }
-    }
-
-    // MARK: - Cards
-
-    private var gpaCards: some View {
-        let data = gpaData
+    /// The latest progress-report pair while the year is incomplete, each
+    /// quarter pair with its semester, then the final.
+    private func tableEntries(_ data: [String: GPAData]) -> [TermEntry] {
+        var entries: [TermEntry] = []
         let hasFin = data["SM1"] != nil && data["SM2"] != nil
 
         return VStack(spacing: 0) {
