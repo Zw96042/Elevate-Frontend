@@ -701,43 +701,49 @@ struct ManualGradeEntryView: View {
                 .padding(.bottom, 16)
             }
 
-            VStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
                 field("Class name") {
-                    TextField("e.g. AP Biology", text: $newClassName)
+                    TextField("AP Biology", text: $newClassName)
                         .textInputAutocapitalization(.words)
                         .submitLabel(.next)
+                        .focused($focusedField, equals: .name)
+                        .onSubmit { focusedField = .sm1 }
+                        .accessibilityLabel("Class name")
+                        .accessibilityIdentifier("gpa.manual.name")
                 }
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 12) {
-                        semesterOneField
-                        semesterTwoField
-                    }
-                    VStack(spacing: 12) {
+                if dynamicTypeSize.isAccessibilitySize {
+                    semesterOneField
+                    semesterTwoField
+                } else {
+                    HStack(alignment: .top, spacing: 12) {
                         semesterOneField
                         semesterTwoField
                     }
                 }
                 Button {
                     guard canAdd else { return }
-                    classes.append(ManualClass(
+                    let entry = ManualClass(
                         className: newClassName.trimmingCharacters(in: .whitespacesAndNewlines),
                         sm1: parsedSM1,
                         sm2: parsedSM2
-                    ))
+                    )
+                    Motion.perform(reduceMotion ? nil : .snappy(duration: 0.25)) { classes.append(entry) }
                     WhatIfStore.saveManualClasses(classes, gradeLevel: gradeLevel)
                     newClassName = ""; newSM1 = ""; newSM2 = ""
+                    focusedField = nil
                 } label: {
                     Label("Add class", systemImage: "plus")
-                        .frame(maxWidth: .infinity, minHeight: 28)
                 }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.roundedRectangle(radius: 12))
-                .tint(Color.prominentFill)
+                .buttonStyle(PrimaryButtonStyle())
                 .disabled(!canAdd)
+                .padding(.top, 4)
+                .accessibilityIdentifier("gpa.manual.add")
             }
         }
-        .padding(.vertical, 20)
-        .overlay(alignment: .bottom) { Divider() }
+        .background {
+            Color.clear.contentShape(Rectangle())
+                .onTapGesture { focusedField = nil }
+        }
         .confirmationDialog(
             "Delete manual class?",
             isPresented: Binding(
@@ -748,11 +754,62 @@ struct ManualGradeEntryView: View {
         ) {
             Button("Delete class", role: .destructive) {
                 guard let pendingDeletion else { return }
-                classes.removeAll { $0.id == pendingDeletion }
+                Motion.perform(reduceMotion ? nil : .snappy(duration: 0.25)) {
+                    classes.removeAll { $0.id == pendingDeletion }
+                }
                 WhatIfStore.saveManualClasses(classes, gradeLevel: gradeLevel)
                 self.pendingDeletion = nil
             }
             Button("Cancel", role: .cancel) { pendingDeletion = nil }
+        }
+    }
+
+    @ViewBuilder
+    private func classRow(_ entry: ManualClass) -> some View {
+        let level = CourseLevelDetector.level(for: entry.className)
+        Group {
+            if dynamicTypeSize >= .xxxLarge {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(entry.className)
+                        .font(.body.weight(.medium))
+                    Text(levelDescription(level))
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                    Text("Semester 1: \(manualGrade(entry.sm1))")
+                        .font(.figure(.footnote, weight: .regular))
+                    Text("Semester 2: \(manualGrade(entry.sm2))")
+                        .font(.figure(.footnote, weight: .regular))
+                    deleteButton(for: entry)
+                }
+                .padding(.vertical, 10)
+            } else {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(entry.className)
+                            .font(.body.weight(.medium))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(levelDescription(level))
+                            .font(.footnote)
+                            .foregroundStyle(Color.muted)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    LabeledValue(label: "S1", value: entry.sm1.map { String(format: "%.0f", $0) } ?? "—")
+                        .frame(width: gradeColumn, alignment: .leading)
+                    LabeledValue(label: "S2", value: entry.sm2.map { String(format: "%.0f", $0) } ?? "—")
+                        .frame(width: gradeColumn, alignment: .leading)
+                    deleteButton(for: entry)
+                }
+                .padding(.vertical, 8)
+            }
+        }
+        .transition(.opacity)
+    }
+
+    private func levelDescription(_ level: CourseLevel) -> String {
+        switch level {
+        case .ap: return "AP weighting"
+        case .honors: return "Honors weighting"
+        case .regular: return "Regular weighting"
         }
     }
 
@@ -765,8 +822,11 @@ struct ManualGradeEntryView: View {
             pendingDeletion = entry.id
         } label: {
             Image(systemName: "trash")
+                .foregroundStyle(Color.gradeAttention)
                 .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .accessibilityLabel("Delete \(entry.className)")
     }
 
@@ -794,6 +854,10 @@ struct ManualGradeEntryView: View {
         field("Semester 1") {
             TextField("Grade", text: $newSM1)
                 .keyboardType(.decimalPad)
+                .monospacedDigit()
+                .focused($focusedField, equals: .sm1)
+                .accessibilityLabel("Semester 1 grade")
+                .accessibilityIdentifier("gpa.manual.sm1")
         }
     }
 
@@ -801,6 +865,10 @@ struct ManualGradeEntryView: View {
         field("Semester 2") {
             TextField("Grade", text: $newSM2)
                 .keyboardType(.decimalPad)
+                .monospacedDigit()
+                .focused($focusedField, equals: .sm2)
+                .accessibilityLabel("Semester 2 grade")
+                .accessibilityIdentifier("gpa.manual.sm2")
         }
     }
 
