@@ -163,14 +163,75 @@ struct GPAView: View {
                         .padding(.top, Metrics.sectionGap)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, Metrics.page)
             .padding(.bottom, 32)
         }
-        .refreshable {
-            await DataService.shared.clearCaches()
+        .scrollDismissesKeyboard(.interactively)
+        .visibleRefreshable {
+            // A forced fetch bypasses the cache on its own; saved data stays
+            // on screen until the new response replaces it.
             await store.refreshCourses(force: true)
         }
-        .background(Color.appBackground)
+    }
+
+    // MARK: - Other scales
+
+    /// Conversion stays separate from the district GPA above.
+    private var otherScales: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            GroupLabel("Other scales")
+            routeRow(.gpaConverter, title: "GPA converter",
+                     note: "Completed semesters on 4.0 and 5.0 scales",
+                     identifier: "gpa.converter")
+        }
+    }
+
+    /// Local course planning. It pushes
+    /// directly rather than through `CoursesRoute`; nothing deep-links to it.
+    private var planning: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            GroupLabel("Planning")
+            NavigationLink {
+                CoursePlanView()
+            } label: {
+                routeLabel(title: "Course plan", note: "Credits toward graduation and planned semesters")
+            }
+            .buttonStyle(RowPressStyle())
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("plan.navigation")
+        }
+    }
+
+    private func routeRow(_ route: CoursesRoute, title: String, note: String, identifier: String) -> some View {
+        NavigationLink(value: route) {
+            routeLabel(title: title, note: note)
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private func routeLabel(title: String, note: String) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(Color.ink)
+                Text(note)
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+            }
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: "chevron.forward")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.faint)
+                .accessibilityHidden(true)
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     private func loadManualClasses() {
@@ -181,13 +242,24 @@ struct GPAView: View {
         manualClasses = WhatIfStore.manualClasses(gradeLevel: store.selectedGradeLevel)
     }
 
-    // MARK: - Graph
+    // MARK: - School year
 
-    private struct GraphPoint: Identifiable {
-        var index: Int
-        var label: String
-        var weighted: Double
-        var id: Int { index }
+    /// Completed/current school years, followed by every year together.
+    private var schoolYearSelector: some View {
+        @Bindable var store = store
+        let levels = selectableGradeLevels
+        var groups = [ChoiceGroup(title: nil, options: levels.filter { $0 != .allTime }.map(yearOption))]
+        if levels.contains(.allTime) {
+            groups.append(ChoiceGroup(title: nil, options: [yearOption(.allTime)]))
+        }
+        return ScopePicker(
+            title: "School year",
+            valueName: store.selectedGradeLevel.yearName,
+            hint: "Selects the school year used for GPA",
+            identifier: "gpa.schoolYear",
+            groups: groups,
+            selection: $store.selectedGradeLevel
+        )
     }
 
     private var graphPoints: [GraphPoint] {
