@@ -262,15 +262,70 @@ struct GPAView: View {
         )
     }
 
-    private var graphPoints: [GraphPoint] {
-        let data = gpaData
-        return GPACalculator.graphTerms
-            .compactMap { label -> (String, Double)? in
-                guard let value = data[label], value.weighted.isFinite else { return nil }
-                return (label, value.weighted)
+    private func yearOption(_ level: GradeLevel) -> ChoiceOption<GradeLevel> {
+        let note: String?
+        switch level {
+        case .current: note = "Classes in Skyward now"
+        case .allTime: note = "Every school year together"
+        default: note = level.gradeYear.map { "Grade \($0)" }
+        }
+        return ChoiceOption(
+            value: level,
+            title: level.yearName,
+            note: note,
+            identifier: "gpa.year.\(level.shortName)"
+        )
+    }
+
+    // MARK: - Latest
+
+    /// Weighted change from the preceding progress report or quarter. Only
+    /// defined for terms on the trend line; a semester or final is an average.
+    private func latestChange(in data: [String: GPAData], latest: String) -> (from: String, value: Double)? {
+        let terms = GPACalculator.graphTerms
+        guard let index = terms.firstIndex(of: latest), let current = data[latest]?.weighted,
+              let previous = terms[..<index].last(where: { data[$0] != nil }),
+              let prior = data[previous]?.weighted,
+              current.isFinite, prior.isFinite else { return nil }
+        return (previous, current - prior)
+    }
+
+    /// The latest weighted GPA as the one large figure, with the unweighted
+    /// value and the latest change as plain pairs beneath it.
+    private func hero(label: String, data: GPAData, change: (from: String, value: Double)?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Weighted GPA")
+                    .foregroundStyle(Color.ink)
+                Text(GPAReport.termName(label))
+                    .foregroundStyle(Color.muted)
+                    .contentTransition(.opacity)
             }
-            .enumerated()
-            .map { GraphPoint(index: $0.offset, label: $0.element.0, weighted: $0.element.1) }
+            .font(.footnote)
+            Text(GradeFormat.gpa(data.weighted))
+                .font(.display(size: min(heroSize, 88)))
+                .tracking(-1)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .contentTransition(.numericText(value: data.weighted))
+                .animation(Motion.value(reduceMotion), value: data.weighted)
+
+            pairs {
+                LabeledValue(label: "Unweighted", value: GradeFormat.gpa(data.unweighted))
+                if let change {
+                    LabeledValue(
+                        label: "Since \(GPAReport.termName(change.from))",
+                        value: GradeFormat.signedChange(change.value)
+                    )
+                }
+            }
+            .padding(.top, 8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Latest GPA, \(GPAReport.termName(label))")
+        .accessibilityValue(heroAccessibilityValue(data: data, change: change))
+        .accessibilityIdentifier("gpa.latest")
     }
 
     private var graphCard: some View {
