@@ -542,74 +542,95 @@ struct GPAView: View {
     }
 }
 
-struct GpaCardView: View {
-    var label: String
-    var data: GPAData?
+/// The two column names, sized to sit over `GPATableRow`'s figures.
+private struct GPAColumnLabels: View {
+    @ScaledMetric(relativeTo: .body) private var columnWidth: CGFloat = 96
 
     var body: some View {
-        GpaRowLayout(label: label, data: data)
-        .padding(.vertical, 14)
-        .overlay(alignment: .bottom) { Divider() }
+        HStack(spacing: 0) {
+            Text("Unweighted")
+                .frame(width: columnWidth, alignment: .trailing)
+            Text("Weighted")
+                .frame(width: columnWidth, alignment: .trailing)
+        }
+        .modifier(TableHeaderStyle())
     }
 }
 
-struct GpaSoloCardView: View {
-    var label: String
-    var data: GPAData
-
-    var body: some View {
-        GpaRowLayout(label: label, data: data)
-        .padding(.vertical, 14)
-        .overlay(alignment: .bottom) { Divider() }
-    }
-}
-
-private struct GpaRowLayout: View {
+private struct GPATableRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .body) private var columnWidth: CGFloat = 96
     var label: String
     var data: GPAData?
+    var isSummary: Bool
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            if dynamicTypeSize < .xxxLarge {
-                HStack(alignment: .center, spacing: 12) {
-                    termLabel
+        Group {
+            if dynamicTypeSize >= .xxxLarge {
+                VStack(alignment: .leading, spacing: 6) {
+                    termName
+                    labeledValue("Unweighted", data?.unweighted)
+                    labeledValue("Weighted", data?.weighted)
+                }
+                .padding(.vertical, 10)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    termName
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    values
-                        .fixedSize(horizontal: true, vertical: false)
+                    number(data?.unweighted, emphasized: false)
+                        .frame(width: columnWidth, alignment: .trailing)
+                    number(data?.weighted, emphasized: true)
+                        .frame(width: columnWidth, alignment: .trailing)
                 }
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                termLabel
-                values
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                termLabel
-                VStack(alignment: .leading, spacing: 8) {
-                    gpaValue("Unweighted", value: data?.unweighted, horizontal: true)
-                    gpaValue("Weighted", value: data?.weighted, horizontal: true)
-                }
+                .padding(.vertical, 10)
             }
         }
-        .accessibilityElement(children: .combine)
+        .frame(minHeight: 44)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(GPAReport.termName(label))
+        .accessibilityValue(
+            "Unweighted \(GradeFormat.gpa(data?.unweighted)), weighted \(GradeFormat.gpa(data?.weighted))"
+        )
     }
 
-    private var termLabel: some View {
-        Text(gpaTermName(label))
-            .font(.body.weight(.semibold))
+    private var termName: some View {
+        Text(GPAReport.termName(label))
+            .font(isSummary ? Font.body.weight(.medium) : Font.body)
+            .foregroundStyle(Color.ink)
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    private var values: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 14) {
-            gpaValue("Unweighted", value: data?.unweighted)
-            gpaValue("Weighted", value: data?.weighted)
-        }
+    private func number(_ value: Double?, emphasized: Bool) -> some View {
+        Text(GradeFormat.gpa(value))
+            .font(.figure(.body, weight: isSummary ? .semibold : .medium))
+            .foregroundStyle(value == nil || !emphasized ? Color.muted : Color.ink)
+            .contentTransition(.numericText(value: value ?? 0))
+            .animation(Motion.value(reduceMotion), value: value)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
     }
 
-    private func gpaValue(_ label: String, value: Double?, horizontal: Bool = false) -> some View {
+    private func labeledValue(_ title: String, _ value: Double?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .foregroundStyle(Color.muted)
+            Spacer(minLength: 12)
+            Text(GradeFormat.gpa(value))
+                .font(.figure(.body))
+        }
+        .font(.body)
+    }
+}
+
+/// A loading term in `GPATableRow`'s columns, or its stacked pairs at large
+/// text sizes. Hidden from accessibility; the table announces it is loading.
+private struct GPATableRowPlaceholder: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .body) private var columnWidth: CGFloat = 96
+    var name: Int
+
+    var body: some View {
         Group {
             if horizontal {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
