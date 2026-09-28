@@ -415,3 +415,94 @@ struct GPATrendChart: View {
         .shadow(color: .black.opacity(0.06), radius: 3, y: 1)
     }
 
+    // MARK: Reveal
+
+    private func startReveal() {
+        if reduceMotion {
+            revealFinished = true
+            return
+        }
+        Motion.perform(Motion.reveal(reduceMotion)) { reveal = 1 }
+    }
+
+    /// A reading during the draw-in or a reshape shows the whole, current
+    /// curve at once, so the dot sits on the line it describes.
+    private func settle() {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            revealFinished = true
+            curveGeneration &+= 1
+        }
+    }
+
+    /// A touch settles the curve in the same update that places the dot.
+    private func scrub(_ fraction: CGFloat?) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            if fraction != nil, scrubFraction == nil { settle() }
+            scrubFraction = fraction
+        }
+    }
+
+    // MARK: Accessibility
+
+    private var accessibilityValue: String {
+        if let accessibilityIndex, points.indices.contains(accessibilityIndex) {
+            let point = points[accessibilityIndex]
+            return "\(point.displayName), \(GradeFormat.gpa(point.value))"
+        }
+        guard let first = points.first, let last = points.last else { return "" }
+        return "\(points.count) terms, from \(GradeFormat.gpa(first.value)) in \(first.displayName) to \(GradeFormat.gpa(last.value)) in \(last.displayName)"
+    }
+
+    private func adjust(_ direction: AccessibilityAdjustmentDirection) {
+        guard !points.isEmpty else { return }
+        if accessibilityIndex == nil { settle() }
+        let last = points.count - 1
+        let current = accessibilityIndex.map { min($0, last) }
+        switch direction {
+        case .increment:
+            accessibilityIndex = min((current ?? -1) + 1, last)
+        case .decrement:
+            accessibilityIndex = max((current ?? points.count) - 1, 0)
+        @unknown default:
+            break
+        }
+    }
+}
+
+/// UIKit can reject a vertical pan before it recognizes. Filtering a
+/// SwiftUI DragGesture's updates happens too late: it has already competed
+/// with the surrounding scroll view for that touch.
+private struct ChartScrubSurface: UIViewRepresentable {
+    var onScrub: (CGFloat?) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onScrub: onScrub)
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        view.isAccessibilityElement = false
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.panChanged(_:)))
+        pan.maximumNumberOfTouches = 1
+        pan.cancelsTouchesInView = false
+        pan.delegate = context.coordinator
+        view.addGestureRecognizer(pan)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.onScrub = onScrub
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var onScrub: (CGFloat?) -> Void
+
+        init(onScrub: @escaping (CGFloat?) -> Void) {
+            self.onScrub = onScrub
+        }
+
