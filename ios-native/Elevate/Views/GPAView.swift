@@ -1,23 +1,49 @@
 import SwiftUI
-import Charts
 
+/// Which GPA the trend chart plots. Both are the district's percentage scale.
+private enum GPASeries: String, CaseIterable, Identifiable {
+    case weighted = "Weighted"
+    case unweighted = "Unweighted"
+
+    var id: String { rawValue }
+}
+
+extension GradeLevel {
+    /// "Senior year", "All years".
+    var yearName: String {
+        switch self {
+        case .allTime: return "All years"
+        default: return "\(rawValue) year"
+        }
+    }
+}
+
+/// GPA history for a school year. Pushed from the GPA line on Courses and
+/// opened by the GPA widgets.
 struct GPAView: View {
     @Environment(AppStore.self) private var store
+    @Environment(AppRouter.self) private var router
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var showingSettings = false
-    @State private var selectedGraphTerm: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .largeTitle) private var heroSize: CGFloat = 56
+    @State private var showingConnect = false
     @State private var manualClasses: [ManualClass] = []
+    @State private var series: GPASeries = .weighted
 
     private var selectedCourses: [UnifiedCourseData] {
         store.courses(for: store.selectedGradeLevel)
     }
 
     private var supportsManualEntry: Bool {
-        store.selectedGradeLevel.gradeYear != nil && selectedCourses.isEmpty
+        GPAReport.supportsManualEntry(level: store.selectedGradeLevel, courses: selectedCourses)
     }
 
     private var selectableGradeLevels: [GradeLevel] {
-        var levels: [GradeLevel] = [.freshman, .sophomore, .junior, .senior]
+        let currentYear = store.courses?.compactMap(\.gradeYear).max()
+        var levels: [GradeLevel] = [.freshman, .sophomore, .junior, .senior].filter { level in
+            guard let currentYear, let year = level.gradeYear else { return true }
+            return year <= currentYear
+        }
         if store.courses?.contains(where: { $0.gradeYear == nil }) == true {
             levels.insert(.current, at: 0)
         }
@@ -26,61 +52,34 @@ struct GPAView: View {
     }
 
     private var gpaData: [String: GPAData] {
-        if store.selectedGradeLevel == .allTime {
-            return GPACalculator.termGPAs(
-                courses: selectedCourses,
-                manualClasses: allTimeManualClasses
-            )
-        }
-        if !selectedCourses.isEmpty {
-            return GPACalculator.termGPAs(courses: selectedCourses)
-        }
-        if supportsManualEntry {
-            return GPACalculator.termGPAs(manualClasses: manualClasses)
-        }
-        return [:]
-    }
-
-    private var allTimeManualClasses: [ManualClass] {
-        let realYears = Set(selectedCourses.compactMap(\.gradeYear))
-        return [GradeLevel.freshman, .sophomore, .junior, .senior]
-            .filter { level in
-                guard let year = level.gradeYear else { return false }
-                return !realYears.contains(year)
-            }
-            .flatMap { WhatIfStore.manualClasses(gradeLevel: $0) }
+        GPAReport.termGPAs(
+            level: store.selectedGradeLevel,
+            courses: selectedCourses,
+            manualClasses: manualClasses
+        )
     }
 
     var body: some View {
-        @Bindable var store = store
-        NavigationStack {
-            Group {
-                if !store.canShowData {
-                    LoginPromptView(message: "Connect your Skyward account in Settings to view GPA history.") {
-                        showingSettings = true
-                    }
-                } else if let error = store.coursesError, store.courses == nil {
-                    ErrorStateView(title: "Couldn't load GPA data", message: error) {
-                        await store.refreshCourses(force: true)
-                    }
-                } else {
-                    content
+        Group {
+            if !store.canShowData {
+                LoginPromptView(message: "Connect your Skyward account to see GPA history for each school year.") {
+                    showingConnect = true
                 }
-            }
-            .navigationTitle("GPA")
-            .navigationBarTitleDisplayMode(.inline)
-            .background(Color.appBackground.ignoresSafeArea())
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showingSettings = true } label: { Image(systemName: "gearshape") }
-                        .accessibilityLabel("Settings")
+            } else if let error = store.coursesError, store.courses == nil {
+                ErrorStateView(title: "Couldn't load GPA data", message: error) {
+                    await store.refreshCourses(force: true)
                 }
+            } else {
+                content
             }
-            .sheet(isPresented: $showingSettings) { SettingsView() }
-            .task { loadManualClasses() }
-            .onChange(of: store.selectedGradeLevel) { _, _ in
-                selectedGraphTerm = nil
-                loadManualClasses()
+        }
+        .navigationTitle("GPA")
+        .navigationBarTitleDisplayMode(.inline)
+        .background(Color.appBackground.ignoresSafeArea())
+        .accessibilityIdentifier("gpa.screen")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                SettingsToolbarButton { router.isShowingSettings = true }
             }
         }
     }
