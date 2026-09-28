@@ -872,36 +872,20 @@ struct ManualGradeEntryView: View {
         }
     }
 
+    /// A label above a plain input well.
     private func field<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .accessibilityHidden(true)
             content()
-                .padding(.horizontal, 12)
-                .frame(minHeight: 44)
-                .background(Color.appBackground, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .stroke(Color.subtleBorder, lineWidth: 0.5)
-                }
+                .font(.body)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .background(Color.well, in: RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous))
         }
-    }
-}
-
-private func gpaTermName(_ code: String) -> String {
-    switch code {
-    case "RC1": return "Quarter 1"
-    case "RC2": return "Quarter 2"
-    case "RC3": return "Quarter 3"
-    case "RC4": return "Quarter 4"
-    case "SM1": return "Semester 1"
-    case "SM2": return "Semester 2"
-    case "FIN": return "Final"
-    default:
-        if code.hasPrefix("PR"), let number = code.dropFirst(2).first {
-            return "Progress report \(number)"
-        }
-        return code
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
