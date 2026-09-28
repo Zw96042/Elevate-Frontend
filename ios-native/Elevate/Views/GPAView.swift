@@ -632,30 +632,34 @@ private struct GPATableRowPlaceholder: View {
 
     var body: some View {
         Group {
-            if horizontal {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(label)
-                        .foregroundStyle(.secondary)
-                    Spacer(minLength: 12)
-                    number(value)
+            if dynamicTypeSize >= .xxxLarge {
+                VStack(alignment: .leading, spacing: 6) {
+                    SkeletonText(.body, length: name)
+                    pair
+                    pair
                 }
-                .font(.body)
             } else {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(label)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    number(value)
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    SkeletonText(.body, length: name)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    SkeletonText(.figure(.body), length: 4, tone: .secondary)
+                        .frame(width: columnWidth, alignment: .trailing)
+                    SkeletonText(.figure(.body), length: 4)
+                        .frame(width: columnWidth, alignment: .trailing)
                 }
             }
         }
+        .padding(.vertical, 10)
+        .frame(minHeight: 44)
+        .accessibilityHidden(true)
     }
 
-    private func number(_ value: Double?) -> some View {
-        Text(value.map { String(format: "%.2f", $0) } ?? "—")
-            .font(.title3.weight(.semibold).monospacedDigit())
-            .contentTransition(.numericText(value: value ?? 0))
-            .fixedSize(horizontal: true, vertical: false)
+    private var pair: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            SkeletonText(.body, length: 8, tone: .secondary)
+            Spacer(minLength: 12)
+            SkeletonText(.figure(.body), length: 4)
+        }
     }
 }
 
@@ -666,57 +670,35 @@ struct ManualGradeEntryView: View {
     @Binding var classes: [ManualClass]
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var newClassName = ""
     @State private var newSM1 = ""
     @State private var newSM2 = ""
     @State private var pendingDeletion: String?
+    @FocusState private var focusedField: Field?
+    @ScaledMetric(relativeTo: .body) private var gradeColumn: CGFloat = 48
+
+    private enum Field: Hashable {
+        case name, sm1, sm2
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Manual Grade Entry")
-                .font(.headline)
-            Text("No Skyward data for \(gradeLevel.rawValue). Add semester grades manually to estimate your GPA.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeading("Classes you add", count: classes.isEmpty ? nil : "\(classes.count)")
+            Text("Skyward has no grades for \(gradeLevel.rawValue). Add semester grades to estimate GPA for that year. They stay on this iPhone.")
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 10)
 
-            ForEach(classes) { entry in
-                Group {
-                    if dynamicTypeSize >= .xxxLarge {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(entry.className)
-                                .font(.subheadline.weight(.medium))
-                                .lineLimit(nil)
-                            Text(CourseLevelDetector.level(for: entry.className).rawValue)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("Semester 1: \(manualGrade(entry.sm1))")
-                                .font(.caption.monospacedDigit())
-                            Text("Semester 2: \(manualGrade(entry.sm2))")
-                                .font(.caption.monospacedDigit())
-                            HStack {
-                                Spacer()
-                                deleteButton(for: entry)
-                            }
-                        }
-                    } else {
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(entry.className).font(.subheadline.weight(.medium))
-                                Text(CourseLevelDetector.level(for: entry.className).rawValue)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Text("S1: \(entry.sm1.map { String(format: "%.0f", $0) } ?? "--")")
-                                .font(.caption.monospacedDigit())
-                            Text("S2: \(entry.sm2.map { String(format: "%.0f", $0) } ?? "--")")
-                                .font(.caption.monospacedDigit())
-                            deleteButton(for: entry)
-                        }
+            if !classes.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(Array(classes.enumerated()), id: \.element.id) { index, entry in
+                        if index > 0 { InsetDivider() }
+                        classRow(entry)
                     }
                 }
-                .padding(.vertical, 4)
-                Divider()
+                .padding(.bottom, 16)
             }
 
             VStack(spacing: 12) {
