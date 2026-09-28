@@ -192,3 +192,127 @@ struct GPACurveProfile: VectorArithmetic {
     }
 }
 
+/// The line, or the area beneath it, drawn from an animatable profile.
+private struct GPACurveShape: Shape {
+    var profile: GPACurveProfile
+    var closesArea = false
+
+    var animatableData: GPACurveProfile {
+        get { profile }
+        set { profile = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let heights = profile.heights
+        guard heights.count > 1 else { return Path() }
+        let inset = GPACurve.chartInset
+        let step = max(rect.width - inset * 2, 1) / CGFloat(heights.count - 1)
+        var path = Path()
+        for (index, height) in heights.enumerated() {
+            let point = CGPoint(
+                x: rect.minX + inset + step * CGFloat(index),
+                y: rect.minY + rect.height * CGFloat(height)
+            )
+            if index == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
+        if closesArea {
+            let lastX = rect.minX + inset + step * CGFloat(heights.count - 1)
+            path.addLine(to: CGPoint(x: lastX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.minX + inset, y: rect.maxY))
+            path.closeSubpath()
+        }
+        return path
+    }
+}
+
+// MARK: - Chart
+
+/// The GPA trend: a short curve with a fading wash and nothing else at rest.
+/// Touching it places a dot on the curve under the finger and names the
+/// nearest term; letting go clears it. Vertical drags that start on the chart
+/// still scroll the page.
+///
+/// Keep one chart across changes of school year and series: it draws in
+/// once, then the same line reshapes to each new set of points.
+struct GPATrendChart: View {
+    var points: [GPATrendPoint]
+    /// "Weighted" or "Unweighted".
+    var seriesName: String
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var scrubFraction: CGFloat?
+    @State private var reveal: CGFloat = 0
+    @State private var revealFinished = false
+    @State private var accessibilityIndex: Int?
+    /// Replacing the drawn curve's identity ends any reshape in progress, so
+    /// the line is already at the values a reading reports.
+    @State private var curveGeneration = 0
+
+    private static let height: CGFloat = 112
+
+    /// The horizontal position being read, from touch or VoiceOver.
+    private var activeFraction: CGFloat? {
+        if let scrubFraction { return scrubFraction }
+        guard let accessibilityIndex, points.count > 1 else { return nil }
+        return CGFloat(min(accessibilityIndex, points.count - 1)) / CGFloat(points.count - 1)
+    }
+
+    private var isReading: Bool {
+        scrubFraction != nil || accessibilityIndex != nil
+    }
+
+    private var snappedIndex: Int? {
+        guard let activeFraction, points.count > 1 else { return nil }
+        return Int((min(max(activeFraction, 0), 1) * CGFloat(points.count - 1)).rounded())
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            GeometryReader { proxy in
+                plot(in: proxy.size)
+            }
+            .frame(height: Self.height)
+
+            HStack(alignment: .top) {
+                if let first = points.first {
+                    endpoint(first, alignment: .leading)
+                }
+                Spacer(minLength: 8)
+                if let last = points.last, points.count > 1 {
+                    endpoint(last, alignment: .trailing)
+                }
+            }
+            .font(.figure(.caption, weight: .regular))
+            .foregroundStyle(Color.muted)
+            .padding(.horizontal, 2)
+            .accessibilityHidden(true)
+        }
+        .sensoryFeedback(.selection, trigger: snappedIndex) { old, new in
+            old != nil && new != nil && old != new
+        }
+        .onAppear(perform: startReveal)
+        .onChange(of: points) { old, new in
+            // New data under a reading shows at once (the change was not
+            // animated); this also ends a reshape that was already running.
+            if isReading { settle() }
+            // Another year's terms: a VoiceOver position no longer names the
+            // same term.
+            if old.map(\.id) != new.map(\.id) { accessibilityIndex = nil }
+        }
+        // Turning on Reduce Motion mid-draw or mid-reshape shows the whole,
+        // current curve at once.
+        .onChange(of: reduceMotion) { _, reduced in
+            if reduced { settle() }
+        }
+        .onDisappear { scrubFraction = nil }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(seriesName) GPA trend")
+        .accessibilityValue(accessibilityValue)
+        .accessibilityHint("Swipe up or down to hear each term.")
+        .accessibilityAdjustableAction(adjust)
+        .accessibilityChartDescriptor(
+            GPAChartDescriptor(title: "\(seriesName) GPA by term", points: points)
+        )
+        .accessibilityIdentifier("gpa.chart")
+    }
+
