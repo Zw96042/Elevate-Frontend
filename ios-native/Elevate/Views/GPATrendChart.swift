@@ -506,3 +506,89 @@ private struct ChartScrubSurface: UIViewRepresentable {
             self.onScrub = onScrub
         }
 
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
+            let movement = pan.translation(in: pan.view)
+            return abs(movement.x) > abs(movement.y)
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            // A scroll-view pan must not cancel an accepted horizontal scrub,
+            // and this recognizer must never prevent the page from scrolling.
+            guard let scrollView = otherGestureRecognizer.view as? UIScrollView else { return false }
+            return otherGestureRecognizer === scrollView.panGestureRecognizer
+        }
+
+        @objc func panChanged(_ pan: UIPanGestureRecognizer) {
+            switch pan.state {
+            case .began, .changed:
+                guard let view = pan.view else { return }
+                let inset = GPACurve.chartInset
+                let usable = max(view.bounds.width - inset * 2, 1)
+                onScrub(min(max((pan.location(in: view).x - inset) / usable, 0), 1))
+            case .ended, .cancelled, .failed:
+                onScrub(nil)
+            default:
+                break
+            }
+        }
+    }
+}
+
+/// Places a callout centered above an anchor point, kept inside the plot's
+/// edges and flipped below the point when there is no room above.
+private struct CalloutLayout: Layout {
+    var anchor: CGPoint
+    var gap: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let callout = subviews.first else { return }
+        let size = callout.sizeThatFits(.unspecified)
+        let x = min(max(anchor.x - size.width / 2, 0), max(bounds.width - size.width, 0))
+        var y = anchor.y - gap - size.height
+        if y < 0 { y = anchor.y + gap }
+        y = min(y, max(bounds.height - size.height, 0))
+        callout.place(
+            at: CGPoint(x: bounds.minX + x, y: bounds.minY + y),
+            anchor: .topLeading,
+            proposal: ProposedViewSize(size)
+        )
+    }
+}
+
+/// The chart's data for VoiceOver's audio graph and chart summary.
+private struct GPAChartDescriptor: AXChartDescriptorRepresentable {
+    var title: String
+    var points: [GPATrendPoint]
+
+    func makeChartDescriptor() -> AXChartDescriptor {
+        // Year-qualified on All years, so each year's terms stay distinct.
+        let names = points.map(\.displayName)
+        let xAxis = AXCategoricalDataAxisDescriptor(title: "Term", categoryOrder: names)
+        let yAxis = AXNumericDataAxisDescriptor(
+            title: "GPA",
+            range: GPACurve.range(of: points.map(\.value)),
+            gridlinePositions: []
+        ) { String(format: "%.2f", $0) }
+        let series = AXDataSeriesDescriptor(
+            name: title,
+            isContinuous: true,
+            dataPoints: zip(names, points).map { AXDataPoint(x: $0, y: $1.value) }
+        )
+        return AXChartDescriptor(
+            title: title,
+            summary: nil,
+            xAxis: xAxis,
+            yAxis: yAxis,
+            additionalAxes: [],
+            series: [series]
+        )
+    }
+}
