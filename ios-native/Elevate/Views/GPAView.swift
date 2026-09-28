@@ -447,43 +447,97 @@ struct GPAView: View {
         var entries: [TermEntry] = []
         let hasFin = data["SM1"] != nil && data["SM2"] != nil
 
-        return VStack(spacing: 0) {
-            // Latest progress-report pair when the semester isn't complete yet.
-            if !hasFin {
-                let prLabels = ["PR1", "PR2", "PR3", "PR4", "PR5", "PR6", "PR7", "PR8"].filter { data[$0] != nil }
-                let latest = Array(prLabels.suffix(2))
-                if latest.count == 2 {
-                    gpaPair(first: latest[0], second: latest[1], data: data)
-                } else if latest.count == 1 {
-                    GpaSoloCardView(label: latest[0], data: data[latest[0]]!)
-                }
-            }
+        if !hasFin {
+            let prLabels = ["PR1", "PR2", "PR3", "PR4", "PR5", "PR6", "PR7", "PR8"].filter { data[$0] != nil }
+            entries += prLabels.suffix(2).map { TermEntry(label: $0, data: data[$0]) }
+        }
 
-            ForEach([["RC1", "RC2"], ["RC3", "RC4"]], id: \.self) { pair in
-                if data[pair[0]] != nil || data[pair[1]] != nil {
-                    gpaPair(first: pair[0], second: pair[1], data: data)
-                }
-                if pair[0] == "RC1", let sm1 = data["SM1"] {
-                    GpaSoloCardView(label: "SM1", data: sm1)
-                }
-                if pair[0] == "RC3", let sm2 = data["SM2"] {
-                    GpaSoloCardView(label: "SM2", data: sm2)
-                }
+        for pair in [["RC1", "RC2"], ["RC3", "RC4"]] {
+            if data[pair[0]] != nil || data[pair[1]] != nil {
+                entries += pair.map { TermEntry(label: $0, data: data[$0]) }
             }
+            if pair[0] == "RC1", let sm1 = data["SM1"] {
+                entries.append(TermEntry(label: "SM1", data: sm1))
+            }
+            if pair[0] == "RC3", let sm2 = data["SM2"] {
+                entries.append(TermEntry(label: "SM2", data: sm2))
+            }
+        }
 
-            if hasFin, let sm1 = data["SM1"], let sm2 = data["SM2"] {
-                GpaSoloCardView(label: "FIN", data: GPAData(
-                    unweighted: (sm1.unweighted + sm2.unweighted) / 2,
-                    weighted: (sm1.weighted + sm2.weighted) / 2
-                ))
+        if hasFin, let fin = GPAReport.finalGPA(data) {
+            entries.append(TermEntry(label: "FIN", data: fin))
+        }
+        return entries
+    }
+
+    /// Consecutive entries of one part of the year, under a quiet label.
+    /// The final has no label; a full rule sets it off as the year's result.
+    private struct TermGroup: Identifiable {
+        var title: String?
+        var entries: [TermEntry]
+        var id: String { entries.first?.label ?? title ?? "" }
+    }
+
+    /// Groups the table's entries in their existing order; nothing is
+    /// added, removed, or reordered.
+    private func termGroups(_ entries: [TermEntry]) -> [TermGroup] {
+        var groups: [TermGroup] = []
+        for entry in entries {
+            let title = groupTitle(entry.label)
+            if let last = groups.last, last.title == title {
+                groups[groups.count - 1].entries.append(entry)
+            } else {
+                groups.append(TermGroup(title: title, entries: [entry]))
             }
+        }
+        return groups
+    }
+
+    private func groupTitle(_ label: String) -> String? {
+        if label.hasPrefix("PR") { return "Progress reports" }
+        switch label {
+        case "RC1", "RC2", "SM1": return "Fall semester"
+        case "RC3", "RC4", "SM2": return "Spring semester"
+        default: return nil
         }
     }
 
-    private func gpaPair(first: String, second: String, data: [String: GPAData]) -> some View {
-        VStack(spacing: 0) {
-            GpaCardView(label: first, data: data[first])
-            GpaCardView(label: second, data: data[second])
+    @ViewBuilder
+    private func termTable(_ data: [String: GPAData]) -> some View {
+        let entries = tableEntries(data)
+        if !entries.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                if dynamicTypeSize < .xxxLarge {
+                    // Column names share the heading's line, aligned over
+                    // the figures, instead of a separate header band.
+                    SectionHeading(title: "By term", count: nil) {
+                        GPAColumnLabels()
+                    }
+                } else {
+                    SectionHeading("By term")
+                }
+                ForEach(Array(termGroups(entries).enumerated()), id: \.element.id) { index, group in
+                    if let title = group.title {
+                        GroupLabel(title)
+                            .padding(.top, index == 0 ? 2 : 18)
+                    } else {
+                        Rule()
+                            .padding(.top, 14)
+                    }
+                    ForEach(Array(group.entries.enumerated()), id: \.element.id) { row, entry in
+                        // A semester summarizes the quarters above it.
+                        if entry.isSummary && row > 0 { InsetDivider() }
+                        GPATableRow(label: entry.label, data: entry.data, isSummary: entry.isSummary)
+                    }
+                }
+
+                Text("Unweighted is the average of your course grades for each term. Weighted adds 10 for AP and 5 for Honors courses, up to 110.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 12)
+            }
+            .padding(.top, Metrics.sectionGap)
         }
     }
 }
