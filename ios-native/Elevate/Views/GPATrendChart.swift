@@ -98,3 +98,97 @@ struct GPACurve {
         let end = points[segment + 1]
         let nearest = Int((clamped * CGFloat(points.count - 1)).rounded())
 
+        // x(t) rises monotonically, so a few bisection steps find the t
+        // whose x is under the finger.
+        let width = end.x - start.x
+        var low: CGFloat = 0
+        var high: CGFloat = 1
+        for _ in 0..<18 {
+            let t = (low + high) / 2
+            let u = 1 - t
+            let curveX = start.x + width * (0.9 * u * u * t + 2.1 * u * t * t + t * t * t)
+            if curveX < x { low = t } else { high = t }
+        }
+        let t = (low + high) / 2
+        let u = 1 - t
+        let y = start.y * (u * u * u + 3 * u * u * t) + end.y * (3 * u * t * t + t * t * t)
+        return (CGPoint(x: x, y: y), nearest)
+    }
+
+    private static func controls(_ start: CGPoint, _ end: CGPoint) -> (CGPoint, CGPoint) {
+        let width = end.x - start.x
+        return (
+            CGPoint(x: start.x + width * 0.3, y: start.y),
+            CGPoint(x: start.x + width * 0.7, y: end.y)
+        )
+    }
+}
+
+/// The drawn curve as heights at evenly spaced positions from the first term
+/// to the last, each a fraction of the plot's height. Every series has the
+/// same number of heights whatever its number of terms, so a change of year
+/// or series interpolates one rendered line into the next in place. Only
+/// positions are interpolated; values, labels and readings always come from
+/// the final points.
+struct GPACurveProfile: VectorArithmetic {
+    /// Dense enough that each term of All years spans several samples.
+    static let sampleCount = 321
+
+    var heights: [Double]
+
+    init(heights: [Double]) {
+        self.heights = heights
+    }
+
+    /// The curve through `values`: the same range, padding and segments as
+    /// `GPACurve`, with both ends exactly at the first and last terms.
+    init(values: [Double]) {
+        guard !values.isEmpty else {
+            heights = []
+            return
+        }
+        let curve = GPACurve(values: values, size: CGSize(width: 1, height: 1), inset: 0)
+        let last = Self.sampleCount - 1
+        heights = (0...last).map { index in
+            let point: CGPoint
+            switch index {
+            case 0: point = curve.points.first ?? .zero
+            case last: point = curve.points.last ?? .zero
+            default: point = curve.position(at: CGFloat(index) / CGFloat(last)).point
+            }
+            return point.y.isFinite ? Double(point.y) : 0.5
+        }
+    }
+
+    static var zero: GPACurveProfile { GPACurveProfile(heights: []) }
+
+    static func + (lhs: GPACurveProfile, rhs: GPACurveProfile) -> GPACurveProfile {
+        lhs.combined(with: rhs, +)
+    }
+
+    static func - (lhs: GPACurveProfile, rhs: GPACurveProfile) -> GPACurveProfile {
+        lhs.combined(with: rhs, -)
+    }
+
+    mutating func scale(by rate: Double) {
+        for index in heights.indices { heights[index] *= rate }
+    }
+
+    var magnitudeSquared: Double {
+        heights.reduce(0) { $0 + $1 * $1 }
+    }
+
+    /// `zero` is empty, so a missing height counts as zero.
+    private func combined(with other: GPACurveProfile, _ operation: (Double, Double) -> Double) -> GPACurveProfile {
+        let count = max(heights.count, other.heights.count)
+        var result = [Double]()
+        result.reserveCapacity(count)
+        for index in 0..<count {
+            let lhs = index < heights.count ? heights[index] : 0
+            let rhs = index < other.heights.count ? other.heights[index] : 0
+            result.append(operation(lhs, rhs))
+        }
+        return GPACurveProfile(heights: result)
+    }
+}
+
