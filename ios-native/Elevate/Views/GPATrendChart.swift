@@ -316,3 +316,102 @@ struct GPATrendChart: View {
         .accessibilityIdentifier("gpa.chart")
     }
 
+    /// An end of the curve: its term (with the school year on All years) and
+    /// value.
+    private func endpoint(_ point: GPATrendPoint, alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 2) {
+            Text(point.displayName)
+                .font(.caption)
+                .lineLimit(2)
+                .multilineTextAlignment(alignment == .trailing ? .trailing : .leading)
+                .fixedSize(horizontal: false, vertical: true)
+            // Rolls with a change of year or series like the screen's other
+            // figures; instant with Reduce Motion.
+            Text(GradeFormat.gpa(point.value))
+                .font(.figure(.caption, weight: .medium))
+                .foregroundStyle(Color.ink)
+                .contentTransition(.numericText(value: point.value))
+                .animation(Motion.value(reduceMotion), value: point.value)
+        }
+        .frame(maxWidth: .infinity, alignment: alignment == .trailing ? .trailing : .leading)
+    }
+
+    private func plot(in size: CGSize) -> some View {
+        let values = points.map(\.value)
+        // The dot and callout read the final points on the exact curve; the
+        // drawn line is already settled whenever they show.
+        let curve = GPACurve(values: values, size: size)
+        let reading = activeFraction.map { curve.position(at: $0) }
+        let profile = GPACurveProfile(values: values)
+        return ZStack(alignment: .topLeading) {
+            ZStack(alignment: .topLeading) {
+                GPACurveShape(profile: profile, closesArea: true)
+                    .fill(LinearGradient(
+                        colors: [Color.chartFill, Color.chartFill.opacity(0)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ))
+                GPACurveShape(profile: profile)
+                    .stroke(Color.chartLine, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+            }
+            // A reading shows final data, so new points under it are not
+            // animated.
+            .animation(isReading ? nil : Motion.morph(reduceMotion), value: profile)
+            .id(curveGeneration)
+            .mask(alignment: .leading) {
+                if revealFinished {
+                    Rectangle()
+                } else {
+                    Rectangle().scaleEffect(x: reveal, anchor: .leading)
+                }
+            }
+
+            if let reading, points.indices.contains(reading.nearest) {
+                Circle()
+                    .fill(Color.chartLine)
+                    .overlay { Circle().strokeBorder(Color.appBackground, lineWidth: 2) }
+                    .frame(width: 11, height: 11)
+                    .position(reading.point)
+
+                CalloutLayout(anchor: reading.point, gap: 10) {
+                    callout(reading.nearest)
+                }
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .overlay {
+            ChartScrubSurface(onScrub: scrub)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// A compact tooltip on the quiet well: the term (and year on All years),
+    /// its value, and the change from the previous point.
+    private func callout(_ index: Int) -> some View {
+        let point = points[index]
+        let change = index > 0 ? point.value - points[index - 1].value : nil
+        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        return VStack(alignment: .leading, spacing: 1) {
+            Text(point.displayName)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.ink)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(GradeFormat.gpa(point.value))
+                    .font(.figure(.subheadline, weight: .semibold))
+                    .foregroundStyle(Color.ink)
+                if let change {
+                    Text(GradeFormat.signedChange(change))
+                        .font(.figure(.footnote, weight: .regular))
+                        .foregroundStyle(Color.muted)
+                }
+            }
+        }
+        .lineLimit(1)
+        .fixedSize()
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.well, in: shape)
+        .overlay { shape.strokeBorder(Color.rule, lineWidth: Metrics.line) }
+        .shadow(color: .black.opacity(0.06), radius: 3, y: 1)
+    }
+
