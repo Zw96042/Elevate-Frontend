@@ -328,31 +328,96 @@ struct GPAView: View {
         .accessibilityIdentifier("gpa.latest")
     }
 
-    private var graphCard: some View {
-        VStack(spacing: 10) {
-            HStack {
-                Text("Weighted GPA trend")
-                    .font(.headline)
-                Spacer()
-                Image(systemName: "chart.xyaxis.line")
-                    .foregroundStyle(Color.highlightText)
-                    .accessibilityHidden(true)
+    /// Label/value pairs side by side, stacked at accessibility sizes.
+    @ViewBuilder
+    private func pairs<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 10, content: content)
+        } else {
+            HStack(alignment: .top, spacing: 32, content: content)
+        }
+    }
+
+    private func heroAccessibilityValue(data: GPAData, change: (from: String, value: Double)?) -> String {
+        var parts = [
+            "Weighted \(GradeFormat.gpa(data.weighted))",
+            "unweighted \(GradeFormat.gpa(data.unweighted))",
+        ]
+        if let change {
+            parts.append("\(GradeFormat.signedChange(change.value)) since \(GPAReport.termName(change.from))")
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    // MARK: - Trend
+
+    /// Every graded progress report and quarter in order, in the chosen
+    /// series. Terms without a GPA are left out, never drawn as zero.
+    private func graphPoints(_ data: [String: GPAData]) -> [GPATrendPoint] {
+        if store.selectedGradeLevel == .allTime {
+            let manualByYear = Dictionary(uniqueKeysWithValues:
+                [GradeLevel.freshman, .sophomore, .junior, .senior].compactMap { level in
+                    level.gradeYear.map { ($0, WhatIfStore.manualClasses(gradeLevel: level)) }
+                }
+            )
+            return GPATimeline.allYears(courses: selectedCourses, manualClassesByYear: manualByYear).map {
+                GPATrendPoint(label: $0.term, value: series == .weighted ? $0.data.weighted : $0.data.unweighted, level: $0.level)
+            }
+        }
+        return GPATimeline.terms.compactMap { label in
+            guard let value = data[label], value.weighted.isFinite, value.unweighted.isFinite else { return nil }
+            return GPATrendPoint(
+                label: label,
+                value: series == .weighted ? value.weighted : value.unweighted
+            )
+        }
+    }
+
+    /// Weighted or unweighted, chosen in place beside the heading; on its own
+    /// line when large text leaves no room beside it.
+    private var seriesChoice: some View {
+        InlineChoice(
+            label: "GPA shown in the chart",
+            options: GPASeries.allCases.map { ChoiceOption(value: $0, title: $0.rawValue) },
+            selection: $series
+        )
+        .accessibilityIdentifier("gpa.series")
+    }
+
+    private func trendSection(_ points: [GPATrendPoint]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if dynamicTypeSize >= .xxLarge {
+                VStack(alignment: .leading, spacing: 4) {
+                    SectionHeading("Trend")
+                    seriesChoice
+                }
+            } else {
+                SectionHeading(title: "Trend", count: nil) {
+                    seriesChoice
+                }
             }
 
             if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(graphPoints) { point in
-                        HStack {
-                            Text(graphDisplayName(point.label))
-                                .foregroundStyle(.secondary)
-                            Spacer(minLength: 16)
-                            Text(point.weighted, format: .number.precision(.fractionLength(2)))
-                                .fontWeight(.semibold)
-                                .monospacedDigit()
+                // The curve is too small to read at these sizes; list the terms.
+                VStack(spacing: 0) {
+                    ForEach(Array(points.enumerated()), id: \.element.id) { index, point in
+                        if index > 0 { InsetDivider() }
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            Text(point.displayName)
+                                .font(.body)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 12)
+                            Text(GradeFormat.gpa(point.value))
+                                .font(.figure(.body))
                         }
+                        .padding(.vertical, 10)
+                        .frame(minHeight: 44)
+                        .accessibilityElement(children: .combine)
                     }
                 }
-                .accessibilityElement(children: .combine)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("\(series.rawValue) GPA by term")
+                .accessibilityIdentifier("gpa.chart")
             } else {
                 let values = graphPoints.map(\.weighted)
                 let minY = (values.min() ?? 0) - 1
