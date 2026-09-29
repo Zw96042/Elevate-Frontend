@@ -271,19 +271,53 @@ struct MessageRow: View {
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
     }
 
-            VStack(alignment: .leading, spacing: 2) {
-                if !message.isAdministrator {
-                    Text(message.from)
-                    if !message.className.isEmpty {
-                        Text(message.className)
-                    }
+    private func date(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .monospacedDigit()
+            .foregroundStyle(Color.muted)
+            .lineLimit(1)
+    }
+}
+
+/// A loading message in `MessageRow`'s layout: the sender with the date on
+/// its line, the subject, then the class. Hidden from accessibility; the
+/// list announces it is loading.
+private struct MessageRowPlaceholder: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    var index: Int
+
+    private static let senders = [11, 14, 9, 12, 15, 10, 13, 11]
+    private static let subjects = [20, 15, 23, 17, 13, 21, 18, 16]
+    private static let classes = [12, 9, 14, 11, 10, 13, 9, 12]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if dynamicTypeSize.isAccessibilitySize {
+                sender
+                date
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    sender
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    date
                 }
-                Text(message.date)
             }
+            SkeletonText(.body, length: Self.subjects[index % Self.subjects.count])
+            SkeletonText(.footnote, length: Self.classes[index % Self.classes.count], tone: .secondary)
         }
-        .font(.subheadline)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, Metrics.page)
+        .padding(.vertical, Metrics.rowPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityHidden(true)
+    }
+
+    private var sender: some View {
+        SkeletonText(.subheadline.weight(.semibold), length: Self.senders[index % Self.senders.count])
+    }
+
+    private var date: some View {
+        SkeletonText(.footnote.monospacedDigit(), length: 8, tone: .secondary)
     }
 }
 
@@ -293,39 +327,44 @@ struct MessageDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(message.subject)
-                        .font(.title2.weight(.semibold))
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(message.from)
-                        .font(.body.weight(.medium))
+                Text(message.subject)
+                    .font(.title2.weight(.bold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    LabeledValue(
+                        label: "From",
+                        value: message.isAdministrator ? message.from : PersonName.display(message.from)
+                    )
                     if !message.className.isEmpty {
-                        Text(message.className)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        LabeledValue(label: "Class", value: message.className)
                     }
-                    Text(message.date)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    LabeledValue(label: "Sent", value: message.date)
                 }
-                Divider()
-                    .padding(.vertical, 14)
+                .padding(.top, 14)
+                .padding(.bottom, 16)
+
+                Rule()
+                    .padding(.bottom, 16)
+
                 Text(renderedContent)
                     .font(.body)
-                    .lineSpacing(4)
+                    .lineSpacing(5)
                     .textSelection(.enabled)
+                    .tint(Color.themeAccent)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: 680, alignment: .leading)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, Metrics.page)
             .padding(.top, 8)
-            .padding(.bottom, 24)
+            .padding(.bottom, 32)
             .frame(maxWidth: .infinity)
         }
-        .contentMargins(.top, 0, for: .scrollContent)
         .navigationTitle("Message")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
-        .background(Color.appBackground)
+        .background(Color.appBackground.ignoresSafeArea())
+        .accessibilityIdentifier("inbox.message")
     }
 
     /// The scraper produces lightweight markdown (links + bold); render it natively.
@@ -339,5 +378,4 @@ struct MessageDetailView: View {
         }
         return AttributedString(raw)
     }
-
 }
