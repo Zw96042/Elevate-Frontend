@@ -911,3 +911,107 @@ struct GradeGoalView: View {
         .accessibilityIdentifier("goal.result")
     }
 
+    private func spokenOutcome(figure: String?, qualifier: String?, lines: [String]) -> String {
+        var parts: [String] = []
+        if let figure { parts.append(figure.replacingOccurrences(of: " / ", with: " out of ")) }
+        if let qualifier { parts.append(qualifier.replacingOccurrences(of: "%", with: " percent")) }
+        return (parts + lines).joined(separator: ", ")
+    }
+
+    private func unavailableText(_ reason: GradeGoalResult.UnavailableReason) -> String {
+        switch reason {
+        case .invalidInput: return "Check the numbers entered. Each must be zero or more."
+        case .missingQuarter: return "Enter both quarter grades to solve for the exam."
+        case .unresolvedAssignments: return "Other assignments are still ungraded."
+        case .assignmentNotFound: return "That assignment is no longer in Skyward's gradebook. Choose another."
+        case .excludedAssignment: return "That assignment doesn't count toward the grade."
+        case .noEffectiveCategory: return "This category carries no weight, so no score in it changes the grade."
+        case .invalidWeights: return "Skyward's category weights for this class can't support a reliable answer."
+        case .searchLimit: return "No score within a reasonable range reaches this target."
+        }
+    }
+
+    // MARK: - Assumptions
+
+    /// Ungraded work, other than the chosen assignment, that the solver
+    /// leaves out rather than counting as zero.
+    private var otherUngradedCount: Int {
+        scenarioAssignments.filter {
+            $0.grade == nil && !$0.isNoCount && $0.outOf > 0 && $0.id != selectedCandidate?.id
+        }.count
+    }
+
+    /// The inputs behind the answer in one line, kept visible: what's held,
+    /// what's left out, and which quarter values are assumptions.
+    private func basisLine(_ result: GradeGoalResult) -> String? {
+        if case .unavailable = result.status { return nil }
+        var parts: [String] = []
+        if term.isSemester {
+            let values = quarters.compactMap { quarter in
+                quarterValue(quarter).map { "\(termName(quarter)) \(GradeFormat.upToTwoDecimals($0.rounded()))" }
+            }
+            guard values.count == quarters.count else { return nil }
+            parts.append("\(values.joined(separator: ", ")) after rounding. 40/40/20.")
+            for quarter in quarters {
+                if let qualifier = quarterQualifier(quarter) {
+                    parts.append("\(termName(quarter)): \(qualifier).")
+                }
+            }
+            if postedExam != nil, hypotheticalExam {
+                parts.append("Posted exam replaced in this plan only.")
+            }
+        } else {
+            if effectiveBasis == .whatIf { parts.append("With your what-if changes.") }
+            parts.append("Other scores held.")
+            let others = otherUngradedCount
+            if others > 0 { parts.append("\(others) ungraded left out.") }
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private var assumptionLines: [String] {
+        var lines: [String] = []
+        if term.isSemester {
+            lines.append("Semester grade = 40% \(termName(quarters[0])) + 40% \(termName(quarters[1])) + 20% exam. Quarter grades are rounded to whole numbers first, as the district does.")
+            if postedExam == nil || hypotheticalExam {
+                lines.append("The exam is out of 100, rounded up to the next hundredth.")
+            }
+            if let savedExamEstimate, effectiveBasis == .whatIf {
+                lines.append("Your saved what-if exam estimate (\(GradeFormat.twoDecimals(savedExamEstimate))) isn't used; the exam is what this solves for.")
+            }
+            if let date = sourceUpdated {
+                lines.append("Skyward's scores as of \(date.formatted(date: .abbreviated, time: .shortened)).")
+            }
+        } else {
+            if otherUngradedCount > 0 {
+                lines.append("Ungraded assignments are left out, not counted as zero.")
+            }
+            if isWeighted {
+                lines.append("Category weights are shared among categories with graded work, as Skyward does.")
+            } else {
+                lines.append("Points-based: every counted point weighs the same.")
+            }
+            lines.append("The score is rounded up to the next hundredth of a point.")
+            if let date = updatedAt[term] {
+                lines.append("Skyward's scores as of \(date.formatted(date: .abbreviated, time: .shortened)).")
+            }
+        }
+        lines.append("Teachers can still change scores or weights.")
+        return lines
+    }
+
+    private var assumptions: some View {
+        let lines = assumptionLines
+        return GPADisclosure(title: "Assumptions", count: lines.count, identifier: "goal.assumptions") {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(lines, id: \.self) { line in
+                    Text(line)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
