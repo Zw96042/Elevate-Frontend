@@ -1015,3 +1015,133 @@ struct GradeGoalView: View {
         }
     }
 
+    // MARK: - Try in What-if
+
+    private enum TryPlan {
+        case addAssignment(category: String, possible: Double, earned: Double)
+        case scoreExisting(CalcAssignment, earned: Double)
+        case exam(Double)
+    }
+
+    /// A what-if edit is offered only when the class would show exactly this
+    /// result: the plan solved for a score, and every other input is what
+    /// the class's what-if mode itself uses.
+    private func tryPlan(_ result: GradeGoalResult) -> (plan: TryPlan?, reason: String?) {
+        guard result.status == .required, let earned = result.requiredEarned,
+              let percentage = result.requiredPercentage else { return (nil, nil) }
+        if whatIfAvailable, effectiveBasis == .official {
+            return (nil, "The class would also apply your what-if changes.")
+        }
+        if term.isSemester {
+            guard !quarters.contains(where: isEdited) else {
+                return (nil, "Uses your quarter assumptions, so it stays a plan.")
+            }
+            guard quarters.allSatisfy({ quarterValue($0) != nil }) else { return (nil, nil) }
+            let classQuarters = quarters.map { quarter in
+                WhatIfQuarterMath.quarterTotal(
+                    term: quarter, info: infos[quarter], className: course.courseName,
+                    postedCourseGrade: officialQuarter(quarter), whatIfAssignments: savedWhatIf,
+                    overrides: overridesByQuarter[quarter] ?? [:], hasSavedChanges: hasSavedChanges(quarter))
+            }
+            guard let first = classQuarters[0], let second = classQuarters[1],
+                  GradeCalculator.semesterTotal(firstQuarter: first, secondQuarter: second, finalExamGrade: percentage) == result.resultingGrade else {
+                return (nil, "The class uses different quarter values. Refresh to try this.")
+            }
+            return (.exam(percentage), nil)
+        }
+        switch effectiveMode {
+        case .new:
+            guard let chosenCategory, let parsedPossible else { return (nil, nil) }
+            return (.addAssignment(category: chosenCategory, possible: parsedPossible, earned: earned), nil)
+        case .existing:
+            guard let selectedCandidate,
+                  let original = officialAssignments.first(where: { $0.id == selectedCandidate.id }) else {
+                return (nil, nil)
+            }
+            return (.scoreExisting(original, earned: earned), nil)
+        case nil:
+            return (nil, nil)
+        }
+    }
+
+    @ViewBuilder
+    private func tryAction(_ result: GradeGoalResult) -> some View {
+        let plan = tryPlan(result)
+        if let action = plan.plan {
+            VStack(alignment: .leading, spacing: 4) {
+                Button {
+                    apply(action)
+                } label: {
+                    Text("Try in What-if")
+                }
+                .buttonStyle(QuietButtonStyle())
+                .accessibilityHint("Saves this score as a local what-if edit and returns to the class")
+                .accessibilityIdentifier("goal.tryWhatIf")
+                Text(tryDescription(action))
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } else if let reason = plan.reason {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(reason).font(.footnote).foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                if whatIfAvailable, effectiveBasis == .official {
+                    Button("Include what-if changes") { basis = .whatIf }
+                        .buttonStyle(ActionTextButtonStyle())
+                }
+            }
+        }
+    }
+
+    private func tryDescription(_ plan: TryPlan) -> String {
+        switch plan {
+        case .addAssignment(let category, let possible, let earned):
+            return "Adds \(GradeFormat.upToTwoDecimals(earned)) / \(GradeFormat.upToTwoDecimals(possible)) in \(category) to \(termName(term)) what-if."
+        case .scoreExisting(let assignment, let earned):
+            return "Sets \(assignment.name) to \(GradeFormat.upToTwoDecimals(earned)) / \(GradeFormat.upToTwoDecimals(assignment.outOf)) in what-if."
+        case .exam(let score):
+            var text = "Sets \(examName) to \(GradeFormat.twoDecimals(score)) in what-if."
+            if let savedExamEstimate {
+                text += " Replaces your \(GradeFormat.twoDecimals(savedExamEstimate)) estimate."
+            }
+            if postedExam != nil {
+                text += " Skyward's posted exam stays."
+            }
+            return text
+        }
+    }
+
+    private func apply(_ plan: TryPlan) {
+        guard originatingRevision == store.accountRevision, store.canShowData,
+              store.courses?.contains(where: { $0.id == course.id }) == true,
+              liveCourse.availableTerms.contains(term) else { return }
+        focus = nil
+        switch plan {
+        case .addAssignment(let category, let possible, let earned):
+            let formatter = DateFormatter()
+            formatter.dateFormat = "M/d/yy"
+            WhatIfStore.add(WhatIfAssignment(
+                className: course.courseName,
+                name: "Needed for \(targetName)",
+                term: term.shortName,
+                category: category,
+                grade: earned,
+                outOf: possible,
+                dueDate: formatter.string(from: Date())
+            ), classKey: classKey)
+        case .scoreExisting(let original, let earned):
+            // Only this score changes; an independent no-count choice and
+            // every other edit are kept.
+            WhatIfStore.setGradeOverride(earned, assignment: original, classKey: classKey)
+        case .exam(let score):
+            WhatIfStore.setFinalExamGrade(score, examType: examType, classKey: classKey)
+        }
+        WhatIfStore.setShowCalculated(true, classKey: classKey)
+        if store.selectedTerm != term, liveCourse.availableTerms.contains(term) {
+            store.selectedTerm = term
+        }
+        tryRevision += 1
+        dismiss()
+    }
+}
