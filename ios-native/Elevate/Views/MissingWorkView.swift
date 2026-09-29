@@ -199,3 +199,102 @@ struct MissingWorkView: View {
         }
     }
 
+    /// Classes with nothing loaded, and classes shown from saved data after a
+    /// failed refresh, by source name.
+    private func coverage(_ data: SchoolCalendarData) -> (missing: [String], saved: [String]) {
+        let missing = eligible.filter { !data.resolvedCourseIDs.contains($0.id) }.map(\.courseName)
+        let saved = data.failedCourseNames.filter { !missing.contains($0) }
+        return (missing, saved)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if store.courses != nil, eligible.isEmpty {
+            EmptyStateView(
+                title: "Missing work isn't available for \(quarter.displayName)",
+                message: "None of your current classes has a Skyward gradebook for this quarter."
+            )
+            .padding(.horizontal, Metrics.page)
+            .accessibilityIdentifier("missing.unavailable")
+        } else if let data = shownData, data.resolvedCourseCount > 0 || data.failedCourseNames.isEmpty {
+            loaded(data)
+        } else if let error, !loading {
+            InlineErrorState(title: "Couldn't load missing work", message: error) {
+                await load(force: true)
+            }
+            .padding(.horizontal, Metrics.page)
+            .accessibilityIdentifier("missing.error")
+        } else {
+            VStack(spacing: 0) {
+                ForEach(0..<3, id: \.self) { index in
+                    if index > 0 { InsetDivider() }
+                    SkeletonRow(lines: [SkeletonLine(.body, [15, 11, 18][index]),
+                                        SkeletonLine(.footnote, [10, 12, 9][index])])
+                }
+            }
+            .padding(.horizontal, Metrics.page)
+            .loadingPlaceholder("Loading missing work")
+            .accessibilityIdentifier("missing.loading")
+        }
+    }
+
+    @ViewBuilder
+    private func loaded(_ data: SchoolCalendarData) -> some View {
+        let groups = groups(data)
+        let coverage = coverage(data)
+        let isComplete = coverage.missing.isEmpty && coverage.saved.isEmpty && error == nil
+        let count = groups.reduce(0) { $0 + $1.assignments.count }
+        let undated = groups.reduce(0) { total, group in total + group.assignments.filter { $0.date == nil }.count }
+
+        VStack(alignment: .leading, spacing: 0) {
+            if groups.isEmpty {
+                EmptyStateView(title: emptyTitle(complete: isComplete), message: emptyMessage(data, complete: isComplete))
+                    .padding(.horizontal, Metrics.page)
+                    .accessibilityIdentifier(isComplete ? "missing.none" : "missing.noneLoaded")
+            } else {
+                SectionHeading("Marked missing", count: "\(count)")
+                    .padding(.horizontal, Metrics.page)
+                ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                    GroupLabel(MissingCourseTitle.display(group.course.courseName))
+                        .padding(.horizontal, Metrics.page)
+                        .padding(.top, index == 0 ? 4 : 20)
+                    ForEach(Array(group.assignments.enumerated()), id: \.element.id) { row, assignment in
+                        if row > 0 { InsetDivider().padding(.horizontal, Metrics.page) }
+                        MissingAssignmentRow(
+                            assignment: assignment,
+                            onOpen: openAction(for: assignment),
+                            onRemind: { remind(assignment) }, identifier: "missing.assignment.\(index).\(row)"
+                        )
+                    }
+                }
+                if undated > 0 {
+                    note(undated == 1
+                        ? "One has no calendar date in Skyward; its source text is shown."
+                        : "\(undated) have no calendar date in Skyward; their source text is shown.")
+                        .padding(.top, 12)
+                }
+            }
+
+            if !coverage.missing.isEmpty || !coverage.saved.isEmpty {
+                coverageNote(coverage)
+                    .padding(.top, 12)
+            }
+        }
+    }
+
+    private func emptyTitle(complete: Bool) -> String {
+        complete
+            ? "No missing work in \(quarter.displayName)"
+            : "No missing work in the classes that loaded"
+    }
+
+    /// A verified zero names its time; partial coverage says what it covers.
+    private func emptyMessage(_ data: SchoolCalendarData, complete: Bool) -> String {
+        let base = "Skyward marks no assignment Missing"
+        if let updated = data.updatedAt {
+            let time = updated.formatted(date: .abbreviated, time: .shortened)
+            return complete ? "\(base) in your classes as of \(time)." : "\(base) in the saved assignments, as of \(time)."
+        }
+        return complete ? "\(base) in your classes." : "\(base) in the saved assignments."
+    }
+
