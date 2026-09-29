@@ -598,3 +598,110 @@ struct GradeGoalView: View {
         }
     }
 
+    private func candidateNote(_ assignment: CalcAssignment) -> String {
+        var parts = [assignment.category, "out of \(GradeFormat.upToTwoDecimals(assignment.outOf))"]
+        if !assignment.dueDate.isEmpty { parts.append("due \(assignment.dueDate)") }
+        if assignment.isMissing { parts.append("marked Missing") }
+        return parts.joined(separator: ", ")
+    }
+
+    // MARK: - Semester
+
+    private func officialQuarter(_ quarter: TermLabel) -> Double? {
+        infos[quarter]?.score.flatMap { $0.isFinite ? $0 : nil }
+            ?? liveCourse.currentScores.first { $0.bucket == quarter.shortName && $0.score.isFinite }?.score
+    }
+
+    private func hasSavedChanges(_ quarter: TermLabel) -> Bool {
+        savedWhatIf.contains { $0.term == quarter.shortName } || !(overridesByQuarter[quarter] ?? [:]).isEmpty
+    }
+
+    /// Saved work that actually changes a score, when the quarter's source is
+    /// loaded; otherwise any saved work counts, since it can't be ruled out.
+    private func quarterHasEffectiveChanges(_ quarter: TermLabel) -> Bool {
+        guard let info = infos[quarter] else { return hasSavedChanges(quarter) }
+        let official = AssignmentGradeEdits.assignments(from: info, className: course.courseName, term: quarter)
+            .filter { $0.category != "Final Exam" }
+        return savedWhatIf.contains { $0.term == quarter.shortName }
+            || AssignmentGradeEdits.hasEffectiveChanges(overridesByQuarter[quarter] ?? [:], to: official)
+    }
+
+    /// The value a quarter starts from: Skyward's, or the class's own
+    /// what-if estimate when chosen.
+    private func basisQuarter(_ quarter: TermLabel) -> Double? {
+        switch effectiveBasis {
+        case .official:
+            return officialQuarter(quarter)
+        case .whatIf:
+            return WhatIfQuarterMath.quarterTotal(
+                term: quarter,
+                info: infos[quarter],
+                className: course.courseName,
+                postedCourseGrade: officialQuarter(quarter),
+                whatIfAssignments: savedWhatIf,
+                overrides: overridesByQuarter[quarter] ?? [:],
+                hasSavedChanges: hasSavedChanges(quarter)
+            )
+        }
+    }
+
+    private func quarterValue(_ quarter: TermLabel) -> Double? {
+        if let edit = quarterEdits[quarter] { return Self.number(edit) }
+        return basisQuarter(quarter)
+    }
+
+    private func isEdited(_ quarter: TermLabel) -> Bool {
+        quarterEdits[quarter] != nil && quarterValue(quarter) != basisQuarter(quarter)
+    }
+
+    /// Two decimals at rest; the exact value once focused or typed.
+    private func quarterText(_ quarter: TermLabel) -> Binding<String> {
+        Binding(
+            get: {
+                if let edit = quarterEdits[quarter] { return edit }
+                guard let value = basisQuarter(quarter) else { return "" }
+                return focus == .quarter(quarter) ? Self.exactText(value) : GradeFormat.twoDecimals(value)
+            },
+            set: { quarterEdits[quarter] = $0 }
+        )
+    }
+
+    static func exactText(_ value: Double) -> String {
+        if value == value.rounded(), abs(value) < 1_000_000 { return String(Int(value)) }
+        return String(value)
+    }
+
+    private func progress(_ quarter: TermLabel) -> QuarterProgress {
+        let order: [TermLabel] = [.q1, .q2, .sm1, .q3, .q4, .sm2]
+        guard let current = order.firstIndex(of: AcademicCalendar.currentTerm()),
+              let index = order.firstIndex(of: quarter) else { return .inProgress }
+        if current > index { return .ended }
+        return current == index ? .inProgress : .notStarted
+    }
+
+    /// Where a quarter's value comes from, in words, and the whole number
+    /// the formula counts. Unfinished quarters are called assumptions.
+    private func quarterNote(_ quarter: TermLabel) -> String {
+        let value = quarterValue(quarter)
+        var text: String
+        if isEdited(quarter) {
+            text = officialQuarter(quarter).map { "Your assumption. Skyward has \(GradeFormat.twoDecimals($0))." }
+                ?? "Your assumption. Skyward has no grade yet."
+        } else if effectiveBasis == .whatIf, hasSavedChanges(quarter) {
+            text = value == nil ? "What-if unavailable. Enter an assumption." : "What-if estimate."
+        } else {
+            switch progress(quarter) {
+            case .ended:
+                text = value == nil ? "Ended without a Skyward grade. Enter one." : "Final."
+            case .inProgress:
+                text = value == nil ? "No grade yet. Enter the grade you expect." : "Current, assumed to hold."
+            case .notStarted:
+                text = value == nil ? "Not started. Enter the grade you expect." : "Not started. Skyward's value assumed."
+            }
+        }
+        if let value {
+            text += " Counts as \(GradeFormat.upToTwoDecimals(value.rounded()))."
+        }
+        return text
+    }
+
