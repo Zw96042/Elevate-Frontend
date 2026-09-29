@@ -490,3 +490,111 @@ struct GradeGoalView: View {
         )
     }
 
+    @ViewBuilder
+    private var quarterInputs: some View {
+        basisChoice
+
+        groupLabel("Score to solve for")
+        if ungradedCandidates.isEmpty {
+            note("No ungraded assignments in \(termName(term)). Planning a new one.")
+        } else {
+            ChoiceList(
+                groups: [ChoiceGroup(title: nil, options: [
+                    ChoiceOption(value: ScoreMode.new, title: "A new assignment",
+                                 identifier: "goal.mode.new"),
+                    ChoiceOption(value: ScoreMode.existing, title: "An ungraded assignment",
+                                 note: "\(ungradedCandidates.count) in \(term.displayName)", identifier: "goal.mode.existing"),
+                ])],
+                isSelected: { $0 == mode },
+                choose: { value in
+                    Motion.perform(Motion.select(reduceMotion)) { mode = value }
+                }
+            )
+        }
+
+        switch effectiveMode {
+        case .new:
+            newAssignmentInputs
+        case .existing:
+            existingAssignmentInput
+        case nil:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var newAssignmentInputs: some View {
+        if categoryChoices.isEmpty {
+            note("No category here can count a new score.")
+        } else {
+            GroupLabel("New assignment").padding(.top, 12)
+            pickerRow("Category") {
+                ScopePicker(
+                    title: "Category",
+                    valueName: chosenCategory ?? "Choose",
+                    hint: "Selects the category the new score counts in",
+                    identifier: "goal.category",
+                    groups: [ChoiceGroup(title: nil, options: categoryChoices.map { item in
+                        ChoiceOption<String?>(
+                            value: item.category, title: item.category,
+                            note: item.weight.map { "\(GradeFormat.upToTwoDecimals($0))% of grade" } ?? "Points-based",
+                            identifier: "goal.category.\(item.category)"
+                        )
+                    })],
+                    selection: Binding(get: { chosenCategory }, set: { category = $0 })
+                )
+            }
+            InsetDivider()
+            numberRow("Points possible", note: nil, text: $possibleText, field: .possible, suffix: nil,
+                      identifier: "goal.possible")
+            if parsedPossible == nil {
+                note("Enter the points the assignment is out of.")
+            }
+        }
+    }
+
+
+    private func pickerRow<Picker: View>(_ title: String, @ViewBuilder picker: () -> Picker) -> some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(title).font(.body)
+                    picker()
+                }
+            } else {
+                HStack(alignment: .center, spacing: 12) {
+                    Text(title).font(.body).frame(maxWidth: .infinity, alignment: .leading)
+                    picker()
+                }
+            }
+        }
+        .foregroundStyle(Color.ink)
+        .padding(.vertical, 6)
+        .frame(minHeight: 56)
+    }
+
+    private var existingAssignmentInput: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            InsetDivider()
+            pickerRow("Assignment") {
+                ScopePicker(
+                    title: "Ungraded assignment",
+                    valueName: selectedCandidate?.name ?? "Choose",
+                    hint: "Selects the ungraded assignment to solve for",
+                    identifier: "goal.assignment",
+                    groups: [ChoiceGroup(title: nil, options: ungradedCandidates.map { item in
+                        ChoiceOption<String?>(
+                            value: item.id, title: item.name,
+                            note: candidateNote(item),
+                            identifier: "goal.assignment.option"
+                        )
+                    })],
+                    selection: Binding(get: { selectedCandidate?.id }, set: { existingID = $0 })
+                )
+            }
+            if let selectedCandidate {
+                note(candidateNote(selectedCandidate))
+            }
+        }
+    }
+
