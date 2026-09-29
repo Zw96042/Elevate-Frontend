@@ -298,3 +298,96 @@ struct MissingWorkView: View {
         return complete ? "\(base) in your classes." : "\(base) in the saved assignments."
     }
 
+    private func coverageNote(_ coverage: (missing: [String], saved: [String])) -> some View {
+        func names(_ list: [String]) -> String {
+            ListFormatter.localizedString(byJoining: list.map(MissingCourseTitle.display))
+        }
+        return VStack(alignment: .leading, spacing: 0) {
+            if !coverage.missing.isEmpty {
+                note("Assignments couldn't load for \(names(coverage.missing)), so their missing work isn't listed.")
+            }
+            if !coverage.saved.isEmpty {
+                note("Couldn't refresh \(names(coverage.saved)). Their saved assignments are shown.")
+            }
+            Button("Retry") {
+                Task { await load(force: true) }
+            }
+            .buttonStyle(ActionTextButtonStyle())
+            .disabled(loading)
+            .padding(.horizontal, Metrics.page)
+            .accessibilityLabel("Retry loading assignments")
+            .accessibilityIdentifier("missing.coverage.retry")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("missing.coverage")
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Metrics.page)
+            .padding(.vertical, 4)
+    }
+
+    // MARK: - Actions
+
+    /// The class's current record, never a copy saved with the assignment,
+    /// and only when it has this quarter's gradebook.
+    private func liveCourse(for assignment: CalendarAssignment) -> UnifiedCourseData? {
+        guard let course = SchoolCalendar.eligibleCourses(store.courses ?? [], term: assignment.term)
+            .first(where: { $0.id == assignment.course.id }) else { return nil }
+        return course
+    }
+
+    private func openAction(for assignment: CalendarAssignment) -> (() -> Void)? {
+        guard liveCourse(for: assignment) != nil else { return nil }
+        let revision = store.accountRevision
+        return {
+            guard revision == store.accountRevision, let course = liveCourse(for: assignment) else { return }
+            store.selectedTerm = assignment.term
+            router.coursesPath.append(.assignment(course, assignment.term, assignment.routeID, UUID()))
+        }
+    }
+
+    private func remind(_ assignment: CalendarAssignment) {
+        let course = liveCourse(for: assignment) ?? assignment.course
+        reminder = ReminderRequest(accountScope: store.notifications.accountScope ?? "", course: course, term: assignment.term, assignmentID: assignment.id,
+                                   title: assignment.title, dueDay: assignment.date)
+    }
+}
+
+/// Course names through the shared class-name formatter.
+private enum MissingCourseTitle {
+    static func display(_ raw: String) -> String {
+        ClassNameFormatter.format(
+            raw.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: " ", with: "_")
+        )
+    }
+}
+
+/// One missing assignment: its title, category and source due date. Opens
+/// the class on that quarter; the bell adds a personal reminder.
+private struct MissingAssignmentRow: View {
+    var assignment: CalendarAssignment
+    var onOpen: (() -> Void)?
+    var onRemind: () -> Void
+    var identifier: String
+
+    private var title: String {
+        let text = assignment.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "Untitled assignment" : text
+    }
+
+    /// A valid school date, or Skyward's own unreadable text.
+    private var dateText: String {
+        if let iso = assignment.date, let parts = AttendanceSchoolDate.components(iso),
+           let date = Calendar.current.date(from: DateComponents(year: parts.year, month: parts.month, day: parts.day, hour: 12)) {
+            return "Due " + date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        }
+        let source = assignment.sourceDate.trimmingCharacters(in: .whitespacesAndNewlines)
+        return source.isEmpty ? "No date in Skyward" : "Date in Skyward: \(source)"
+    }
+
