@@ -705,3 +705,111 @@ struct GradeGoalView: View {
         return text
     }
 
+    /// A quarter's source when it isn't a final Skyward grade, for the line
+    /// under the answer; nil for a final grade.
+    private func quarterQualifier(_ quarter: TermLabel) -> String? {
+        if isEdited(quarter) { return "your assumption" }
+        if effectiveBasis == .whatIf, hasSavedChanges(quarter) { return "what-if" }
+        switch progress(quarter) {
+        case .ended: return nil
+        case .inProgress: return "current, assumed to hold"
+        case .notStarted: return "not started, assumed"
+        }
+    }
+
+    private var postedExam: Double? {
+        WhatIfQuarterMath.postedExamGrade(semesterInfo: infos[term], course: liveCourse, examType: examType)
+    }
+
+    private var semesterResult: GradeGoalResult? {
+        guard let target = parsedTarget else { return nil }
+        return GradeGoalSolver.semesterExam(
+            target: target,
+            firstQuarter: quarterValue(quarters[0]),
+            secondQuarter: quarterValue(quarters[1]),
+            postedExam: hypotheticalExam ? nil : postedExam
+        )
+    }
+
+    @ViewBuilder
+    private var semesterInputs: some View {
+        basisChoice
+
+        groupLabel("End-of-quarter grades")
+        ForEach(Array(quarters.enumerated()), id: \.element) { index, quarter in
+            if index > 0 { InsetDivider() }
+            numberRow(quarter.displayName, note: quarterNote(quarter), text: quarterText(quarter),
+                      field: .quarter(quarter), suffix: "%", identifier: "goal.quarter.\(quarter.shortName)")
+            if quarterEdits[quarter] != nil, basisQuarter(quarter) != nil {
+                Button(effectiveBasis == .whatIf ? "Use the what-if estimate" : "Use Skyward's grade") {
+                    focus = nil
+                    quarterEdits[quarter] = nil
+                }
+                .buttonStyle(ActionTextButtonStyle())
+                .accessibilityIdentifier("goal.quarter.reset.\(quarter.shortName)")
+            }
+        }
+
+        groupLabel(examName)
+        if let postedExam {
+            Text("Posted: \(GradeFormat.twoDecimals(postedExam))")
+                .font(.body)
+                .foregroundStyle(Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 8)
+                .accessibilityLabel("Posted in Skyward: \(GradeFormat.twoDecimals(postedExam))")
+            Toggle(isOn: $hypotheticalExam) {
+                Text("Plan a different exam score")
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .tint(Color.themeAccent)
+            .padding(.vertical, 8)
+            .frame(minHeight: 52)
+            .accessibilityHint("Solves as if the posted score were replaced. Skyward is never changed.")
+            .accessibilityIdentifier("goal.hypotheticalExam")
+        } else {
+            note(infos[term] == nil
+                 ? "Not on the course record. The semester gradebook didn't load to confirm."
+                 : "Not posted yet.")
+        }
+    }
+
+    // MARK: - Result
+
+    private var result: GradeGoalResult? {
+        term.isSemester ? semesterResult : quarterResult
+    }
+
+    @ViewBuilder
+    private var resultSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let result {
+                VStack(alignment: .leading, spacing: 0) {
+                    outcome(result)
+                        .animation(Motion.value(reduceMotion), value: result)
+                    if let basis = basisLine(result) {
+                        Text(basis)
+                            .font(.footnote)
+                            .foregroundStyle(Color.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 6)
+                            .accessibilityIdentifier("goal.basisLine")
+                    }
+                    tryAction(result)
+                        .padding(.top, 12)
+                }
+                .id("goal.answer")
+                assumptions
+                    .padding(.top, 12)
+            } else {
+                Text(missingInputText)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("goal.result.incomplete")
+            }
+        }
+    }
+
