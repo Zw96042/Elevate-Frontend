@@ -482,3 +482,49 @@ private struct GradeChangeRow: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
 
+            if !dynamicTypeSize.isAccessibilitySize {
+                values(alignment: .trailing)
+            }
+            if showsChevron {
+                Image(systemName: "chevron.forward")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.faint)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.horizontal, Metrics.page)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    /// Status changes as plain words; only Missing takes a color.
+    @ViewBuilder
+    private var phraseLine: some View {
+        let phrases = ForEach(text.phrases, id: \.self) { phrase in
+            Text(phrase.text)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(phrase.isMissing ? Color.gradeAttention : Color.ink)
+        }
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 2) { phrases }
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 10) { phrases }
+        }
+    }
+
+    private func values(alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 2) {
+            Text(text.value)
+                .font(text.valueIsFigure ? Font.figure(.body) : Font.body)
+                .foregroundStyle(text.valueIsFigure ? Color.ink : Color.muted)
+            if let secondary = text.secondary {
+                Text(secondary)
+                    .font(.figure(.footnote, weight: .regular))
+                    .foregroundStyle(Color.muted)
+            }
+        }
+        .lineLimit(1)
+        .fixedSize()
+    }
+}
