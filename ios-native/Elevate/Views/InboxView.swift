@@ -2,14 +2,15 @@ import SwiftUI
 
 struct InboxView: View {
     @Environment(AppStore.self) private var store
-    @State private var showingSettings = false
+    @Environment(AppRouter.self) private var router
+    @State private var showingConnect = false
 
     var body: some View {
         NavigationStack {
             Group {
                 if !store.canShowData {
-                    LoginPromptView(message: "Connect your Skyward account in Settings to view messages.") {
-                        showingSettings = true
+                    LoginPromptView(message: "Connect your Skyward account to read messages from teachers and your school.") {
+                        showingConnect = true
                     }
                 } else if let error = store.messagesError, store.messages.isEmpty {
                     ErrorStateView(title: "Couldn't load messages", message: error) {
@@ -19,16 +20,10 @@ struct InboxView: View {
                     messageList
                 }
             }
-            .navigationTitle("Inbox")
-            .navigationBarTitleDisplayMode(.inline)
+            .screenTitle("Inbox") { router.isShowingSettings = true }
             .background(Color.appBackground.ignoresSafeArea())
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showingSettings = true } label: { Image(systemName: "gearshape") }
-                        .accessibilityLabel("Settings")
-                }
-            }
-            .sheet(isPresented: $showingSettings) { SettingsView() }
+            .accessibilityIdentifier("inbox.screen")
+            .sheet(isPresented: $showingConnect) { SkywardConnectSheet() }
             .task {
                 if store.messages.isEmpty {
                     await store.refreshMessages()
@@ -37,43 +32,51 @@ struct InboxView: View {
         }
     }
 
-    private var messageList: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                if store.messagesError != nil, !store.messages.isEmpty {
-                    StaleDataBanner(lastUpdated: store.messagesLastUpdated) {
-                        await store.refreshMessages(force: true)
-                    }
-                    .padding(.vertical, 12)
-                }
+    private var statusStrip: some View {
+        StatusStrip(
+            lastUpdated: store.messagesLastUpdated,
+            isRefreshing: store.messagesRefreshing,
+            error: store.messages.isEmpty ? nil : store.messagesError
+        ) {
+            await store.refreshMessages(force: true)
+        }
+        .padding(.horizontal, Metrics.page)
+    }
 
-                if store.messagesLoading {
-                    VStack(spacing: 0) {
-                        ForEach(0..<9, id: \.self) { _ in SkeletonRow(height: 80) }
+    /// There are no messages and this isn't the first load. A later refresh
+    /// of a verified empty inbox keeps the empty state on screen.
+    private var isValidEmpty: Bool {
+        store.messages.isEmpty && !(store.messagesLoading && store.messagesLastUpdated == nil)
+    }
+
+    private var messageList: some View {
+        GeometryReader { viewport in
+            ScrollView {
+                if isValidEmpty {
+                    // The empty state takes the rest of the visible screen
+                    // and centers in it.
+                    ViewportFillStack(minHeight: max(0, viewport.size.height - 16), maxGrowth: .infinity) {
+                        statusStrip
+                        InboxEmptyState()
+                            .frame(maxHeight: .infinity)
+                            .fillsViewport()
                     }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Loading messages")
-                } else if store.messages.isEmpty {
-                    EmptyStateView(
-                        systemImage: "envelope",
-                        title: "No messages found",
-                        subtitle: "Check back later for new messages"
-                    )
+                    .padding(.bottom, 16)
                 } else {
-                    ForEach(Array(store.messages.enumerated()), id: \.element.id) { index, message in
-                        NavigationLink {
-                            MessageDetailView(message: message)
-                        } label: {
-                            MessageCardView(message: message)
-                        }
-                        .buttonStyle(RowPressStyle())
-                        .onAppear {
-                            if message.id == store.messages.last?.id {
-                                Task { await store.loadMoreMessages() }
-                            }
-                        }
-                        if index < store.messages.count - 1 {
-                            Divider()
+                    VStack(alignment: .leading, spacing: 0) {
+                        statusStrip
+
+                        messageRows
+
+                        if store.messagesLoadingMore {
+                            ProgressView()
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .padding(.vertical, 8)
+                                .accessibilityLabel("Loading older messages")
+                        } else if let error = store.messagesPaginationError {
+                            InsetDivider(leading: Metrics.page)
+                            paginationError(error)
+                                .padding(.horizontal, Metrics.page)
                         }
                     }
                     if store.messagesLoadingMore {
