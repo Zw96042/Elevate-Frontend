@@ -389,3 +389,104 @@ struct GradeGoalView: View {
         }
     }
 
+    private var whatIfAvailable: Bool {
+        term.isSemester ? quarters.contains(where: quarterHasEffectiveChanges) : quarterWhatIfChanges
+    }
+
+    private var effectiveBasis: Basis { whatIfAvailable ? basis : .official }
+
+    // MARK: - Quarter
+
+    private var quarterInfo: GradeInfoResult? { infos[term] }
+
+    private var officialAssignments: [CalcAssignment] {
+        guard let quarterInfo else { return [] }
+        return AssignmentGradeEdits.assignments(from: quarterInfo, className: course.courseName, term: term)
+            .filter { $0.category != "Final Exam" }
+    }
+
+    private var quarterAddedWhatIf: [CalcAssignment] {
+        savedWhatIf.filter { $0.term == term.shortName }
+            .map(WhatIfQuarterMath.assignment(from:))
+            .filter { $0.category != "Final Exam" }
+    }
+
+    private var quarterWhatIfChanges: Bool {
+        guard !term.isSemester, quarterInfo != nil else { return false }
+        return !quarterAddedWhatIf.isEmpty
+            || AssignmentGradeEdits.hasEffectiveChanges(overridesByQuarter[term] ?? [:], to: officialAssignments)
+    }
+
+    /// Every score this scenario holds fixed, with saved what-if work only
+    /// when chosen.
+    private var scenarioAssignments: [CalcAssignment] {
+        switch effectiveBasis {
+        case .official:
+            return officialAssignments
+        case .whatIf:
+            return AssignmentGradeEdits.applying(overridesByQuarter[term] ?? [:], to: officialAssignments)
+                + quarterAddedWhatIf
+        }
+    }
+
+    /// Real Skyward assignments without a score that would count.
+    private var ungradedCandidates: [CalcAssignment] {
+        scenarioAssignments.filter {
+            !$0.artificial && $0.grade == nil && !$0.isNoCount && $0.outOf > 0 && $0.category != "Final Exam"
+        }
+    }
+
+    private var selectedCandidate: CalcAssignment? {
+        guard mode == .existing, let existingID else { return nil }
+        return ungradedCandidates.first { $0.id == existingID }
+    }
+
+    private var isWeighted: Bool { quarterInfo?.gradebook.contains { $0.weight != nil } ?? false }
+
+    /// Categories a new score can count in: weighted ones need weight.
+    private var categoryChoices: [GradeCategory] {
+        (quarterInfo?.gradebook ?? []).filter { category in
+            guard category.category != "Final Exam", !category.category.isEmpty else { return false }
+            return !isWeighted || (category.weight ?? 0) > 0
+        }
+    }
+
+    private var chosenCategory: String? {
+        if let category, categoryChoices.contains(where: { $0.category == category }) { return category }
+        return categoryChoices.count == 1 ? categoryChoices[0].category : nil
+    }
+
+    private var parsedPossible: Double? {
+        guard let value = Self.number(possibleText), value > 0 else { return nil }
+        return value
+    }
+
+    /// Without ungraded work there is only one honest choice, stated as such.
+    private var effectiveMode: ScoreMode? {
+        ungradedCandidates.isEmpty ? .new : mode
+    }
+
+    private var assignmentChoice: (choice: GradeGoalAssignmentChoice, possible: Double)? {
+        switch effectiveMode {
+        case .new:
+            guard let chosenCategory, let parsedPossible else { return nil }
+            return (.new(category: chosenCategory, possible: parsedPossible), parsedPossible)
+        case .existing:
+            guard let selectedCandidate else { return nil }
+            return (.existingID(selectedCandidate.id), selectedCandidate.outOf)
+        case nil:
+            return nil
+        }
+    }
+
+    private var quarterResult: GradeGoalResult? {
+        guard let target = parsedTarget, let quarterInfo, let assignmentChoice else { return nil }
+        return GradeGoalSolver.assignment(
+            target: target,
+            assignments: scenarioAssignments,
+            categories: quarterInfo.gradebook,
+            choice: assignmentChoice.choice,
+            ungradedPolicy: .ignoreUngraded
+        )
+    }
+
