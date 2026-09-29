@@ -91,3 +91,103 @@ struct GradeChangesView: View {
         return events.filter { $0.courseID == filter }
     }
 
+    // MARK: - Content
+
+    @ViewBuilder
+    private var content: some View {
+        if !isCurrentScope {
+            EmptyStateView(
+                title: "Grade changes aren't available",
+                message: "Connect your Skyward account to see official changes Elevate finds."
+            )
+            .padding(.horizontal, Metrics.page)
+            .accessibilityIdentifier("history.unavailable")
+        } else if store.planning.historyUnavailable {
+            VStack(alignment: .leading, spacing: 0) {
+                EmptyStateView(
+                    title: "Grade changes can't be read",
+                    message: "The saved history on this iPhone couldn't be read. Clearing it starts a new one."
+                )
+                .accessibilityIdentifier("history.unreadable")
+                clearButton
+            }
+            .padding(.horizontal, Metrics.page)
+        } else if events.isEmpty {
+            EmptyStateView(
+                title: "No changes found yet",
+                message: "Elevate starts with a silent first check, then lists changes in official grades it finds later."
+            )
+            .padding(.horizontal, Metrics.page)
+            .accessibilityIdentifier("history.empty")
+            footer
+        } else {
+            HStack(spacing: 0) {
+                filterPicker
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, Metrics.page)
+
+            Text("Times show when Elevate found a change, not when a teacher made it.")
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Metrics.page)
+                .padding(.top, 4)
+                .accessibilityIdentifier("history.note")
+
+            let shown = shownEvents
+            if shown.isEmpty {
+                EmptyStateView(title: "No changes for \(filterName)")
+                    .padding(.horizontal, Metrics.page)
+                    .accessibilityIdentifier("history.filterEmpty")
+            } else {
+                dayGroups(shown)
+            }
+            footer
+        }
+    }
+
+    private var filterName: String {
+        guard let filter = shownFilter else { return "All classes" }
+        return classOptions.first { $0.id == filter }?.name ?? "All classes"
+    }
+
+    private var filterPicker: some View {
+        let all = ChoiceOption<String?>(value: nil, title: "All classes", identifier: "history.filter.all")
+        let classes = classOptions.enumerated().map { index, option in
+            ChoiceOption<String?>(value: option.id, title: option.name, identifier: "history.filter.\(index)")
+        }
+        return ScopePicker(
+            title: "Class",
+            valueName: filterName,
+            hint: "Shows changes for one class or all classes",
+            identifier: "history.filter",
+            groups: [ChoiceGroup(title: nil, options: [all] + classes)],
+            selection: Binding(get: { shownFilter }, set: { value in
+                Motion.perform(Motion.replace(reduceMotion)) { courseFilter = value }
+            })
+        )
+    }
+
+    private struct DayGroup: Identifiable {
+        var id: Date
+        var title: String
+        var events: [GradeJournalEvent]
+    }
+
+    /// Days in the order found, newest first; events keep the history's order.
+    private func groups(_ events: [GradeJournalEvent]) -> [DayGroup] {
+        let calendar = Calendar.current
+        var groups: [DayGroup] = []
+        for event in events {
+            let day = calendar.startOfDay(for: event.observedAt)
+            if let last = groups.indices.last, groups[last].id == day {
+                groups[last].events.append(event)
+            } else {
+                groups.append(DayGroup(id: day, title: Self.dayTitle(day), events: [event]))
+            }
+        }
+        return groups
+    }
+
