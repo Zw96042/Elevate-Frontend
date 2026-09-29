@@ -79,39 +79,103 @@ struct InboxView: View {
                                 .padding(.horizontal, Metrics.page)
                         }
                     }
-                    if store.messagesLoadingMore {
-                        ProgressView().padding()
-                    } else if let error = store.messagesPaginationError {
-                        VStack(spacing: 8) {
-                            Text("Couldn't load older messages")
-                                .font(.subheadline.weight(.semibold))
-                            Text(error)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                            Button("Try again") {
-                                Task { await store.loadMoreMessages() }
-                            }
-                            .font(.subheadline.weight(.semibold))
+                    .padding(.bottom, 24)
+                }
+            }
+            .visibleRefreshable {
+                await store.refreshMessages(force: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var messageRows: some View {
+        if store.messagesLoading && store.messages.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(0..<8, id: \.self) { index in
+                    if index > 0 { InsetDivider(leading: Metrics.page) }
+                    MessageRowPlaceholder(index: index)
+                }
+            }
+            .loadingPlaceholder("Loading messages")
+        } else {
+            LazyVStack(spacing: 0) {
+                ForEach(Array(store.messages.enumerated()), id: \.element.id) { index, message in
+                    if index > 0 { InsetDivider(leading: Metrics.page) }
+                    NavigationLink {
+                        // The root hides the bar for its own header.
+                        MessageDetailView(message: message)
+                            .toolbar(.visible, for: .navigationBar)
+                    } label: {
+                        MessageRow(message: message)
+                    }
+                    .buttonStyle(RowPressStyle())
+                    .accessibilityIdentifier("inbox.row.\(index)")
+                    .onAppear {
+                        if message.id == store.messages.last?.id {
+                            Task { await store.loadMoreMessages() }
                         }
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 16)
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 32)
         }
-        .contentMargins(.top, 0, for: .scrollContent)
-        .refreshable {
-            await store.refreshMessages(force: true)
+    }
+
+    private func paginationError(_ error: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Couldn't load older messages")
+                    .font(.subheadline.weight(.semibold))
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button("Try again") {
+                Task { await store.loadMoreMessages() }
+            }
+            .buttonStyle(ActionTextButtonStyle())
+            .accessibilityIdentifier("inbox.loadMore.retry")
         }
-        .background(Color.appBackground)
+        .padding(.vertical, 8)
     }
 }
 
-struct MessageCardView: View {
-    var message: SkywardMessage
+/// A verified empty inbox: a drawn envelope with a check, and two lines
+/// saying there is nothing to read and what will arrive here. Static, with
+/// no counts and no retry; pull to refresh still works.
+private struct InboxEmptyState: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            EnvelopeMark()
+                .padding(.bottom, 24)
+            Text("You're all caught up")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Color.ink)
+                .accessibilityAddTraits(.isHeader)
+            Text("Messages from teachers and your school will appear here.")
+                .font(.subheadline)
+                .foregroundStyle(Color.muted)
+                .padding(.top, 6)
+        }
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: 300)
+        .padding(.horizontal, Metrics.page)
+        .padding(.top, 32)
+        // Sits a little above the true middle, where it reads as centered.
+        .padding(.bottom, 64)
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("inbox.empty")
+    }
+}
+
+/// An envelope outline on a quiet well, with a check in the button color at
+/// its corner.
+private struct EnvelopeMark: View {
+    @ScaledMetric(relativeTo: .largeTitle) private var scaledWidth: CGFloat = 76
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
