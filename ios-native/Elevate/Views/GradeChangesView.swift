@@ -385,3 +385,100 @@ struct GradeChangeText {
         }
     }
 
+    /// "18/20", earned points alone, a percentage, or nil when ungraded.
+    private static func score(_ value: GradeJournalAssignmentValue?) -> (text: String, spoken: String)? {
+        guard let value else { return nil }
+        if let earned = value.pointsEarned, let possible = value.pointsPossible {
+            let earnedText = GradeFormat.upToTwoDecimals(earned), possibleText = GradeFormat.upToTwoDecimals(possible)
+            return ("\(earnedText)/\(possibleText)", "\(earnedText) of \(possibleText) points")
+        }
+        if let earned = value.pointsEarned {
+            let text = GradeFormat.upToTwoDecimals(earned)
+            return (text, "\(text) points")
+        }
+        if let score = value.score {
+            let text = GradeFormat.upToTwoDecimals(score)
+            return ("\(text)%", "\(text) percent")
+        }
+        return nil
+    }
+
+    private static func statuses(_ value: GradeJournalAssignmentValue?) -> [Phrase] {
+        let types = Set(value?.statuses ?? [])
+        var phrases: [Phrase] = []
+        if types.contains("missing") { phrases.append(Phrase(text: "Missing", isMissing: true)) }
+        if types.contains("nocount") { phrases.append(Phrase(text: "No count")) }
+        if types.contains("absent") { phrases.append(Phrase(text: "Absent")) }
+        return phrases
+    }
+
+    private static func statusChanges(from old: GradeJournalAssignmentValue?,
+                                      to new: GradeJournalAssignmentValue?) -> [Phrase] {
+        let before = Set(old?.statuses ?? []), after = Set(new?.statuses ?? [])
+        let changes: [(type: String, on: String, off: String)] = [
+            ("missing", "Marked Missing", "No longer Missing"),
+            ("nocount", "Marked No count", "Counts again"),
+            ("absent", "Marked Absent", "No longer Absent"),
+        ]
+        var phrases: [Phrase] = []
+        for change in changes {
+            if after.contains(change.type), !before.contains(change.type) {
+                phrases.append(Phrase(text: change.on, isMissing: change.type == "missing"))
+            } else if before.contains(change.type), !after.contains(change.type) {
+                phrases.append(Phrase(text: change.off))
+            }
+        }
+        return phrases
+    }
+}
+
+// MARK: - Row
+
+/// One change as an open row: what changed and when it was found, with the
+/// new value trailing (beneath the text at accessibility sizes). Opens the
+/// class on that term when the live class still offers it.
+private struct GradeChangeRow: View {
+    var text: GradeChangeText
+    var onOpen: (() -> Void)?
+    var identifier: String
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        if let onOpen {
+            Button(action: onOpen) { content(showsChevron: true) }
+                .buttonStyle(RowPressStyle())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(text.spoken)
+                .accessibilityHint("Opens this class for this term")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier(identifier)
+        } else {
+            content(showsChevron: false)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(text.spoken)
+                .accessibilityIdentifier(identifier)
+        }
+    }
+
+    private func content(showsChevron: Bool) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(text.title)
+                    .font(.body)
+                    .foregroundStyle(Color.ink)
+                Text(text.detail)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.muted)
+                if !text.phrases.isEmpty {
+                    phraseLine
+                }
+                if dynamicTypeSize.isAccessibilitySize {
+                    values(alignment: .leading)
+                        .padding(.top, 4)
+                }
+            }
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
