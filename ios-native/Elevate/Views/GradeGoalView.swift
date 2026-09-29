@@ -186,3 +186,96 @@ struct GradeGoalView: View {
         }
     }
 
+    private func revealAnswer(_ proxy: ScrollViewProxy) {
+        guard focus == nil, result != nil else { return }
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+            proxy.scrollTo("goal.answer", anchor: dynamicTypeSize.isAccessibilitySize ? .top : .bottom)
+        }
+    }
+
+    private var keyboardSummary: String {
+        guard let result else { return missingInputText }
+        switch result.status {
+        case .required: return "Need \(GradeFormat.upToTwoDecimals(result.requiredEarned)) / \(GradeFormat.upToTwoDecimals(resultPossible))"
+        case .aboveMaximum: return "Above full credit"
+        case .alreadyGuaranteed: return "Target reached, even with zero"
+        case .fixedResult: return "Posted result: \(GradeFormat.twoDecimals(result.resultingGrade))"
+        case .unavailable: return "More information needed"
+        }
+    }
+
+    private var placeholder: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(0..<3, id: \.self) { index in
+                if index > 0 { InsetDivider() }
+                SkeletonRow(lines: [SkeletonLine(.body, [12, 16, 10][index])],
+                            trailing: [SkeletonLine(.figure(.body), 4)])
+            }
+        }
+        .loadingPlaceholder("Loading grade goal")
+    }
+
+    // MARK: - Loading
+
+    /// Read the same quarter sources as class detail, even without local edits.
+    private var neededTerms: [TermLabel] {
+        guard term.isSemester else { return [term] }
+        return [term] + quarters
+    }
+
+    private func reloadWhatIf() {
+        savedWhatIf = WhatIfStore.assignments(classKey: classKey, term: term)
+        overridesByQuarter = Dictionary(uniqueKeysWithValues: quarters.map {
+            ($0, WhatIfStore.gradeOverrides(classKey: classKey, term: $0))
+        })
+        savedExamEstimate = term.isSemester ? WhatIfStore.finalExamGrades(classKey: classKey)[examType] : nil
+    }
+
+    /// Cache-first, like the class itself. A refresh keeps what is shown; a
+    /// failure falls back to the saved gradebook with its true time.
+    private func load(force: Bool) async {
+        let revision = store.accountRevision
+        if originatingRevision == nil { originatingRevision = revision }
+        guard originatingRevision == revision else { dismiss(); return }
+        let id = UUID()
+        loadID = id
+        reloadWhatIf()
+        if infos[term] == nil { loading = true }
+        refreshing = true
+        defer {
+            if store.accountRevision == revision, loadID == id {
+                refreshing = false
+                loading = false
+            }
+        }
+        for source in neededTerms {
+            let params = GradeInfoParams(stuId: course.stuId, corNumId: course.corNumId, gbId: course.gbId,
+                                         section: course.section, bucket: source.bucket)
+            do {
+                let info = try await DataService.shared.gradeInfo(params: params, forceRefresh: force)
+                guard !Task.isCancelled, store.accountRevision == revision, loadID == id else { return }
+                infos[source] = info
+                updatedAt[source] = DataService.shared.cachedGradeInfo(params: params)?.updatedAt
+                    ?? (store.isUsingSampleData ? Date() : nil)
+                failures[source] = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled, store.accountRevision == revision, loadID == id else { return }
+                failures[source] = error.localizedDescription
+                if infos[source] == nil, let saved = DataService.shared.cachedGradeInfo(params: params) {
+                    infos[source] = saved.value
+                    updatedAt[source] = saved.updatedAt
+                }
+            }
+        }
+    }
+
+    /// The oldest time among the sources this plan uses, so the line never
+    /// claims fresher data than is shown.
+    private var sourceUpdated: Date? {
+        var dates = neededTerms.compactMap { infos[$0] != nil ? updatedAt[$0] : nil }
+        if term.isSemester, let courses = store.coursesLastUpdated { dates.append(courses) }
+        return dates.min()
+    }
+
