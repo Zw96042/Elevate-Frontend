@@ -178,37 +178,98 @@ private struct EnvelopeMark: View {
     @ScaledMetric(relativeTo: .largeTitle) private var scaledWidth: CGFloat = 76
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(message.subject)
-                    .font(.body.weight(.semibold))
-                    .fixedSize(horizontal: false, vertical: true)
-                metadata
-            }
-            Spacer(minLength: 4)
-            Image(systemName: "chevron.right")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.tertiary)
-                .accessibilityHidden(true)
+        let width = min(scaledWidth, 108)
+        let height = (width * 0.68).rounded()
+        let badge = (width * 0.36).rounded()
+        ZStack(alignment: .topTrailing) {
+            EnvelopeShape()
+                .fill(Color.well)
+                .overlay {
+                    EnvelopeShape()
+                        .stroke(Color.muted, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                }
+                .frame(width: width, height: height)
+            Image(systemName: "checkmark")
+                .font(.system(size: badge * 0.42, weight: .bold))
+                .foregroundStyle(Color.onProminentFill)
+                .frame(width: badge, height: badge)
+                .background(Color.prominentFill, in: Circle())
+                .overlay { Circle().strokeBorder(Color.appBackground, lineWidth: 3) }
+                .offset(x: badge * 0.4, y: -badge * 0.4)
         }
-        .padding(.vertical, 12)
+        .padding(.top, badge * 0.4)
+        .padding(.trailing, badge * 0.4)
+        .accessibilityHidden(true)
+    }
+}
+
+/// A rounded rectangle with the flap drawn to its center.
+private struct EnvelopeShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let radius = min(rect.width, rect.height) * 0.12
+        var path = Path(roundedRect: rect, cornerRadius: radius, style: .continuous)
+        path.move(to: CGPoint(x: rect.minX + radius * 0.7, y: rect.minY + radius * 0.7))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.minY + rect.height * 0.56))
+        path.addLine(to: CGPoint(x: rect.maxX - radius * 0.7, y: rect.minY + radius * 0.7))
+        return path
+    }
+}
+
+/// One message as an open row: sender with the date on the same line, the
+/// subject, then the class.
+struct MessageRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    var message: SkywardMessage
+
+    private var senderLine: String {
+        message.isAdministrator ? "Administrator" : PersonName.display(message.from)
+    }
+
+    private var shortDate: String {
+        message.date.split(separator: " ").first.map(String.init) ?? message.date
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if dynamicTypeSize.isAccessibilitySize {
+                sender
+                date(message.date)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    sender
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    date(shortDate)
+                }
+            }
+
+            Text(message.subject)
+                .font(.body)
+                .foregroundStyle(Color.ink)
+                .multilineTextAlignment(.leading)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !message.isAdministrator, !message.className.isEmpty {
+                Text(message.className)
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            }
+        }
+        .padding(.horizontal, Metrics.page)
+        .padding(.vertical, Metrics.rowPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }
 
-    private var metadata: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                if !message.isAdministrator {
-                    Text(message.from)
-                        .fixedSize(horizontal: true, vertical: false)
-                    if !message.className.isEmpty {
-                        Text(message.className)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                }
-                Text(message.date)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
+    private var sender: some View {
+        Text(senderLine)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Color.ink)
+            .multilineTextAlignment(.leading)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+    }
 
             VStack(alignment: .leading, spacing: 2) {
                 if !message.isAdministrator {
