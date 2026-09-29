@@ -279,3 +279,113 @@ struct GradeGoalView: View {
         return dates.min()
     }
 
+    private var sourceError: String? {
+        let messages = neededTerms.compactMap { source -> String? in
+            guard infos[source] != nil || term.isSemester, let failure = failures[source] else { return nil }
+            return "\(source.displayName): \(failure.trimmingCharacters(in: CharacterSet(charactersIn: ". ")))"
+        }
+        return messages.isEmpty ? nil : messages.joined(separator: ". ")
+    }
+
+    // MARK: - Shared rows
+
+    /// A label with an optional note, and a number in a quiet well. The
+    /// field keeps exactly what was typed.
+    private func numberRow(
+        _ label: String,
+        note: String?,
+        text: Binding<String>,
+        field: Field,
+        suffix: String?,
+        identifier: String
+    ) -> some View {
+        let isFocused = focus == field
+        let labels = VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.body.weight(isFocused ? .semibold : .regular))
+                .foregroundStyle(isFocused ? Color.themeAccent : Color.ink)
+            if let note {
+                Text(note)
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityHidden(true)
+        let input = HStack(alignment: .firstTextBaseline, spacing: 4) {
+            TextField("—", text: text)
+                .font(.figure(.body))
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .focused($focus, equals: field)
+                .padding(.horizontal, 10)
+                .frame(width: fieldWidth, height: 44)
+                .background(Color.well, in: RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous))
+                .accessibilityLabel(label)
+                .accessibilityHint(note ?? "")
+                .accessibilityIdentifier(identifier)
+            if let suffix {
+                Text(suffix)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.muted)
+                    .accessibilityHidden(true)
+            }
+        }
+        return Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 6) {
+                    labels
+                    input
+                }
+            } else {
+                HStack(alignment: .center, spacing: 12) {
+                    labels.frame(maxWidth: .infinity, alignment: .leading)
+                    input
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture { focus = field }
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 8)
+    }
+
+    private func groupLabel(_ title: String) -> some View {
+        GroupLabel(title)
+            .frame(minHeight: 32, alignment: .bottomLeading)
+            .padding(.top, 16)
+            .padding(.bottom, 2)
+    }
+
+    /// Official or with saved what-if, shown only when there is saved work
+    /// that would change the answer.
+    @ViewBuilder
+    private var basisChoice: some View {
+        if whatIfAvailable {
+            HStack(spacing: 12) {
+                Text("Scores").font(.body).frame(maxWidth: .infinity, alignment: .leading)
+                ScopePicker(
+                    title: "Scores used",
+                    valueName: effectiveBasis == .official ? "Official" : "With what-if",
+                    hint: "Choose which scores are held fixed in this plan",
+                    identifier: "goal.basis",
+                    groups: [ChoiceGroup(title: nil, options: [
+                        ChoiceOption(value: Basis.official, title: "Official", note: "Skyward's scores only", identifier: "goal.basis.official"),
+                        ChoiceOption(value: Basis.whatIf, title: "With what-if", note: "Includes your saved changes for \(term.displayName)", identifier: "goal.basis.whatIf"),
+                    ])], selection: $basis
+                )
+            }
+            .frame(minHeight: 56)
+            InsetDivider()
+        }
+    }
+
