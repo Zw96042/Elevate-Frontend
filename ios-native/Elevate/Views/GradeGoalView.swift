@@ -93,3 +93,96 @@ struct GradeGoalView: View {
         return value
     }
 
+    // MARK: - Body
+
+    var body: some View {
+        ScrollViewReader { proxy in
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                StatusStrip(
+                    showsRefresh: !loading,
+                    lastUpdated: sourceUpdated,
+                    isRefreshing: refreshing && !loading,
+                    error: sourceError
+                ) {
+                    await load(force: true)
+                } control: {
+                    EmptyView()
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(courseName)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Color.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(term.displayName)
+                        .font(.subheadline)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.top, 4)
+
+                if loading && infos[term] == nil {
+                    placeholder
+                        .padding(.top, 20)
+                } else if !term.isSemester, infos[term] == nil {
+                    InlineErrorState(
+                        title: "Couldn't load this quarter's assignments",
+                        message: failures[term] ?? "Try again to plan a goal."
+                    ) {
+                        await load(force: true)
+                    }
+                    .padding(.top, 20)
+                } else {
+                    numberRow("Target grade", note: nil, text: $targetText, field: .target, suffix: "%",
+                              identifier: "goal.target")
+                        .padding(.top, 12)
+                    if parsedTarget == nil {
+                        note("Enter a target grade, such as 90.")
+                    }
+                    InsetDivider()
+
+                    if term.isSemester {
+                        semesterInputs
+                    } else {
+                        quarterInputs
+                    }
+
+                    resultSection
+                        .padding(.top, Metrics.sectionGap / 2)
+                }
+            }
+            .padding(.horizontal, Metrics.page)
+            .padding(.bottom, 32)
+            .background {
+                Color.clear.contentShape(Rectangle())
+                    .onTapGesture { focus = nil }
+            }
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .background(Color.appBackground.ignoresSafeArea())
+        .navigationTitle("Grade Goal")
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("goal.screen")
+        .sensoryFeedback(.success, trigger: tryRevision)
+        .task(id: "\(store.accountRevision)-\(store.coursesRefreshRevision)") { await load(force: false) }
+        .visibleRefreshable { await load(force: true) }
+        .onChange(of: focus) { old, new in if old != nil, new == nil { revealAnswer(proxy) } }
+        .onChange(of: mode) { _, _ in revealAnswer(proxy) }
+        .onChange(of: category) { _, _ in revealAnswer(proxy) }
+        .onChange(of: existingID) { _, _ in revealAnswer(proxy) }
+        .onChange(of: basis) { _, _ in revealAnswer(proxy) }
+        .onChange(of: hypotheticalExam) { _, _ in revealAnswer(proxy) }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Text(keyboardSummary).font(.footnote.monospacedDigit()).foregroundStyle(Color.muted)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                Spacer()
+                Button("Done") { focus = nil }
+                    .accessibilityIdentifier("goal.keyboard.done")
+            }
+        }
+        }
+    }
+
