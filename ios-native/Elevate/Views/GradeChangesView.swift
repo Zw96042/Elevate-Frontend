@@ -282,3 +282,106 @@ enum GradeChangeSummary {
         return "Latest: \(GradeChangeText.course(latest.courseName)), found \(day(latest.observedAt))"
     }
 
+    private static func day(_ date: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) { return "today" }
+        if calendar.isDateInYesterday(date) { return "yesterday" }
+        return date.formatted(.dateTime.month(.abbreviated).day())
+    }
+}
+
+// MARK: - Row text
+
+/// Everything a change row says, written so it stays true when Skyward
+/// renames an assignment (it reads as first seen) and never claiming when a
+/// teacher acted.
+struct GradeChangeText {
+    struct Phrase: Hashable {
+        var text: String
+        var isMissing = false
+    }
+
+    var title: String
+    var detail: String
+    var phrases: [Phrase] = []
+    var value: String
+    var valueIsFigure = true
+    var secondary: String?
+    var spoken: String
+
+    static func course(_ raw: String) -> String {
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return "Class" }
+        return ClassNameFormatter.format(text.replacingOccurrences(of: " ", with: "_"))
+    }
+
+    init(_ event: GradeJournalEvent) {
+        let course = Self.course(event.courseName)
+        let term = event.term.displayName
+        let time = event.observedAt.formatted(date: .omitted, time: .shortened)
+
+        switch event.kind {
+        case .averageChanged:
+            title = course
+            if event.currentScore == nil {
+                detail = "\(term) average no longer shown, found \(time)"
+                value = "No grade"
+                valueIsFigure = false
+                secondary = event.previousScore.map { "was \(GradeFormat.twoDecimals($0))" }
+                spoken = [course, "\(term) average no longer shown",
+                          event.previousScore.map { "was \(GradeFormat.twoDecimals($0))" }, "found \(time)"]
+                    .compactMap { $0 }.joined(separator: ", ")
+            } else if event.previousScore == nil {
+                let posted = GradeFormat.twoDecimals(event.currentScore)
+                detail = "\(term) average posted, found \(time)"
+                value = posted
+                spoken = "\(course), \(term) average posted, \(posted), found \(time)"
+            } else {
+                let current = event.currentScore ?? 0, previous = event.previousScore ?? 0
+                let change = current - previous
+                let shown = GradeFormat.twoDecimals(current)
+                detail = "\(term) average, found \(time)"
+                value = shown
+                secondary = GradeFormat.signedChange(change)
+                let direction: String
+                if abs(change) < 0.005 {
+                    direction = "changed from"
+                } else {
+                    direction = "\(change > 0 ? "up" : "down") \(GradeFormat.twoDecimals(abs(change))) from"
+                }
+                spoken = "\(course), \(term) average, \(shown), \(direction) \(GradeFormat.twoDecimals(previous)), found \(time)"
+            }
+
+        case .assignmentAdded, .assignmentChanged:
+            let trimmed = event.assignmentName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let name = trimmed.isEmpty ? "Untitled assignment" : trimmed
+            let category = event.category?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let context = ([course, term] + (category.isEmpty ? [] : [category])).joined(separator: ", ")
+            let current = Self.score(event.currentAssignment)
+            let previous = Self.score(event.previousAssignment)
+            title = name
+            value = current?.text ?? "Not graded"
+            valueIsFigure = current != nil
+            if event.kind == .assignmentAdded {
+                // Skyward has no stable assignment ID, so a renamed row is
+                // also first seen here; this never claims a teacher added it.
+                let statusPhrases = Self.statuses(event.currentAssignment)
+                detail = "\(context). First seen \(time)"
+                phrases = statusPhrases
+                spoken = ([name, context, "first seen \(time)", current?.spoken ?? "not graded"]
+                    + statusPhrases.map(\.text)).joined(separator: ", ")
+            } else {
+                let statusPhrases = Self.statusChanges(from: event.previousAssignment, to: event.currentAssignment)
+                let scoreChanged = previous?.text != current?.text
+                detail = "\(context). Changed, found \(time)"
+                phrases = statusPhrases
+                if scoreChanged {
+                    secondary = "was \(previous?.text ?? "not graded")"
+                }
+                var parts = [name, context, current?.spoken ?? "not graded"]
+                if scoreChanged { parts.append("was \(previous?.spoken ?? "not graded")") }
+                spoken = (parts + statusPhrases.map(\.text) + ["found \(time)"]).joined(separator: ", ")
+            }
+        }
+    }
+
