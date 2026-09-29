@@ -813,3 +813,101 @@ struct GradeGoalView: View {
         }
     }
 
+    /// The next thing needed, one step at a time.
+    private var missingInputText: String {
+        if parsedTarget == nil { return "Enter a target grade." }
+        if term.isSemester { return "Enter both quarter grades." }
+        switch effectiveMode {
+        case nil: return "Choose a new or ungraded assignment to solve for."
+        case .new:
+            if categoryChoices.isEmpty { return "A new score can't count in any category here." }
+            if chosenCategory == nil { return "Choose the new assignment's category." }
+            return "Enter the points the assignment is out of."
+        case .existing: return "Choose the ungraded assignment."
+        }
+    }
+
+    /// "out of 50" for a quarter score; the exam is out of 100.
+    private var resultPossible: Double {
+        term.isSemester ? 100 : (assignmentChoice?.possible ?? 100)
+    }
+
+    /// "Q1", or "Semester 1", the grade a result describes.
+    private var gradeName: String { termName(term) }
+
+    @ViewBuilder
+    private func outcome(_ result: GradeGoalResult) -> some View {
+        let possible = GradeFormat.upToTwoDecimals(resultPossible)
+        switch result.status {
+        case .required:
+            outcomeBlock(
+                label: term.isSemester ? "You need on \(examName)" : "You need",
+                figure: "\(GradeFormat.upToTwoDecimals(result.requiredEarned)) / \(possible)",
+                qualifier: "\(GradeFormat.twoDecimals(result.requiredPercentage))%",
+                lines: ["\(gradeName) grade becomes \(GradeFormat.twoDecimals(result.resultingGrade))."]
+            )
+        case .alreadyGuaranteed:
+            outcomeBlock(
+                label: "Already reached",
+                figure: GradeFormat.twoDecimals(result.resultingGrade),
+                qualifier: nil,
+                lines: ["Even 0 / \(possible) keeps \(gradeName) at \(GradeFormat.twoDecimals(result.resultingGrade))."]
+            )
+        case .aboveMaximum:
+            outcomeBlock(
+                label: "Not reachable with full credit",
+                figure: "\(GradeFormat.upToTwoDecimals(result.requiredEarned)) / \(possible)",
+                qualifier: "\(GradeFormat.twoDecimals(result.requiredPercentage))%",
+                lines: [result.maximumGrade.map { "Above full credit. Full credit gives \(GradeFormat.twoDecimals($0))." }
+                    ?? "Above full credit."]
+            )
+        case .fixedResult:
+            outcomeBlock(
+                label: "Semester grade with the posted exam",
+                figure: GradeFormat.twoDecimals(result.resultingGrade),
+                qualifier: nil,
+                lines: [result.targetMet
+                    ? "Meets \(targetName)."
+                    : "Below \(targetName). Plan a different exam score."]
+            )
+        case .unavailable(let reason):
+            outcomeBlock(label: "Can't calculate", figure: nil, qualifier: nil, lines: [unavailableText(reason)])
+        }
+    }
+
+    private func outcomeBlock(label: String, figure: String?, qualifier: String?, lines: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Color.ink)
+                .accessibilityAddTraits(.isHeader)
+            if let figure {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(figure)
+                        .font(.system(size: min(figureSize, 56), weight: .light).monospacedDigit())
+                        .foregroundStyle(Color.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .contentTransition(.numericText())
+                    if let qualifier {
+                        Text(qualifier)
+                            .font(.figure(.title3, weight: .regular))
+                            .foregroundStyle(Color.muted)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            ForEach(lines, id: \.self) { line in
+                Text(line)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(spokenOutcome(figure: figure, qualifier: qualifier, lines: lines))
+        .accessibilityIdentifier("goal.result")
+    }
+
