@@ -1187,3 +1187,102 @@ private struct NotificationsPage: View {
         }
     }
 
+    private var action: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if notifications.authorization == .denied {
+                Text("Notifications are off for Elevate in iOS Settings.")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityFocused($focus, equals: .status)
+                    .accessibilityIdentifier("onboarding.notifications.status")
+                Button("Open iOS Settings") {
+                    if let url = URL(string: UIApplication.openNotificationSettingsURLString) { openURL(url) }
+                }
+                .buttonStyle(ActionTextButtonStyle())
+                .accessibilityIdentifier("onboarding.notifications.openSettings")
+            } else if isAllowed && notifications.remindersEnabled {
+                Label {
+                    Text("Reminders are on")
+                } icon: {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(Color.themeAccent)
+                }
+                .font(.subheadline.weight(.medium))
+                .frame(minHeight: 44)
+                .accessibilityFocused($focus, equals: .status)
+                .accessibilityIdentifier("onboarding.notifications.status")
+            } else {
+                Button(action: turnOnReminders) {
+                    HStack(spacing: 8) {
+                        if notifications.isRequestingPermission {
+                            ProgressView()
+                                .accessibilityHidden(true)
+                        } else {
+                            Image(systemName: "bell")
+                                .accessibilityHidden(true)
+                        }
+                        Text(notifications.authorization == .notDetermined ? "Allow notifications" : "Turn on reminders")
+                    }
+                }
+                .buttonStyle(QuietButtonStyle())
+                .disabled(notifications.accountScope == nil || notifications.isRequestingPermission)
+                .accessibilityHint(notifications.authorization == .notDetermined
+                    ? "Turns on reminders. iOS asks whether to allow notifications."
+                    : "Turns on reminders.")
+                .accessibilityIdentifier("onboarding.notifications.allow")
+            }
+
+            if didAsk, let error = notifications.error {
+                Label {
+                    Text(error)
+                } icon: {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(Color.gradeAttention)
+                }
+                .font(.footnote)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityFocused($focus, equals: .error)
+                .accessibilityIdentifier("onboarding.notifications.error")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Reminders only; grade-change alerts are never turned on here.
+    private func turnOnReminders() {
+        didAsk = true
+        notifications.error = nil
+        Task {
+            await notifications.setRemindersEnabled(true)
+            focus = notifications.error == nil ? .status : .error
+        }
+    }
+}
+
+/// Two banners in the system's shape, with the exact wording Elevate's
+/// alerts use for these example classes: names, never grades.
+private struct NotificationsArt: View {
+    var isActive: Bool
+    @State private var hasPlayed = false
+
+    var body: some View {
+        ArtFrame {
+            VStack(spacing: 8) {
+                banner(
+                    title: "Grades updated",
+                    message: NotificationText.gradeChanges(courseNames: ["Biology H"]),
+                    time: "now"
+                )
+                .modifier(ArtEntrance(isVisible: hasPlayed, order: 0))
+                banner(
+                    title: "Elevate reminder",
+                    message: NotificationText.reminder(courseName: "Algebra II", title: "Unit test review"),
+                    time: "7:30 AM"
+                )
+                .modifier(ArtEntrance(isVisible: hasPlayed, order: 2))
+            }
+        }
+        .modifier(PlaysOnce(isActive: isActive, hasPlayed: $hasPlayed))
+    }
+
