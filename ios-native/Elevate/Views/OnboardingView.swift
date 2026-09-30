@@ -91,3 +91,95 @@ struct OnboardingView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .sensoryFeedback(.selection, trigger: page)
 
+            bottomControls
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.appBackground.ignoresSafeArea())
+        .foregroundStyle(Color.ink)
+    }
+
+    // MARK: - Pages
+
+    @ViewBuilder
+    private func pageView(_ item: Page, isActive: Bool) -> some View {
+        switch item {
+        case .grades:
+            OnboardingPage(
+                id: item.rawValue,
+                title: "Your grades, first.",
+                message: "Elevate opens on your classes and this term's grades, with your GPA one line above them. Each class holds its assignments and category weights, and Inbox holds messages from your teachers and school."
+            ) {
+                GradesArt(isActive: isActive)
+            }
+
+        case .whatIf:
+            OnboardingPage(
+                id: item.rawValue,
+                title: "Try a score.",
+                message: "Change any score or add an assignment to preview your grade, and save what you try as a scenario. A grade goal shows the score a new assignment or the exam would need.",
+                note: "What-if work stays on this iPhone and never changes Skyward."
+            ) {
+                WhatIfArt(isActive: isActive)
+            }
+
+        case .gpa:
+            OnboardingPage(
+                id: item.rawValue,
+                title: "GPA, over time.",
+                message: "Follow your weighted and unweighted GPA term by term, with its trend. The GPA converter puts completed semesters on 4.0 and 5.0 scales.",
+                note: "Converter results are estimates, not any college's official GPA."
+            ) {
+                GPAArt(isActive: isActive)
+            }
+
+        case .plan:
+            OnboardingPage(
+                id: item.rawValue,
+                title: "Credits and plans.",
+                message: "Course plan estimates earned credits from completed semester grades. Current classes appear separately as expected credits if passed. Find earlier grades in Past courses and school files in Documents, both in Settings.",
+                note: "Plans stay on this iPhone. They aren't an official transcript or graduation check."
+            ) {
+                PlanArt(isActive: isActive)
+            }
+
+        case .week:
+            OnboardingPage(
+                id: item.rawValue,
+                title: "Your week.",
+                message: "Calendar shows the school calendar, attendance, and assignments by due date. This week lists today and the next six days, so you can check off work as you finish it.",
+                note: "Done marks stay on this iPhone and can be undone. They don't change Skyward, and Missing stays until your teacher clears it."
+            ) {
+                WeekArt(isActive: isActive)
+            }
+
+        case .widgets:
+            OnboardingPage(
+                id: item.rawValue,
+                title: "On your Home Screen.",
+                message: "Widgets keep missing work and new messages in view. Missing Work and Inbox show no grades; GPA and grade widgets are there if you want them.",
+                steps: Self.widgetSteps
+            ) {
+                WidgetsArt(isActive: isActive)
+            }
+
+        case .notifications:
+            NotificationsPage(isActive: isActive)
+
+        case .connection:
+            OnboardingPage(
+                id: item.rawValue,
+                title: "Straight to Skyward.",
+                message: "Elevate signs in to \(CredentialStore.districtName) Skyward directly from this iPhone. Your login is stored in the iOS Keychain and used only to connect to Skyward."
+            ) {
+                ConnectionArt(isActive: isActive)
+            }
+
+        case .theme:
+            ThemePage(palette: paletteChoice, appearance: appearanceChoice)
+
+        case .appLock:
+            // Optional: Continue works the same whether or not it's turned on.
+            AppLockPage(isActive: isActive)
+        }
+    }
+
