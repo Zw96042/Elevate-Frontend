@@ -695,3 +695,95 @@ private struct WhatIfArt: View {
                 }
                 .padding(.bottom, 14)
 
+                // The what-if switch, on.
+                HStack {
+                    Text("What-if")
+                        .font(.subheadline.weight(.medium))
+                    Spacer(minLength: 8)
+                    Capsule()
+                        .fill(applied ? Color.themeAccent : Color.rule)
+                        .frame(width: 40, height: 24)
+                        .overlay(alignment: applied ? .trailing : .leading) {
+                            Circle()
+                                .fill(Color.white)
+                                .padding(2)
+                        }
+                }
+                .padding(.bottom, 10)
+
+                Rule()
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Unit test")
+                            .font(.subheadline.weight(.medium))
+                        Text("Tests")
+                            .font(.caption)
+                            .foregroundStyle(Color.muted)
+                        Text("What-if, Skyward has 82/100")
+                            .font(.caption)
+                            .foregroundStyle(Color.themeAccent)
+                            .opacity(applied ? 1 : 0)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // The score well: points end at the slash, the original
+                    // denominator beside them, options before.
+                    HStack(alignment: .center, spacing: 0) {
+                        Image(systemName: "ellipsis")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.muted)
+                            .frame(width: 28)
+                        HStack(alignment: .firstTextBaseline, spacing: 0) {
+                            Text(applied ? "95" : "82")
+                                .font(.figure(.subheadline))
+                                .contentTransition(.numericText(value: applied ? 95 : 82))
+                                .frame(width: 40, alignment: .trailing)
+                            Text("/100")
+                                .font(.figure(.footnote, weight: .regular))
+                                .foregroundStyle(Color.muted)
+                                .padding(.leading, 1)
+                                .padding(.trailing, 8)
+                        }
+                        .frame(height: 32)
+                        .background(Color.well, in: RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous))
+                    }
+                }
+                .padding(.vertical, 10)
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.themeAccent)
+                        .frame(width: 3)
+                        .padding(.vertical, 6)
+                        .offset(x: -12)
+                        .opacity(applied ? 1 : 0)
+                }
+            }
+        }
+        .onAppear { if isActive { play() } }
+        .onChange(of: isActive) { _, active in if active { play() } }
+    }
+
+    private func play() {
+        guard !hasPlayed else { return }
+        if reduceMotion {
+            hasPlayed = true
+        } else {
+            withAnimation(.snappy(duration: 0.5).delay(0.35)) { hasPlayed = true }
+        }
+    }
+}
+
+// MARK: - Art: GPA
+
+/// The GPA line and its trend, then the two other-scale rows that sit
+/// below them on the GPA screen, with their notes from that screen.
+private struct GPAArt: View {
+    var isActive: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hasPlayed = false
+
+    /// Weighted GPA for four quarters, ending at the figure shown.
+    private let values: [Double] = [89.6, 92.3, 91.4, 95.2]
+
+    /// Reduce Motion shows the curve already drawn.
+    private var drawn: Bool { hasPlayed || reduceMotion }
+
