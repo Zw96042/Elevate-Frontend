@@ -493,3 +493,112 @@ private struct ThemePage: View {
     }
 }
 
+/// Connected segments, one per page; steps up to the current one are filled.
+/// Short segments keep ten pages narrower than the smallest phone's margins.
+private struct StepIndicator: View {
+    var count: Int
+    var current: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<count, id: \.self) { index in
+                Rectangle()
+                    .fill(index <= current ? Color.ink : Color.rule)
+                    .frame(width: 18, height: 4)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: current)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Page \(current + 1) of \(count)")
+    }
+}
+
+/// Frame for illustrative art: the same open composition and type as the
+/// app, with an "Example data" caption beneath it so the figures are never
+/// mistaken for real grades.
+private struct ArtFrame<Content: View>: View {
+    var showsExampleLabel = true
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            content()
+            if showsExampleLabel {
+                Text("Example data")
+                    .font(.caption)
+                    .foregroundStyle(Color.muted)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Plays a one-time entrance when its page first becomes active. With
+/// Reduce Motion the content is simply there.
+private struct ArtEntrance: ViewModifier {
+    var isVisible: Bool
+    var order: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        let shown = isVisible || reduceMotion
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown ? 0 : 10)
+            .animation(
+                reduceMotion ? nil : .smooth(duration: 0.45).delay(Double(order) * 0.06),
+                value: isVisible
+            )
+    }
+}
+
+/// Marks an art's page as seen so its entrance plays once.
+private struct PlaysOnce: ViewModifier {
+    var isActive: Bool
+    @Binding var hasPlayed: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { if isActive { hasPlayed = true } }
+            .onChange(of: isActive) { _, active in if active { hasPlayed = true } }
+    }
+}
+
+// MARK: - Art: grades
+
+private struct GradesArt: View {
+    var isActive: Bool
+    @State private var hasPlayed = false
+
+    private let rows: [(period: Int, name: String, teacher: String, grade: Double)] = [
+        (1, "Biology H", "Rivera", 94),
+        (2, "English 2", "Okafor", 88),
+        (3, "Algebra II", "Lin", 91),
+    ]
+
+    /// Averages of the three rows above, the way the GPA screen computes
+    /// them: Biology H earns the Honors 5 in the weighted figure.
+    private let weightedGPA = "92.67"
+    private let unweightedGPA = "91.00"
+
+    var body: some View {
+        ArtFrame {
+            VStack(alignment: .leading, spacing: 0) {
+                // The control line.
+                HStack(alignment: .center, spacing: 6) {
+                    // The closed scope button, as `ScopeButtonLabel` on the
+                    // quiet well.
+                    ScopeButtonLabel(value: "Quarter 1")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(Color.well, in: RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous))
+                    Spacer(minLength: 8)
+                    Text("Updated 8:02 AM")
+                        .font(.caption)
+                        .foregroundStyle(Color.muted)
+                }
+                .padding(.bottom, 10)
+                .modifier(ArtEntrance(isVisible: hasPlayed, order: 0))
+
