@@ -1379,3 +1379,120 @@ private struct AppLockPage: View {
                 .accessibilityIdentifier("onboarding.appLock.enable")
             }
 
+            if let error = appLock.error ?? message {
+                Label {
+                    Text(error)
+                } icon: {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(Color.gradeAttention)
+                }
+                .font(.footnote)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityFocused($focus, equals: .error)
+                .accessibilityIdentifier("onboarding.appLock.error")
+            }
+
+            homeScreenNote
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// For people who locked Elevate from the Home Screen before. iOS owns
+    /// that setting; Elevate can only explain where it is.
+    private var homeScreenNote: some View {
+        DisclosureGroup(isExpanded: $showsHomeScreenNote) {
+            Text("To get detailed notification previews back, touch and hold Elevate on your Home Screen and tap **Don't Require \(appLock.authenticationName)**. Elevate can't change this iOS setting for you.")
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
+                .accessibilityIdentifier("onboarding.page.appLock.details")
+        } label: {
+            Text("Used Require \(appLock.authenticationName) on the Home Screen?")
+                .multilineTextAlignment(.leading)
+                .font(.subheadline)
+                .foregroundStyle(Color.muted)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        }
+        .tint(Color.muted)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("onboarding.page.appLock.more")
+    }
+
+    private func enable() {
+        guard !isBusy else { return }
+        isEnabling = true
+        message = nil
+        appLock.clearError()
+        Task {
+            let didEnable = await appLock.enable()
+            isEnabling = false
+            if !didEnable && appLock.error == nil {
+                message = "App lock is still off. You can turn it on later in Settings."
+            }
+            focus = didEnable ? .status : .error
+        }
+    }
+}
+
+/// Elevate's icon with a lock badge, and the iPhone's own Face ID or Touch ID
+/// glyph beneath. Played once: the glyph gives a small bounce and the badge
+/// opens. Inert and hidden from accessibility; Reduce Motion shows only the
+/// final frame.
+private struct AppLockArt: View {
+    var isActive: Bool
+    var symbol: String
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hasPlayed = false
+    @State private var bounces = 0
+
+    private let iconSize: CGFloat = 76
+    private var isOpen: Bool { hasPlayed || reduceMotion }
+
+    var body: some View {
+        ArtFrame(showsExampleLabel: false) {
+            VStack(spacing: 18) {
+                Image("ElevateAppPreview")
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: iconSize, height: iconSize)
+                    .clipShape(RoundedRectangle(cornerRadius: iconSize * 0.225, style: .continuous))
+                    .shadow(color: .black.opacity(0.1), radius: 8, y: 3)
+                    .overlay(alignment: .bottomTrailing) {
+                        Image(systemName: isOpen ? "lock.open.fill" : "lock.fill")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.onProminentFill)
+                            .contentTransition(.symbolEffect(.replace))
+                            .frame(width: 28, height: 28)
+                            .background(Color.prominentFill, in: Circle())
+                            .overlay(Circle().strokeBorder(Color.appBackground, lineWidth: 2))
+                            .offset(x: 8, y: 8)
+                    }
+                Image(systemName: symbol)
+                    .font(.system(size: 34, weight: .light))
+                    .foregroundStyle(isOpen ? Color.themeAccent : Color.muted)
+                    .symbolEffect(.bounce, value: bounces)
+            }
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+        }
+        .allowsHitTesting(false)
+        .task(id: isActive) { await play() }
+    }
+
+    private func play() async {
+        guard isActive, !hasPlayed, !reduceMotion else { return }
+        // A beat for the page to settle; leaving before it replays later.
+        do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+        bounces += 1
+        // Once begun it always reaches the final frame, at once if left.
+        do { try await Task.sleep(for: .milliseconds(550)) } catch {
+            hasPlayed = true
+            return
+        }
+        withAnimation(.smooth(duration: 0.35)) { hasPlayed = true }
+    }
+}
