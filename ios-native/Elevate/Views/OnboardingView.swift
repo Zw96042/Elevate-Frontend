@@ -881,3 +881,110 @@ private struct PlanArt: View {
     var isActive: Bool
     @State private var hasPlayed = false
 
+    var body: some View {
+        ArtFrame {
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Earned credits")
+                        .font(.subheadline.weight(.semibold))
+                    Text("15 of 26 credits")
+                        .font(.figure(.title3))
+                    Text("Counting 7 expected from current classes, 22 of 26 if you pass them.")
+                        .font(.caption)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.bottom, 10)
+                .modifier(ArtEntrance(isVisible: hasPlayed, order: 0))
+
+                Rule()
+                    .modifier(ArtEntrance(isVisible: hasPlayed, order: 1))
+                subjectRow(title: "English", detail: "3 earned, 1 current", value: "3 of 4", note: "Met if completed")
+                    .modifier(ArtEntrance(isVisible: hasPlayed, order: 1))
+                InsetDivider()
+                    .modifier(ArtEntrance(isVisible: hasPlayed, order: 2))
+                subjectRow(title: "Mathematics", detail: "2 earned, 1 current", value: "2 of 4", note: "1 more needed")
+                    .modifier(ArtEntrance(isVisible: hasPlayed, order: 2))
+            }
+        }
+        .modifier(PlaysOnce(isActive: isActive, hasPlayed: $hasPlayed))
+    }
+
+    private func subjectRow(title: String, detail: String, value: String, note: String) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(Color.muted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(value)
+                    .font(.figure(.subheadline))
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(Color.muted)
+            }
+        }
+        .lineLimit(1)
+        .padding(.vertical, 8)
+    }
+}
+
+// MARK: - Art: the week
+
+/// This week's rows: the Done circle in the leading column, then the title
+/// with its class and category. Completed work moves into Done once.
+private struct WeekArt: View {
+    var isActive: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hasPlayed = false
+
+    /// Reduce Motion shows the completed row in Done.
+    private var checked: Bool { hasPlayed || reduceMotion }
+
+    var body: some View {
+        ArtFrame {
+            VStack(alignment: .leading, spacing: 0) {
+                GroupLabel("Today")
+                if !checked {
+                    row(title: "Lab report", detail: "Biology H, Labs", isDone: false)
+                    InsetDivider(leading: 40)
+                }
+                row(title: "Chapter 6 reading", detail: "English 2, Daily work", isDone: false)
+                GroupLabel("Tomorrow")
+                    .padding(.top, 12)
+                row(title: "Unit test", detail: "Algebra II, Tests", isDone: false)
+                if checked {
+                    GroupLabel("Done")
+                        .padding(.top, 12)
+                    row(title: "Lab report", detail: "Biology H, Labs", isDone: true)
+                }
+            }
+        }
+        .onAppear { if isActive { play() } }
+        .onChange(of: isActive) { _, active in if active { play() } }
+    }
+
+    private func row(title: String, detail: String, isDone: Bool) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
+                .font(.title3)
+                .foregroundStyle(Color.themeAccent)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(Color.muted)
+            }
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 8)
+    }
+
