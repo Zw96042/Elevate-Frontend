@@ -988,3 +988,96 @@ private struct WeekArt: View {
         .padding(.vertical, 8)
     }
 
+    private func play() {
+        guard !hasPlayed else { return }
+        if reduceMotion {
+            hasPlayed = true
+        } else {
+            withAnimation(.snappy(duration: 0.3).delay(0.5)) { hasPlayed = true }
+        }
+    }
+}
+
+// MARK: - Art: connection
+
+private struct ConnectionArt: View {
+    var isActive: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hasPlayed = false
+
+    /// Reduce Motion shows the connection already made.
+    private var connected: Bool { hasPlayed || reduceMotion }
+
+    var body: some View {
+        ArtFrame(showsExampleLabel: false) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .center, spacing: 0) {
+                    node(symbol: "iphone", title: "This iPhone", caption: "Login in Keychain")
+                    connector
+                    node(symbol: "building.columns", title: "Skyward", caption: CredentialStore.districtName)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                Rule()
+                Text("Direct connection. No other servers.")
+                    .font(.footnote.weight(connected ? .semibold : .regular))
+                    .foregroundStyle(connected ? Color.ink : Color.muted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .onAppear { if isActive { play() } }
+        .onChange(of: isActive) { _, active in if active { play() } }
+    }
+
+    /// The middle cell: a line drawn across it, locked once connected.
+    private var connector: some View {
+        ZStack {
+            Rectangle()
+                .fill(Color.rule)
+                .frame(height: 1)
+            Rectangle()
+                .fill(Color.themeAccent)
+                .frame(height: 2)
+                .scaleEffect(x: connected ? 1 : 0, anchor: .leading)
+            Image(systemName: "lock.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.themeAccent)
+                .frame(width: 28, height: 28)
+                .background(Color.appBackground)
+                .opacity(connected ? 1 : 0)
+        }
+        .frame(width: 72)
+        .frame(maxHeight: .infinity)
+    }
+
+    private func node(symbol: String, title: String, caption: String) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: symbol)
+                .font(.system(size: 30, weight: .light))
+                .foregroundStyle(Color.ink)
+                .frame(height: 44)
+            VStack(spacing: 1) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(caption)
+                    .font(.caption)
+                    .foregroundStyle(Color.muted)
+            }
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func play() {
+        guard !hasPlayed else { return }
+        if reduceMotion {
+            hasPlayed = true
+        } else {
+            withAnimation(.smooth(duration: 0.6).delay(0.25)) { hasPlayed = true }
+        }
+    }
+}
+
