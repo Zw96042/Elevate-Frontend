@@ -229,3 +229,94 @@ struct PastCoursesView: View {
         }
     }
 
+    /// The archive's shape: the real column names over each course name and
+    /// its two semester grades.
+    private var loadingRows: some View {
+        let names = [14, 10, 17, 12, 15, 9]
+        return VStack(alignment: .leading, spacing: 0) {
+            if !dynamicTypeSize.isAccessibilitySize {
+                HStack(spacing: 12) {
+                    Spacer(minLength: 0)
+                    Text("Sem 1")
+                        .frame(width: gradeColumn, alignment: .trailing)
+                    Text("Sem 2")
+                        .frame(width: gradeColumn, alignment: .trailing)
+                }
+                .modifier(TableHeaderStyle())
+                .padding(.horizontal, Metrics.page)
+                .padding(.top, 8)
+            }
+            ForEach(names.indices, id: \.self) { index in
+                if index > 0 {
+                    InsetDivider()
+                        .padding(.horizontal, Metrics.page)
+                }
+                PastCourseRowPlaceholder(name: names[index], gradeColumn: gradeColumn)
+            }
+        }
+        .loadingPlaceholder("Loading past courses")
+        .accessibilityIdentifier("history.loading")
+    }
+}
+
+/// A loading past course in `PastCourseRow`'s layout: the name and a grade
+/// bar in each semester column, or labelled semesters beneath the name at
+/// accessibility sizes. Hidden from accessibility.
+private struct PastCourseRowPlaceholder: View {
+    var name: Int
+    var gradeColumn: CGFloat
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    nameLine
+                    semester("Semester 1")
+                    semester("Semester 2")
+                }
+            } else {
+                HStack(alignment: .center, spacing: 12) {
+                    nameLine
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    grade
+                    grade
+                }
+            }
+        }
+        .padding(.horizontal, Metrics.page)
+        .padding(.vertical, Metrics.rowPadding)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .accessibilityHidden(true)
+    }
+
+    private var nameLine: some View {
+        SkeletonText(.body.weight(.medium), length: name)
+    }
+
+    private var grade: some View {
+        SkeletonText(.figure(.body), length: 2)
+            .frame(width: gradeColumn, alignment: .trailing)
+    }
+
+    /// The semester names are fixed labels, as in `LabeledValue`.
+    private func semester(_ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+            SkeletonText(.figure(.body), length: 2)
+        }
+    }
+}
+
+/// One past course as an open row: the name, the teacher when Skyward lists
+/// one, and the posted semester grades. At accessibility sizes the grades
+/// move beneath the name as labelled pairs.
+private struct PastCourseRow: View {
+    var course: UnifiedCourseData
+    var gradeColumn: CGFloat
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
