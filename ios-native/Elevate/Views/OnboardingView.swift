@@ -602,3 +602,96 @@ private struct GradesArt: View {
                 .padding(.bottom, 10)
                 .modifier(ArtEntrance(isVisible: hasPlayed, order: 0))
 
+                // The GPA line.
+                HStack(alignment: .center, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Weighted GPA")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Quarter 1")
+                            .font(.caption)
+                            .foregroundStyle(Color.muted)
+                    }
+                    Spacer(minLength: 8)
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(weightedGPA)
+                            .font(.figure(.headline))
+                        Text("Unweighted \(unweightedGPA)")
+                            .font(.figure(.caption, weight: .regular))
+                            .foregroundStyle(Color.muted)
+                    }
+                    Image(systemName: "chevron.forward")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.faint)
+                }
+                .padding(.bottom, 8)
+                .modifier(ArtEntrance(isVisible: hasPlayed, order: 1))
+
+                Rule()
+                    .modifier(ArtEntrance(isVisible: hasPlayed, order: 1))
+
+                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                    if index > 0 { InsetDivider(leading: 24) }
+                    HStack(alignment: .center, spacing: 0) {
+                        Text("\(row.period)")
+                            .font(.figure(.footnote, weight: .regular))
+                            .foregroundStyle(Color.muted)
+                            .frame(width: 24, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(row.name)
+                                .font(.subheadline.weight(.medium))
+                            Text(row.teacher)
+                                .font(.caption)
+                                .foregroundStyle(Color.muted)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        GradeNumber(score: row.grade, style: .title3)
+                    }
+                    .padding(.vertical, 9)
+                    .modifier(ArtEntrance(isVisible: hasPlayed, order: index + 2))
+                }
+            }
+        }
+        .modifier(PlaysOnce(isActive: isActive, hasPlayed: $hasPlayed))
+    }
+}
+
+// MARK: - Art: what-if
+
+private struct WhatIfArt: View {
+    var isActive: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hasPlayed = false
+
+    private let before = 89.4
+    private let after = 91.2
+
+    /// Reduce Motion shows only the final frame.
+    private var applied: Bool { hasPlayed || reduceMotion }
+
+    var body: some View {
+        ArtFrame {
+            VStack(alignment: .leading, spacing: 0) {
+                // As on the class screen: an inline Estimate beside the
+                // number and its distance from Skyward's grade beneath.
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text(GradeFormat.oneDecimal(applied ? after : before))
+                            .font(.display(size: 52))
+                            .tracking(-1)
+                            .contentTransition(.numericText(value: applied ? after : before))
+                        Text("%")
+                            .font(.title3)
+                            .foregroundStyle(Color.muted)
+                        Text("Estimate")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.themeAccent)
+                            .padding(.leading, 10)
+                            .opacity(applied ? 1 : 0)
+                    }
+                    Text("1.8 above Skyward's 89.4")
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                        .opacity(applied ? 1 : 0)
+                }
+                .padding(.bottom, 14)
+
