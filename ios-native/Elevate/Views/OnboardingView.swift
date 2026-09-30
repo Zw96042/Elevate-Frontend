@@ -787,3 +787,97 @@ private struct GPAArt: View {
     /// Reduce Motion shows the curve already drawn.
     private var drawn: Bool { hasPlayed || reduceMotion }
 
+    var body: some View {
+        ArtFrame {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .center, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Weighted GPA")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Quarter 4")
+                            .font(.caption)
+                            .foregroundStyle(Color.muted)
+                    }
+                    Spacer(minLength: 8)
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text("95.20")
+                            .font(.figure(.headline))
+                        Text("Unweighted 93.45")
+                            .font(.figure(.caption, weight: .regular))
+                            .foregroundStyle(Color.muted)
+                    }
+                }
+                .padding(.bottom, 8)
+
+                ZStack {
+                    ArtCurve(values: values, closesArea: true)
+                        .fill(LinearGradient(
+                            colors: [Color.chartFill, Color.chartFill.opacity(0)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ))
+                        .opacity(drawn ? 1 : 0)
+                    ArtCurve(values: values)
+                        .trim(from: 0, to: drawn ? 1 : 0)
+                        .stroke(Color.chartLine, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                }
+                .frame(height: 52)
+                .padding(.bottom, 8)
+
+                Rule()
+                routeRow(title: "GPA converter", note: "Completed semesters on 4.0 and 5.0 scales")
+            }
+        }
+        .onAppear { if isActive { play() } }
+        .onChange(of: isActive) { _, active in if active { play() } }
+    }
+
+    private func routeRow(title: String, note: String) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(Color.muted)
+            }
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: "chevron.forward")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.faint)
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func play() {
+        guard !hasPlayed else { return }
+        if reduceMotion {
+            hasPlayed = true
+        } else {
+            withAnimation(.smooth(duration: 0.9).delay(0.2)) { hasPlayed = true }
+        }
+    }
+}
+
+/// The GPA chart's curve at art size, or the area beneath it for the wash.
+private struct ArtCurve: Shape {
+    var values: [Double]
+    var closesArea = false
+
+    func path(in rect: CGRect) -> Path {
+        let curve = GPACurve(values: values, size: rect.size, inset: 2)
+        return (closesArea ? curve.area : curve.line)
+            .offsetBy(dx: rect.minX, dy: rect.minY)
+    }
+}
+
+// MARK: - Art: course plan
+
+/// Course plan's earned total with its outlook line, then two subject rows
+/// in the plan's own wording: earned and current credits on the left, the
+/// earned figure on the right.
+private struct PlanArt: View {
+    var isActive: Bool
+    @State private var hasPlayed = false
+
