@@ -1286,3 +1286,96 @@ private struct NotificationsArt: View {
         .modifier(PlaysOnce(isActive: isActive, hasPlayed: $hasPlayed))
     }
 
+    private func banner(title: String, message: String, time: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image("ElevateAppPreview")
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 32, height: 32)
+                .clipShape(RoundedRectangle(cornerRadius: 7.5, style: .continuous))
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 8)
+                    Text(time)
+                        .font(.caption)
+                        .foregroundStyle(Color.muted)
+                }
+                Text(message)
+                    .font(.subheadline)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: 360, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+// MARK: - App lock
+
+/// Elevate's own optional lock: one tap asks iOS for Face ID, Touch ID, or
+/// the passcode, and the lock is reported on only once `AppLockStore`
+/// confirms it. Continue works the same either way. A closed note helps
+/// anyone who used the iOS Home Screen lock before.
+private struct AppLockPage: View {
+    private enum Focus: Hashable { case status, error }
+
+    var isActive: Bool
+
+    @State private var appLock = AppLockStore.shared
+    @State private var isEnabling = false
+    /// Shown when turning the lock on fails without the store's own error.
+    @State private var message: String?
+    @State private var showsHomeScreenNote = false
+    @AccessibilityFocusState private var focus: Focus?
+
+    private var isBusy: Bool { isEnabling || appLock.isAuthenticating }
+
+    var body: some View {
+        OnboardingPage(
+            id: "appLock",
+            title: "Keep your grades private.",
+            message: "Optional. Elevate can ask for \(AppLockCopy.method(for: appLock)) when it opens. Notifications and widgets stay visible, as iOS shows them.",
+            action: { action }
+        ) {
+            AppLockArt(isActive: isActive, symbol: appLock.authenticationSymbol)
+        }
+    }
+
+    private var action: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if appLock.isEnabled {
+                Label {
+                    Text("App lock is on. You can change it in Settings.")
+                } icon: {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(Color.themeAccent)
+                }
+                .font(.subheadline.weight(.medium))
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minHeight: 44)
+                .accessibilityFocused($focus, equals: .status)
+                .accessibilityIdentifier("onboarding.appLock.status")
+            } else {
+                Button(action: enable) {
+                    HStack(spacing: 8) {
+                        if isBusy {
+                            ProgressView()
+                                .accessibilityHidden(true)
+                        } else {
+                            Image(systemName: appLock.authenticationSymbol)
+                                .accessibilityHidden(true)
+                        }
+                        Text(isBusy ? "Waiting for \(appLock.authenticationName)…" : "Require \(appLock.authenticationName)")
+                    }
+                }
+                .buttonStyle(QuietButtonStyle())
+                .disabled(isBusy || appLock.isLocked)
+                .accessibilityHint("iOS asks for \(AppLockCopy.method(for: appLock)) to turn on the lock.")
+                .accessibilityIdentifier("onboarding.appLock.enable")
+            }
+
