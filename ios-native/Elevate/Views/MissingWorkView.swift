@@ -391,3 +391,85 @@ private struct MissingAssignmentRow: View {
         return source.isEmpty ? "No date in Skyward" : "Date in Skyward: \(source)"
     }
 
+    private var otherFlags: [String] {
+        let types = Set(assignment.meta.map(\.type))
+        var flags: [String] = []
+        if types.contains("absent") { flags.append("Absent") }
+        if types.contains("noCount") { flags.append("No count") }
+        return flags
+    }
+
+    private var detail: String {
+        let category = assignment.category.trimmingCharacters(in: .whitespacesAndNewlines)
+        var parts: [String] = []
+        if !category.isEmpty { parts.append(category) }
+        parts.append(dateText)
+        parts += otherFlags
+        return parts.joined(separator: ", ")
+    }
+
+    var body: some View {
+        Group {
+            if let onOpen {
+                Button(action: onOpen) { details(showsChevron: true) }
+                    .buttonStyle(RowPressStyle())
+                    .accessibilityLabel("\(title), \(detail)")
+                    .accessibilityHint("Opens this assignment in this quarter")
+                    .accessibilityIdentifier(identifier)
+            } else {
+                details(showsChevron: false)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(title), \(detail)")
+            }
+        }
+        // The bell sits in the lane the row reserves before its chevron; a
+        // hidden chevron keeps the same trailing width.
+        .overlay(alignment: .trailing) {
+            HStack(spacing: 12) {
+                Button(action: onRemind) {
+                    Image(systemName: "bell")
+                        .font(.body)
+                        .foregroundStyle(Color.muted)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(ScopePressStyle())
+                .accessibilityLabel("Remind me about \(title)")
+                .accessibilityIdentifier("missing.remind")
+                if onOpen != nil { chevron.hidden() }
+            }
+            .padding(.trailing, Metrics.page)
+        }
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.forward")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(Color.faint)
+            .accessibilityHidden(true)
+    }
+
+    private func details(showsChevron: Bool) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(Color.ink)
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+            }
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Color.clear
+                .frame(width: 44, height: 44)
+                .accessibilityHidden(true)
+            if showsChevron { chevron }
+        }
+        .padding(.horizontal, Metrics.page)
+        .padding(.vertical, Metrics.rowPadding)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+}
