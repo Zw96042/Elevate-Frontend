@@ -302,3 +302,100 @@ struct OnboardingView: View {
         }
     }
 
+    private func showSignIn() {
+        guard path.isEmpty else { return }
+        path = [.signIn]
+    }
+
+    private func advance() {
+        guard page < pageCount - 1 else { return }
+        if reduceMotion {
+            page += 1
+        } else {
+            withAnimation(.smooth(duration: 0.4)) { page += 1 }
+        }
+    }
+}
+
+// MARK: - Page layout
+
+/// A page's title and message, read as one element.
+private struct PageHeading: View {
+    var title: String
+    var message: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.largeTitle.weight(.bold))
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            Text(message)
+                .font(.body)
+                .foregroundStyle(Color.muted)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct OnboardingPage<Art: View, Action: View>: View {
+    var id: String
+    var title: String
+    var message: String
+    /// Numbered instructions under the message, set in ink so they read as
+    /// the thing to do.
+    var steps: [LocalizedStringKey]
+    /// A quiet footnote after the message, steps, and any action.
+    var note: String?
+    /// An optional choice made on the page itself, after the steps. Its
+    /// state belongs to the caller, since the page may lay out twice.
+    var action: Action
+    var art: Art
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    init(
+        id: String,
+        title: String,
+        message: String,
+        steps: [LocalizedStringKey] = [],
+        note: String? = nil,
+        @ViewBuilder action: () -> Action,
+        @ViewBuilder art: () -> Art
+    ) {
+        self.id = id
+        self.title = title
+        self.message = message
+        self.steps = steps
+        self.note = note
+        self.action = action()
+        self.art = art()
+    }
+
+    var body: some View {
+        // The copy always wins: art is shown only when art and copy fit the
+        // page together. Otherwise the copy stands alone, scrolling only if
+        // even that overflows.
+        ViewThatFits(in: .vertical) {
+            if !dynamicTypeSize.isAccessibilitySize {
+                content(showsArt: true)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
+            GeometryReader { proxy in
+                ScrollView {
+                    content(showsArt: false)
+                        .frame(maxWidth: .infinity, minHeight: proxy.size.height)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .softScrollEdges()
+            }
+        }
+        // A container, so the page's identifier doesn't replace the
+        // identifiers of the steps inside it.
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("onboarding.page.\(id)")
+    }
+
