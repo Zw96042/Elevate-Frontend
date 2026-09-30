@@ -111,3 +111,127 @@ struct NotificationSettingsView: View {
         }
     }
 
+    // MARK: - Grades
+
+    private var gradesSection: some View {
+        SettingsGroup(title: "Grades") {
+            toggleRow(
+                "Grade changes",
+                detail: "Alerts for unseen grade changes found while you're away.",
+                isOn: Binding(
+                    get: { notifications.gradeChangesEnabled },
+                    set: { enabled in Task { await notifications.setGradeChangesEnabled(enabled) } }
+                ),
+                identifier: "notifications.gradeChanges"
+            )
+            InsetDivider()
+            SettingsRow {
+                Text("Last grade check")
+            } accessory: {
+                Text(notifications.lastGradeCheck.map {
+                    $0.formatted(date: .abbreviated, time: .shortened)
+                } ?? "Not yet")
+                .foregroundStyle(Color.muted)
+                .multilineTextAlignment(.trailing)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("notifications.lastCheck")
+            InsetDivider()
+            SettingsRow {
+                Text("Last background check")
+            } accessory: {
+                Text(notifications.lastBackgroundGradeCheck.map {
+                    $0.formatted(date: .abbreviated, time: .shortened)
+                } ?? "Not recorded")
+                .foregroundStyle(Color.muted)
+                .multilineTextAlignment(.trailing)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("notifications.lastBackgroundCheck")
+        } footer: {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Alerts include class and assignment names, never grades. iOS controls notification previews.")
+                    .foregroundStyle(Color.muted)
+                if let status = notifications.backgroundStatus {
+                    Text(status)
+                        .foregroundStyle(Color.ink)
+                }
+                Text("Grade checks stay silent while Elevate is open. Unseen changes can alert after a background check. iOS decides when those checks run; reminders are scheduled separately. What-if estimates never trigger alerts.")
+                    .foregroundStyle(Color.muted)
+            }
+        }
+    }
+
+    // MARK: - Reminders
+
+    private var remindersSection: some View {
+        let reminders = notifications.reminders.filter { $0.fireDate > Date() }
+        return SettingsGroup(title: "Reminders") {
+            toggleRow(
+                "Reminders",
+                detail: "Alerts at the times you choose for assignments and exams.",
+                isOn: Binding(
+                    get: { notifications.remindersEnabled },
+                    set: { enabled in Task { await notifications.setRemindersEnabled(enabled) } }
+                ),
+                identifier: "notifications.reminders"
+            )
+            InsetDivider()
+            if reminders.isEmpty {
+                Text("No upcoming reminders.")
+                    .font(.body)
+                    .foregroundStyle(Color.muted)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+                    .accessibilityIdentifier("notifications.reminders.empty")
+            } else {
+                ForEach(Array(reminders.enumerated()), id: \.element.id) { index, reminder in
+                    if index > 0 { InsetDivider() }
+                    reminderRow(reminder)
+                }
+            }
+        } footer: {
+            Text("Add one from an assignment's options in a class, from a Calendar assignment, or from Missing work. Reminders are saved on this iPhone for this account only.")
+                .foregroundStyle(Color.muted)
+        }
+    }
+
+    private func reminderRow(_ reminder: LocalReminder) -> some View {
+        let course = ClassNameFormatter.format(reminder.courseName.replacingOccurrences(of: " ", with: "_"))
+        let time = reminder.fireDate.formatted(date: .abbreviated, time: .shortened)
+        let details = VStack(alignment: .leading, spacing: 2) {
+            Text(reminder.title)
+                .font(.body)
+                .foregroundStyle(Color.ink)
+            Text(course)
+                .font(.subheadline)
+                .foregroundStyle(Color.muted)
+            Text(time)
+                .font(.subheadline)
+                .foregroundStyle(Color.muted)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        let remove = Button("Remove") {
+            Task { await notifications.removeReminder(id: reminder.id) }
+        }
+        .buttonStyle(ActionTextButtonStyle())
+        .accessibilityLabel("Remove reminder \(reminder.title), \(time)")
+        return Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    details
+                    remove
+                }
+            } else {
+                HStack(alignment: .center, spacing: 12) {
+                    details
+                    remove
+                }
+            }
+        }
+        .padding(.vertical, 10)
+        .frame(minHeight: 52)
+    }
+
