@@ -235,3 +235,24 @@ struct NotificationSettingsView: View {
         .frame(minHeight: 52)
     }
 
+    // MARK: - Rows
+
+    private func toggleRow(_ title: String, detail: String, isOn: Binding<Bool>, identifier: String) -> some View {
+        Toggle(isOn: isOn) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(Color.ink)
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .tint(Color.themeAccent)
+        .disabled(!canChange)
+        .padding(.vertical, 8)
+        .frame(minHeight: 52)
+        .accessibilityIdentifier(identifier)
+    }
+}
