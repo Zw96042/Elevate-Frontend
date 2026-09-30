@@ -1081,3 +1081,109 @@ private struct ConnectionArt: View {
     }
 }
 
+// MARK: - Widgets
+
+/// A medium Missing Work widget as it sits on the Home Screen: the count,
+/// then the assignments behind it. Example data with no grades, matching
+/// the widget's own content.
+private struct WidgetsArt: View {
+    var isActive: Bool
+    @State private var hasPlayed = false
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        ArtFrame {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Missing work")
+                        .font(.caption.weight(.semibold))
+                    Spacer(minLength: 8)
+                    Text("8:02 AM")
+                        .font(.caption2)
+                        .foregroundStyle(Color.muted)
+                }
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("2")
+                            .font(.display(size: 40))
+                            .foregroundStyle(Color.gradeAttention)
+                        Text("assignments")
+                            .font(.footnote)
+                            .foregroundStyle(Color.muted)
+                    }
+                    .fixedSize()
+                    VStack(alignment: .leading, spacing: 6) {
+                        item(title: "Lab report", course: "Biology H")
+                        Rule()
+                        item(title: "Essay draft", course: "English 2")
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: 360, alignment: .leading)
+            .background(Color.appBackground, in: shape)
+            .overlay(shape.strokeBorder(Color.rule, lineWidth: 1))
+            .shadow(color: .black.opacity(0.1), radius: 14, y: 6)
+            .padding(.top, 4)
+            .modifier(ArtEntrance(isVisible: hasPlayed, order: 0))
+        }
+        .modifier(PlaysOnce(isActive: isActive, hasPlayed: $hasPlayed))
+    }
+
+    private func item(title: String, course: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title)
+                .font(.footnote.weight(.medium))
+            Text(course)
+                .font(.caption)
+                .foregroundStyle(Color.muted)
+        }
+        .lineLimit(1)
+    }
+}
+
+// MARK: - Notifications
+
+/// What alerts say and the one optional choice: turning on reminders, which
+/// asks iOS for permission only on that tap. Grade-change alerts stay off
+/// until chosen in Settings. Permission is read when the page shows, never
+/// requested.
+private struct NotificationsPage: View {
+    private enum Focus: Hashable { case status, error }
+
+    var isActive: Bool
+
+    @Environment(AppStore.self) private var store
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openURL) private var openURL
+    /// Errors appear only after a tap here, never one left from elsewhere.
+    @State private var didAsk = false
+    @AccessibilityFocusState private var focus: Focus?
+
+    private var notifications: SchoolNotifications { store.notifications }
+
+    private var isAllowed: Bool {
+        switch notifications.authorization {
+        case .authorized, .provisional, .ephemeral: return true
+        default: return false
+        }
+    }
+
+    var body: some View {
+        OnboardingPage(
+            id: "notifications",
+            title: "Alerts, never grades.",
+            message: "Notifications name classes and assignments, never grades. Reminders alert you at times you choose. Grade-change alerts stay off unless you turn them on in Settings.",
+            note: "iOS decides when Elevate can check in the background, so a grade alert can arrive late or not at all.",
+            action: { action }
+        ) {
+            NotificationsArt(isActive: isActive)
+        }
+        // Reads the current permission; this never asks for it.
+        .task(id: isActive && scenePhase == .active) {
+            guard isActive, scenePhase == .active else { return }
+            await notifications.refreshAuthorization()
+        }
+    }
+
