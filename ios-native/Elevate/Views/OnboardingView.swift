@@ -183,3 +183,122 @@ struct OnboardingView: View {
         }
     }
 
+    /// The shared theme, changed the way Settings changes it. Nothing is
+    /// chosen for the person: the page opens on the current theme, and
+    /// leaving it untouched keeps that theme.
+    private var paletteChoice: Binding<ColorPalette> {
+        Binding(
+            get: { themeManager.palette },
+            set: { palette in updateTheme { themeManager.palette = palette } }
+        )
+    }
+
+    private var appearanceChoice: Binding<AppearanceMode> {
+        Binding(
+            get: { themeManager.appearance },
+            set: { appearance in updateTheme { themeManager.appearance = appearance } }
+        )
+    }
+
+    private func updateTheme(_ change: () -> Void) {
+        Motion.perform(reduceMotion ? nil : .easeInOut(duration: 0.25), change)
+    }
+
+    // MARK: - Chrome
+
+    private var topBar: some View {
+        HStack {
+            Text("Elevate")
+                .font(.title3.weight(.bold))
+                .accessibilityAddTraits(.isHeader)
+            Spacer()
+            // Connected students can finish without signing in again. Other
+            // students skip to sign-in; the preview can always close.
+            if mode == .preview || !isLastPage {
+                Button {
+                    if mode == .firstRun && !store.hasCredentials {
+                        showSignIn()
+                    } else {
+                        onFinish()
+                    }
+                } label: {
+                    Text(mode == .firstRun ? "Skip" : "Close")
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .font(.body.weight(.medium))
+                .foregroundStyle(Color.muted)
+                .accessibilityHint(mode == .firstRun
+                    ? (store.hasCredentials ? "Finishes the introduction and opens Elevate." : "Skips the introduction and goes to Skyward sign-in.")
+                    : "")
+                .accessibilityIdentifier("onboarding.skip")
+                .transition(.opacity)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 8)
+        .frame(minHeight: 52)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: isLastPage)
+    }
+
+    private var bottomControls: some View {
+        VStack(spacing: 10) {
+            StepIndicator(count: pageCount, current: page)
+                .padding(.bottom, 10)
+
+            primaryButton
+
+            Group {
+                if isLastPage && store.hasCredentials {
+                    Label("Connected to \(CredentialStore.districtName)", systemImage: "checkmark")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Color.muted)
+                } else {
+                    // Holds the secondary row's height so Continue stays put
+                    // between pages. Must not be greedy (a bare Color.clear
+                    // would take free height away from the pager). Not now
+                    // lives on the sign-in stage.
+                    Text("Not now")
+                        .font(.body.weight(.semibold))
+                        .hidden()
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .frame(maxWidth: 560)
+    }
+
+    @ViewBuilder
+    private var primaryButton: some View {
+        if !isLastPage {
+            Button {
+                advance()
+            } label: {
+                Text("Continue")
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .accessibilityIdentifier("onboarding.next")
+        } else if store.hasCredentials {
+            Button {
+                onFinish()
+            } label: {
+                Text("Continue")
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .accessibilityIdentifier("onboarding.done")
+        } else {
+            Button {
+                showSignIn()
+            } label: {
+                Text("Continue")
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .accessibilityHint("Sign in to \(CredentialStore.districtName) Skyward.")
+            .accessibilityIdentifier("onboarding.connect")
+        }
+    }
+
