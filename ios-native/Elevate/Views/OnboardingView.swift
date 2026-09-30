@@ -399,3 +399,97 @@ private struct OnboardingPage<Art: View, Action: View>: View {
         .accessibilityIdentifier("onboarding.page.\(id)")
     }
 
+    private func content(showsArt: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 28) {
+            if showsArt {
+                // Decorative; the text below carries the meaning.
+                art
+                    .frame(maxWidth: .infinity)
+                    .accessibilityHidden(true)
+            }
+
+            VStack(alignment: .leading, spacing: 20) {
+                PageHeading(title: title, message: message)
+
+                if !steps.isEmpty {
+                    stepList
+                }
+
+                action
+
+                if let note {
+                    Text(note)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .frame(maxWidth: 560, alignment: .leading)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 8)
+    }
+
+    /// One element per step, read with its number.
+    private var stepList: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(steps.enumerated()), id: \.offset) { offset, step in
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text("\(offset + 1)")
+                        .font(.figure(.body, weight: .semibold))
+                        .foregroundStyle(Color.themeAccent)
+                    Text(step)
+                        .font(.body)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("onboarding.page.\(id).step.\(offset + 1)")
+            }
+        }
+    }
+}
+
+extension OnboardingPage where Action == EmptyView {
+    init(
+        id: String,
+        title: String,
+        message: String,
+        steps: [LocalizedStringKey] = [],
+        note: String? = nil,
+        @ViewBuilder art: () -> Art
+    ) {
+        self.init(id: id, title: title, message: message, steps: steps, note: note,
+                  action: { EmptyView() }, art: art)
+    }
+}
+
+/// The theme page: the same built-in themes and display choices as
+/// Settings > Theme, opening on the current ones. The whole introduction
+/// redraws in a theme as it is chosen, which is the preview. A color of the
+/// person's own stays in Settings.
+private struct ThemePage: View {
+    @Binding var palette: ColorPalette
+    @Binding var appearance: AppearanceMode
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                PageHeading(
+                    title: "Choose a look.",
+                    message: "Elevate changes as you tap, and your choice is saved. To keep the current look, just continue. Theme in Settings has these choices too, and your own color."
+                )
+                ThemeChoices(palette: $palette, appearance: $appearance, offersCustomColor: false)
+            }
+            .frame(maxWidth: 560, alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("onboarding.page.theme")
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .softScrollEdges()
+    }
+}
+
