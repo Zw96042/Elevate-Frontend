@@ -129,3 +129,103 @@ struct PastCoursesView: View {
         }
     }
 
+    /// Rows without a source year, or a schedule that couldn't be placed in
+    /// a school year, are not a verified absence of past courses.
+    private func yearsUnavailable(_ report: CourseHistoryReport) -> Bool {
+        if report.hasLegacyMetadata { return true }
+        return !report.hasCurrentYearEvidence && !(store.courses ?? []).isEmpty
+    }
+
+    // MARK: - School year
+
+    @ViewBuilder
+    private func statusLine(choices: [String], year: String?, report: CourseHistoryReport) -> some View {
+        let isRefreshing = store.coursesLoading && store.courses != nil
+        let error = store.courses != nil ? store.coursesError : nil
+        if let year {
+            StatusStrip(
+                lastUpdated: store.coursesLastUpdated,
+                isRefreshing: isRefreshing,
+                error: error
+            ) {
+                await store.refreshCourses(force: true)
+            } control: {
+                ScopePicker(
+                    title: "School year",
+                    valueName: year,
+                    hint: "Selects the school year shown",
+                    identifier: "history.schoolYear",
+                    groups: [ChoiceGroup(title: nil, options: choices.map { yearOption($0, report: report) })],
+                    selection: Binding(get: { year }, set: { choose($0) })
+                )
+            }
+        } else {
+            StatusStrip(
+                lastUpdated: store.coursesLastUpdated,
+                isRefreshing: isRefreshing,
+                error: error
+            ) {
+                await store.refreshCourses(force: true)
+            }
+        }
+    }
+
+    private func yearOption(_ year: String, report: CourseHistoryReport) -> ChoiceOption<String> {
+        // A grade is named only when every course that year agrees on it.
+        let grades = Set(report.courses(inAcademicYear: year).compactMap(\.gradeYear))
+        return ChoiceOption(
+            value: year,
+            title: year,
+            note: grades.count == 1 ? grades.first.map { "Grade \($0)" } : nil,
+            identifier: "history.year.\(year)"
+        )
+    }
+
+    private func choose(_ year: String) {
+        guard year != selectedYear else { return }
+        Motion.perform(Motion.select(reduceMotion)) { selectedYear = year }
+    }
+
+    // MARK: - Rows
+
+    private struct Entry: Identifiable {
+        var index: Int
+        var course: UnifiedCourseData
+        var id: String
+    }
+
+    private func indexedEntries(_ entries: [CourseHistoryDisplayEntry]) -> [Entry] {
+        entries.enumerated().map { index, entry in
+            Entry(index: index, course: entry.course, id: entry.id)
+        }
+    }
+
+    private func courseRows(_ entries: [CourseHistoryDisplayEntry]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !dynamicTypeSize.isAccessibilitySize {
+                // Column names over the semester grades, not a header band.
+                HStack(spacing: 12) {
+                    Spacer(minLength: 0)
+                    Text("Sem 1")
+                        .frame(width: gradeColumn, alignment: .trailing)
+                    Text("Sem 2")
+                        .frame(width: gradeColumn, alignment: .trailing)
+                }
+                .modifier(TableHeaderStyle())
+                .padding(.horizontal, Metrics.page)
+                .padding(.top, 8)
+            }
+            ForEach(indexedEntries(entries)) { entry in
+                if entry.index > 0 {
+                    InsetDivider()
+                        .padding(.horizontal, Metrics.page)
+                }
+                NavigationLink(value: RecordsRoute.pastCourse(entry.course)) {
+                    PastCourseRow(course: entry.course, gradeColumn: gradeColumn)
+                }
+                .buttonStyle(RowPressStyle())
+                .accessibilityIdentifier("history.course.\(entry.index)")
+            }
+        }
+    }
+
