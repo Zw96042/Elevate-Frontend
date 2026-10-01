@@ -213,3 +213,96 @@ struct PersonalCalendarsSheet: View {
         .accessibilityIdentifier("calendars.calendar.\(calendar.title)")
     }
 
+    // MARK: Other states
+
+    private var invitation: some View {
+        SettingsGroup(title: "Your calendars") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Show events from Google, iCloud and the other calendars on this iPhone next to your assignments.")
+                    .font(.body)
+                    .foregroundStyle(Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Show calendars") {
+                    Task { await store.requestAccess() }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(store.isRequestingAccess)
+                .accessibilityIdentifier("calendars.connect")
+                if let error = store.error {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                }
+            }
+            .padding(.vertical, 8)
+        } footer: {
+            Text("iOS asks whether Elevate may see your calendars. \(Self.privacyNote)")
+                .foregroundStyle(Color.muted)
+        }
+    }
+
+    private var noAccess: some View {
+        SettingsGroup(title: "Calendar access") {
+            SettingsRow {
+                Text("Calendars")
+            } accessory: {
+                Text(store.access == .writeOnly ? "Add events only" : "Off")
+                    .foregroundStyle(Color.gradeWarning)
+            }
+            .accessibilityElement(children: .combine)
+            InsetDivider()
+            Button {
+                if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+            } label: {
+                SettingsRow {
+                    Text("Open iOS Settings")
+                } accessory: {
+                    Image(systemName: "arrow.up.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.muted)
+                        .accessibilityHidden(true)
+                }
+            }
+            .buttonStyle(RowPressStyle())
+            .accessibilityIdentifier("calendars.openSettings")
+        } footer: {
+            Text("To show your events, choose Full Access under Calendars in Elevate's settings. \(Self.privacyNote)")
+                .foregroundStyle(Color.muted)
+        }
+    }
+
+    private var restricted: some View {
+        SettingsGroup(title: "Calendar access") {
+            Text("Calendar access is restricted on this iPhone, for example by Screen Time.")
+                .font(.body)
+                .foregroundStyle(Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        } footer: {
+            EmptyView()
+        }
+    }
+}
+
+// MARK: - Event row
+
+/// One event on the selected day: its time, its calendar's color, title,
+/// calendar and location. Opens Apple's event view when it can.
+struct PersonalEventRow: View {
+    var event: PersonalEvent
+    /// The selected day, yyyy-MM-dd, which decides how a long event reads.
+    var day: String
+    var calendar: PersonalCalendarInfo?
+    var onOpen: (() -> Void)?
+    var identifier: String
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .subheadline) private var timeWidth: CGFloat = 66
+
+    private var title: String { event.title.isEmpty ? "Untitled event" : event.title }
+
+    private var detail: String? {
+        let parts = [calendar?.title, event.location].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
