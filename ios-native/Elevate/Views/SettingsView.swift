@@ -3,6 +3,8 @@ import UIKit
 
 struct SettingsView: View {
     @Environment(AppStore.self) private var store
+    /// Owns the School records path when presented from the root.
+    @Environment(AppRouter.self) private var router: AppRouter?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -13,23 +15,73 @@ struct SettingsView: View {
     @State private var cacheStatus: String?
     @State private var dataError: String?
     @AccessibilityFocusState private var dataStatusFocused: Bool
+    @State private var localRecordsPath: [RecordsRoute] = []
+    /// Checks only on an explicit tap in Updates; never on open.
+    @State private var appUpdates = AppUpdateService()
+    @State private var appLock = AppLockStore.shared
+    @State private var isEnablingAppLock = false
+    /// Shown when turning the lock on fails without the store's own error.
+    @State private var appLockMessage: String?
+    @AccessibilityFocusState private var appLockStatusFocused: Bool
+
+    /// The router's path, so `://history` can open Past courses; a local
+    /// path wherever Settings is presented without a router.
+    private var recordsPath: Binding<[RecordsRoute]> {
+        Binding(
+            get: { router?.recordsPath ?? localRecordsPath },
+            set: { path in
+                if let router { router.recordsPath = path } else { localRecordsPath = path }
+            }
+        )
+    }
 
     var body: some View {
-        NavigationStack {
-            List {
-                appearanceSection
-                schoolSection
-                dataSection
-                aboutSection
+        NavigationStack(path: recordsPath) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Metrics.sectionGap) {
+                    accountSection
+                    recordsSection
+                    appearanceSection
+                    notificationsSection
+                    appLockSection
+                    dataSection
+                    updatesSection
+                    aboutSection
+                }
+                .padding(.horizontal, Metrics.page)
+                .padding(.top, 8)
+                .padding(.bottom, 32)
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+            .background(Color.appBackground.ignoresSafeArea())
+            .softScrollEdges()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .accessibilityIdentifier("settings.screen")
+            .navigationDestination(for: RecordsRoute.self) { route in
+                // Each page loads its own data, read-only, when opened.
+                Group {
+                    switch route {
+                    case .pastCourses:
+                        PastCoursesView()
+                    case .pastCourse(let course):
+                        HistoricalCourseDetailView(course: course)
+                    case .documents:
+                        DocumentsView()
+                    case .studentInfo:
+                        StudentInfoView()
+                    case .fees:
+                        FeesView()
+                    }
+                }
+                .toolbar(.visible, for: .navigationBar)
+            }
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                    }
+                        .accessibilityLabel("Close Settings")
+                        .accessibilityIdentifier("settings.done")
                 }
             }
             .alert("Disconnect Skyward?", isPresented: $showingDisconnectConfirmation) {
@@ -53,6 +105,11 @@ struct SettingsView: View {
             }
             .presentationDragIndicator(.visible)
         }
+        // Whichever screen presented Settings, it reopens on its first page.
+        .onDisappear {
+            if !recordsPath.wrappedValue.isEmpty { recordsPath.wrappedValue = [] }
+        }
+        .foregroundStyle(Color.ink)
         .preferredColorScheme(themeManager.appearance.colorScheme)
         .tint(Color.themeAccent)
     }
