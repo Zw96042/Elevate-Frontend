@@ -520,3 +520,91 @@ struct PersonalEventDetailSheet: View {
                         EmptyView()
                     }
 
+                    if let notes = details.notes {
+                        SettingsGroup(title: "Notes") {
+                            Text(notes)
+                                .font(.body)
+                                .foregroundStyle(Color.ink)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 8)
+                        } footer: {
+                            EmptyView()
+                        }
+                    }
+
+                    if let calendarURL = details.calendarAppURL {
+                        Button {
+                            openURL(calendarURL)
+                        } label: {
+                            SettingsRow {
+                                Text("Open in Calendar")
+                                    .foregroundStyle(Color.themeAccent)
+                            } accessory: {
+                                Image(systemName: "arrow.up.right")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(Color.muted)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                        .buttonStyle(RowPressStyle())
+                        .accessibilityHint("Shows this day in the Calendar app, where events can be changed")
+                        .accessibilityIdentifier("event.openCalendar")
+                    }
+                }
+                .padding(.horizontal, Metrics.page)
+                .padding(.top, 4)
+                .padding(.bottom, 32)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+        .background(Color.appBackground.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Color.appBackground)
+        .tint(Color.themeAccent)
+        .foregroundStyle(Color.ink)
+        .preferredColorScheme(themeManager.appearance.colorScheme)
+        // A container, so its identifier doesn't replace its controls'.
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.screen")
+    }
+}
+
+// MARK: - Sheet header
+
+/// A sheet's own title row: the title leading and a round check that
+/// closes it, in place of a navigation bar and a text Done button.
+struct SheetHeader: View {
+    var title: String
+    var doneIdentifier: String
+    var onDone: () -> Void
+
+    @ScaledMetric(relativeTo: .body) private var buttonSize: CGFloat = 36
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(title)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(Color.ink)
+                .accessibilityAddTraits(.isHeader)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: onDone) {
+                Image(systemName: "checkmark")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(Color.onProminentFill)
+                    .frame(width: buttonSize, height: buttonSize)
+                    .background(Circle().fill(Color.prominentFill))
+                    .frame(width: max(44, buttonSize), height: max(44, buttonSize))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(ScopePressStyle())
+            .accessibilityLabel("Done")
+            .accessibilityIdentifier(doneIdentifier)
+        }
+        .padding(.horizontal, Metrics.page)
+        .padding(.top, 18)
+        .padding(.bottom, 6)
+    }
+}
