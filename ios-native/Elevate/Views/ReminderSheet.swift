@@ -107,3 +107,96 @@ struct ReminderSheet: View {
                     .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
                     .accessibilityElement(children: .combine)
 
+                    GroupLabel("When")
+                        .frame(minHeight: 32, alignment: .bottomLeading)
+                        .padding(.top, Metrics.sectionGap - 8)
+                        .padding(.bottom, 4)
+                    DatePicker(
+                        "Remind me",
+                        selection: $fireDate,
+                        in: Date().addingTimeInterval(60)...,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .font(.body)
+                    .padding(.vertical, 6)
+                    .frame(minHeight: 52)
+                    .disabled(savedWithoutAlert)
+                    .accessibilityIdentifier("reminder.date")
+                    footnote(dueDateNote)
+
+                    if !existing.isEmpty {
+                        existingSection
+                    }
+
+                    statusSection
+                        .padding(.top, 16)
+                }
+                .padding(.horizontal, Metrics.page)
+                .padding(.bottom, 24)
+                .background {
+                    Color.clear.contentShape(Rectangle())
+                        .onTapGesture { titleFocused = false }
+                }
+            }
+            .background(Color.appBackground.ignoresSafeArea())
+            .softScrollEdges()
+            .scrollDismissesKeyboard(.interactively)
+            .navigationTitle("Remind Me")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    if !savedWithoutAlert {
+                        Button("Cancel") { dismiss() }
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if savedWithoutAlert {
+                        Button("Done") { dismiss() }
+                            .fontWeight(.semibold)
+                    } else if isSaving {
+                        ProgressView()
+                            .accessibilityLabel("Saving reminder")
+                    } else {
+                        Button("Save", action: save)
+                            .fontWeight(.semibold)
+                            .disabled(!canSave)
+                            .accessibilityIdentifier("reminder.save")
+                    }
+                }
+            }
+            .task { await notifications.refreshAuthorization() }
+            .onChange(of: notifications.accountScope) { _, scope in
+                if scope != request.accountScope { dismiss() }
+            }
+            .sensoryFeedback(.success, trigger: saveRevision)
+        }
+        .tint(Color.themeAccent)
+        .foregroundStyle(Color.ink)
+        .presentationDragIndicator(.visible)
+        .interactiveDismissDisabled(isSaving)
+    }
+
+    // MARK: Rows
+
+    private var titleRow: some View {
+        HStack(spacing: 12) {
+            Text("Title")
+                .font(.body.weight(titleFocused ? .semibold : .regular))
+                .foregroundStyle(titleFocused ? Color.themeAccent : Color.ink)
+                .accessibilityHidden(true)
+            Spacer(minLength: 8)
+            TextField("Assignment", text: $title)
+                .font(.body)
+                .multilineTextAlignment(.trailing)
+                .submitLabel(.done)
+                .focused($titleFocused)
+                .disabled(savedWithoutAlert)
+                .accessibilityLabel("Reminder title")
+                .accessibilityIdentifier("reminder.title")
+        }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 52)
+        .contentShape(Rectangle())
+        .onTapGesture { titleFocused = true }
+    }
+
