@@ -200,3 +200,116 @@ struct ReminderSheet: View {
         .onTapGesture { titleFocused = true }
     }
 
+    /// Names Skyward's own date only when it is a valid school date, and
+    /// always separates it from the reminder's time.
+    private var dueDateNote: String {
+        if let due = request.dueDate {
+            let day = due.formatted(.dateTime.weekday(.wide).month(.wide).day())
+            return "Skyward lists this as due \(day). Your reminder time is separate and doesn't change it."
+        }
+        return "Skyward has no usable due date for this, so the time starts at tomorrow evening. It is your reminder, not a due date."
+    }
+
+    private var existingSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            GroupLabel("Saved reminders")
+                .frame(minHeight: 32, alignment: .bottomLeading)
+                .padding(.top, Metrics.sectionGap - 8)
+                .padding(.bottom, 4)
+            ForEach(Array(existing.enumerated()), id: \.element.id) { index, reminder in
+                if index > 0 { InsetDivider() }
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(reminder.title)
+                            .font(.body)
+                        Text(reminder.fireDate.formatted(date: .abbreviated, time: .shortened))
+                            .font(.subheadline)
+                            .foregroundStyle(Color.muted)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Button("Remove") {
+                        Task { await notifications.removeReminder(id: reminder.id) }
+                    }
+                    .buttonStyle(ActionTextButtonStyle())
+                    .accessibilityLabel("Remove reminder at \(reminder.fireDate.formatted(date: .abbreviated, time: .shortened))")
+                }
+                .padding(.vertical, 8)
+                .frame(minHeight: 52)
+            }
+        }
+    }
+
+    /// Permission, the reminders setting, and the outcome of saving.
+    @ViewBuilder
+    private var statusSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let saveMessage {
+                Label {
+                    Text(saveMessage)
+                } icon: {
+                    Image(systemName: savedWithoutAlert ? "checkmark" : "exclamationmark.circle")
+                        .foregroundStyle(savedWithoutAlert ? Color.ink : Color.gradeAttention)
+                }
+                .font(.footnote)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("reminder.status")
+            }
+            if !notifications.remindersEnabled {
+                footnote("Reminders are turned off in Notification settings. Saving keeps this reminder on this iPhone without an alert.")
+                Button("Turn on reminders") {
+                    Task { await notifications.setRemindersEnabled(true) }
+                }
+                .buttonStyle(ActionTextButtonStyle())
+                .disabled(notifications.isRequestingPermission)
+            } else if notifications.authorization == .denied {
+                footnote("Notifications are off for Elevate in iOS Settings. A saved reminder won't alert until you allow them.")
+                Button("Open iOS Settings") {
+                    if let url = URL(string: UIApplication.openNotificationSettingsURLString) { openURL(url) }
+                }
+                .buttonStyle(ActionTextButtonStyle())
+            } else if notifications.authorization == .notDetermined {
+                footnote("Saving asks iOS for permission to alert you. The reminder stays on this iPhone for this account.")
+            } else {
+                footnote("Saved on this iPhone for this account. Elevate never sends it to Skyward.")
+            }
+        }
+    }
+
+    private func footnote(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 6)
+    }
+
+    private func save() {
+        guard canSave else { return }
+        titleFocused = false
+        saveMessage = nil
+        isSaving = true
+        let title = trimmedTitle
+        let date = fireDate
+        Task {
+            let saved = await notifications.saveReminder(
+                course: request.course, term: request.term,
+                assignmentID: request.assignmentID, title: title, fireDate: date, expectedAccountScope: request.accountScope
+            )
+            isSaving = false
+            guard saved else {
+                saveMessage = notifications.error ?? "The reminder couldn't be saved."
+                return
+            }
+            saveRevision += 1
+            if let error = notifications.error {
+                // Saved locally, but no alert is scheduled. Say so in place.
+                saveMessage = error
+                savedWithoutAlert = true
+            } else {
+                dismiss()
+            }
+        }
+    }
+}
