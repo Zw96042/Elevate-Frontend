@@ -428,3 +428,103 @@ struct HistoricalCourseDetailView: View {
         ].filter { $0.lines.contains { $0.value != nil } }
     }
 
+    var body: some View {
+        let shown = parts
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                    .padding(.top, 12)
+
+                if shown.isEmpty {
+                    EmptyStateView(
+                        title: "No posted grades",
+                        message: "Skyward lists no quarter, exam, or semester grades for this course."
+                    )
+                    .padding(.top, 12)
+                } else {
+                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, part in
+                        section(part)
+                            .padding(.top, index == 0 ? Metrics.sectionGap : 20)
+                    }
+                }
+
+                Text("Posted grades from Skyward.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 16)
+            }
+            .padding(.horizontal, Metrics.page)
+            .padding(.bottom, 32)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Color.appBackground.ignoresSafeArea())
+        .navigationTitle("Course")
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("history.detail")
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(name)
+                .font(.title2.bold())
+                .foregroundStyle(Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            if let year = course.academicYear {
+                Text(year)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.muted)
+                    .accessibilityLabel("School year \(spokenSchoolYear(year))")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func section(_ part: Part) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            GroupLabel(part.title)
+            ForEach(Array(part.lines.enumerated()), id: \.element.id) { row, line in
+                // A semester grade sums up the lines above it.
+                if line.isSemester && row > 0 { InsetDivider() }
+                gradeLine(line)
+            }
+        }
+    }
+
+    private func gradeLine(_ line: Line) -> some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 2) {
+                    lineLabel(line)
+                    lineValue(line)
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    lineLabel(line)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    lineValue(line)
+                }
+            }
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(line.label)
+        .accessibilityValue(PostedGrade.spoken(line.value))
+    }
+
+    private func lineLabel(_ line: Line) -> some View {
+        Text(line.label)
+            .font(line.isSemester ? Font.body.weight(.medium) : Font.body)
+            .foregroundStyle(Color.ink)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func lineValue(_ line: Line) -> some View {
+        Text(PostedGrade.shown(line.value))
+            .font(.figure(.body, weight: line.isSemester ? .semibold : .medium))
+            .foregroundStyle(line.value == nil ? Color.muted : Color.ink)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
