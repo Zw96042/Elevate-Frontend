@@ -306,3 +306,97 @@ struct PersonalEventRow: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    private var color: Color {
+        calendar.map { Color(personal: $0.color) } ?? Color.muted
+    }
+
+    private var span: PersonalEventSpan {
+        PersonalEventDays.span(of: event, on: day, calendar: PersonalEventDays.dayCalendar)
+    }
+
+    private static func time(_ date: Date) -> String {
+        date.formatted(date: .omitted, time: .shortened)
+    }
+
+    /// The first line and the quieter second line of the time column.
+    private var times: (String, String?) {
+        switch span {
+        case .allDay: return ("All day", nil)
+        case .timed(let start, let end): return (Self.time(start), start == end ? nil : Self.time(end))
+        case .starts(let start): return (Self.time(start), "Starts")
+        case .ends(let end): return ("Until", Self.time(end))
+        }
+    }
+
+    private var spokenTime: String {
+        switch span {
+        case .allDay: return "All day"
+        case .timed(let start, let end):
+            return start == end ? Self.time(start) : "\(Self.time(start)) to \(Self.time(end))"
+        case .starts(let start): return "Starts at \(Self.time(start))"
+        case .ends(let end): return "Until \(Self.time(end))"
+        }
+    }
+
+    private var spokenLabel: String {
+        var parts = [title, spokenTime]
+        if let name = calendar?.title, !name.isEmpty { parts.append("\(name) calendar") }
+        if let location = event.location { parts.append(location) }
+        return parts.joined(separator: ", ")
+    }
+
+    var body: some View {
+        if let onOpen {
+            Button(action: onOpen) { content(showsChevron: true) }
+                .buttonStyle(RowPressStyle())
+                .accessibilityLabel(spokenLabel)
+                .accessibilityHint("Shows the event's details")
+                .accessibilityIdentifier(identifier)
+        } else {
+            content(showsChevron: false)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(spokenLabel)
+                .accessibilityIdentifier(identifier)
+        }
+    }
+
+    private func content(showsChevron: Bool) -> some View {
+        let stacked = dynamicTypeSize.isAccessibilitySize
+        return HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                if !stacked { timeColumn.frame(width: timeWidth, alignment: .leading) }
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(color)
+                    .frame(width: 3)
+                    .frame(maxHeight: .infinity)
+                VStack(alignment: .leading, spacing: 3) {
+                    if stacked {
+                        Text([times.0, times.1].compactMap { $0 }.joined(separator: " – "))
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Color.ink)
+                    }
+                    Text(title)
+                        .font(.body)
+                        .foregroundStyle(Color.ink)
+                    if let detail {
+                        Text(detail)
+                            .font(.subheadline)
+                            .foregroundStyle(Color.muted)
+                    }
+                }
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            if showsChevron {
+                Image(systemName: "chevron.forward")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.faint)
+            }
+        }
+        .padding(.horizontal, Metrics.page)
+        .padding(.vertical, Metrics.rowPadding)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
