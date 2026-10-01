@@ -320,3 +320,111 @@ private struct PastCourseRow: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+    private var name: String {
+        ClassNameFormatter.format(course.courseName.replacingOccurrences(of: " ", with: "_"))
+    }
+
+
+    private var sm1: String? { PostedGrade.value(course.postedGrades.sm1) }
+    private var sm2: String? { PostedGrade.value(course.postedGrades.sm2) }
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    details
+                    LabeledValue(label: "Semester 1", value: PostedGrade.shown(sm1),
+                                 valueColor: sm1 == nil ? Color.muted : nil)
+                    LabeledValue(label: "Semester 2", value: PostedGrade.shown(sm2),
+                                 valueColor: sm2 == nil ? Color.muted : nil)
+                }
+            } else {
+                HStack(alignment: .center, spacing: 12) {
+                    details
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    grade(sm1)
+                    grade(sm2)
+                }
+            }
+        }
+        .padding(.horizontal, Metrics.page)
+        .padding(.vertical, Metrics.rowPadding)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityName)
+        .accessibilityValue("Semester 1 \(PostedGrade.spoken(sm1)), Semester 2 \(PostedGrade.spoken(sm2))")
+        .accessibilityHint("Shows posted grades")
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(name)
+                .font(.body.weight(.medium))
+                .foregroundStyle(Color.ink)
+                .multilineTextAlignment(.leading)
+                .lineLimit(dynamicTypeSize >= .xxxLarge ? nil : 2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func grade(_ value: String?) -> some View {
+        Text(PostedGrade.shown(value))
+            .font(.figure(.body))
+            .foregroundStyle(value == nil ? Color.muted : Color.ink)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .frame(width: gradeColumn, alignment: .trailing)
+    }
+
+    private var accessibilityName: String {
+        name
+    }
+}
+
+// MARK: - Course
+
+/// A past course's posted grades, read-only: each semester's quarters,
+/// exam and semester grade, as Skyward reported them.
+struct HistoricalCourseDetailView: View {
+    var course: UnifiedCourseData
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private struct Line: Identifiable {
+        var label: String
+        var value: String?
+        var isSemester = false
+        var id: String { label }
+    }
+
+    private struct Part: Identifiable {
+        var title: String
+        var lines: [Line]
+        var id: String { title }
+    }
+
+    private var name: String {
+        ClassNameFormatter.format(course.courseName.replacingOccurrences(of: " ", with: "_"))
+    }
+
+
+    /// Semesters with at least one posted value; an empty semester is left out.
+    private var parts: [Part] {
+        let grades = course.postedGrades
+        return [
+            Part(title: "Fall semester", lines: [
+                Line(label: "Quarter 1", value: PostedGrade.value(grades.rc1)),
+                Line(label: "Quarter 2", value: PostedGrade.value(grades.rc2)),
+                Line(label: "Exam 1", value: PostedGrade.value(grades.ex1)),
+                Line(label: "Semester 1", value: PostedGrade.value(grades.sm1), isSemester: true),
+            ]),
+            Part(title: "Spring semester", lines: [
+                Line(label: "Quarter 3", value: PostedGrade.value(grades.rc3)),
+                Line(label: "Quarter 4", value: PostedGrade.value(grades.rc4)),
+                Line(label: "Exam 2", value: PostedGrade.value(grades.ex2)),
+                Line(label: "Semester 2", value: PostedGrade.value(grades.sm2), isSemester: true),
+            ]),
+        ].filter { $0.lines.contains { $0.value != nil } }
+    }
+
