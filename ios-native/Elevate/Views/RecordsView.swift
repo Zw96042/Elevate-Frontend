@@ -103,3 +103,59 @@ struct RecordsView: View {
         .scrollBounceBehavior(.basedOnSize)
     }
 
+    /// The whole cell is the link; it takes the row pressed fill only while
+    /// touched.
+    private func cell(_ destination: Destination) -> some View {
+        NavigationLink(value: destination.route) {
+            RecordCell(destination: destination)
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityIdentifier(destination.identifier)
+    }
+}
+
+/// One page as an open grid cell: its symbol in the action color, the page
+/// name, and a short muted line naming what it holds. Text starts at the page
+/// margin and wraps rather than truncating.
+private struct RecordCell: View {
+    var destination: RecordsView.Destination
+    @ScaledMetric(relativeTo: .title2) private var symbolHeight: CGFloat = 28
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Image(systemName: destination.symbol)
+                .font(.title2)
+                .foregroundStyle(Color.themeAccent)
+                .frame(height: symbolHeight, alignment: .leading)
+                .accessibilityHidden(true)
+            Text(destination.title)
+                .font(.headline)
+                .foregroundStyle(Color.ink)
+                .padding(.top, 12)
+            Text(destination.note)
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .padding(.top, 2)
+        }
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, Metrics.page)
+        .padding(.vertical, 22)
+        .frame(maxWidth: .infinity, minHeight: 44, maxHeight: .infinity, alignment: .topLeading)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The hairline between the grid's columns, the height of its row.
+private struct ColumnRule: View {
+    @Environment(\.displayScale) private var displayScale
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.rule)
+            .frame(width: 1 / max(1, displayScale))
+            .frame(maxHeight: .infinity)
+            .accessibilityHidden(true)
+    }
+}
