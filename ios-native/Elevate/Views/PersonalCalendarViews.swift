@@ -400,3 +400,123 @@ struct PersonalEventRow: View {
         .contentShape(Rectangle())
     }
 
+    private var timeColumn: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(times.0)
+                .font(.subheadline.weight(.medium))
+                .monospacedDigit()
+                .foregroundStyle(Color.ink)
+            if let second = times.1 {
+                Text(second)
+                    .font(.footnote)
+                    .monospacedDigit()
+                    .foregroundStyle(Color.muted)
+            }
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+    }
+}
+
+// MARK: - Event detail
+
+/// A read-only view of one event. Elevate never changes or deletes events;
+/// "Open in Calendar" leads to the app that can.
+struct PersonalEventDetailSheet: View {
+    var details: PersonalEventDetails
+    var calendar: PersonalCalendarInfo?
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+    @State private var themeManager = ThemeManager.shared
+
+    private var event: PersonalEvent { details.event }
+
+    /// "Friday, October 9", or both ends of a longer event.
+    private var when: [String] {
+        let day = Date.FormatStyle().weekday(.wide).month(.wide).day()
+        let time = Date.FormatStyle(date: .omitted, time: .shortened)
+        let last = PersonalEventDays.lastInstant(event)
+        let sameDay = PersonalEventDays.dayCalendar.isDate(event.start, inSameDayAs: last)
+        if event.isAllDay {
+            return sameDay ? [event.start.formatted(day), "All day"]
+                : ["\(event.start.formatted(day)) –", last.formatted(day)]
+        }
+        if sameDay {
+            let range = event.start == event.end ? event.start.formatted(time)
+                : "\(event.start.formatted(time)) – \(event.end.formatted(time))"
+            return [event.start.formatted(day), range]
+        }
+        return ["\(event.start.formatted(day)), \(event.start.formatted(time)) –",
+                "\(event.end.formatted(day)), \(event.end.formatted(time))"]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SheetHeader(title: "Event", doneIdentifier: "event.done") { dismiss() }
+            ScrollView {
+                VStack(alignment: .leading, spacing: Metrics.sectionGap) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(event.title.isEmpty ? "Untitled event" : event.title)
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(Color.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityAddTraits(.isHeader)
+                            .accessibilityIdentifier("event.title")
+                        ForEach(when, id: \.self) { line in
+                            Text(line)
+                                .font(.body)
+                                .foregroundStyle(Color.muted)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+
+                    SettingsGroup(title: "Details") {
+                        if let calendar {
+                            SettingsRow {
+                                Text("Calendar")
+                            } accessory: {
+                                HStack(spacing: 8) {
+                                    Circle()
+                                        .fill(Color(personal: calendar.color))
+                                        .frame(width: 10, height: 10)
+                                        .accessibilityHidden(true)
+                                    Text(calendar.title)
+                                        .foregroundStyle(Color.muted)
+                                        .multilineTextAlignment(.trailing)
+                                }
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
+                        if let location = event.location {
+                            if calendar != nil { InsetDivider() }
+                            SettingsRow {
+                                Text("Location")
+                            } accessory: {
+                                Text(location)
+                                    .foregroundStyle(Color.muted)
+                                    .multilineTextAlignment(.trailing)
+                                    .textSelection(.enabled)
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
+                        if let url = details.url {
+                            if calendar != nil || event.location != nil { InsetDivider() }
+                            Link(destination: url) {
+                                SettingsRow {
+                                    Text(url.host() ?? url.absoluteString)
+                                        .lineLimit(1)
+                                } accessory: {
+                                    Image(systemName: "arrow.up.right")
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundStyle(Color.muted)
+                                        .accessibilityHidden(true)
+                                }
+                            }
+                            .buttonStyle(RowPressStyle())
+                            .accessibilityHint("Opens the event's link")
+                        }
+                    } footer: {
+                        EmptyView()
+                    }
+
