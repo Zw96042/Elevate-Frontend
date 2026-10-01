@@ -103,3 +103,113 @@ struct PersonalCalendarInvitation: View {
     }
 }
 
+// MARK: - Calendars sheet
+
+/// Which of the iPhone's calendars appear on the Calendar page, by account.
+struct PersonalCalendarsSheet: View {
+    var store: PersonalCalendarStore
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var themeManager = ThemeManager.shared
+
+    var body: some View {
+        // A plain header on the sheet's own background: no navigation bar,
+        // so nothing blurs over the list as it scrolls.
+        VStack(alignment: .leading, spacing: 0) {
+            SheetHeader(title: "Calendars", doneIdentifier: "calendars.done") { dismiss() }
+            ScrollView {
+                VStack(alignment: .leading, spacing: Metrics.sectionGap) {
+                    switch store.access {
+                    case .full: choices
+                    case .notDetermined: invitation
+                    case .writeOnly, .denied: noAccess
+                    case .restricted: restricted
+                    }
+                }
+                .padding(.horizontal, Metrics.page)
+                .padding(.top, 4)
+                .padding(.bottom, 32)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+        .background(Color.appBackground.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Color.appBackground)
+        .tint(Color.themeAccent)
+        .foregroundStyle(Color.ink)
+        .preferredColorScheme(themeManager.appearance.colorScheme)
+        // A container, so its identifier doesn't replace its controls'.
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("calendars.screen")
+        .task(id: scenePhase) {
+            // Returning from iOS Settings may have changed access.
+            if scenePhase == .active { store.refreshAccess() }
+        }
+    }
+
+    private static let privacyNote = "Elevate reads these events from this iPhone while you use Calendar. They aren't saved or sent anywhere."
+    private static let googleNote = "To include Google Calendar, add your Google account to the iPhone in Settings › Apps › Calendar › Calendar Accounts."
+
+    // MARK: Full access
+
+    @ViewBuilder
+    private var choices: some View {
+        Text("Choose which of this iPhone's calendars appear next to your assignments.")
+            .font(.subheadline)
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.bottom, -Metrics.sectionGap + 8)
+
+        let groups = PersonalCalendarGroup.groups(store.calendars)
+        if groups.isEmpty {
+            SettingsGroup(title: "Calendars") {
+                Text("There are no calendars on this iPhone yet.")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.muted)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            } footer: {
+                Text(Self.googleNote)
+                    .foregroundStyle(Color.muted)
+            }
+        } else {
+            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                SettingsGroup(title: group.title) {
+                    ForEach(Array(group.calendars.enumerated()), id: \.element.id) { row, calendar in
+                        if row > 0 { InsetDivider() }
+                        calendarRow(calendar)
+                    }
+                } footer: {
+                    if index == groups.count - 1 {
+                        Text("\(Self.privacyNote) \(Self.googleNote)")
+                            .foregroundStyle(Color.muted)
+                    }
+                }
+            }
+        }
+    }
+
+    private func calendarRow(_ calendar: PersonalCalendarInfo) -> some View {
+        Toggle(isOn: Binding(
+            get: { store.selection.isShown(calendar) },
+            set: { store.setShown($0, for: calendar) }
+        )) {
+            HStack(spacing: 12) {
+                Circle()
+                    .fill(Color(personal: calendar.color))
+                    .frame(width: 12, height: 12)
+                    .accessibilityHidden(true)
+                Text(calendar.title.isEmpty ? "Untitled calendar" : calendar.title)
+                    .font(.body)
+                    .foregroundStyle(Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .tint(Color.themeAccent)
+        .padding(.vertical, 8)
+        .frame(minHeight: 52)
+        .accessibilityIdentifier("calendars.calendar.\(calendar.title)")
+    }
+
