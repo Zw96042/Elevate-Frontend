@@ -114,6 +114,121 @@ struct SettingsView: View {
         .tint(Color.themeAccent)
     }
 
+    // MARK: - Account
+
+    /// "Skyward" with the district beneath it, and the connection state as
+    /// the row's value. The state joins the text at accessibility sizes.
+    private var accountSection: some View {
+        SettingsGroup(title: "Account") {
+            NavigationLink {
+                SkywardAccountView()
+            } label: {
+                SettingsRow {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Skyward")
+                        Text(CredentialStore.districtName)
+                            .font(.subheadline)
+                            .foregroundStyle(Color.muted)
+                        if dynamicTypeSize.isAccessibilitySize {
+                            accountStatus
+                        }
+                    }
+                } accessory: {
+                    HStack(spacing: 10) {
+                        if !dynamicTypeSize.isAccessibilitySize {
+                            accountStatus
+                        }
+                        RowChevron()
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+            .buttonStyle(RowPressStyle())
+            .accessibilityIdentifier("settings.account")
+
+            if !store.hasCredentials {
+                Text("Credentials are verified before they are stored on this iPhone.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, 10)
+            }
+
+            InsetDivider()
+
+            Link(
+                destination: URL(string: "https://docs.google.com/forms/d/e/1FAIpQLSdqtqDEwLQY03KHS_LZDpjOjTcP_j8MCIizaMRMHTS6T5tOzQ/viewform?usp=dialog")!
+            ) {
+                externalLinkLabel("Request another district")
+            }
+            .buttonStyle(RowPressStyle())
+        } footer: {
+            EmptyView()
+        }
+    }
+
+    private var accountStatusText: String {
+        if store.hasCredentials { return "Connected" }
+        if store.isUsingSampleData { return "Sample data" }
+        return "Login required"
+    }
+
+    private var accountStatus: some View {
+        Text(accountStatusText)
+            .font(.body)
+            .foregroundStyle(store.hasCredentials ? Color.muted : Color.gradeWarning)
+    }
+
+    // MARK: - School records
+
+    private struct RecordDestination {
+        var route: RecordsRoute
+        var title: String
+        var note: String
+        var identifier: String
+    }
+
+    /// Titles match the screens they open. Identifiers are unchanged from
+    /// the former Records tab.
+    private static let recordDestinations: [RecordDestination] = [
+        RecordDestination(route: .pastCourses, title: "Past courses",
+                          note: "Grades from earlier years", identifier: "records.pastCourses"),
+        RecordDestination(route: .documents, title: "Documents",
+                          note: "Report cards and files", identifier: "records.documents"),
+        RecordDestination(route: .studentInfo, title: "Student Info",
+                          note: "Enrollment and contacts", identifier: "records.studentInfo"),
+        RecordDestination(route: .fees, title: "Fees",
+                          note: "Charges and payments", identifier: "records.fees"),
+    ]
+
+    private var recordsSection: some View {
+        SettingsGroup(title: "School records") {
+            ForEach(Array(Self.recordDestinations.enumerated()), id: \.element.identifier) { index, destination in
+                if index > 0 { InsetDivider() }
+                NavigationLink(value: destination.route) {
+                    SettingsRow {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(destination.title)
+                            Text(destination.note)
+                                .font(.subheadline)
+                                .foregroundStyle(Color.muted)
+                        }
+                    } accessory: {
+                        RowChevron()
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+                .buttonStyle(RowPressStyle())
+                .accessibilityIdentifier(destination.identifier)
+            }
+        } footer: {
+            EmptyView()
+        }
+    }
+
+    // MARK: - Appearance
+
     private var appearanceSection: some View {
         @Bindable var theme = themeManager
         return Section {
