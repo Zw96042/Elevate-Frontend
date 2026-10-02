@@ -261,6 +261,117 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Notifications
+
+    private var notificationsSection: some View {
+        SettingsGroup(title: "Notifications") {
+            NavigationLink {
+                NotificationSettingsView()
+            } label: {
+                SettingsRow {
+                    Text("Notification settings")
+                } accessory: {
+                    HStack(spacing: 10) {
+                        if !dynamicTypeSize.isAccessibilitySize {
+                            Text(notificationSummary)
+                                .foregroundStyle(Color.muted)
+                        }
+                        RowChevron()
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+            .buttonStyle(RowPressStyle())
+            .disabled(!store.canShowData)
+            .accessibilityIdentifier("settings.notifications")
+        } footer: {
+            EmptyView()
+        }
+    }
+
+    /// Which of the two kinds of alert is on, from the account's saved choice.
+    private var notificationSummary: String {
+        let notifications = store.notifications
+        switch (notifications.gradeChangesEnabled, notifications.remindersEnabled) {
+        case (true, true): return "Grades, reminders"
+        case (true, false): return "Grades"
+        case (false, true): return "Reminders"
+        case (false, false): return "Off"
+        }
+    }
+
+    // MARK: - App lock
+
+    /// Off unless chosen. Turning it on waits for iOS to confirm Face ID,
+    /// Touch ID, or the passcode, and only that confirmation saves it; the
+    /// switch stays off meanwhile. Turning it off is immediate, since Settings
+    /// is reachable only while Elevate is unlocked.
+    private var appLockSection: some View {
+        let isBusy = isEnablingAppLock || appLock.isAuthenticating
+        return SettingsGroup(title: "App lock") {
+            Toggle(isOn: Binding(
+                get: { appLock.isEnabled },
+                set: { enabled in setAppLock(enabled) }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Require \(appLock.authenticationName)")
+                        .font(.body)
+                        .foregroundStyle(Color.ink)
+                    Text(isBusy
+                         ? "Waiting for \(appLock.authenticationName)…"
+                         : "Ask for \(AppLockCopy.method(for: appLock)) when opening Elevate.")
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(Color.themeAccent)
+            .disabled(isBusy || appLock.isLocked)
+            .padding(.vertical, 8)
+            .frame(minHeight: 52)
+            .accessibilityIdentifier("settings.appLock")
+        } footer: {
+            VStack(alignment: .leading, spacing: 6) {
+                if let message = appLock.error ?? appLockMessage {
+                    Label(message, systemImage: "exclamationmark.circle")
+                        .foregroundStyle(Color.gradeAttention)
+                        .accessibilityFocused($appLockStatusFocused)
+                        .accessibilityIdentifier("settings.appLock.error")
+                }
+                Text("This locks Elevate's screens. Notifications and widgets stay visible, as iOS shows them.")
+                    .foregroundStyle(Color.muted)
+            }
+        }
+    }
+
+    private func setAppLock(_ enabled: Bool) {
+        appLockMessage = nil
+        appLock.clearError()
+        guard enabled else {
+            if !appLock.isLocked { appLock.disable() }
+            return
+        }
+        guard !isEnablingAppLock, !appLock.isAuthenticating else { return }
+        isEnablingAppLock = true
+        Task {
+            let didEnable = await appLock.enable()
+            isEnablingAppLock = false
+            guard !didEnable else { return }
+            if appLock.error == nil { appLockMessage = "App lock wasn't turned on." }
+            focusAppLockStatus()
+        }
+    }
+
+    private func focusAppLockStatus() {
+        appLockStatusFocused = false
+        Task { @MainActor in
+            await Task.yield()
+            appLockStatusFocused = true
+        }
+    }
+
+    // MARK: - Data
+
     private var dataSection: some View {
         Section {
             Button {
