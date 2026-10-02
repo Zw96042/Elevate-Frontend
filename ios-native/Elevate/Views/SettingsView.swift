@@ -566,84 +566,12 @@ struct SettingsGroup<Content: View, Footer: View>: View {
             GroupLabel(title)
             VStack(spacing: 0) {
                 content()
-                    .font(.body)
-                    .textFieldStyle(.plain)
-                    .tint(Color.themeAccent)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.leading, 14)
-            .padding(.trailing, 8)
-            .padding(.vertical, 6)
-            .frame(minHeight: 56)
-            .background(isFocused ? Color.themeAccent.opacity(0.055) : .clear)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                focusedField = field
-            }
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isFocused)
-        }
-
-        private var connectButton: some View {
-            Button {
-                Task { await save() }
-            } label: {
-                HStack(spacing: 8) {
-                    if verifying {
-                        ProgressView()
-                            .tint(.white)
-                    }
-                    Text(verifying
-                        ? "Verifying…"
-                        : (store.hasCredentials ? "Update connection" : "Connect to Skyward"))
-                        .font(.body.weight(.semibold))
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.roundedRectangle(radius: 14))
-            .controlSize(.large)
-            .tint(Color.prominentFill)
-            .disabled(!canSubmit)
-            .accessibilityLabel(verifying ? "Verifying" : "Verify and save Skyward login")
-        }
-
-        private var canSubmit: Bool {
-            !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                && !password.isEmpty
-                && !verifying
-        }
-
-        private func save() async {
-            guard canSubmit else { return }
-            focusedField = nil
-            verifying = true
-            errorMessage = nil
-            errorFocused = false
-            let successAnnouncement = store.hasCredentials
-                ? "Skyward connection updated"
-                : "Skyward connected"
-
-            let success = await store.saveCredentials(username: username, password: password)
-            verifying = false
-
-            if success {
-                UIAccessibility.post(notification: .announcement, argument: successAnnouncement)
-                dismiss()
-            } else {
-                let message = store.authError ?? "Couldn't verify this login."
-                if reduceMotion {
-                    errorMessage = message
-                } else {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        errorMessage = message
-                    }
-                }
-                Task { @MainActor in
-                    await Task.yield()
-                    errorFocused = true
-                }
+            if Footer.self != EmptyView.self {
+                footer()
+                    .font(.footnote)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
             }
         }
     }
