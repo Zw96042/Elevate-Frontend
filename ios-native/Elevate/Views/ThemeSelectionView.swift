@@ -197,3 +197,81 @@ private struct ThemeSpecimen: View {
         .accessibilityHidden(true)
     }
 
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: height * 0.06) {
+            Text(verbatim: "96")
+                .font(.system(size: height * 0.3, weight: .semibold).monospacedDigit())
+                .foregroundStyle(Color(hex: tones.ink))
+            Text(verbatim: "Q1")
+                .font(.system(size: height * 0.19))
+                .foregroundStyle(Color(hex: tones.muted))
+            Spacer(minLength: 0)
+            Image(systemName: "checkmark")
+                .font(.system(size: height * 0.19, weight: .bold))
+                .foregroundStyle(Color(hex: tones.action))
+        }
+        .lineLimit(1)
+    }
+
+    private var chart: some View {
+        let line = Color(hex: tones.chartLine)
+        return ZStack {
+            SpecimenCurve(closesArea: true)
+                .fill(LinearGradient(
+                    colors: [line.opacity(tones.chartFill), line.opacity(0)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ))
+            SpecimenCurve()
+                .stroke(line, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+        }
+    }
+
+    private var button: some View {
+        RoundedRectangle(cornerRadius: height * 0.06, style: .continuous)
+            .fill(Color(hex: tones.buttonFill))
+            .frame(width: width * 0.3, height: height * 0.2)
+            .overlay {
+                Capsule()
+                    .fill(Color(hex: tones.onButton))
+                    .frame(width: width * 0.13, height: max(1.5, height * 0.035))
+            }
+    }
+}
+
+/// The same curve shape as the GPA chart, at specimen size, or the area
+/// beneath it for the wash.
+private struct SpecimenCurve: Shape {
+    var closesArea = false
+
+    func path(in rect: CGRect) -> Path {
+        let curve = GPACurve(values: [90.5, 93.8, 92.6, 96.4], size: rect.size, inset: 0)
+        return (closesArea ? curve.area : curve.line)
+            .offsetBy(dx: rect.minX, dy: rect.minY)
+    }
+}
+
+/// Light and dark specimens side by side, light first.
+private struct ThemeSpecimenPair: View {
+    var palette: ColorPalette
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ThemeSpecimen(tones: palette.light)
+            ThemeSpecimen(tones: palette.dark)
+        }
+    }
+}
+
+private extension Color {
+    var rgbHex: UInt32? {
+        let resolved = UIColor(self).resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        guard resolved.getRed(&red, green: &green, blue: &blue, alpha: nil) else { return nil }
+        return (UInt32((red * 255).rounded()) << 16)
+            | (UInt32((green * 255).rounded()) << 8)
+            | UInt32((blue * 255).rounded())
+    }
+}
