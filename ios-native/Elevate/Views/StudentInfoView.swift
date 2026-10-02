@@ -217,3 +217,109 @@ private struct ProfileSection: Identifiable {
         return sections
     }
 
+    /// Skyward's "Call" is the student's own phone number.
+    private static func contactLine(_ field: StudentInfoField) -> Line {
+        let label = SourceFieldText.label(field.label)
+        return Line(label: SourceFieldText.key(label) == "call" ? "Phone" : label, value: field.value)
+    }
+
+    /// An enrollment's "Phone" is the school's, so it is named apart from
+    /// the student's own. Staff names are set as people's names.
+    private static func enrollmentLine(_ field: StudentInfoField) -> Line {
+        let label = SourceFieldText.label(field.label)
+        switch SourceFieldText.key(label) {
+        case "phone":
+            return Line(label: "School phone", value: field.value)
+        case "principal", "counselor", "disciplineofficer":
+            let name = SourceFieldText.value(field.value).map(PersonName.display) ?? field.value
+            return Line(label: label, value: name)
+        default:
+            return Line(label: label, value: field.value)
+        }
+    }
+}
+
+/// The photo and the student's name, side by side, or the photo above the
+/// name at accessibility sizes. A photo that couldn't load leaves a quiet
+/// placeholder and a short note; the rest of the page is unaffected.
+private struct StudentHeader: View {
+    var info: StudentInfoData
+    var photoWidth: CGFloat
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let image = info.photoData.flatMap(UIImage.init(data:))
+        let photoFailed = image == nil && (info.photoLoadFailed || info.photoData != nil)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 12) {
+                    StudentPhoto(image: image, width: photoWidth)
+                    nameBlock(photoFailed: photoFailed)
+                }
+            } else {
+                HStack(alignment: .center, spacing: 16) {
+                    StudentPhoto(image: image, width: photoWidth)
+                    nameBlock(photoFailed: photoFailed)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func nameBlock(photoFailed: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(PersonName.display(info.name))
+                .font(.title2.bold())
+                .foregroundStyle(Color.ink)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("studentInfo.name")
+            if photoFailed {
+                Text("Photo couldn't be loaded")
+                    .font(.footnote)
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("studentInfo.photoUnavailable")
+            }
+        }
+    }
+}
+
+/// The school photo, scaled to fit a portrait frame so nothing is cropped,
+/// or a quiet person placeholder in the same frame.
+private struct StudentPhoto: View {
+    var image: UIImage?
+    var width: CGFloat
+
+    private var height: CGFloat { width * 4 / 3 }
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous)
+    }
+
+    var body: some View {
+        if let image {
+            Image(uiImage: image)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .clipShape(shape)
+                .frame(maxWidth: width, maxHeight: height)
+                .accessibilityLabel("Student photo")
+                .accessibilityAddTraits(.isImage)
+                .accessibilityIdentifier("studentInfo.photo")
+        } else {
+            shape
+                .fill(Color.well)
+                .frame(width: width, height: height)
+                .overlay {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: width * 0.42))
+                        .foregroundStyle(Color.faint)
+                }
+                .accessibilityHidden(true)
+        }
+    }
+}
