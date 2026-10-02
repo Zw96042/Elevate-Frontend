@@ -231,7 +231,7 @@ struct SettingsView: View {
 
     private var appearanceSection: some View {
         @Bindable var theme = themeManager
-        return Section {
+        return SettingsGroup(title: "Appearance") {
             NavigationLink {
                 AppearanceSettingsView(
                     palette: Binding(
@@ -244,90 +244,20 @@ struct SettingsView: View {
                     )
                 )
             } label: {
-                Group {
-                    if dynamicTypeSize >= .xxxLarge {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Appearance")
-                                .foregroundStyle(.primary)
-                                .lineLimit(nil)
-                            Text("\(theme.palette.name) · \(theme.appearance.rawValue)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(nil)
-                        }
-                    } else {
-                        HStack(spacing: 12) {
-                            settingsSymbol("circle.lefthalf.filled")
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Appearance")
-                                    .foregroundStyle(.primary)
-                                Text("\(theme.palette.name) · \(theme.appearance.rawValue)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer(minLength: 8)
-                            PaletteSwatch(palette: theme.palette, size: 20)
-                        }
+                SettingsRow {
+                    Text("Theme")
+                } accessory: {
+                    HStack(spacing: 10) {
+                        Text(theme.palette.name)
+                            .foregroundStyle(Color.muted)
+                        RowChevron()
                     }
                 }
             }
-        }
-    }
-
-    private var schoolSection: some View {
-        Section {
-            NavigationLink {
-                SkywardAccountView()
-            } label: {
-                Group {
-                    if dynamicTypeSize >= .xxxLarge {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(CredentialStore.districtName)
-                                .foregroundStyle(.primary)
-                                .lineLimit(nil)
-                            Text(store.hasCredentials ? "Skyward connected" : "Skyward login required")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(nil)
-                        }
-                    } else {
-                        HStack(spacing: 12) {
-                            settingsSymbol("graduationcap")
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(CredentialStore.districtName)
-                                    .foregroundStyle(.primary)
-                                Text(store.hasCredentials ? "Skyward connected" : "Skyward login required")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer(minLength: 8)
-                            accountStatusSymbol
-                        }
-                    }
-                }
-            }
-
-            Link(
-                destination: URL(string: "https://docs.google.com/forms/d/e/1FAIpQLSdqtqDEwLQY03KHS_LZDpjOjTcP_j8MCIizaMRMHTS6T5tOzQ/viewform?usp=dialog")!
-            ) {
-                if dynamicTypeSize >= .xxxLarge {
-                    Text("Request another district")
-                        .lineLimit(nil)
-                } else {
-                    HStack(spacing: 12) {
-                        settingsSymbol("building.2")
-                        Text("Request another district")
-                        Spacer()
-                        Image(systemName: "arrow.up.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        } header: {
-            Text("School")
+            .buttonStyle(RowPressStyle())
+            .accessibilityIdentifier("settings.appearance")
         } footer: {
-            Text("Credentials are verified before they are stored on this iPhone.")
+            EmptyView()
         }
     }
 
