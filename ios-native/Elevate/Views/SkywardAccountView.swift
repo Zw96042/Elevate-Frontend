@@ -206,3 +206,82 @@ struct SkywardAccountView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private var connectButton: some View {
+        Button {
+            Task { await save() }
+        } label: {
+            HStack(spacing: 8) {
+                if verifying {
+                    ProgressView()
+                        .tint(Color.onProminentFill)
+                }
+                Text(verifying
+                    ? "Verifying…"
+                    : (store.hasCredentials ? "Update connection" : "Connect to Skyward"))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .buttonStyle(PrimaryButtonStyle())
+        .disabled(!canSubmit)
+        .accessibilityLabel(verifying ? "Verifying" : "Verify and save Skyward login")
+        .accessibilityIdentifier("login.submit")
+    }
+
+    private var canSubmit: Bool {
+        !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !password.isEmpty
+            && !verifying
+    }
+
+    private func save() async {
+        guard canSubmit else { return }
+        focusedField = nil
+        verifying = true
+        errorMessage = nil
+        errorFocused = false
+        let successAnnouncement = store.hasCredentials
+            ? "Skyward connection updated"
+            : "Skyward connected"
+
+        let success = await store.saveCredentials(username: username, password: password)
+        verifying = false
+
+        if success {
+            UIAccessibility.post(notification: .announcement, argument: successAnnouncement)
+            if let onConnected {
+                onConnected()
+            } else {
+                dismiss()
+            }
+        } else {
+            let message = store.authError ?? "Couldn't verify this login."
+            if reduceMotion {
+                errorMessage = message
+            } else {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    errorMessage = message
+                }
+            }
+            Task { @MainActor in
+                await Task.yield()
+                errorFocused = true
+            }
+        }
+    }
+}
+
+/// `SkywardAccountView` presented modally, with its own navigation bar.
+/// The account view dismisses this sheet itself after a verified save.
+struct SkywardConnectSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var theme = ThemeManager.shared
+
+    var body: some View {
+        NavigationStack {
+            SkywardAccountView(showsCancel: true)
+        }
+        .tint(Color.themeAccent)
+        .foregroundStyle(Color.ink)
+        .preferredColorScheme(theme.appearance.colorScheme)
+    }
+}
