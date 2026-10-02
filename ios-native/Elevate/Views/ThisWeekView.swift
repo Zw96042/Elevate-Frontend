@@ -117,3 +117,104 @@ struct ThisWeekView: View {
         }
     }
 
+    /// Sleeps until the next America/Chicago day, then moves the week.
+    private func advanceAtNextSchoolDay() async {
+        let calendar = ThisWeekScope.calendar
+        guard let next = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date())) else { return }
+        do { try await Task.sleep(for: .seconds(max(1, next.timeIntervalSinceNow + 1))) } catch { return }
+        now = Date()
+    }
+
+    // MARK: - Scope
+
+    /// The current account, while it is the one this page opened for.
+    private var currentScope: String? {
+        guard store.canShowData, let scope = store.localAccountScope else { return nil }
+        if didCaptureScope, openedScope != scope { return nil }
+        return scope
+    }
+
+    /// Writes need the opened account to still be current everywhere.
+    private var writableScope: String? {
+        guard didCaptureScope, let scope = openedScope, store.localAccountScope == scope,
+              store.planning.accountScope == scope else { return nil }
+        return scope
+    }
+
+    private var showsDone: Bool {
+        guard let scope = currentScope else { return false }
+        return store.planning.accountScope == scope && !store.planning.completionUnavailable
+    }
+
+    /// Marks move work only while they belong to this account and can be
+    /// changed; otherwise every assignment stays in its active group.
+    private var activeDoneIDs: Set<String> {
+        showsDone ? store.planning.completedIDs : []
+    }
+
+    private var canRemind: Bool {
+        guard let scope = currentScope else { return false }
+        return store.notifications.accountScope == scope
+    }
+
+    private var weekReminders: [LocalReminder] {
+        currentScope == nil ? [] : ThisWeekScope.reminders(store)
+    }
+
+    // MARK: - Sources
+
+    private enum SourceState: Equatable {
+        case loading
+        case failed(String)
+        case loaded
+    }
+
+    /// Saved assignments for Calendar's quarter only.
+    private var calendarData: SchoolCalendarData? {
+        guard currentScope != nil, let data = store.calendarData, data.term == store.calendarTerm else { return nil }
+        return data
+    }
+
+    /// Data in which no class resolved shows nothing, so it is a failure
+    /// rather than an empty week.
+    private var assignmentState: SourceState {
+        guard let data = calendarData,
+              data.resolvedCourseCount > 0 || data.failedCourseNames.isEmpty else {
+            if let error = store.calendarError, !store.calendarLoading { return .failed(error) }
+            return .loading
+        }
+        return .loaded
+    }
+
+    private var loadedData: SchoolCalendarData? {
+        assignmentState == .loaded ? calendarData : nil
+    }
+
+    private var eligible: [UnifiedCourseData] {
+        SchoolCalendar.eligibleCourses(store.courses ?? [], term: store.calendarTerm)
+    }
+
+    // MARK: - Status and scope
+
+    private var statusStrip: some View {
+        StatusStrip(
+            lastUpdated: assignmentState == .loaded ? store.calendarLastUpdated : nil,
+            isRefreshing: store.calendarLoading && assignmentState == .loaded,
+            error: assignmentState == .loaded ? store.calendarError : nil
+        ) {
+            await store.refreshCalendar(force: true)
+        } control: {
+            ScopePicker(
+                title: "Assignment quarter",
+                valueName: store.calendarTerm.displayName,
+                hint: "Selects the quarter whose assignments are listed",
+                identifier: "week.quarter",
+                groups: [
+                    ChoiceGroup(title: "Fall semester", options: [TermLabel.q1, .q2].map(quarterOption)),
+                    ChoiceGroup(title: "Spring semester", options: [TermLabel.q3, .q4].map(quarterOption)),
+                ],
+                selection: Binding(get: { store.calendarTerm }, set: { chooseQuarter($0) })
+            )
+        }
+    }
+
