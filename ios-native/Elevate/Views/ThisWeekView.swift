@@ -218,3 +218,100 @@ struct ThisWeekView: View {
         }
     }
 
+    private func quarterOption(_ term: TermLabel) -> ChoiceOption<TermLabel> {
+        ChoiceOption(value: term, title: term.displayName, identifier: "week.quarter.\(term.shortName)")
+    }
+
+    /// Calendar's quarter changes only by an explicit choice here or there.
+    private func chooseQuarter(_ term: TermLabel) {
+        guard currentScope != nil, term != store.calendarTerm else { return }
+        store.calendarTerm = term
+    }
+
+    private func scopeLines(_ week: SchoolWeek) -> some View {
+        let term = store.calendarTerm
+        let quarters = ThisWeekScope.quarters(for: week)
+        let other = quarters.first { $0 != term }
+        return VStack(alignment: .leading, spacing: 0) {
+            note("Today through \(ThisWeekScope.shortDay(week.lastDay)). Assignments from \(term.displayName).")
+                .accessibilityIdentifier("week.scope")
+            if let other {
+                note(quarters.contains(term)
+                     ? "Some of these days are in \(other.displayName). Only \(term.displayName) assignments are listed."
+                     : "These days are in \(other.displayName). Calendar is set to \(term.displayName).")
+                    .accessibilityIdentifier("week.mismatch")
+                Button("Show \(other.displayName)") { chooseQuarter(other) }
+                    .buttonStyle(ActionTextButtonStyle())
+                    .accessibilityHint("Sets Calendar's assignment quarter")
+                    .accessibilityIdentifier("week.mismatch.show")
+            }
+        }
+    }
+
+    // MARK: - Content
+
+    @ViewBuilder
+    private func content(_ plan: SchoolWeekPlan) -> some View {
+        switch assignmentState {
+        case .loading:
+            loadingRows
+        case .failed(let error):
+            InlineErrorState(title: "Couldn't load assignments", message: error) {
+                await store.refreshCalendar(force: true)
+            }
+            .padding(.horizontal, Metrics.page)
+            .padding(.top, 8)
+            .accessibilityIdentifier("week.error")
+        case .loaded:
+            if let data = loadedData {
+                loaded(plan, data: data)
+            }
+        }
+        // Personal reminders are local and remain available while Skyward
+        // assignments are loading or unavailable.
+        if assignmentState != .loaded {
+            ForEach(plan.days.filter { !plan.shownReminders(on: $0).isEmpty }) { day in
+                dayGroup(day, plan: plan)
+            }
+        }
+    }
+
+    private var loadingRows: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(0..<4, id: \.self) { index in
+                if index > 0 { InsetDivider(leading: WeekRowMetrics.textInset) }
+                SkeletonRow(lines: [SkeletonLine(.body, [16, 12, 18, 10][index]),
+                                    SkeletonLine(.subheadline, [11, 14, 9, 12][index])])
+                    .padding(.leading, WeekRowMetrics.textInset)
+            }
+        }
+        .padding(.horizontal, Metrics.page)
+        .padding(.top, 8)
+        .loadingPlaceholder("Loading this week")
+        .accessibilityIdentifier("week.loading")
+    }
+
+    @ViewBuilder
+    private func loaded(_ plan: SchoolWeekPlan, data: SchoolCalendarData) -> some View {
+        let coverage = ThisWeekScope.coverage(data, courses: store.courses ?? [])
+        let isComplete = coverage.missing.isEmpty && coverage.saved.isEmpty && store.calendarError == nil
+        let days = plan.days.filter { !$0.assignments.isEmpty || !plan.shownReminders(on: $0).isEmpty }
+
+        if !coverage.missing.isEmpty || !coverage.saved.isEmpty {
+            coverageNote(coverage)
+                .padding(.horizontal, Metrics.page)
+        }
+        completionNotes
+            .padding(.horizontal, Metrics.page)
+
+        if !plan.missing.isEmpty {
+            GroupLabel("Missing in Skyward")
+                .padding(.horizontal, Metrics.page)
+                .padding(.top, 16)
+                .accessibilityIdentifier("week.missing")
+            ForEach(Array(plan.missing.enumerated()), id: \.element.id) { index, assignment in
+                if index > 0 { InsetDivider(leading: WeekRowMetrics.textInset).padding(.horizontal, Metrics.page) }
+                assignmentRow(assignment, plan: plan, context: .missing, reminderTimes: [], key: "missing.\(index)")
+            }
+        }
+
