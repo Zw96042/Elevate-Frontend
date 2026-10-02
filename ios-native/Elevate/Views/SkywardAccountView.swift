@@ -100,3 +100,109 @@ struct SkywardAccountView: View {
                     }
                 }
 
+                VStack(alignment: .leading, spacing: 14) {
+                    connectButton
+                    Text("Your login is stored in the iOS Keychain and is only used to connect to Skyward.")
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: 520, alignment: .leading)
+            .padding(.horizontal, Metrics.page)
+            .padding(.top, 16)
+            .padding(.bottom, 40)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .background(Color.appBackground.ignoresSafeArea())
+        .foregroundStyle(Color.ink)
+        .navigationTitle("Skyward Account")
+        .navigationBarTitleDisplayMode(.inline)
+        .interactiveDismissDisabled(verifying)
+        .navigationBarBackButtonHidden(verifying)
+        .toolbar {
+            if showsCancel {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .disabled(verifying)
+                        .accessibilityIdentifier("login.cancel")
+                }
+            }
+            if let onSkip {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Not now") { onSkip() }
+                        .disabled(verifying)
+                        .accessibilityHint("Continue without an account. You can connect from any tab or Settings.")
+                        .accessibilityIdentifier("onboarding.notNow")
+                }
+            }
+        }
+        .onAppear {
+            guard !didLoad else { return }
+            didLoad = true
+            if let credentials = CredentialStore.load() {
+                username = credentials.username
+                password = credentials.password
+            }
+        }
+    }
+
+    private var introduction: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(CredentialStore.districtName)
+                .font(.title.weight(.bold))
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+
+            if store.hasCredentials {
+                Label("Connected", systemImage: "checkmark")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.ink)
+            }
+
+            Text(store.hasCredentials
+                ? "Update the student account used to refresh grades and messages."
+                : "Enter the same student login you use on the Skyward website.")
+                .font(.body)
+                .foregroundStyle(Color.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// A label above a plain input well. Tapping the well focuses its field;
+    /// the focused well is outlined in the action color.
+    private func field<Content: View>(
+        _ label: String,
+        field: Field,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        let isFocused = focusedField == field
+        let shape = RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(Color.muted)
+                .accessibilityHidden(true)
+            content()
+                .font(.body)
+                .textFieldStyle(.plain)
+                .tint(Color.themeAccent)
+                .padding(.leading, 12)
+                .padding(.trailing, field == .password ? 0 : 12)
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                .background(Color.well, in: shape)
+                .overlay {
+                    shape
+                        .strokeBorder(Color.themeAccent, lineWidth: 1.5)
+                        .opacity(isFocused ? 1 : 0)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(shape)
+                .onTapGesture {
+                    focusedField = field
+                }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
