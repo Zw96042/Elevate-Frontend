@@ -577,15 +577,54 @@ struct SettingsGroup<Content: View, Footer: View>: View {
     }
 }
 
-private extension Color {
-    var rgbHex: UInt32? {
-        let resolved = UIColor(self).resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
-        var red: CGFloat = 0
-        var green: CGFloat = 0
-        var blue: CGFloat = 0
-        guard resolved.getRed(&red, green: &green, blue: &blue, alpha: nil) else { return nil }
-        return (UInt32((red * 255).rounded()) << 16)
-            | (UInt32((green * 255).rounded()) << 8)
-            | UInt32((blue * 255).rounded())
+/// Disclosure mark for rows that push another screen.
+struct RowChevron: View {
+    var body: some View {
+        Image(systemName: "chevron.forward")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(Color.faint)
+            .accessibilityHidden(true)
+    }
+}
+
+/// One settings row: content leading, an accessory trailing.
+struct SettingsRow<Content: View, Accessory: View>: View {
+    @ViewBuilder var content: () -> Content
+    @ViewBuilder var accessory: () -> Accessory
+
+    var body: some View {
+        HStack(spacing: 12) {
+            content()
+                .font(.body)
+                .foregroundStyle(Color.ink)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            accessory()
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Appearance
+
+/// Settings > Theme: the shared theme and display choices, including a
+/// color of the person's own.
+private struct AppearanceSettingsView: View {
+    @Binding var palette: ColorPalette
+    @Binding var appearance: AppearanceMode
+
+    var body: some View {
+        ScrollView {
+            ThemeChoices(palette: $palette, appearance: $appearance)
+                .padding(.horizontal, Metrics.page)
+                .padding(.top, 8)
+                .padding(.bottom, 32)
+        }
+        .background(Color.appBackground.ignoresSafeArea())
+        .softScrollEdges()
+        .navigationTitle("Theme")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
