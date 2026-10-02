@@ -439,55 +439,96 @@ struct SettingsView: View {
         }
     }
 
+    private var dataExplanation: String {
+        let automatic = "Checks for updates every five minutes while Elevate is open."
+        if store.hasCredentials {
+            return automatic + " Reloading keeps your login and local what-if work. Disconnecting removes all account data from this iPhone."
+        }
+        return automatic + " Reloading keeps your local what-if work."
+    }
+
+    // MARK: - Updates
+
+    /// The installed version with the last App Store result, and the school
+    /// dates built into this version. Neither row fetches anything on open.
+    private var updatesSection: some View {
+        SettingsGroup(title: "Updates") {
+            NavigationLink {
+                AppUpdatesView(service: appUpdates)
+            } label: {
+                SettingsRow {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(InstalledAppInfo.displayName)
+                        Text(AppUpdateStatus(service: appUpdates).summary)
+                            .font(.subheadline)
+                            .foregroundStyle(Color.muted)
+                    }
+                } accessory: {
+                    if appUpdates.isChecking {
+                        ProgressView()
+                            .accessibilityHidden(true)
+                    } else {
+                        RowChevron()
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+            .buttonStyle(RowPressStyle())
+            .accessibilityIdentifier("updates.navigation")
+
+            InsetDivider()
+
+            NavigationLink {
+                SchoolCalendarSourceView()
+            } label: {
+                SettingsRow {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("School calendar")
+                        Text(SchoolCalendarSourceView.summary())
+                            .font(.subheadline)
+                            .foregroundStyle(Color.muted)
+                    }
+                } accessory: {
+                    RowChevron()
+                }
+                .accessibilityElement(children: .combine)
+            }
+            .buttonStyle(RowPressStyle())
+            .accessibilityIdentifier("schoolCalendar.navigation")
+        } footer: {
+            Text("Elevate checks Apple's App Store listing only when you tap Check. No Skyward information is sent.")
+                .foregroundStyle(Color.muted)
+        }
+    }
+
+    // MARK: - About
+
     private var aboutSection: some View {
-        Section {
+        SettingsGroup(title: "About") {
             Link(destination: URL(string: "https://elevate.wilsonzach.com/privacy")!) {
-                externalLinkLabel("Privacy Policy", systemImage: "hand.raised")
+                externalLinkLabel("Privacy Policy")
             }
+            .buttonStyle(RowPressStyle())
+            InsetDivider()
             Link(destination: URL(string: "mailto:zach.wilson.atx@gmail.com")!) {
-                externalLinkLabel("Contact Support", systemImage: "envelope")
+                externalLinkLabel("Contact Support")
             }
-        } header: {
-            Text("About")
+            .buttonStyle(RowPressStyle())
         } footer: {
             Text("Elevate is independent and is not affiliated with Skyward, Inc. or Eanes ISD.")
+                .foregroundStyle(Color.muted)
         }
     }
 
-    @ViewBuilder
-    private func externalLinkLabel(_ title: String, systemImage: String) -> some View {
-        if dynamicTypeSize >= .xxxLarge {
+    private func externalLinkLabel(_ title: String) -> some View {
+        SettingsRow {
             Text(title)
-                .lineLimit(nil)
-        } else {
-            HStack(spacing: 12) {
-                settingsSymbol(systemImage)
-                Text(title)
-                Spacer()
-                Image(systemName: "arrow.up.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-            }
+        } accessory: {
+            Image(systemName: "arrow.up.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.muted)
+                .accessibilityHidden(true)
         }
-    }
-
-    private func settingsSymbol(_ name: String, color: Color = .themeAccent) -> some View {
-        Image(systemName: name)
-            .font(.body.weight(.medium))
-            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-            .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(color)
-            .frame(width: 24)
-            .accessibilityHidden(true)
-    }
-
-    private var accountStatusSymbol: some View {
-        Image(systemName: store.hasCredentials ? "checkmark.circle.fill" : "person.crop.circle.badge.exclamationmark")
-            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-            .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(store.hasCredentials ? .green : Color.secondary)
-            .accessibilityHidden(true)
     }
 
     private func updateTheme(_ change: () -> Void) {
