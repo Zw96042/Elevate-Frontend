@@ -106,3 +106,114 @@ struct StudentInfoView: View {
         .padding(.horizontal, Metrics.page)
     }
 
+    /// The profile's shape: the photo frame beside the name, then labelled
+    /// sections of source fields, each a label leading and its value trailing.
+    private var loadingProfile: some View {
+        // Label and value lengths, in figures, for each placeholder section.
+        let sections: [[(label: Int, value: Int)]] = [
+            [(10, 6), (8, 12), (12, 9), (9, 14)],
+            [(6, 13), (5, 17), (8, 10)],
+        ]
+        return VStack(alignment: .leading, spacing: 0) {
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 12) {
+                        photoPlaceholder
+                        SkeletonText(.title2.bold(), length: 10)
+                    }
+                } else {
+                    HStack(alignment: .center, spacing: 16) {
+                        photoPlaceholder
+                        SkeletonText(.title2.bold(), length: 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            .padding(.top, 8)
+
+            ForEach(sections.indices, id: \.self) { section in
+                VStack(alignment: .leading, spacing: 0) {
+                    SkeletonText(.footnote.weight(.medium), length: 9, tone: .secondary)
+                        .padding(.bottom, 2)
+                    ForEach(sections[section].indices, id: \.self) { index in
+                        if index > 0 { InsetDivider() }
+                        fieldPlaceholder(sections[section][index])
+                    }
+                }
+                .padding(.top, Metrics.sectionGap)
+            }
+        }
+        .padding(.horizontal, Metrics.page)
+        .loadingPlaceholder("Loading student info")
+        .accessibilityIdentifier("studentInfo.loading")
+    }
+
+    private var photoPlaceholder: some View {
+        RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous)
+            .fill(Color.well)
+            .frame(width: shownPhotoWidth, height: shownPhotoWidth * 4 / 3)
+    }
+
+    /// `SourceFieldLine`'s shape: the muted label leading and the value
+    /// trailing, or the value beneath its label at accessibility sizes.
+    private func fieldPlaceholder(_ lengths: (label: Int, value: Int)) -> some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 2) {
+                    SkeletonText(.subheadline, length: lengths.label, tone: .secondary)
+                    SkeletonText(.body, length: lengths.value)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 16) {
+                    SkeletonText(.body, length: lengths.label, tone: .secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    SkeletonText(.body, length: lengths.value)
+                }
+            }
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+    }
+}
+
+/// A group of the student's own source fields under a quiet label.
+private struct ProfileSection: Identifiable {
+    struct Line {
+        var label: String
+        var value: String
+    }
+
+    var id: String
+    var title: String
+    var lines: [Line]
+
+    /// Enrollments first, since they carry the official grade, then the
+    /// student's contact and student fields, each in Skyward's order.
+    static func sections(from info: StudentInfoData) -> [ProfileSection] {
+        var sections: [ProfileSection] = []
+        for (index, enrollment) in info.enrollments.enumerated() where !enrollment.fields.isEmpty {
+            let school = enrollment.schoolName.flatMap(SourceFieldText.value)
+            sections.append(ProfileSection(
+                id: "studentInfo.enrollment.\(index)",
+                title: school ?? "Enrollment",
+                lines: enrollment.fields.map(enrollmentLine)
+            ))
+        }
+        if !info.contactFields.isEmpty {
+            sections.append(ProfileSection(
+                id: "studentInfo.contact",
+                title: "Contact",
+                lines: info.contactFields.map(contactLine)
+            ))
+        }
+        if !info.studentFields.isEmpty {
+            sections.append(ProfileSection(
+                id: "studentInfo.student",
+                title: "Student details",
+                lines: info.studentFields.map { Line(label: SourceFieldText.label($0.label), value: $0.value) }
+            ))
+        }
+        return sections
+    }
+
