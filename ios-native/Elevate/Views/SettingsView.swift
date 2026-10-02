@@ -532,16 +532,12 @@ struct SettingsView: View {
     }
 
     private func updateTheme(_ change: () -> Void) {
-        change()
+        Motion.perform(reduceMotion ? nil : .easeInOut(duration: 0.25), change)
     }
 
     private func setCacheStatus(_ status: String) {
-        if reduceMotion {
+        Motion.perform(reduceMotion ? nil : .easeOut(duration: 0.2)) {
             cacheStatus = status
-        } else {
-            withAnimation(.easeOut(duration: 0.2)) {
-                cacheStatus = status
-            }
         }
         focusDataStatus()
     }
@@ -553,104 +549,21 @@ struct SettingsView: View {
             dataStatusFocused = true
         }
     }
+}
 
-    private struct PaletteSwatch: View {
-        var palette: ColorPalette
-        var size: CGFloat
+// MARK: - Settings layout
 
-        var body: some View {
-            Circle()
-                .fill(Color(hex: palette.rawAccent ?? palette.accent))
-                .frame(width: size, height: size)
-                .overlay {
-                    Circle()
-                        .stroke(Color(uiColor: .separator).opacity(0.32), lineWidth: 0.5)
-                }
-                .accessibilityHidden(true)
-        }
-    }
+/// A group of open settings rows under a quiet label, with an optional note
+/// beneath it. The navigation title is the only heading on the screen; group
+/// labels name the groups and rows carry the content at body size.
+struct SettingsGroup<Content: View, Footer: View>: View {
+    var title: String
+    @ViewBuilder var content: () -> Content
+    @ViewBuilder var footer: () -> Footer
 
-    private struct AppearanceSettingsView: View {
-        @Binding var palette: ColorPalette
-        @Binding var appearance: AppearanceMode
-        @State private var showingPresets = false
-        @State private var presetTriggerWidth: CGFloat = 320
-
-        var body: some View {
-            List {
-                Section("Accent") {
-                    Button {
-                        showingPresets = true
-                    } label: {
-                        HStack {
-                            Text("Preset")
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            Text(palette.id == "custom" ? "Custom" : palette.name)
-                                .foregroundStyle(.secondary)
-                            PaletteSwatch(palette: palette, size: 20)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .background {
-                        GeometryReader { proxy in
-                            Color.clear
-                                .onAppear { presetTriggerWidth = proxy.size.width }
-                                .onChange(of: proxy.size.width) { _, width in
-                                    presetTriggerWidth = width
-                                }
-                        }
-                    }
-                    .popover(
-                        isPresented: $showingPresets,
-                        attachmentAnchor: .rect(.bounds),
-                        arrowEdge: .top
-                    ) {
-                        presetChoices
-                            .frame(width: max(presetTriggerWidth, 280))
-                            .presentationCompactAdaptation(.popover)
-                    }
-
-                    ColorPicker(
-                        "Custom color",
-                        selection: Binding(
-                            get: { Color(hex: palette.rawAccent ?? palette.accent) },
-                            set: { color in
-                                guard let accent = color.rgbHex else { return }
-                                update { palette = .custom(accent) }
-                            }
-                        ),
-                        supportsOpacity: false
-                    )
-                }
-
-                Section {
-                    Picker("Display", selection: $appearance) {
-                        ForEach(AppearanceMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                } header: {
-                    Text("Display")
-                } footer: {
-                    Text(appearance == .system
-                        ? "Matches your iPhone automatically."
-                        : "Keeps Elevate in \(appearance.rawValue.lowercased()) appearance.")
-                        .contentTransition(.opacity)
-                }
-            }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
-            .navigationTitle("Appearance")
-            .navigationBarTitleDisplayMode(.inline)
-            .sensoryFeedback(.selection, trigger: palette)
-            .sensoryFeedback(.selection, trigger: appearance)
-        }
-
-        private var presetChoices: some View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            GroupLabel(title)
             VStack(spacing: 0) {
                 Text("Presets")
                     .font(.caption)
