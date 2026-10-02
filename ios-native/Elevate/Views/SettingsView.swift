@@ -373,14 +373,14 @@ struct SettingsView: View {
     // MARK: - Data
 
     private var dataSection: some View {
-        Section {
+        SettingsGroup(title: "Data") {
             Button {
                 Task {
                     isReloading = true
                     dataError = nil
                     cacheStatus = nil
                     await store.clearAllCaches()
-                    if store.coursesError != nil || store.messagesError != nil {
+                    if store.coursesError != nil || store.messagesError != nil || store.calendarError ?? store.attendanceError ?? store.feesError ?? store.studentInfoError ?? store.documentsError != nil {
                         dataError = "Some data couldn't be refreshed. Saved data remains visible where available."
                         focusDataStatus()
                     } else {
@@ -389,62 +389,52 @@ struct SettingsView: View {
                     isReloading = false
                 }
             } label: {
-                if dynamicTypeSize >= .xxxLarge {
+                SettingsRow {
                     Text(isReloading ? "Reloading data…" : "Reload all data")
-                        .lineLimit(nil)
-                } else {
-                    HStack(spacing: 12) {
-                        if isReloading {
-                            ProgressView()
-                                .frame(width: 24)
-                                .accessibilityHidden(true)
-                        } else {
-                            settingsSymbol("arrow.trianglehead.2.counterclockwise")
-                        }
-                        Text(isReloading ? "Reloading data…" : "Reload all data")
-                        Spacer()
+                } accessory: {
+                    if isReloading {
+                        ProgressView()
+                            .accessibilityHidden(true)
                     }
                 }
             }
+            .buttonStyle(RowPressStyle())
             .disabled(isReloading || isDisconnecting || !store.canShowData)
+            .accessibilityIdentifier("settings.reload")
 
             if store.hasCredentials {
+                InsetDivider()
                 Button(role: .destructive) {
                     showingDisconnectConfirmation = true
                 } label: {
-                    if dynamicTypeSize >= .xxxLarge {
+                    SettingsRow {
                         Text(isDisconnecting ? "Disconnecting…" : "Disconnect Skyward")
-                            .lineLimit(nil)
-                    } else {
-                        HStack(spacing: 12) {
-                            if isDisconnecting {
-                                ProgressView()
-                                    .frame(width: 24)
-                                    .accessibilityHidden(true)
-                            } else {
-                                settingsSymbol("rectangle.portrait.and.arrow.right", color: .red)
-                            }
-                            Text(isDisconnecting ? "Disconnecting…" : "Disconnect Skyward")
-                            Spacer()
+                            .foregroundStyle(Color.gradeAttention)
+                    } accessory: {
+                        if isDisconnecting {
+                            ProgressView()
+                                .accessibilityHidden(true)
                         }
                     }
                 }
+                .buttonStyle(RowPressStyle())
                 .disabled(isReloading || isDisconnecting)
+                .accessibilityIdentifier("settings.disconnect")
             }
-        } header: {
-            Text("Data")
         } footer: {
-            if let dataError {
-                Label(dataError, systemImage: "exclamationmark.circle.fill")
-                    .foregroundStyle(.red)
-                    .accessibilityFocused($dataStatusFocused)
-            } else if let cacheStatus {
-                Label(cacheStatus, systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .transition(.opacity)
-                    .accessibilityFocused($dataStatusFocused)
-            } else {
-                Text("Reloading keeps your login and local what-if work. Disconnecting removes all account data from this iPhone.")
+            VStack(alignment: .leading, spacing: 6) {
+                if let dataError {
+                    Label(dataError, systemImage: "exclamationmark.circle")
+                        .foregroundStyle(Color.gradeAttention)
+                        .accessibilityFocused($dataStatusFocused)
+                } else if let cacheStatus {
+                    Label(cacheStatus, systemImage: "checkmark")
+                        .foregroundStyle(Color.ink)
+                        .transition(.opacity)
+                        .accessibilityFocused($dataStatusFocused)
+                }
+                Text(dataExplanation)
+                    .foregroundStyle(Color.muted)
             }
         }
     }
