@@ -105,3 +105,95 @@ struct ThemeChoices: View {
         }
     }
 
+    private func themeRow(_ option: ColorPalette) -> some View {
+        let isSelected = option.id == palette.id
+        return Button {
+            palette = option
+        } label: {
+            themeRowContent(
+                specimen: ThemeSpecimenPair(palette: option),
+                name: option.name,
+                summary: option.summary,
+                isSelected: isSelected
+            )
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(option.name)
+        .accessibilityHint(option.summary)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier("appearance.palette.\(option.id)")
+    }
+
+    private var customColorRow: some View {
+        let isSelected = palette.id == "custom"
+        let preview = isSelected ? palette : .custom(palette.accent)
+        return ColorPicker(
+            selection: Binding(
+                get: { Color(hex: palette.rawAccent ?? palette.accent) },
+                set: { color in
+                    guard let accent = color.rgbHex else { return }
+                    palette = .custom(accent)
+                }
+            ),
+            supportsOpacity: false
+        ) {
+            themeRowContent(
+                specimen: ThemeSpecimenPair(palette: preview),
+                name: "Custom",
+                summary: preview.summary,
+                isSelected: isSelected
+            )
+        }
+        .padding(.vertical, 10)
+        .frame(minHeight: 60)
+        .accessibilityLabel("Custom color")
+        .accessibilityHint(preview.summary)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier("appearance.customColor")
+    }
+}
+
+// MARK: - Specimens
+
+/// A small screen drawn entirely in one theme's roles for one appearance:
+/// a grade in its ink beside a muted term, a check in its action color, a
+/// hairline, the GPA line over its wash, and a primary button with its
+/// label. It shows how the roles sit together, not a preview of a screen.
+private struct ThemeSpecimen: View {
+    var tones: ColorPalette.Tones
+    @ScaledMetric(relativeTo: .body) private var scaledHeight: CGFloat = 44
+
+    /// Grows with text, but stays a specimen beside the theme's name.
+    private var height: CGFloat { min(scaledHeight, 72) }
+    private var width: CGFloat { (height * 1.5).rounded() }
+    private var inset: CGFloat { (height * 0.13).rounded() }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous)
+        VStack(spacing: 0) {
+            header
+                .padding(.horizontal, inset)
+                .frame(height: height * 0.4)
+            Rectangle()
+                .fill(Color(hex: tones.hairline))
+                .frame(height: Metrics.line)
+            HStack(alignment: .bottom, spacing: inset * 0.6) {
+                chart
+                    .padding(.top, inset * 0.5)
+                button
+                    .padding(.bottom, inset)
+            }
+            .padding(.trailing, inset)
+            .frame(maxHeight: .infinity)
+        }
+        .frame(width: width, height: height)
+        .background(Color(hex: tones.background))
+        .clipShape(shape)
+        .overlay { shape.strokeBorder(Color.rule, lineWidth: Metrics.line) }
+        .accessibilityHidden(true)
+    }
+
