@@ -315,3 +315,100 @@ struct ThisWeekView: View {
             }
         }
 
+        if days.isEmpty {
+            emptyState(plan, data: data, isComplete: isComplete)
+                .padding(.horizontal, Metrics.page)
+                .padding(.top, 8)
+        } else {
+            ForEach(days) { day in
+                dayGroup(day, plan: plan)
+            }
+        }
+
+        if !plan.undated.isEmpty {
+            undatedGroup(plan)
+        }
+
+        if !plan.done.isEmpty {
+            doneGroup(plan)
+        }
+
+        note("Done is only for you. It doesn't change Skyward or your reminders, and Missing stays until your teacher clears it.")
+            .padding(.horizontal, Metrics.page)
+            .padding(.top, 20)
+            .accessibilityIdentifier("week.footer")
+    }
+
+    @ViewBuilder
+    private var completionNotes: some View {
+        if currentScope != nil, store.planning.accountScope == currentScope, store.planning.completionUnavailable {
+            VStack(alignment: .leading, spacing: 0) {
+                note("Done marks can't be saved on this iPhone right now.")
+                    .accessibilityIdentifier("week.completion.unavailable")
+                Button("Clear Done marks") { confirmingClearMarks = true }
+                    .buttonStyle(ActionTextButtonStyle())
+                    .accessibilityHint("Removes saved Done marks so new ones can be saved")
+                    .accessibilityIdentifier("week.completion.clear")
+            }
+        } else if showsDone, let doneError {
+            note(doneError)
+                .accessibilityIdentifier("week.done.error")
+        }
+    }
+
+    /// No active work in any of the seven days. A verified empty week needs
+    /// every class to have loaded in the latest refresh; a week whose work
+    /// is all checked off is caught up, not empty.
+    private func emptyState(_ plan: SchoolWeekPlan, data: SchoolCalendarData, isComplete: Bool) -> some View {
+        let term = store.calendarTerm.displayName
+        let through = ThisWeekScope.shortDay(plan.week.lastDay)
+        let asOf = store.calendarLastUpdated.map { ", as of \(UpdatedText.short($0))" } ?? ""
+        let title: String
+        let message: String
+        let identifier: String
+        if store.courses != nil, eligible.isEmpty {
+            title = "Assignments aren't available for \(term)"
+            message = "None of your current classes has a Skyward gradebook for this quarter."
+            identifier = "week.noClasses"
+        } else if plan.doneDueCount > 0 {
+            title = isComplete ? "All caught up through \(through)" : "All caught up in the classes that loaded"
+            message = isComplete
+                ? "Everything Skyward lists due these days is marked Done\(asOf)."
+                : "Everything due these days in the saved \(term) assignments is marked Done\(asOf)."
+            identifier = isComplete ? "week.caughtUp" : "week.caughtUpPartial"
+        } else if isComplete {
+            title = "Nothing due through \(through)"
+            message = "Skyward lists no \(term) assignments due these days\(asOf)."
+            identifier = "week.empty"
+        } else {
+            title = "Nothing due in the classes that loaded"
+            message = "The saved \(term) assignments list nothing due these days\(asOf)."
+            identifier = "week.emptyPartial"
+        }
+        return EmptyStateView(title: title, message: message)
+            .accessibilityIdentifier(identifier)
+    }
+
+    private func coverageNote(_ coverage: (missing: [String], saved: [String])) -> some View {
+        func names(_ list: [String]) -> String {
+            ListFormatter.localizedString(byJoining: list.map(WeekCourseTitle.display))
+        }
+        return VStack(alignment: .leading, spacing: 0) {
+            if !coverage.missing.isEmpty {
+                note("Assignments couldn't load for \(names(coverage.missing)). Their work isn't listed.")
+            }
+            if !coverage.saved.isEmpty {
+                note("Couldn't refresh \(names(coverage.saved)). Their saved assignments are shown.")
+            }
+            Button("Retry") {
+                Task { await store.refreshCalendar(force: true) }
+            }
+            .buttonStyle(ActionTextButtonStyle())
+            .disabled(store.calendarLoading)
+            .accessibilityLabel("Retry loading assignments")
+            .accessibilityIdentifier("week.coverage.retry")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("week.coverage")
+    }
+
