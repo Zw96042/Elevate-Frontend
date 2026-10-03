@@ -629,3 +629,98 @@ struct ThisWeekView: View {
                                    assignmentID: assignment.id, title: assignment.title, dueDay: assignment.date)
     }
 
+    /// Assignment reminders open the same official focus destination as a
+    /// notification tap. General reminders keep their management sheet.
+    private func reminderAction(for reminder: LocalReminder) -> (() -> Void)? {
+        guard let assignmentID = reminder.assignmentID, !assignmentID.isEmpty,
+              SchoolCalendar.quarters.contains(reminder.term) else {
+            return reminderManagementAction(for: reminder)
+        }
+        guard canRemind,
+              let course = SchoolCalendar.eligibleCourses(store.courses ?? [], term: reminder.term)
+                .first(where: { SchoolNotifications.notificationCourseID(for: $0) == reminder.courseID }) else { return nil }
+        return {
+            guard canRemind, currentScope != nil,
+                  SchoolCalendar.eligibleCourses(store.courses ?? [], term: reminder.term).contains(where: { $0.id == course.id }) else { return }
+            store.selectedTerm = reminder.term
+            router.showAssignment(course: course, term: reminder.term,
+                                  assignmentID: AssignmentLink.assignmentToken(for: assignmentID))
+        }
+    }
+
+    /// Available separately on a reminder row's native context menu.
+    private func reminderManagementAction(for reminder: LocalReminder) -> (() -> Void)? {
+        guard canRemind,
+              let course = store.courses?.first(where: {
+                  SchoolNotifications.notificationCourseID(for: $0) == reminder.courseID
+                      && $0.availableTerms.contains(reminder.term)
+              }) else { return nil }
+        let dueDay = calendarData?.assignments.first { $0.id == reminder.assignmentID }?.date
+        return {
+            guard let scope = openedScope, store.localAccountScope == scope,
+                  store.notifications.accountScope == scope else { return }
+            self.reminder = ReminderRequest(accountScope: scope, course: course, term: reminder.term,
+                                            assignmentID: reminder.assignmentID, title: reminder.title, dueDay: dueDay)
+        }
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Week scope
+
+/// Dates, labels and summaries shared by This week and its Calendar row.
+/// Everything is in America/Chicago, the zone `SchoolWeek` groups days in,
+/// so a reminder's time and its day always agree.
+enum ThisWeekScope {
+    static let zone = TimeZone(identifier: "America/Chicago")!
+
+    static var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        calendar.locale = .current
+        return calendar
+    }
+
+    /// A school day at noon in the school's zone.
+    static func date(_ iso: String) -> Date? {
+        guard let parts = AttendanceSchoolDate.components(iso) else { return nil }
+        return calendar.date(from: DateComponents(year: parts.year, month: parts.month, day: parts.day, hour: 12))
+    }
+
+    private static func style(_ base: Date.FormatStyle) -> Date.FormatStyle {
+        var style = base
+        style.timeZone = zone
+        style.calendar = calendar
+        return style
+    }
+
+    /// "Today", "Tomorrow", then "Tuesday, Oct 6".
+    static func dayTitle(_ iso: String, in week: SchoolWeek) -> String {
+        if iso == week.days.first { return "Today" }
+        if week.days.count > 1, iso == week.days[1] { return "Tomorrow" }
+        guard let date = date(iso) else { return iso }
+        return date.formatted(style(.dateTime.weekday(.wide).month(.abbreviated).day()))
+    }
+
+    /// "Sat, Oct 10".
+    static func shortDay(_ iso: String) -> String {
+        guard let date = date(iso) else { return iso }
+        return date.formatted(style(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+    }
+
+    /// "7:00 PM", naming the school's zone when this iPhone is in another.
+    static func time(_ date: Date) -> String {
+        let text = date.formatted(style(Date.FormatStyle(date: .omitted, time: .shortened)))
+        guard TimeZone.current.secondsFromGMT(for: date) != zone.secondsFromGMT(for: date),
+              let abbreviation = zone.abbreviation(for: date) else { return text }
+        return "\(text) \(abbreviation)"
+    }
+
