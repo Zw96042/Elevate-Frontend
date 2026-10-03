@@ -919,7 +919,104 @@ private struct GPASmallView: View {
                 )
             }
         } else {
-            NoDataView()
+            NoDataView(heading: "GPA")
+        }
+    }
+
+    private func spoken(_ snapshot: WidgetSnapshot, lead: Double, isWeighted: Bool) -> String {
+        let parts: [String?] = [
+            "\(isWeighted ? "Weighted" : "Unweighted") GPA \(Format.gpa(lead)), \(Format.termName(snapshot.termShortName))",
+            isWeighted ? snapshot.unweightedGPA.map { "Unweighted \(Format.gpa($0))" } : nil,
+            freshness.spoken,
+        ]
+        return parts.compactMap { $0 }.joined(separator: ". ")
+    }
+}
+
+private struct GPAInlineView: View {
+    let snapshot: WidgetSnapshot?
+
+    @Environment(\.snapshotFreshness) private var freshness
+
+    var body: some View {
+        if let snapshot {
+            if let value = snapshot.weightedGPA ?? snapshot.unweightedGPA {
+                let text = "\(snapshot.termShortName) GPA \(Format.gpa(value))"
+                Group {
+                    if let symbol = freshness.symbol {
+                        Label(text, systemImage: symbol)
+                    } else {
+                        Text(text)
+                    }
+                }
+                .accessibilityLabel(spokenGPA(snapshot, value: value))
+            } else {
+                Group {
+                    if let symbol = freshness.symbol {
+                        Label(freshness.isPartial ? "GPA unavailable" : "No \(snapshot.termShortName) GPA yet", systemImage: symbol)
+                    } else {
+                        Text(freshness.isPartial ? "GPA unavailable" : "No \(snapshot.termShortName) GPA yet")
+                    }
+                }
+                .accessibilityLabel([freshness.isPartial ? "GPA unavailable" : "No \(Format.termName(snapshot.termShortName)) GPA yet", freshness.spoken].compactMap { $0 }.joined(separator: ". "))
+            }
+        } else {
+            Text("Open Elevate for GPA")
+        }
+    }
+
+    private func spokenGPA(_ snapshot: WidgetSnapshot, value: Double) -> String {
+        let kind = snapshot.weightedGPA != nil ? "weighted" : "unweighted"
+        let reading = "\(Format.termName(snapshot.termShortName)) \(kind) GPA \(Format.gpa(value))"
+        let parts: [String?] = [reading, freshness.spoken]
+        return parts.compactMap { $0 }.joined(separator: ". ")
+    }
+}
+
+/// A clear number with a small label; no ring.
+private struct GPACircularView: View {
+    let snapshot: WidgetSnapshot?
+
+    @Environment(\.snapshotFreshness) private var freshness
+
+    var body: some View {
+        if let snapshot {
+            if let value = snapshot.weightedGPA ?? snapshot.unweightedGPA {
+                VStack(spacing: 0) {
+                    HStack(spacing: 2) {
+                        Text("GPA")
+                        if let symbol = freshness.symbol {
+                            Image(systemName: symbol)
+                        }
+                    }
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    Text(Format.gpa(value))
+                        .font(.figure(.body, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.55)
+                        .widgetAccentable()
+                }
+                .padding(.horizontal, 4)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(spoken(snapshot, value: value))
+            } else {
+                VStack(spacing: 2) {
+                    if let symbol = freshness.symbol { Image(systemName: symbol) }
+                    Text(freshness.isPartial ? "Unavailable" : "No GPA")
+                }
+                .font(.caption2.weight(.medium))
+                .multilineTextAlignment(.center)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel([freshness.isPartial ? "GPA unavailable" : "No \(Format.termName(snapshot.termShortName)) GPA yet", freshness.spoken].compactMap { $0 }.joined(separator: ". "))
+            }
+        } else {
+            Image(systemName: "graduationcap")
+                .font(.title3)
+                .accessibilityLabel("Open Elevate to load your GPA")
+        }
+    }
+
         }
     }
 }
