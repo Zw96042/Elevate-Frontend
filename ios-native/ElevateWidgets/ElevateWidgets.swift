@@ -850,42 +850,73 @@ struct GPAWidgetView: View {
     let entry: SnapshotEntry
 
     var body: some View {
-        if let s = entry.snapshot {
-            if let weighted = s.weightedGPA {
-                VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("GPA")
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(s.termShortName)
-                        .font(.caption2.bold())
-                        .foregroundStyle(accent)
-                }
-                Spacer()
-                Text(String(format: "%.2f", weighted))
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
-                    .foregroundStyle(accent)
-                    .monospacedDigit()
-                    .minimumScaleFactor(0.6)
-                HStack(spacing: 6) {
-                    Text("Weighted")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    if let delta = gpaDelta(s) {
-                        Label(String(format: "%+.2f", delta),
-                              systemImage: delta >= 0 ? "arrow.up.right" : "arrow.down.right")
-                            .font(.caption2.bold().monospacedDigit())
-                            .foregroundStyle(delta >= 0 ? .green : .red)
+        switch family {
+        case .accessoryInline:
+            GPAInlineView(snapshot: entry.snapshot)
+        case .accessoryCircular:
+            GPACircularView(snapshot: entry.snapshot)
+        case .accessoryRectangular:
+            GPARectangularView(snapshot: entry.snapshot)
+        default:
+            GPASmallView(snapshot: entry.snapshot)
+        }
+    }
+}
+
+/// The same reading as the GPA line on Courses: the kind and term on the
+/// title line, weighted large at the foot, unweighted beneath.
+private struct GPASmallView: View {
+    let snapshot: WidgetSnapshot?
+
+    @Environment(\.widgetRenderingMode) private var renderingMode
+    @Environment(\.snapshotFreshness) private var freshness
+    @ScaledMetric(relativeTo: .largeTitle) var figureSize: CGFloat = 40
+
+    var body: some View {
+        let tone = Tone(mode: renderingMode)
+        if let snapshot {
+            if let lead = snapshot.weightedGPA ?? snapshot.unweightedGPA {
+                let isWeighted = snapshot.weightedGPA != nil
+                VStack(alignment: .leading, spacing: 0) {
+                    WidgetHeading(
+                        title: isWeighted ? "Weighted GPA" : "Unweighted GPA",
+                        shortTitle: "GPA",
+                        detail: snapshot.termShortName,
+                        showsFreshness: false
+                    )
+                    Spacer(minLength: 4)
+                    Text(Format.gpa(lead))
+                        .font(.display(size: figureSize))
+                        .foregroundStyle(tone.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .widgetAccentable()
+                    if isWeighted, let unweighted = snapshot.unweightedGPA {
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text("Unweighted")
+                                .foregroundStyle(tone.muted)
+                            Text(Format.gpa(unweighted))
+                                .font(.figure(.footnote, weight: .medium))
+                                .foregroundStyle(tone.ink)
+                        }
+                        .font(.footnote)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                     }
+                    FreshnessNote(compact: true)
                 }
-                if let history = s.gpaHistory, history.count > 1 {
-                    Sparkline(values: history.map(\.weighted), showsFill: false)
-                        .frame(height: 18)
-                }
-                }
+                .widgetPage()
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(spoken(snapshot, lead: lead, isWeighted: isWeighted))
             } else {
-                WidgetEmptyStateView(systemImage: "chart.line.uptrend.xyaxis", title: "No GPA yet")
+                WidgetEmptyState(
+                    heading: "GPA",
+                    headingDetail: snapshot.termShortName,
+                    title: freshness.isPartial ? "GPA unavailable" : "No GPA yet",
+                    detail: freshness.isPartial
+                        ? "Some grades didn't load."
+                        : "It appears once \(Format.termName(snapshot.termShortName)) has grades."
+                )
             }
         } else {
             NoDataView()
