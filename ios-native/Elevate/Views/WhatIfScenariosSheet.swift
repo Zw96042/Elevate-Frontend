@@ -103,3 +103,97 @@ struct WhatIfScenariosSheet: View {
                         }
                     }
 
+                    if isLibraryUnreadable {
+                        unreadableSection
+                            .padding(.top, 16)
+                    } else if scenarios.isEmpty {
+                        EmptyStateView(
+                            title: "No saved scenarios",
+                            message: current.hasEffectiveChanges
+                                ? "Save current changes to compare them later."
+                                : "Make what-if changes, then save them here."
+                        )
+                        .accessibilityIdentifier("scenario.empty")
+                    }
+
+                    notes
+                }
+                .padding(.horizontal, Metrics.page)
+                .padding(.bottom, 24)
+            }
+            .background(Color.appBackground.ignoresSafeArea())
+            .softScrollEdges()
+            .navigationTitle("Scenarios")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close")
+                    .accessibilityIdentifier("scenario.close")
+                }
+            }
+            .alert(
+                nameRequest.map { $0.isSave ? "Save Scenario" : "Rename Scenario" } ?? "",
+                isPresented: Binding(get: { nameRequest != nil }, set: { if !$0 { nameRequest = nil } }),
+                presenting: nameRequest
+            ) { request in
+                TextField("Name", text: $nameDraft)
+                    .accessibilityIdentifier("scenario.name")
+                Button(request.isSave ? "Save" : "Rename") { commitName(request) }
+                    .disabled(!nameIsValid)
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text("Up to \(Self.nameLimit) characters.")
+            }
+            .alert(
+                "Replace current changes?",
+                isPresented: Binding(get: { pendingApply != nil }, set: { if !$0 { pendingApply = nil } }),
+                presenting: pendingApply
+            ) { scenario in
+                Button("Replace", role: .destructive) { apply(scenario) }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text(replaceMessage)
+            }
+            .alert(
+                pendingDelete.map { "Delete “\($0.name)”?" } ?? "",
+                isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                presenting: pendingDelete
+            ) { scenario in
+                Button("Delete", role: .destructive) { delete(scenario) }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text("Your current what-if changes aren't affected.")
+            }
+            .alert("Clear saved scenarios?", isPresented: $confirmingClear) {
+                Button("Clear", role: .destructive) { clearUnreadable() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Removes unreadable scenarios on this iPhone. Current what-if isn't affected.")
+            }
+        }
+        .tint(Color.themeAccent)
+        .foregroundStyle(Color.ink)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .sensoryFeedback(.success, trigger: commitRevision)
+        .onAppear(perform: reload)
+        // A different account or term owns different edits; close rather
+        // than show, or later write, another scope's scenarios.
+        .onChange(of: store.accountRevision) { _, _ in dismiss() }
+        .onChange(of: store.selectedTerm) { _, _ in dismiss() }
+    }
+
+    // MARK: Rows
+
+    private var skywardRow: some View {
+        compareRow(
+            title: "Skyward",
+            detail: current.officialValue == nil ? "No posted grade yet" : "Posted grade",
+            value: current.officialValue,
+            identifier: "scenario.skyward"
+        ) { EmptyView() }
+    }
+
