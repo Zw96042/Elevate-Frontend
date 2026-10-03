@@ -259,7 +259,102 @@ private struct AppAppearance: ViewModifier {
     }
 }
 
-private struct Sparkline: View {
+extension View {
+    /// The theme page behind a widget, both in the app's chosen appearance.
+    fileprivate func themedWidgetContainer() -> some View {
+        modifier(AppAppearance())
+            .containerBackground(for: .widget) {
+                WidgetBackground().modifier(AppAppearance())
+            }
+    }
+}
+
+// MARK: - Type and formats
+//
+// SF Pro from Dynamic Type styles: semibold for titles and the one large
+// figure, medium for other figures, and regular for reading text.
+
+extension Font {
+    fileprivate static func figure(_ style: Font.TextStyle, weight: Font.Weight = .regular) -> Font {
+        .system(style).weight(weight).monospacedDigit()
+    }
+
+    /// The one large figure. `size` comes from `@ScaledMetric`.
+    fileprivate static func display(size: CGFloat) -> Font {
+        .system(size: size, weight: .semibold).monospacedDigit()
+    }
+}
+
+private enum Format {
+    static func gpa(_ value: Double) -> String {
+        String(format: "%.2f", value)
+    }
+
+    /// "96" for whole numbers, "93.5" otherwise; bonus above 100 is kept.
+    static func grade(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "—" }
+        if abs(value - value.rounded()) < 0.05 { return String(format: "%.0f", value.rounded()) }
+        return String(format: "%.1f", value)
+    }
+
+    /// "+0.42" or "−1.10".
+    static func change(_ value: Double) -> String {
+        let magnitude = String(format: "%.2f", abs(value))
+        if abs(value) < 0.005 { return magnitude }
+        return (value > 0 ? "+" : "−") + magnitude
+    }
+
+    static func spokenChange(_ value: Double) -> String {
+        if abs(value) < 0.005 { return "unchanged" }
+        return "\(value > 0 ? "up" : "down") \(String(format: "%.2f", abs(value)))"
+    }
+
+    /// Terms from the snapshot ("Q1", "SM1") and the GPA table ("RC1", "PR3").
+    static func termName(_ code: String) -> String {
+        let upper = code.uppercased()
+        switch upper {
+        case "Q1", "RC1": return "Quarter 1"
+        case "Q2", "RC2": return "Quarter 2"
+        case "Q3", "RC3": return "Quarter 3"
+        case "Q4", "RC4": return "Quarter 4"
+        case "SM1", "S1": return "Semester 1"
+        case "SM2", "S2": return "Semester 2"
+        case "FIN": return "Final"
+        default:
+            if upper.hasPrefix("PR"), let number = Int(upper.dropFirst(2)) {
+                return "Progress report \(number)"
+            }
+            return code
+        }
+    }
+
+    /// "Q1", "P3": the app's short names for the ends of the chart.
+    static func termShort(_ code: String) -> String {
+        let upper = code.uppercased()
+        if upper.hasPrefix("RC"), let number = Int(upper.dropFirst(2)) { return "Q\(number)" }
+        if upper.hasPrefix("PR"), let number = Int(upper.dropFirst(2)) { return "P\(number)" }
+        return code
+    }
+
+    /// Skyward's "M/d/yy" as "Jun 10"; anything else is shown as reported.
+    static func date(_ raw: String, now: Date = Date()) -> String {
+        let parts = raw.split(separator: "/").compactMap { Int($0) }
+        guard parts.count == 3, (1...12).contains(parts[0]), (1...31).contains(parts[1]) else {
+            return raw
+        }
+        var components = DateComponents()
+        components.month = parts[0]
+        components.day = parts[1]
+        components.year = parts[2] < 100 ? 2000 + parts[2] : parts[2]
+        let calendar = Calendar.current
+        guard let date = calendar.date(from: components),
+              calendar.component(.day, from: date) == parts[1] else { return raw }
+        if calendar.component(.year, from: date) == calendar.component(.year, from: now) {
+            return date.formatted(.dateTime.month(.abbreviated).day())
+        }
+        return date.formatted(.dateTime.month(.abbreviated).day().year(.twoDigits))
+    }
+
     let values: [Double]
     var showsFill = true
 
