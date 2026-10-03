@@ -610,3 +610,107 @@ struct WhatIfScenariosSheet: View {
         }
     }
 
+    /// Confirms only when applying would discard effective changes that no
+    /// saved scenario holds.
+    private func requestApply(_ scenario: WhatIfScenario) {
+        errorMessage = nil
+        reload()
+        let unsaved = current.hasEffectiveChanges
+            && currentSnapshot != scenario.snapshot
+            && !scenarios.contains { $0.snapshot == currentSnapshot }
+        if unsaved {
+            pendingApply = scenario
+        } else {
+            apply(scenario)
+        }
+    }
+
+    private func apply(_ scenario: WhatIfScenario) {
+        guard let scope = freshScope(), scope == context.accountScope else { return scopeChanged() }
+        guard let source else {
+            errorMessage = "Can't apply until this class's gradebook loads."
+            return
+        }
+        let evaluation = WhatIfScenarioEvaluator.compare([scenario], source: source).first?.evaluation
+        guard let evaluation, evaluation.issue == nil else {
+            let reason = evaluation?.issue.map(Self.issueText) ?? "Can't be estimated"
+            errorMessage = "“\(scenario.name)” wasn't applied. \(reason)."
+            return
+        }
+        guard WhatIfStore.applyScenario(scenario, classKey: context.classKey, term: context.term,
+                                        expectedAccountScope: scope) else {
+            errorMessage = "Elevate couldn't apply this scenario. Your current what-if changes and saved scenarios are unchanged."
+            reload()
+            return
+        }
+        onApplied()
+        commitRevision += 1
+        reload()
+    }
+
+    // MARK: Copy
+
+    /// "Q1" for a quarter, "Semester 1" for a semester.
+    private static func termName(_ shortName: String) -> String {
+        guard let term = TermLabel.allCases.first(where: { $0.shortName == shortName }) else { return shortName }
+        return term.isSemester ? term.displayName : term.shortName
+    }
+
+    /// Issues that come from the saved data itself rather than the gradebook.
+    private static func isUnreadable(_ issue: WhatIfScenarioIssue) -> Bool {
+        switch issue {
+        case .invalidTermOwnership, .differentCourseOrTerm, .assignmentIDCollision: return true
+        default: return false
+        }
+    }
+
+    static func issueText(_ issue: WhatIfScenarioIssue) -> String {
+        switch issue {
+        case .unavailableGradebook(let quarter):
+            return "Needs \(termName(quarter))'s gradebook"
+        case .staleAssignmentIDs(let quarter, let count):
+            return count == 1
+                ? "1 edited assignment is no longer in \(termName(quarter))"
+                : "\(count) edited assignments are no longer in \(termName(quarter))"
+        case .unavailableCategory(let quarter, let category):
+            return "\(termName(quarter)) has no weighted “\(category)” category"
+        case .unavailableCalculation(let quarter):
+            return "Can't estimate \(termName(quarter)) from these scores"
+        case .invalidScore:
+            return "Can't estimate from these scores"
+        case .invalidCategories:
+            return "The gradebook's categories can't be used"
+        case .invalidTermOwnership, .differentCourseOrTerm, .assignmentIDCollision:
+            return "Can't be read"
+        }
+    }
+
+    private static func message(for error: Error) -> String {
+        guard let error = error as? WhatIfScenarioLibraryError else {
+            return "Saved scenarios couldn't be updated. Nothing was changed."
+        }
+        switch error {
+        case .accountChanged:
+            return "The account changed while this was open. Nothing was changed."
+        case .corruptStorage:
+            return "Saved scenarios on this iPhone can't be read, so nothing was changed. They're kept as they are."
+        case .invalidName:
+            return "Enter a name of up to \(nameLimit) characters."
+        case .invalidSnapshot:
+            return "These what-if changes can't be saved as a scenario."
+        case .scenarioNotFound:
+            return "This scenario is no longer saved."
+        case .limitReached:
+            return "You can keep up to \(classLimit) scenarios for each class and 500 for this account. Delete one to save another."
+        case .identifierCollision:
+            return "The scenario couldn't be saved. Try again."
+        }
+    }
+
+    private static func savedDate(_ date: Date) -> String {
+        if Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year) {
+            return date.formatted(.dateTime.month(.abbreviated).day())
+        }
+        return date.formatted(.dateTime.month(.abbreviated).day().year())
+    }
+}
