@@ -69,35 +69,108 @@ private enum Freshness: Equatable, Sendable {
             self = .current
             return
         }
+        guard let section else {
+            self = now.timeIntervalSince(snapshot.generatedAt) > Self.staleAge
+                ? .outdated(updatedAt: snapshot.generatedAt)
+                : .current
+            return
+        }
+        if !section.isComplete {
+            self = .partial(updatedAt: section.updatedAt, isOutdated: section.updatedAt.map { now.timeIntervalSince($0) > Self.staleAge } ?? true)
+            return
+        }
+        guard let updatedAt = section.updatedAt,
+              now.timeIntervalSince(updatedAt) <= Self.staleAge else {
+            self = .outdated(updatedAt: section.updatedAt)
+            return
+        }
+        self = .current
+    }
+
+    var isStale: Bool { shortText != nil }
+
+    var isPartial: Bool {
+        if case .partial = self { return true }
+        return false
+    }
+
+    /// Only out-of-date notes are shown; completeness remains internal.
+    var shortText: String? {
+        switch self {
+        case .current: return nil
+        case .partial(_, let outdated): return outdated ? "Out of date" : nil
+        case .outdated: return "Out of date"
+        }
+    }
+
+    /// Where there's room, with when the data is from.
+    var text: String? {
+        switch self {
+        case .current:
+            return nil
+        case .partial(let date, true):
+            return date.map { "Last updated \(Self.describe($0))" } ?? "Out of date"
+        case .partial: return nil
+        case .outdated(let date):
+            return date.map { "Last updated \(Self.describe($0))" } ?? "Out of date"
+        }
+    }
+
+    var spoken: String? {
+        switch self {
+        case .current:
+            return nil
+        case .partial(let date, true):
+            return "Data is out of date" + (date.map { ", last updated \(Self.describe($0))" } ?? "")
+        case .partial: return nil
+        case .outdated(let date):
+            return "Data is out of date" + (date.map { ", last updated \(Self.describe($0))" } ?? "")
+        }
+    }
+
+    /// Marks the lock screen layouts too small for the note.
+    var symbol: String? {
+        switch self {
+        case .current: return nil
+        case .partial(_, let outdated): return outdated ? "clock" : nil
+        case .outdated: return "clock"
+        }
+    }
+
+    /// "9:14 AM" today, otherwise "Oct 1". Static text, no timers.
+    private static func describe(_ date: Date, now: Date = Date()) -> String {
+        let calendar = Calendar.current
+        if calendar.isDate(date, inSameDayAs: now) {
+            return date.formatted(date: .omitted, time: .shortened)
+        }
+        if calendar.component(.year, from: date) == calendar.component(.year, from: now) {
+            return date.formatted(.dateTime.month(.abbreviated).day())
+        }
+        return date.formatted(.dateTime.month(.abbreviated).day().year())
     }
 }
 
+private struct FreshnessKey: EnvironmentKey {
+    static let defaultValue = Freshness.current
+}
+
+extension EnvironmentValues {
+    fileprivate var snapshotFreshness: Freshness {
+        get { self[FreshnessKey.self] }
+        set { self[FreshnessKey.self] = newValue }
+    }
+}
+
+/// Hands each widget the freshness of the section it shows.
 private struct SnapshotFreshnessModifier: ViewModifier {
     var snapshot: WidgetSnapshot?
     var section: WidgetSnapshot.SectionStatus?
 
     func body(content: Content) -> some View {
-        content.overlay(alignment: .bottomTrailing) {
-            if let snapshot,
-               isStale(snapshot: snapshot) {
-                Text(section?.isComplete == false ? "Partial data" : "Out of date")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 3)
-                    .background(.thinMaterial, in: Capsule())
-                    .accessibilityLabel(section?.isComplete == false ? "Some data is unavailable" : "Data is out of date")
-            }
-        }
-    }
-
-    private func isStale(snapshot: WidgetSnapshot) -> Bool {
-        guard let section else {
-            return Date().timeIntervalSince(snapshot.generatedAt) > 6 * 60 * 60
-        }
-        if !section.isComplete { return true }
-        guard let updatedAt = section.updatedAt else { return true }
-        return Date().timeIntervalSince(updatedAt) > 6 * 60 * 60
+        content.environment(
+            \.snapshotFreshness,
+            Freshness(snapshot: snapshot, section: section)
+        )
     }
 }
 
