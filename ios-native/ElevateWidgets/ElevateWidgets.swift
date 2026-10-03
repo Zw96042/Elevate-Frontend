@@ -461,6 +461,124 @@ private struct SpreadRows: Layout {
     }
 }
 
+/// The first `rows` items, divided by hairlines, opening slightly to the
+/// height they are given (see `SpreadRows`). Pass `fills: false` where two
+/// lists share the height, so each keeps its natural rhythm.
+private struct RuledList<Item, Row: View>: View {
+    let items: [Item]
+    let rows: Int
+    let tone: Tone
+    var spacing: CGFloat = 5
+    var fills = true
+    @ViewBuilder let row: (Item) -> Row
+
+    /// How far each side of a hairline may open.
+    private static var extraAir: CGFloat { 3 }
+
+    var body: some View {
+        let shown = Array(items.prefix(rows))
+        SpreadRows(spacing: spacing, maxSpacing: fills ? spacing + Self.extraAir : spacing) {
+            ForEach(Array(shown.enumerated()), id: \.offset) { index, item in
+                if index > 0 { Hairline(tone: tone) }
+                row(item)
+            }
+        }
+    }
+}
+
+// MARK: - GPA movement
+
+private struct GPAChange {
+    var value: Double
+    /// The table key of the term before the latest one.
+    var since: String
+
+    init?(_ snapshot: WidgetSnapshot) {
+        guard let history = snapshot.gpaHistory, history.count >= 2 else { return nil }
+        value = history[history.count - 1].weighted - history[history.count - 2].weighted
+        since = history[history.count - 2].term
+    }
+
+    var longText: String { "\(Format.change(value)) since \(Format.termName(since))" }
+    var shortText: String { "\(Format.change(value)) since \(Format.termShort(since))" }
+    var spoken: String { "\(Format.spokenChange(value)) since \(Format.termName(since))" }
+}
+
+private func gpaTrendAccessibilityValue(_ history: [WidgetSnapshot.GPAHistoryPoint]) -> String {
+    guard let first = history.first, let last = history.last else { return "No GPA history" }
+    let series = history
+        .map { "\(Format.termName($0.term)) \(Format.gpa($0.weighted))" }
+        .joined(separator: ", ")
+    return "\(history.count) terms, from \(Format.gpa(first.weighted)) in \(Format.termName(first.term)) "
+        + "to \(Format.gpa(last.weighted)) in \(Format.termName(last.term)). \(series)"
+}
+
+/// The GPA trend after the app's chart: every segment is a cubic Bézier with
+/// control points at 30% and 70% of its width, each at the height of its
+/// nearer end, so tangents are flat at every term and the curve never
+/// overshoots a real value. The range is never less than ten points tall, so
+/// a fraction-of-a-point change doesn't fill the chart.
+private struct TrendCurve {
+    let points: [CGPoint]
+    let size: CGSize
+
+    private static let verticalPadding: CGFloat = 0.1
+    private static let minimumSpan: Double = 10
+
+    init(values: [Double], size: CGSize, inset: CGFloat = 2) {
+        self.size = size
+        let range = Self.range(of: values)
+        let span = range.upperBound - range.lowerBound
+        let width = max(size.width - inset * 2, 1)
+        // Room for the end dot at the extremes of a short chart.
+        let top = max(size.height * Self.verticalPadding, 4)
+        let plotHeight = max(size.height - top * 2, 1)
+        let steps = CGFloat(max(values.count - 1, 1))
+        points = values.enumerated().map { index, value in
+            let fraction = span > 0 ? (range.upperBound - value) / span : 0.5
+            return CGPoint(
+                x: inset + width * CGFloat(index) / steps,
+                y: top + plotHeight * CGFloat(fraction)
+            )
+        }
+    }
+
+    static func range(of values: [Double]) -> ClosedRange<Double> {
+        let finite = values.filter(\.isFinite)
+        guard let low = finite.min(), let high = finite.max() else { return 0...1 }
+        let span = max(high - low, minimumSpan)
+        let middle = (high + low) / 2
+        return (middle - span / 2)...(middle + span / 2)
+    }
+
+    var line: Path {
+        Path { path in
+            guard let first = points.first else { return }
+            path.move(to: first)
+            for (start, end) in zip(points, points.dropFirst()) {
+                let width = end.x - start.x
+                path.addCurve(
+                    to: end,
+                    control1: CGPoint(x: start.x + width * 0.3, y: start.y),
+                    control2: CGPoint(x: start.x + width * 0.7, y: end.y)
+                )
+            }
+        }
+    }
+
+    var area: Path {
+        var path = line
+        guard let first = points.first, let last = points.last else { return path }
+        path.addLine(to: CGPoint(x: last.x, y: size.height))
+        path.addLine(to: CGPoint(x: first.x, y: size.height))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// A short curve with a fading wash and nothing else. Its parent describes
+/// the series to VoiceOver.
+private struct TrendChart: View {
     let values: [Double]
     var showsFill = true
 
