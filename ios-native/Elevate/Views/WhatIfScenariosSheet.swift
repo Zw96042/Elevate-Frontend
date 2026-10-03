@@ -197,3 +197,115 @@ struct WhatIfScenariosSheet: View {
         ) { EmptyView() }
     }
 
+    private var currentRow: some View {
+        compareRow(
+            title: "Current changes",
+            detail: currentDetail,
+            value: current.estimate,
+            identifier: "scenario.current"
+        ) {
+            Button {
+                beginSave()
+            } label: {
+                Text("Save…")
+            }
+            .buttonStyle(QuietButtonStyle())
+            .disabled(!canSave)
+            .accessibilityLabel("Save current changes as a scenario")
+            .accessibilityIdentifier("scenario.save")
+        }
+    }
+
+    private var currentDetail: String {
+        guard let estimate = current.estimate else { return "Can't estimate from the loaded gradebooks" }
+        return comparison(estimate, official: current.officialValue) ?? "Estimate"
+    }
+
+    @ViewBuilder
+    private func savedRow(_ scenario: WhatIfScenario, evaluation: WhatIfScenarioEvaluation?) -> some View {
+        let issue = evaluation?.issue
+        let readable = issue.map { !Self.isUnreadable($0) } ?? true
+        let canApply = source != nil && evaluation != nil && issue == nil
+        let inUse = currentSnapshot != nil && currentSnapshot == scenario.snapshot
+        compareRow(
+            title: scenario.name,
+            detail: savedDetail(scenario, evaluation: evaluation, inUse: inUse),
+            value: canApply ? evaluation?.value : nil,
+            check: inUse,
+            identifier: "scenario.row.\(scenario.id)",
+            hint: canApply && !inUse ? "Applies this scenario" : nil,
+            action: canApply ? { requestApply(scenario) } : nil
+        ) {
+            Menu {
+                if readable {
+                    Button { requestApply(scenario) } label: {
+                        Label("Apply", systemImage: "arrow.down.circle")
+                    }
+                    .disabled(!canApply)
+                    .accessibilityIdentifier("scenario.apply.\(scenario.id)")
+                    Button { beginRename(scenario) } label: {
+                        Label("Rename…", systemImage: "pencil")
+                    }
+                    .accessibilityIdentifier("scenario.rename.\(scenario.id)")
+                    Divider()
+                }
+                Button(role: .destructive) { pendingDelete = scenario } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .accessibilityIdentifier("scenario.delete.\(scenario.id)")
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.muted)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Options for \(scenario.name)")
+            .accessibilityIdentifier("scenario.menu.\(scenario.id)")
+        }
+    }
+
+    private func savedDetail(_ scenario: WhatIfScenario, evaluation: WhatIfScenarioEvaluation?, inUse: Bool) -> String {
+        guard source != nil, let evaluation else { return "Waiting for this class's gradebook" }
+        if let issue = evaluation.issue { return Self.issueText(issue) }
+        if inUse { return "In use" }
+        let saved = "Saved \(Self.savedDate(scenario.createdAt))"
+        guard let value = evaluation.value,
+              let change = comparison(value, official: evaluation.officialValue) else { return saved }
+        return "\(saved), \(change)"
+    }
+
+    /// An open row: the name and detail, the figure trailing, and an optional
+    /// control after it. At accessibility sizes the figure and control move
+    /// beneath the text.
+    @ViewBuilder
+    private func compareRow<Accessory: View>(
+        title: String,
+        detail: String,
+        value: Double?,
+        check: Bool? = nil,
+        identifier: String,
+        hint: String? = nil,
+        action: (() -> Void)? = nil,
+        @ViewBuilder accessory: () -> Accessory
+    ) -> some View {
+        let spoken = "\(GradeFormat.spokenCourseGrade(value)), \(detail)"
+        let content = compareContent(title: title, detail: detail, value: value, check: check)
+        let main = Group {
+            if let action {
+                Button(action: action) { content }
+                    .buttonStyle(RowPressStyle())
+                    .accessibilityLabel(title)
+                    .accessibilityValue(spoken)
+                    .accessibilityHint(hint ?? "")
+            } else {
+                content
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(title)
+                    .accessibilityValue(spoken)
+            }
+        }
+        .accessibilityAddTraits(check == true ? .isSelected : [])
+        .accessibilityIdentifier(identifier)
+
