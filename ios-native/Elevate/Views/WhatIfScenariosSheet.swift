@@ -410,3 +410,104 @@ struct WhatIfScenariosSheet: View {
         .accessibilityIdentifier("scenario.unreadable")
     }
 
+    /// One footer line, the limit only when it's reached, then the details
+    /// behind a collapsed disclosure. Each unavailable row says why itself.
+    private var notes: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if !isLibraryUnreadable, classScenarioCount >= Self.classLimit {
+                footnote("You can keep up to \(Self.classLimit) scenarios for this class. Delete one to save another.")
+                    .accessibilityIdentifier("scenario.limit")
+            }
+            footnote("Saved on this iPhone. Estimates use Skyward's latest scores.")
+            GPADisclosure(title: "How scenarios work", identifier: "scenario.about") {
+                footnote("A scenario keeps your what-if changes, not Skyward's scores. Reset doesn't delete scenarios. Skyward is never changed.")
+            }
+        }
+        .padding(.top, 16)
+    }
+
+    private func footnote(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func errorLine(_ message: String) -> some View {
+        Label {
+            Text(message)
+        } icon: {
+            Image(systemName: "exclamationmark.circle")
+                .foregroundStyle(Color.gradeAttention)
+        }
+        .font(.footnote)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("scenario.error")
+    }
+
+    // MARK: State
+
+    private var evaluationsByID: [String: WhatIfScenarioEvaluation] {
+        guard let source else { return [:] }
+        return Dictionary(
+            WhatIfScenarioEvaluator.compare(scenarios, source: source).map { ($0.id, $0.evaluation) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    private var canSave: Bool {
+        !isLibraryUnreadable && classScenarioCount < Self.classLimit
+    }
+
+    private var trimmedName: String {
+        nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var nameIsValid: Bool {
+        !trimmedName.isEmpty && trimmedName.count <= Self.nameLimit
+    }
+
+    private var defaultName: String {
+        let names = Set(scenarios.map(\.name))
+        var number = scenarios.count + 1
+        while names.contains("Scenario \(number)") { number += 1 }
+        return "Scenario \(number)"
+    }
+
+    /// "Unsaved Q1 what-if changes will be replaced. Semester 1 what-if
+    /// changes too."
+    private var replaceMessage: String {
+        let term = context.term
+        let opening = "Unsaved \(Self.termName(term.shortName)) what-if changes will be replaced."
+        if term.isSemester {
+            let quarters = term.whatIfQuarterTerms.map { Self.termName($0.shortName) }
+            return "\(opening) \(quarters.joined(separator: " and ")) what-if changes too."
+        }
+        if let semester = TermLabel.allCases.first(where: { $0.isSemester && $0.whatIfQuarterTerms.contains(term) }) {
+            return "\(opening) \(semester.displayName) what-if changes too."
+        }
+        return opening
+    }
+
+    /// "+1.30 vs Skyward", or nil without a posted grade to compare with.
+    private func comparison(_ value: Double, official: Double?) -> String? {
+        guard let official, official.isFinite, value.isFinite else { return nil }
+        let difference = value - official
+        if abs(difference) < 0.005 { return "Same as Skyward" }
+        return "\(GradeFormat.signedChange(difference)) vs Skyward"
+    }
+
+    private func reload() {
+        let library = library
+        isLibraryUnreadable = library.hasUnreadableScenarios
+        scenarios = library.scenarios(classKey: context.classKey, term: context.term)
+        classScenarioCount = TermLabel.allCases.reduce(0) {
+            $0 + library.scenarios(classKey: context.classKey, term: $1).count
+        }
+        currentSnapshot = WhatIfStore.accountScope == context.accountScope
+            ? WhatIfStore.scenarioSnapshot(classKey: context.classKey, term: context.term)
+            : nil
+    }
+
