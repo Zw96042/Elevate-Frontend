@@ -823,3 +823,99 @@ private struct WeekAssignmentRow: View {
     var onRemind: (() -> Void)?
     var key: String
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var stacksBell: Bool { dynamicTypeSize >= .xxLarge }
+
+    private struct Status: Hashable {
+        var text: String
+        var isMissing = false
+        var isAbsent = false
+    }
+
+    private var title: String {
+        let text = assignment.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "Untitled assignment" : text
+    }
+
+    /// "Chemistry, Labs", then the due day for missing and Done work.
+    private var detail: String {
+        var parts = [WeekCourseTitle.display(assignment.course.courseName)]
+        let category = assignment.category.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !category.isEmpty { parts.append(category) }
+        if context == .missing || context == .done { parts.append(dueText) }
+        return parts.joined(separator: ", ")
+    }
+
+    private var dueText: String {
+        if let iso = assignment.date { return "due \(ThisWeekScope.shortDay(iso))" }
+        let source = assignment.sourceDate.trimmingCharacters(in: .whitespacesAndNewlines)
+        return source.isEmpty ? "no date in Skyward" : "date in Skyward: \(source)"
+    }
+
+    private var sourceDate: String? {
+        guard context == .undated else { return nil }
+        let text = assignment.sourceDate.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "No date in Skyward" : "Date in Skyward: \(text)"
+    }
+
+    /// Only Skyward's own flags. A personal Done mark never hides them.
+    private var statuses: [Status] {
+        let types = Set(assignment.meta.map { $0.type.lowercased() })
+        var result: [Status] = []
+        if types.contains("missing") { result.append(Status(text: "Missing", isMissing: true)) }
+        if types.contains("absent") { result.append(Status(text: "Absent", isAbsent: true)) }
+        if types.contains("nocount") { result.append(Status(text: "No count")) }
+        return result
+    }
+
+    private var reminderText: String? {
+        reminderTimes.isEmpty ? nil : "Reminder " + ListFormatter.localizedString(byJoining: reminderTimes)
+    }
+
+    private static let duplicateText = "Duplicate row; can't be checked off"
+
+    private var spokenLabel: String {
+        var parts = [title, detail]
+        if isDone { parts.append("marked done") }
+        if let sourceDate { parts.append(sourceDate) }
+        parts += statuses.map(\.text)
+        if let reminderText { parts.append(reminderText) }
+        if isDuplicate { parts.append(Self.duplicateText) }
+        return parts.joined(separator: ", ")
+    }
+
+    var body: some View {
+        mainElement
+            .accessibilityActions {
+                if let onToggleDone {
+                    Button(isDone ? "Mark not done" : "Mark done", action: onToggleDone)
+                }
+                if let onRemind {
+                    Button("Remind me", action: onRemind)
+                }
+            }
+            .overlay(alignment: stacksBell ? .topLeading : .leading) {
+                if let onToggleDone {
+                    doneButton(onToggleDone)
+                        .padding(.leading, Metrics.page - WeekRowMetrics.columnOverhang)
+                        .padding(.top, stacksBell ? 2 : 0)
+                }
+            }
+            .overlay(alignment: stacksBell ? .bottomLeading : .trailing) {
+                if let onRemind {
+                    if stacksBell {
+                        bellButton(onRemind)
+                            .padding(.leading, Metrics.page + WeekRowMetrics.textInset - 12)
+                            .padding(.bottom, Metrics.rowPadding - 6)
+                    } else {
+                        HStack(spacing: 12) {
+                            bellButton(onRemind)
+                            if onOpen != nil { chevron.hidden() }
+                        }
+                        .padding(.trailing, Metrics.page)
+                    }
+                }
+            }
+    }
+
