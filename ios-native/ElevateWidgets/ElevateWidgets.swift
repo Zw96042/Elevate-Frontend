@@ -772,27 +772,81 @@ private struct AssignmentRow<Trailing: View>: View {
         }
     }
 
+    private var content: some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.name.isEmpty ? "Untitled assignment" : item.name)
+                    .font(.subheadline)
+                    .foregroundStyle(tone.ink)
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(tone.muted)
+            }
+            .lineLimit(1)
+            Spacer(minLength: 4)
+            trailing()
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var detail: String {
+        let date = Format.date(item.date)
+        return date.isEmpty ? item.className : "\(item.className), \(date)"
+    }
+}
+
+extension AssignmentRow where Trailing == EmptyView {
+    init(item: WidgetSnapshot.AssignmentItem, tone: Tone) {
+        self.init(item: item, tone: tone) { EmptyView() }
+    }
+}
+
+/// A message as it reads in Inbox: its subject, then sender and date.
+private struct MessageRow: View {
+    let message: WidgetSnapshot.MessageItem
+    let tone: Tone
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(message.subject.isEmpty ? "No subject" : message.subject)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(tone.ink)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(Format.person(message.from))
+                Spacer(minLength: 8)
+                Text(Format.date(message.date))
+            }
+            .font(.footnote)
+            .foregroundStyle(tone.muted)
+        }
+        .lineLimit(1)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 // MARK: - GPA widget
 
 struct GPAWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "GPAWidget", provider: SnapshotProvider()) { entry in
             GPAWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .themedWidgetContainer()
                 .privacySensitive(entry.snapshot != nil)
                 .widgetURL(URL(string: "com.zacharywilson.elevate://gpa"))
                 .modifier(SnapshotFreshnessModifier(
                     snapshot: entry.snapshot,
                     section: entry.snapshot?.resolvedBaseStatus
                 ))
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         }
         .configurationDisplayName("GPA")
-        .description("Your weighted and unweighted GPA for the current term.")
-        .supportedFamilies([.systemSmall])
+        .description("Shows your weighted and unweighted GPA for the current term.")
+        .supportedFamilies([.systemSmall, .accessoryInline, .accessoryCircular, .accessoryRectangular])
     }
 }
 
 struct GPAWidgetView: View {
+    @Environment(\.widgetFamily) private var family
     let entry: SnapshotEntry
 
     var body: some View {
