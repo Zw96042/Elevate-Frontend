@@ -1,16 +1,18 @@
 import WidgetKit
 import SwiftUI
 
+/// The gallery opens with the widgets that show no grades. Those that do
+/// follow, each saying so in its description.
 @main
 struct ElevateWidgetBundle: WidgetBundle {
     var body: some Widget {
-        GPAWidget()
-        GPATrendWidget()
-        SchoolPulseWidget()
-        GradesWidget()
-        RecentGradesWidget()
         MissingAssignmentsWidget()
         InboxWidget()
+        SchoolPulseWidget()
+        GPAWidget()
+        GPATrendWidget()
+        GradesWidget()
+        RecentGradesWidget()
     }
 }
 
@@ -26,50 +28,46 @@ struct SnapshotProvider: TimelineProvider {
         SnapshotEntry(date: Date(), snapshot: .placeholder)
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (SnapshotEntry) -> Void) {
-        let snapshot = context.isPreview
-            ? (WidgetSnapshotStore.load() ?? .placeholder)
-            : WidgetSnapshotStore.load()
-        completion(SnapshotEntry(date: Date(), snapshot: snapshot))
+    // The extension can outlive a theme change in the app, so each request
+    // adopts the saved theme on the main actor, then completes once.
+
+    func getSnapshot(in context: Context, completion: @escaping @Sendable (SnapshotEntry) -> Void) {
+        let isPreview = context.isPreview
+        Task { @MainActor in
+            ThemeManager.shared.reloadSavedTheme()
+            let snapshot = isPreview
+                ? (WidgetSnapshotStore.load() ?? .placeholder)
+                : WidgetSnapshotStore.load()
+            completion(SnapshotEntry(date: Date(), snapshot: snapshot))
+        }
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<SnapshotEntry>) -> Void) {
-        let entry = SnapshotEntry(date: Date(), snapshot: WidgetSnapshotStore.load())
-        completion(Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(30 * 60))))
-    }
-}
-
-// MARK: - Shared bits
-
-@MainActor private var accent: Color { Color.themeAccent }
-
-struct NoDataView: View {
-    var body: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "graduationcap")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-            Text("Open Elevate to load your grades")
-                .font(.caption2)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
+    func getTimeline(in context: Context, completion: @escaping @Sendable (Timeline<SnapshotEntry>) -> Void) {
+        Task { @MainActor in
+            ThemeManager.shared.reloadSavedTheme()
+            let entry = SnapshotEntry(date: Date(), snapshot: WidgetSnapshotStore.load())
+            completion(Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(30 * 60))))
         }
     }
 }
 
-private struct WidgetEmptyStateView: View {
-    var systemImage: String
-    var title: String
+// MARK: - Freshness
+//
+// A section is out of date when it hasn't refreshed in six hours or its time
+// is unknown, and partial when its last refresh didn't load all of it. Each
+// widget sets the note in its own layout, so it never covers content.
 
-    var body: some View {
-        VStack(spacing: 6) {
-            Image(systemName: systemImage)
-                .font(.title3)
-                .foregroundStyle(.secondary)
-            Text(title)
-                .font(.caption2)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
+private enum Freshness: Equatable, Sendable {
+    case current
+    case partial(updatedAt: Date?, isOutdated: Bool)
+    case outdated(updatedAt: Date?)
+
+    private static let staleAge: TimeInterval = 6 * 60 * 60
+
+    init(snapshot: WidgetSnapshot?, section: WidgetSnapshot.SectionStatus?, now: Date = Date()) {
+        guard let snapshot else {
+            self = .current
+            return
         }
     }
 }
