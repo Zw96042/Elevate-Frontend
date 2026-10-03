@@ -309,3 +309,104 @@ struct WhatIfScenariosSheet: View {
         .accessibilityAddTraits(check == true ? .isSelected : [])
         .accessibilityIdentifier(identifier)
 
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 0) {
+                main
+                accessory()
+                    .padding(.bottom, 8)
+            }
+        } else {
+            HStack(alignment: .center, spacing: 8) {
+                main
+                accessory()
+            }
+        }
+    }
+
+    private func compareContent(title: String, detail: String, value: Double?, check: Bool?) -> some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    rowTitle(title)
+                    rowDetail(detail)
+                    HStack(spacing: 8) {
+                        figure(value)
+                        checkmark(check)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        rowTitle(title)
+                        rowDetail(detail)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    figure(value)
+                    checkmark(check)
+                }
+            }
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    private func rowTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.body)
+            .foregroundStyle(Color.ink)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func rowDetail(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func figure(_ value: Double?) -> some View {
+        Text(GradeFormat.twoDecimals(value))
+            .font(.figure(.body))
+            .foregroundStyle(value == nil ? Color.muted : GradeTier(value).textColor)
+            .contentTransition(.numericText(value: value ?? 0))
+            .animation(Motion.value(reduceMotion), value: value)
+            .lineLimit(1)
+            .fixedSize()
+    }
+
+    @ViewBuilder
+    private func checkmark(_ check: Bool?) -> some View {
+        if let check {
+            // Keeps its width when hidden so figures stay aligned.
+            Image(systemName: "checkmark")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(Color.themeAccent)
+                .opacity(check ? 1 : 0)
+                .accessibilityHidden(true)
+        }
+    }
+
+    // MARK: Notes and states
+
+    private var unreadableSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Saved scenarios can't be read")
+                .font(.body.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+            Text("They're kept unchanged. Current what-if still works.")
+                .font(.subheadline)
+                .foregroundStyle(Color.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Clear saved scenarios") { confirmingClear = true }
+                .buttonStyle(ActionTextButtonStyle())
+                .accessibilityIdentifier("scenario.clearUnreadable")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scenario.unreadable")
+    }
+
