@@ -190,25 +190,73 @@ private func combinedStatus(
     )
 }
 
-private func gpaTrendAccessibilityValue(_ snapshot: WidgetSnapshot) -> String {
-    guard let history = snapshot.gpaHistory, !history.isEmpty else { return "No GPA history" }
-    let series = history
-        .map { "\($0.term) \(String(format: "%.2f", $0.weighted))" }
-        .joined(separator: ", ")
-    if let delta = gpaDelta(snapshot) {
-        return "Latest \(String(format: "%.2f", history.last?.weighted ?? 0)), change \(String(format: "%+.2f", delta)). \(series)"
+// MARK: - Color roles
+//
+// Full-color widgets use the theme's composed roles. Tinted, clear, and lock
+// screen renderings drop the theme page, so text falls back to the system's
+// primary and secondary levels there instead of ink meant for that page.
+
+@MainActor
+private struct Tone {
+    var mode: WidgetRenderingMode
+
+    private var isFullColor: Bool { mode == .fullColor }
+
+    var ink: Color { isFullColor ? Color.ink : Color.primary }
+    /// Widget titles and the latest point on a chart: the theme's action color.
+    var accent: Color { isFullColor ? Color.themeAccent : Color.primary }
+    var muted: Color { isFullColor ? Color.muted : Color.secondary }
+    var rule: Color { isFullColor ? Color.rule : Color.secondary.opacity(0.4) }
+    var chartLine: Color { isFullColor ? Color.chartLine : Color.primary }
+    var chartFill: Color { isFullColor ? Color.chartFill : Color.primary.opacity(0.2) }
+    var attention: Color { isFullColor ? Color.gradeAttention : Color.primary }
+    var warning: Color { isFullColor ? Color.gradeWarning : Color.secondary }
+
+    /// Only grades below passing change color; the number carries the rest.
+    func grade(_ percent: Double?) -> Color {
+        guard let percent, percent.isFinite else { return muted }
+        return percent < 70 ? attention : ink
     }
-    return series
 }
 
-private func scoreText(_ score: Double?) -> String {
-    guard let score else { return "--" }
-    return String(format: "%.0f", score)
+private struct WidgetBackground: View {
+    @Environment(\.widgetFamily) private var family
+
+    var body: some View {
+        switch family {
+        case .accessoryCircular:
+            AccessoryWidgetBackground()
+        case .accessoryInline, .accessoryRectangular:
+            Color.clear
+        default:
+            Color.appBackground
+        }
+    }
 }
 
-private func gpaDelta(_ snapshot: WidgetSnapshot) -> Double? {
-    guard let history = snapshot.gpaHistory, history.count >= 2 else { return nil }
-    return history[history.count - 1].weighted - history[history.count - 2].weighted
+/// The app's Light or Dark choice, on full-color widgets that show the theme
+/// page. System follows the device; tinted, clear, lock screen, and StandBy
+/// renderings keep the system's appearance so they stay legible.
+@MainActor
+private struct AppAppearance: ViewModifier {
+    @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetRenderingMode) private var renderingMode
+    @Environment(\.showsWidgetContainerBackground) private var showsBackground
+    @Environment(\.colorScheme) private var systemScheme
+
+    func body(content: Content) -> some View {
+        content.environment(\.colorScheme, chosenScheme ?? systemScheme)
+    }
+
+    private var chosenScheme: ColorScheme? {
+        guard renderingMode == .fullColor, showsBackground else { return nil }
+        switch family {
+        case .accessoryCircular, .accessoryInline, .accessoryRectangular:
+            return nil
+        default:
+            return ThemeManager.shared.appearance.colorScheme
+        }
+    }
 }
 
 private struct Sparkline: View {
