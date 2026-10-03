@@ -919,3 +919,107 @@ private struct WeekAssignmentRow: View {
             }
     }
 
+    @ViewBuilder
+    private var mainElement: some View {
+        if let onOpen {
+            Button(action: onOpen) { content(showsChevron: true) }
+                .buttonStyle(RowPressStyle())
+                .accessibilityLabel(spokenLabel)
+                .accessibilityHint("Opens this assignment in Courses")
+                .accessibilityIdentifier("week.assignment.\(key)")
+        } else {
+            content(showsChevron: false)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(spokenLabel)
+                .accessibilityIdentifier("week.assignment.\(key)")
+        }
+    }
+
+    private func doneButton(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
+                .font(.title3)
+                .foregroundStyle(Color.themeAccent)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(ScopePressStyle())
+        .accessibilityLabel("Done, \(title)")
+        .accessibilityValue(isDone ? "Checked" : "Not checked")
+        .accessibilityHint(isDone ? "Moves it back to this week" : "Moves it to Done")
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityIdentifier("week.done.\(key)")
+    }
+
+    private func bellButton(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: reminderTimes.isEmpty ? "bell" : "bell.fill")
+                .font(.body)
+                .foregroundStyle(Color.muted)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(ScopePressStyle())
+        .accessibilityLabel("Remind me about \(title)")
+        .accessibilityIdentifier("week.remind.\(key)")
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.forward")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(Color.faint)
+            .accessibilityHidden(true)
+    }
+
+    private func content(showsChevron: Bool) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(isDone ? Color.muted : Color.ink)
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.muted)
+                if let sourceDate {
+                    Text(sourceDate)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                }
+                if !statuses.isEmpty {
+                    statusLine
+                }
+                if let reminderText {
+                    Text(reminderText)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                }
+                if isDuplicate {
+                    Text(Self.duplicateText)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                }
+                if stacksBell, onRemind != nil {
+                    // The bell's place beneath the text.
+                    Color.clear
+                        .frame(height: 44)
+                        .accessibilityHidden(true)
+                }
+            }
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if !stacksBell, onRemind != nil {
+                Color.clear
+                    .frame(width: 44, height: 44)
+                    .accessibilityHidden(true)
+            }
+            if showsChevron { chevron }
+        }
+        .padding(.leading, Metrics.page + WeekRowMetrics.textInset)
+        .padding(.trailing, Metrics.page)
+        .padding(.vertical, Metrics.rowPadding - 2)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
