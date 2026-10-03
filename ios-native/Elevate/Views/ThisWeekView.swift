@@ -529,3 +529,103 @@ struct ThisWeekView: View {
         .accessibilityHint(showsDoneList ? "Hides assignments you checked off" : "Shows assignments you checked off")
         .accessibilityIdentifier("week.completed.toggle")
 
+        if showsDoneList {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(plan.done.enumerated()), id: \.element.id) { index, assignment in
+                    if index > 0 { InsetDivider(leading: WeekRowMetrics.textInset).padding(.horizontal, Metrics.page) }
+                    let reminders = plan.doneReminders[assignment.id] ?? []
+                    assignmentRow(assignment, plan: plan, context: .done,
+                                  reminderTimes: reminders.map { ThisWeekScope.moment($0.fireDate, in: plan.week) },
+                                  key: "completed.\(index)")
+                }
+            }
+            .transition(.opacity)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("week.completed")
+        }
+    }
+
+    private func assignmentRow(_ assignment: CalendarAssignment, plan: SchoolWeekPlan,
+                               context: WeekAssignmentRow.Context, reminderTimes: [String],
+                               key: String) -> some View {
+        let isDuplicate = plan.ambiguousAssignmentIDs.contains(assignment.id)
+        let isDone = showsDone && !isDuplicate && store.planning.completedIDs.contains(assignment.id)
+        return WeekAssignmentRow(
+            assignment: assignment,
+            context: context,
+            isDone: isDone,
+            isDuplicate: isDuplicate,
+            reminderTimes: reminderTimes,
+            onToggleDone: showsDone && !isDuplicate ? { toggleDone(assignment, plan: plan) } : nil,
+            onOpen: openAction(for: assignment),
+            onRemind: canRemind ? { remind(assignment) } : nil,
+            key: key
+        )
+    }
+
+    // MARK: - Actions
+
+    /// Duplicate source rows never take a mark, and a page left open from
+    /// another account never writes. The row moves to Done, or back to its
+    /// groups, as the list settles; Reduce Motion moves it at once.
+    private func toggleDone(_ assignment: CalendarAssignment, plan: SchoolWeekPlan) {
+        guard writableScope != nil, !store.planning.completionUnavailable,
+              !plan.ambiguousAssignmentIDs.contains(assignment.id) else { return }
+        let done = !store.planning.completedIDs.contains(assignment.id)
+        var saved = false
+        Motion.perform(Motion.replace(reduceMotion)) {
+            saved = store.planning.setCompleted(done, assignmentID: assignment.id,
+                                                expectedAccountScope: store.localAccountScope)
+            if saved, done, !didRevealDoneList {
+                showsDoneList = true
+                didRevealDoneList = true
+            }
+        }
+        guard saved else {
+            doneError = "Couldn't save this Done mark. Try again."
+            return
+        }
+        doneError = nil
+        doneRevision += 1
+        // The row leaves where VoiceOver was; say where it went.
+        let title = assignment.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = title.isEmpty ? "Untitled assignment" : title
+        AccessibilityNotification.Announcement(done ? "\(name) moved to Done" : "\(name) moved back to this week").post()
+    }
+
+    private func clearDoneMarks() {
+        guard writableScope != nil else { return }
+        store.planning.clearCompletions(expectedAccountScope: store.localAccountScope)
+        doneError = nil
+    }
+
+    /// The class's current record, only when it has this quarter's gradebook.
+    private func liveCourse(for assignment: CalendarAssignment) -> UnifiedCourseData? {
+        guard let course = SchoolCalendar.eligibleCourses(store.courses ?? [], term: assignment.term)
+            .first(where: { $0.id == assignment.course.id }) else { return nil }
+        return course
+    }
+
+    /// Opens the exact assignment in Courses on its quarter. This page and
+    /// Calendar's quarter stay as they are.
+    private func openAction(for assignment: CalendarAssignment) -> (() -> Void)? {
+        guard currentScope != nil, liveCourse(for: assignment) != nil else { return nil }
+        return {
+            guard currentScope != nil, let course = liveCourse(for: assignment) else { return }
+            store.selectedTerm = assignment.term
+            router.showAssignment(course: course, term: assignment.term, assignmentID: assignment.routeID)
+        }
+    }
+
+    /// A reminder request pinned to the account this page opened for; the
+    /// sheet and the notification service reject it if that changes.
+    private func remind(_ assignment: CalendarAssignment) {
+        guard let scope = openedScope, store.localAccountScope == scope,
+              store.notifications.accountScope == scope else { return }
+        let course = liveCourse(for: assignment)
+            ?? store.courses?.first { $0.id == assignment.course.id }
+            ?? assignment.course
+        reminder = ReminderRequest(accountScope: scope, course: course, term: assignment.term,
+                                   assignmentID: assignment.id, title: assignment.title, dueDay: assignment.date)
+    }
+
