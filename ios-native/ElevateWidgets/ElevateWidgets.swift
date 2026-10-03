@@ -355,6 +355,112 @@ private enum Format {
         return date.formatted(.dateTime.month(.abbreviated).day().year(.twoDigits))
     }
 
+    /// A percentage for "94" or "47/50", used only to flag failing grades.
+    static func percent(_ gradeText: String) -> Double? {
+        let parts = gradeText.split(separator: "/")
+        if parts.count == 2,
+           let earned = Double(parts[0].trimmingCharacters(in: .whitespaces)),
+           let total = Double(parts[1].trimmingCharacters(in: .whitespaces)),
+           total > 0 {
+            return earned / total * 100
+        }
+        return Double(gradeText.trimmingCharacters(in: .whitespaces))
+    }
+
+    /// A sender's name in proper-noun case when Skyward sends it in a single
+    /// case; mixed-case names are kept as written. Mirrors the app's
+    /// `PersonName`, which the extension can't import.
+    static func person(_ raw: String) -> String {
+        let words = raw.split(whereSeparator: \.isWhitespace).map(String.init)
+        let collapsed = words.joined(separator: " ")
+        let hasUpper = collapsed.contains { $0.isUppercase }
+        let hasLower = collapsed.contains { $0.isLowercase }
+        guard hasUpper != hasLower else { return collapsed }
+        return words.map(personWord).joined(separator: " ")
+    }
+
+    private static func personWord(_ word: String) -> String {
+        let bare = word.uppercased().trimmingCharacters(in: .punctuationCharacters)
+        if ["II", "III", "IV"].contains(bare) { return word.uppercased() }
+        let isInitials = word.split(separator: ".").allSatisfy { $0.filter(\.isLetter).count <= 1 }
+        if isInitials { return word.uppercased() }
+
+        var result = ""
+        var part = ""
+        for character in word {
+            if character == "-" || character == "'" || character == "’" {
+                result += capitalized(part) + String(character)
+                part = ""
+            } else {
+                part.append(character)
+            }
+        }
+        return result + capitalized(part)
+    }
+
+    private static func capitalized(_ part: String) -> String {
+        guard let first = part.firstIndex(where: \.isLetter) else { return part.lowercased() }
+        return part[..<first].lowercased()
+            + part[first].uppercased()
+            + part[part.index(after: first)...].lowercased()
+    }
+}
+
+/// The most rows that fit, from `maximum` down to one, so rows keep their
+/// size across widget sizes and text sizes instead of shrinking or clipping.
+/// Give it layout priority over the spacer below it.
+private struct FittingRows<Content: View>: View {
+    let maximum: Int
+    @ViewBuilder let content: (Int) -> Content
+
+    var body: some View {
+        ViewThatFits(in: .vertical) {
+            content(max(maximum, 1))
+            content(max(maximum - 1, 1))
+            content(max(maximum - 2, 1))
+            content(max(maximum - 3, 1))
+            content(1)
+        }
+    }
+}
+
+/// Rows stacked at least `spacing` apart, with the gaps growing up to
+/// `maxSpacing` to take the height offered, so a list gains a little air
+/// rather than ending on blank space. Hairlines count as rows here.
+private struct SpreadRows: Layout {
+    var spacing: CGFloat
+    var maxSpacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let heights = subviews.map { $0.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil)).height }
+        let gaps = CGFloat(max(subviews.count - 1, 0))
+        let natural = heights.reduce(0, +) + spacing * gaps
+        let width = proposal.width
+            ?? subviews.map { $0.sizeThatFits(.unspecified).width }.max()
+            ?? 0
+        guard gaps > 0, let offered = proposal.height, offered.isFinite else {
+            return CGSize(width: width, height: natural)
+        }
+        let tallest = heights.reduce(0, +) + maxSpacing * gaps
+        return CGSize(width: width, height: max(natural, min(offered, tallest)))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let sizes = subviews.map { $0.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil)) }
+        let gaps = CGFloat(max(subviews.count - 1, 1))
+        let even = (bounds.height - sizes.map(\.height).reduce(0, +)) / gaps
+        let gap = min(max(spacing, even), max(spacing, maxSpacing))
+        var y = bounds.minY
+        for (subview, size) in zip(subviews, sizes) {
+            subview.place(
+                at: CGPoint(x: bounds.minX, y: y),
+                proposal: ProposedViewSize(width: bounds.width, height: size.height)
+            )
+            y += size.height + gap
+        }
+    }
+}
+
     let values: [Double]
     var showsFill = true
 
