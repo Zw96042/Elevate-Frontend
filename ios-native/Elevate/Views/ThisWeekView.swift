@@ -1023,3 +1023,94 @@ private struct WeekAssignmentRow: View {
         .contentShape(Rectangle())
     }
 
+    /// Status as plain words, colored as in Calendar: only Missing and
+    /// Absent take a color.
+    @ViewBuilder
+    private var statusLine: some View {
+        let parts = ForEach(statuses, id: \.self) { status in
+            Text(status.text)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(
+                    status.isMissing ? Color.gradeAttention : (status.isAbsent ? Color.gradeWarning : Color.ink)
+                )
+        }
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 2) { parts }
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 10) { parts }
+        }
+    }
+}
+
+/// A personal reminder that isn't tied to one of the day's assignments: a
+/// muted bell in the leading column, its title, then time and class.
+private struct WeekReminderRow: View {
+    var reminder: LocalReminder
+    var onOpen: (() -> Void)?
+    var onManage: (() -> Void)?
+    var identifier: String
+
+    private var title: String {
+        let text = reminder.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "Reminder" : text
+    }
+
+    private var detail: String {
+        let course = WeekCourseTitle.display(reminder.courseName)
+        let time = ThisWeekScope.time(reminder.fireDate)
+        return course.isEmpty ? "Reminder, \(time)" : "Reminder, \(time), \(course)"
+    }
+
+    var body: some View {
+        if let onOpen {
+            Button(action: onOpen) { content(showsChevron: true) }
+                .buttonStyle(RowPressStyle())
+                .contextMenu {
+                    if let onManage { Button("Manage reminders", systemImage: "bell", action: onManage) }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(title), \(detail)")
+                .accessibilityHint(reminder.assignmentID == nil ? "Shows this class's reminders" : "Opens this assignment in Courses")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier(identifier)
+        } else {
+            content(showsChevron: false)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(title), \(detail)")
+                .accessibilityIdentifier(identifier)
+        }
+    }
+
+    private func content(showsChevron: Bool) -> some View {
+        HStack(alignment: .center, spacing: 0) {
+            Image(systemName: "bell")
+                .font(.body)
+                .foregroundStyle(Color.muted)
+                .frame(width: 44, height: 44)
+                .padding(.leading, Metrics.page - WeekRowMetrics.columnOverhang)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(Color.ink)
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.muted)
+            }
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if showsChevron {
+                Image(systemName: "chevron.forward")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.faint)
+                    .padding(.leading, 12)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.trailing, Metrics.page)
+        .padding(.vertical, Metrics.rowPadding - 2)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+}
