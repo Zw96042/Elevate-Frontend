@@ -655,19 +655,122 @@ private struct WidgetHeading: View {
                 Text(shortTitle ?? title)
                     .lineLimit(1)
             }
-            GeometryReader { proxy in
-                Capsule()
-                    .fill(Color.secondary.opacity(0.14))
-                    .overlay(alignment: .leading) {
-                        Capsule()
-                            .fill(accent.opacity(0.82))
-                            .frame(width: proxy.size.width * min(max((course.score ?? 0) / 100, 0), 1))
-                    }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(tone.accent)
+            .widgetAccentable()
+            .layoutPriority(1)
+            Spacer(minLength: 0)
+            if showsFreshness && freshness.isStale {
+                ViewThatFits(in: .horizontal) {
+                    FreshnessNote()
+                    FreshnessNote(compact: true)
+                }
+            } else if let detail {
+                // Hidden rather than clipped when the title needs the room.
+                ViewThatFits(in: .horizontal) {
+                    Text(detail)
+                        .font(.footnote)
+                        .foregroundStyle(tone.muted)
+                        .lineLimit(1)
+                        .fixedSize()
+                    Color.clear.frame(width: 0, height: 0)
+                }
             }
-            .frame(height: 3)
         }
     }
 }
+
+private struct Hairline: View {
+    let tone: Tone
+    var vertical = false
+    @Environment(\.displayScale) private var displayScale
+
+    var body: some View {
+        let width = 1 / max(displayScale, 1)
+        Rectangle()
+            .fill(tone.rule)
+            .frame(width: vertical ? width : nil, height: vertical ? nil : width)
+            .accessibilityHidden(true)
+    }
+}
+
+/// A sentence where a list would be: what's absent, and what to do.
+private struct WidgetMessage: View {
+    var title: String
+    var detail: String? = nil
+
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
+    var body: some View {
+        let tone = Tone(mode: renderingMode)
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(tone.ink)
+            if let detail {
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(tone.muted)
+            }
+        }
+        .lineLimit(3)
+        .minimumScaleFactor(0.85)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// A widget with nothing to show yet: its heading, then the message.
+private struct WidgetEmptyState: View {
+    var heading: String
+    var headingDetail: String? = nil
+    var title: String
+    var detail: String? = nil
+
+    @Environment(\.widgetFamily) private var family
+
+    var body: some View {
+        let isSmall = family == .systemSmall
+        VStack(alignment: .leading, spacing: 0) {
+            WidgetHeading(title: heading, detail: headingDetail, showsFreshness: !isSmall)
+            if isSmall { Spacer(minLength: 6) }
+            WidgetMessage(title: title, detail: detail)
+                .padding(.top, isSmall ? 0 : 10)
+            if isSmall {
+                FreshnessNote(compact: true)
+                    .padding(.top, 4)
+            } else {
+                Spacer(minLength: 0)
+            }
+        }
+        .widgetPage()
+    }
+}
+
+/// Shown before the app has saved anything for widgets.
+struct NoDataView: View {
+    var heading: String
+    var subject = "grades"
+
+    var body: some View {
+        WidgetEmptyState(heading: heading, title: "Open Elevate to load your \(subject)")
+    }
+}
+
+/// An assignment as it reads in the app: its name, then class and date.
+private struct AssignmentRow<Trailing: View>: View {
+    let item: WidgetSnapshot.AssignmentItem
+    let tone: Tone
+    @ViewBuilder var trailing: () -> Trailing
+
+    @ViewBuilder
+    var body: some View {
+        if let url = item.assignmentURL {
+            Link(destination: url) { content }
+        } else {
+            content
+        }
+    }
 
 // MARK: - GPA widget
 
