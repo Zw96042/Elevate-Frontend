@@ -412,3 +412,120 @@ struct ThisWeekView: View {
         .accessibilityIdentifier("week.coverage")
     }
 
+    // MARK: - Days
+
+    /// Active assignment rows, then reminders. A reminder for one of the
+    /// day's assignments joins that row instead of repeating it; one for a
+    /// Done assignment is shown with it in Done.
+    @ViewBuilder
+    private func dayGroup(_ day: SchoolWeekDay, plan: SchoolWeekPlan) -> some View {
+        let shown = plan.shownReminders(on: day)
+        let linked = Dictionary(grouping: shown.filter { reminder in
+            day.assignments.contains { Self.isLinked(reminder, to: $0) }
+        }) { $0.assignmentID ?? "" }
+        let unlinked = shown.filter { reminder in
+            !day.assignments.contains { Self.isLinked(reminder, to: $0) }
+        }
+
+        GroupLabel(ThisWeekScope.dayTitle(day.id, in: plan.week))
+            .padding(.horizontal, Metrics.page)
+            .padding(.top, 20)
+            .accessibilityIdentifier("week.day.\(day.id)")
+        ForEach(Array(day.assignments.enumerated()), id: \.element.id) { index, assignment in
+            if index > 0 { InsetDivider(leading: WeekRowMetrics.textInset).padding(.horizontal, Metrics.page) }
+            let reminders = (linked[assignment.id] ?? []).filter { Self.isLinked($0, to: assignment) }
+            assignmentRow(assignment, plan: plan, context: .day,
+                          reminderTimes: reminders.map { ThisWeekScope.time($0.fireDate) }, key: "\(day.id).\(index)")
+        }
+        ForEach(Array(unlinked.enumerated()), id: \.element.id) { index, reminder in
+            if index > 0 || !day.assignments.isEmpty {
+                InsetDivider(leading: WeekRowMetrics.textInset).padding(.horizontal, Metrics.page)
+            }
+            WeekReminderRow(
+                reminder: reminder,
+                onOpen: reminderAction(for: reminder),
+                onManage: reminderManagementAction(for: reminder),
+                identifier: "week.reminder.\(day.id).\(index)"
+            )
+        }
+    }
+
+    private static func isLinked(_ reminder: LocalReminder, to assignment: CalendarAssignment) -> Bool {
+        reminder.assignmentID == assignment.id && reminder.term == assignment.term
+            && reminder.courseID == SchoolNotifications.notificationCourseID(for: assignment.course)
+    }
+
+    /// Collapsed until opened; the chevron turns without motion under
+    /// Reduce Motion.
+    @ViewBuilder
+    private func undatedGroup(_ plan: SchoolWeekPlan) -> some View {
+        let count = plan.undated.count
+        Button {
+            Motion.perform(Motion.select(reduceMotion)) { showsUndated.toggle() }
+        } label: {
+            HStack(alignment: .center, spacing: 8) {
+                Text("No date in Skyward (\(count))")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.forward")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.faint)
+                    .rotationEffect(.degrees(showsUndated ? 90 : 0))
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(ScopePressStyle())
+        .padding(.horizontal, Metrics.page)
+        .padding(.top, 20)
+        .accessibilityLabel(count == 1 ? "No date in Skyward, 1 assignment" : "No date in Skyward, \(count) assignments")
+        .accessibilityValue(showsUndated ? "Expanded" : "Collapsed")
+        .accessibilityHint(showsUndated ? "Hides these assignments" : "Shows these assignments")
+        .accessibilityIdentifier("week.undated.toggle")
+
+        if showsUndated {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(plan.undated.enumerated()), id: \.element.id) { index, assignment in
+                    if index > 0 { InsetDivider(leading: WeekRowMetrics.textInset).padding(.horizontal, Metrics.page) }
+                    assignmentRow(assignment, plan: plan, context: .undated, reminderTimes: [], key: "undated.\(index)")
+                }
+            }
+            .transition(.opacity)
+        }
+    }
+
+    /// Checked-off work, collapsed to its count until opened. Each row keeps
+    /// Skyward's statuses and its reminders, and unchecking returns it to
+    /// its groups above.
+    @ViewBuilder
+    private func doneGroup(_ plan: SchoolWeekPlan) -> some View {
+        let count = plan.done.count
+        Button {
+            Motion.perform(Motion.select(reduceMotion)) { showsDoneList.toggle() }
+        } label: {
+            HStack(alignment: .center, spacing: 8) {
+                Text("Done (\(count))")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.forward")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.faint)
+                    .rotationEffect(.degrees(showsDoneList ? 90 : 0))
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(ScopePressStyle())
+        .padding(.horizontal, Metrics.page)
+        .padding(.top, 20)
+        .accessibilityLabel(count == 1 ? "Done, 1 assignment" : "Done, \(count) assignments")
+        .accessibilityValue(showsDoneList ? "Expanded" : "Collapsed")
+        .accessibilityHint(showsDoneList ? "Hides assignments you checked off" : "Shows assignments you checked off")
+        .accessibilityIdentifier("week.completed.toggle")
+
