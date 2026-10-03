@@ -580,67 +580,80 @@ private struct TrendCurve {
 /// the series to VoiceOver.
 private struct TrendChart: View {
     let values: [Double]
-    var showsFill = true
+    let tone: Tone
 
     var body: some View {
         GeometryReader { proxy in
-            let points = plottedPoints(in: proxy.size)
+            let curve = TrendCurve(values: values, size: proxy.size, inset: 4)
             ZStack {
-                if showsFill, let first = points.first, let last = points.last {
-                    Path { path in
-                        path.move(to: CGPoint(x: first.x, y: proxy.size.height))
-                        points.forEach { path.addLine(to: $0) }
-                        path.addLine(to: CGPoint(x: last.x, y: proxy.size.height))
-                        path.closeSubpath()
-                    }
-                    .fill(
-                        LinearGradient(
-                            colors: [accent.opacity(0.24), accent.opacity(0.02)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
+                curve.area
+                    .fill(LinearGradient(
+                        colors: [tone.chartFill, tone.chartFill.opacity(0)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ))
+                curve.line
+                    .stroke(tone.chartLine, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                    .widgetAccentable()
+                if let last = curve.points.last {
+                    Circle()
+                        .fill(tone.chartLine)
+                        .frame(width: 7, height: 7)
+                        .position(last)
+                        .widgetAccentable()
                 }
-
-                Path { path in
-                    guard let first = points.first else { return }
-                    path.move(to: first)
-                    points.dropFirst().forEach { path.addLine(to: $0) }
-                }
-                .stroke(accent, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
             }
         }
         .accessibilityHidden(true)
     }
+}
 
-    private func plottedPoints(in size: CGSize) -> [CGPoint] {
-        guard !values.isEmpty else { return [] }
-        let minimum = values.min() ?? 0
-        let maximum = values.max() ?? minimum
-        let range = max(maximum - minimum, 0.1)
-        let denominator = CGFloat(max(values.count - 1, 1))
-        return values.enumerated().map { index, value in
-            CGPoint(
-                x: CGFloat(index) / denominator * size.width,
-                y: size.height - CGFloat((value - minimum) / range) * size.height
-            )
+// MARK: - Shared parts
+
+extension View {
+    fileprivate func widgetPage() -> some View {
+        frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+private struct FreshnessNote: View {
+    var compact = false
+
+    @Environment(\.snapshotFreshness) private var freshness
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
+    var body: some View {
+        if let text = compact ? freshness.shortText : freshness.text {
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(Tone(mode: renderingMode).warning)
+                .lineLimit(1)
+                .accessibilityLabel(freshness.spoken ?? text)
         }
     }
 }
 
-private struct GradeMeterRow: View {
-    let course: WidgetSnapshot.CourseGrade
+/// The first line of a widget: what it shows at the leading edge, and at the
+/// trailing edge either context or, when the data isn't current, the note.
+private struct WidgetHeading: View {
+    var title: String
+    /// Used when `title` doesn't fit at larger text sizes.
+    var shortTitle: String? = nil
+    var detail: String? = nil
+    /// Small widgets set the note lower down, where it has room.
+    var showsFreshness = true
+
+    @Environment(\.snapshotFreshness) private var freshness
+    @Environment(\.widgetRenderingMode) private var renderingMode
 
     var body: some View {
-        VStack(spacing: 3) {
-            HStack(spacing: 8) {
-                Text(course.name)
-                    .font(.caption)
+        let tone = Tone(mode: renderingMode)
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            ViewThatFits(in: .horizontal) {
+                Text(title)
+                    .fixedSize()
+                Text(shortTitle ?? title)
                     .lineLimit(1)
-                Spacer(minLength: 4)
-                Text(scoreText(course.score))
-                    .font(.caption.bold().monospacedDigit())
-                    .foregroundStyle(accent)
             }
             GeometryReader { proxy in
                 Capsule()
