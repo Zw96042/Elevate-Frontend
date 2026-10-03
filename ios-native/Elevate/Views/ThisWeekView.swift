@@ -724,3 +724,102 @@ enum ThisWeekScope {
         return "\(text) \(abbreviation)"
     }
 
+    /// "Today at 7:00 PM" or "Tue, Oct 6 at 7:00 PM", for rows that span days.
+    static func moment(_ date: Date, in week: SchoolWeek) -> String {
+        let iso = SchoolWeek.day(for: date)
+        let day = iso == week.days.first || (week.days.count > 1 && iso == week.days[1])
+            ? dayTitle(iso, in: week) : shortDay(iso)
+        return "\(day) at \(time(date))"
+    }
+
+    /// The Calendar quarters the week's days fall in, in order.
+    static func quarters(for week: SchoolWeek) -> [TermLabel] {
+        var result: [TermLabel] = []
+        for day in week.days {
+            guard let date = date(day) else { continue }
+            let quarter = SchoolCalendar.quarter(for: AcademicCalendar.currentTerm(for: date))
+            if !result.contains(quarter) { result.append(quarter) }
+        }
+        return result
+    }
+
+    /// The current account's reminders, or none while the notification
+    /// service still holds another account's.
+    @MainActor
+    static func reminders(_ store: AppStore) -> [LocalReminder] {
+        guard let scope = store.localAccountScope, store.notifications.accountScope == scope else { return [] }
+        return store.notifications.reminders
+    }
+
+    /// Classes whose assignments are absent, and classes shown from saved
+    /// data after a failed refresh, by source name.
+    static func coverage(_ data: SchoolCalendarData, courses: [UnifiedCourseData]) -> (missing: [String], saved: [String]) {
+        let missing = SchoolCalendar.eligibleCourses(courses, term: data.term)
+            .filter { !data.resolvedCourseIDs.contains($0.id) }
+            .map(\.courseName)
+        let missingNames = Set(missing)
+        return (missing, data.failedCourseNames.filter { !missingNames.contains($0) })
+    }
+
+    static let genericSummary = "Due work, missing work and reminders"
+
+    /// Counts only when `isComplete` (every eligible class loaded in the
+    /// latest refresh) and the week is in the data's quarter.
+    static func summary(data: SchoolCalendarData?, reminders: [LocalReminder], isComplete: Bool,
+                        now: Date = Date()) -> String {
+        guard isComplete, let data else { return genericSummary }
+        let plan = SchoolWeekPlan(data: data, reminders: reminders, now: now)
+        guard quarters(for: plan.week).contains(data.term) else { return genericSummary }
+        let due = plan.days.reduce(0) { $0 + $1.assignments.count }
+        let reminderCount = plan.days.reduce(0) { $0 + $1.reminders.count }
+        var parts = [due == 0 ? "Nothing due" : "\(due) due"]
+        if !plan.missing.isEmpty { parts.append("\(plan.missing.count) marked missing") }
+        if reminderCount > 0 { parts.append(reminderCount == 1 ? "1 reminder" : "\(reminderCount) reminders") }
+        return parts.joined(separator: ", ")
+    }
+}
+
+/// Course names through the shared class-name formatter.
+private enum WeekCourseTitle {
+    static func display(_ raw: String) -> String {
+        ClassNameFormatter.format(
+            raw.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: " ", with: "_")
+        )
+    }
+}
+
+private enum WeekRowMetrics {
+    /// The leading Done or bell column's 44-point target starts this far
+    /// inside the page margin, so its glyph sits on the margin.
+    static let columnOverhang: CGFloat = 8
+    /// Text starts after the 44-point leading column.
+    static let textInset: CGFloat = 44 - columnOverhang
+}
+
+// MARK: - Rows
+
+/// One Skyward assignment: a Done control in the leading column, title,
+/// class and category, Skyward's statuses, and any reminder on that day.
+/// The bell and the class's chevron trail; at larger text the bell moves
+/// beneath the text so the title keeps its width.
+private struct WeekAssignmentRow: View {
+    enum Context {
+        case day
+        /// Shows the due date, since the group spans the quarter.
+        case missing
+        /// Shows Skyward's own date text.
+        case undated
+        /// Checked off; shows the due date, since Done spans the week.
+        case done
+    }
+
+    var assignment: CalendarAssignment
+    var context: Context
+    var isDone: Bool
+    var isDuplicate: Bool
+    var reminderTimes: [String]
+    var onToggleDone: (() -> Void)?
+    var onOpen: (() -> Void)?
+    var onRemind: (() -> Void)?
+    var key: String
+
