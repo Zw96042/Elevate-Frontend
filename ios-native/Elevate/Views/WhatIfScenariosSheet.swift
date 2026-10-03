@@ -511,3 +511,102 @@ struct WhatIfScenariosSheet: View {
             : nil
     }
 
+    /// The scope to hand the pinned library, read fresh at mutation time, or
+    /// nil when the account or selected term changed after the sheet opened.
+    private func freshScope() -> String? {
+        guard store.localAccountScope == context.accountScope,
+              store.selectedTerm == context.term else { return nil }
+        return WhatIfStore.accountScope
+    }
+
+    private func scopeChanged() {
+        errorMessage = "The account or term changed while this was open. Nothing was changed."
+        dismiss()
+    }
+
+    // MARK: Actions
+
+    private func beginSave() {
+        errorMessage = nil
+        nameDraft = defaultName
+        nameRequest = .save
+    }
+
+    private func beginRename(_ scenario: WhatIfScenario) {
+        errorMessage = nil
+        nameDraft = scenario.name
+        nameRequest = .rename(scenario)
+    }
+
+    private func commitName(_ request: NameRequest) {
+        let name = trimmedName
+        guard nameIsValid else {
+            errorMessage = Self.message(for: WhatIfScenarioLibraryError.invalidName)
+            return
+        }
+        switch request {
+        case .save: save(named: name)
+        case .rename(let scenario): rename(scenario, to: name)
+        }
+    }
+
+    private func save(named name: String) {
+        guard let scope = freshScope() else { return scopeChanged() }
+        // Score fields were committed when this sheet opened. Read the stored
+        // edits now, not a copy taken earlier.
+        guard WhatIfStore.accountScope == context.accountScope,
+              let snapshot = WhatIfStore.scenarioSnapshot(classKey: context.classKey, term: context.term) else {
+            errorMessage = "Your current what-if changes couldn't be read, so nothing was saved."
+            return
+        }
+        do {
+            try library.save(name: name, classKey: context.classKey, term: context.term,
+                             snapshot: snapshot, expectedAccountIdentifier: scope)
+            errorMessage = nil
+            commitRevision += 1
+            Motion.perform(Motion.replace(reduceMotion)) { reload() }
+        } catch {
+            errorMessage = Self.message(for: error)
+            reload()
+        }
+    }
+
+    private func rename(_ scenario: WhatIfScenario, to name: String) {
+        guard let scope = freshScope() else { return scopeChanged() }
+        do {
+            try library.rename(id: scenario.id, name: name, expectedAccountIdentifier: scope)
+            errorMessage = nil
+            commitRevision += 1
+            reload()
+        } catch {
+            errorMessage = Self.message(for: error)
+            reload()
+        }
+    }
+
+    private func delete(_ scenario: WhatIfScenario) {
+        guard let scope = freshScope() else { return scopeChanged() }
+        do {
+            try library.delete(id: scenario.id, expectedAccountIdentifier: scope)
+            errorMessage = nil
+            commitRevision += 1
+            Motion.perform(Motion.replace(reduceMotion)) { reload() }
+        } catch {
+            errorMessage = Self.message(for: error)
+            reload()
+        }
+    }
+
+    private func clearUnreadable() {
+        guard let scope = freshScope() else { return scopeChanged() }
+        do {
+            try library.clearUnreadableScenarios(expectedAccountIdentifier: scope)
+            errorMessage = nil
+            commitRevision += 1
+            Motion.perform(Motion.replace(reduceMotion)) { reload() }
+        } catch {
+            errorMessage = Self.message(for: error)
+            reload()
+        }
+    }
+
