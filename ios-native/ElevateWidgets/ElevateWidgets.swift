@@ -1017,6 +1017,96 @@ private struct GPACircularView: View {
         }
     }
 
+    private func spoken(_ snapshot: WidgetSnapshot, value: Double) -> String {
+        let kind = snapshot.weightedGPA != nil ? "Weighted" : "Unweighted"
+        let reading = "\(kind) GPA \(Format.gpa(value)), \(Format.termName(snapshot.termShortName))"
+        let parts: [String?] = [reading, freshness.spoken]
+        return parts.compactMap { $0 }.joined(separator: ". ")
+    }
+}
+
+/// The term, then weighted and unweighted side by side.
+private struct GPARectangularView: View {
+    let snapshot: WidgetSnapshot?
+
+    @Environment(\.snapshotFreshness) private var freshness
+
+    var body: some View {
+        if let snapshot {
+            VStack(alignment: .leading, spacing: 1) {
+                heading(snapshot)
+                if snapshot.weightedGPA != nil || snapshot.unweightedGPA != nil {
+                    HStack(alignment: .firstTextBaseline, spacing: 14) {
+                        if let weighted = snapshot.weightedGPA {
+                            figure(weighted, label: "Weighted")
+                                .widgetAccentable()
+                        }
+                        if let unweighted = snapshot.unweightedGPA {
+                            figure(unweighted, label: "Unweighted")
+                        }
+                    }
+                } else {
+                    Text(freshness.isPartial ? "Some grades didn't load" : "No GPA yet this term")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+        } else {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("GPA")
+                    .font(.headline)
+                Text("Open Elevate to load your grades")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func heading(_ snapshot: WidgetSnapshot) -> some View {
+        ViewThatFits(in: .horizontal) {
+            headingLine("\(Format.termName(snapshot.termShortName)) GPA", showsText: true)
+            headingLine("\(snapshot.termShortName) GPA", showsText: true)
+            headingLine("\(snapshot.termShortName) GPA", showsText: false)
+        }
+    }
+
+    private func headingLine(_ title: String, showsText: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(title)
+                .font(.headline)
+                .lineLimit(1)
+            if showsText, let note = freshness.shortText {
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .accessibilityLabel(freshness.spoken ?? note)
+            } else if let symbol = freshness.symbol {
+                Image(systemName: symbol)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(freshness.spoken ?? "")
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func figure(_ value: Double, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(Format.gpa(value))
+                .font(.figure(.title3, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
     }
 }
@@ -1027,52 +1117,36 @@ struct GPATrendWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "GPATrendWidget", provider: SnapshotProvider()) { entry in
             GPATrendWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .themedWidgetContainer()
                 .privacySensitive(entry.snapshot != nil)
                 .widgetURL(URL(string: "com.zacharywilson.elevate://gpa"))
                 .modifier(SnapshotFreshnessModifier(
                     snapshot: entry.snapshot,
                     section: entry.snapshot?.resolvedBaseStatus
                 ))
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         }
         .configurationDisplayName("GPA Trend")
-        .description("A clean visual of how your GPA has moved recently.")
+        .description("Shows your weighted GPA and how it has moved across recent terms.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
 
 struct GPATrendWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetRenderingMode) private var renderingMode
+    @Environment(\.snapshotFreshness) private var freshness
+    @ScaledMetric(relativeTo: .title) var figureSize: CGFloat = 30
     let entry: SnapshotEntry
 
     var body: some View {
         if let snapshot = entry.snapshot,
            let history = snapshot.gpaHistory,
-           history.count > 1 {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Label("GPA Trend", systemImage: "chart.xyaxis.line")
-                        .font(.caption.bold())
-                    Spacer()
-                    if let delta = gpaDelta(snapshot) {
-                        Image(systemName: delta >= 0 ? "arrow.up.right" : "arrow.down.right")
-                            .font(.caption.bold())
-                            .foregroundStyle(delta >= 0 ? .green : .red)
-                    }
-                }
-                .foregroundStyle(.secondary)
-
-                Sparkline(values: history.map(\.weighted))
-
-                if family == .systemMedium {
-                    HStack {
-                        ForEach(history, id: \.self) { point in
-                            Text(point.term)
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(.secondary)
-                            if point != history.last { Spacer() }
-                        }
-                    }
+           history.count > 1,
+           let latest = history.last {
+            Group {
+                if family == .systemSmall {
+                    small(snapshot: snapshot, history: history, latest: latest)
                 } else {
                     Text((gpaDelta(snapshot) ?? 0) >= 0 ? "Trending up" : "Trending down")
                         .font(.caption2.weight(.semibold))
