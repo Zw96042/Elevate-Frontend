@@ -296,6 +296,68 @@ struct RootTabView: View {
         }
     }
 
+
+    private func openNotificationDestination() {
+        // Keep a cold-launch or locked tap pending until both the screen gate
+        // and the existing account/course checks are satisfied.
+        guard scenePhase == .active, !appLock.isContentCovered else { return }
+        guard let destination = store.notifications.pendingDestination else { return }
+        // The delegate may receive a cold-launch tap before activation finishes.
+        guard let activeScope = store.notifications.accountScope else { return }
+        guard destination.scope == activeScope else {
+            store.notifications.pendingDestination = nil
+            return
+        }
+        guard let courses = store.courses else { return }
+        router.isShowingSettings = false
+        router.selectedTab = .courses
+        if let id = destination.courseID,
+           let course = courses.first(where: { SchoolNotifications.notificationCourseID(for: $0) == id }) {
+            if let term = destination.term, course.availableTerms.contains(term) { store.selectedTerm = term }
+            if let assignmentID = destination.assignmentID, let term = destination.term,
+               !term.isSemester, course.availableTerms.contains(term) {
+                router.showAssignment(course: course, term: term, assignmentID: assignmentID)
+            } else {
+                router.coursesPath = [.course(course)]
+            }
+        } else {
+            router.coursesPath = []
+        }
+        store.notifications.pendingDestination = nil
+    }
+
+    /// Decided once per launch using the current tour version, independently
+    /// of saved credentials. Completion is recorded only when the tour finishes.
+    private func evaluateOnboarding() {
+        guard !didEvaluateOnboarding else { return }
+        didEvaluateOnboarding = true
+
+        if LaunchArguments.forcesOnboarding {
+            onboarding = .preview
+            return
+        }
+        if LaunchArguments.seedsLegacyOnboarding {
+            UserDefaults.standard.set(true, forKey: "elevate.onboarding.completed.v1")
+            onboardingCompleted = false
+        }
+        // This version of the tour introduces new features and theme choices,
+        // so it is shown once to connected students as well as new students.
+        if (!LaunchArguments.usesSampleData || LaunchArguments.evaluatesSampleOnboarding),
+           !onboardingCompleted {
+            onboarding = .firstRun
+        }
+    }
+
+    /// Only an explicit finish of the real first-run flow records completion.
+    /// Finishing never touches credentials, caches, or preferences otherwise.
+    private func finishOnboarding(_ presentation: OnboardingPresentation) {
+        if presentation == .firstRun {
+            onboardingCompleted = true
+        }
+        if reduceMotion {
+            withAnimation(.easeOut(duration: 0.2)) { onboarding = nil }
+        } else {
+            withAnimation(.smooth(duration: 0.45)) { onboarding = nil }
         }
     }
 }
