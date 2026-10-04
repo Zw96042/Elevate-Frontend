@@ -107,15 +107,85 @@ struct RootTabView: View {
             .preferredColorScheme(theme.appearance.colorScheme)
         }
         .tint(Color.themeAccent)
+        .foregroundStyle(Color.ink)
         .preferredColorScheme(theme.appearance.colorScheme)
+        .softScrollEdges()
         .background(Color.appBackground.ignoresSafeArea())
-        .onOpenURL { url in
-            guard url.scheme == "com.zacharywilson.elevate" else { return }
-            switch url.host {
-            case "gpa": selectedTab = .gpa
-            case "inbox": selectedTab = .inbox
-            default: selectedTab = .courses
+        .background {
+            AppLockPresentation(store: appLock) {
+                AppLockScreenView(store: appLock)
+                    .preferredColorScheme(theme.appearance.colorScheme)
             }
+            .frame(width: 0, height: 0)
+        }
+        .onAppear(perform: evaluateOnboarding)
+        .onOpenURL { url in
+            pendingURL = url
+            openPendingURL()
+        }
+        // Pushed classes belong to one account; drop them when it changes.
+        .onChange(of: store.hasCredentials) { _, _ in
+            if pendingURL.flatMap({ AssignmentLink(url: $0) }) == nil { pendingURL = nil }
+            router.resetForAccountChange()
+        }
+        .onChange(of: store.accountRevision) { _, _ in
+            // Scoped assignment links can arrive before cold-launch account
+            // activation. Validate their scope after activation, not before.
+            if pendingURL.flatMap({ AssignmentLink(url: $0) }) == nil { pendingURL = nil }
+            router.resetForAccountChange()
+        }
+        .onChange(of: studentIDs) { old, new in
+            // Loading an account's first data is not a change of account.
+            if !old.isEmpty, old != new { router.resetForAccountChange() }
+        }
+        // Search's field closes when another tab or Settings takes over,
+        // including opening a result, links and notifications.
+        .onChange(of: router.selectedTab) { _, tab in
+            if tab != .search { router.dismissSearch() }
+        }
+        .onChange(of: router.isShowingSettings) { _, showing in
+            if showing { router.dismissSearch() }
+        }
+        .task(id: store.accountRevision) {
+            let scope = store.isUsingSampleData ? "sample" : (store.hasCredentials ? CredentialStore.currentAccountIdentifier : nil)
+            #if DEBUG
+            if LaunchArguments.usesSampleData,
+               let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("-PendingAssignmentPreview=") }),
+               let url = URL(string: String(argument.dropFirst("-PendingAssignmentPreview=".count))),
+               AssignmentLink(url: url)?.scope == "sample" {
+                pendingURL = url
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { return }
+            }
+            #endif
+            await store.notifications.activateAccount(scope: scope)
+            await store.notifications.refreshAuthorization()
+            await BackgroundGradeRefresh.scheduleIfEnabled()
+            openPendingURL()
+            openNotificationDestination()
+            #if DEBUG
+            await SampleData.scheduleNotificationTapPreview(courses: store.courses ?? [])
+            #endif
+        }
+        .onChange(of: store.notifications.pendingDestination) { _, _ in openNotificationDestination() }
+        .onChange(of: store.notifications.accountScope) { _, _ in
+            // Account activation can finish after the scene becomes active.
+            // React from the current view instead of a task's earlier phase.
+            openPendingURL()
+            openNotificationDestination()
+        }
+        .onChange(of: store.coursesRefreshRevision) { _, _ in
+            openPendingURL()
+            openNotificationDestination()
+        }
+        .onChange(of: appLock.isContentCovered) { _, covered in
+            if !covered {
+                openPendingURL()
+                openNotificationDestination()
+            }
+        }
+        .onChange(of: store.notifications.gradeChangesEnabled) { _, _ in
+            Task { await BackgroundGradeRefresh.scheduleIfEnabled() }
         }
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
