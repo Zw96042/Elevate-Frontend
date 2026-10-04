@@ -1148,22 +1148,141 @@ struct GPATrendWidgetView: View {
                 if family == .systemSmall {
                     small(snapshot: snapshot, history: history, latest: latest)
                 } else {
-                    Text((gpaDelta(snapshot) ?? 0) >= 0 ? "Trending up" : "Trending down")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                    medium(snapshot: snapshot, history: history, latest: latest)
                 }
             }
+            .widgetPage()
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Weighted GPA trend")
-            .accessibilityValue(gpaTrendAccessibilityValue(snapshot))
+            .accessibilityValue(spokenValue(snapshot: snapshot, history: history))
         } else if entry.snapshot != nil {
-            WidgetEmptyStateView(
-                systemImage: "chart.xyaxis.line",
-                title: "More graded terms are needed for a trend"
+            WidgetEmptyState(
+                heading: "GPA trend",
+                title: freshness.isPartial ? "GPA history unavailable" : "Not enough terms yet",
+                detail: freshness.isPartial
+                    ? "Some grades didn't load."
+                    : "The trend appears after two graded terms."
             )
         } else {
-            NoDataView()
+            NoDataView(heading: "GPA trend")
         }
+    }
+
+    private var tone: Tone { Tone(mode: renderingMode) }
+
+    private func small(
+        snapshot: WidgetSnapshot,
+        history: [WidgetSnapshot.GPAHistoryPoint],
+        latest: WidgetSnapshot.GPAHistoryPoint
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            WidgetHeading(title: "GPA trend", showsFreshness: false)
+            latestFigure(latest)
+                .padding(.top, 2)
+            if freshness.isStale {
+                FreshnessNote(compact: true)
+            } else if let change = GPAChange(snapshot) {
+                Text(change.shortText)
+                    .font(.figure(.caption))
+                    .foregroundStyle(tone.muted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            TrendChart(values: history.map(\.weighted), tone: tone)
+                .frame(minHeight: 24, maxHeight: .infinity)
+                .padding(.top, 6)
+        }
+    }
+
+    private func medium(
+        snapshot: WidgetSnapshot,
+        history: [WidgetSnapshot.GPAHistoryPoint],
+        latest: WidgetSnapshot.GPAHistoryPoint
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 12) {
+                latestFigure(latest)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Weighted GPA")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(tone.accent)
+                        .widgetAccentable()
+                    if let change = GPAChange(snapshot) {
+                        ViewThatFits(in: .horizontal) {
+                            Text(change.longText)
+                            Text(change.shortText)
+                        }
+                        .font(.figure(.footnote))
+                        .foregroundStyle(tone.muted)
+                    }
+                }
+                .lineLimit(1)
+                Spacer(minLength: 0)
+                if freshness.isStale {
+                    ViewThatFits(in: .horizontal) {
+                        FreshnessNote()
+                        FreshnessNote(compact: true)
+                    }
+                }
+            }
+            TrendChart(values: history.map(\.weighted), tone: tone)
+                .frame(minHeight: 24, maxHeight: .infinity)
+            if let first = history.first {
+                ViewThatFits(in: .horizontal) {
+                    endpoints(first, latest, name: Format.termName)
+                    endpoints(first, latest, name: Format.termShort)
+                }
+            }
+        }
+    }
+
+    private func latestFigure(_ latest: WidgetSnapshot.GPAHistoryPoint) -> some View {
+        Text(Format.gpa(latest.weighted))
+            .font(.display(size: figureSize))
+            .foregroundStyle(tone.ink)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .widgetAccentable()
+    }
+
+    /// The first and latest terms under the ends of the curve.
+    private func endpoints(
+        _ first: WidgetSnapshot.GPAHistoryPoint,
+        _ last: WidgetSnapshot.GPAHistoryPoint,
+        name: (String) -> String
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            endpoint(first, name: name)
+                .fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 8)
+            endpoint(last, name: name)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .font(.caption)
+        .lineLimit(1)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func endpoint(
+        _ point: WidgetSnapshot.GPAHistoryPoint,
+        name: (String) -> String
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(name(point.term))
+                .foregroundStyle(tone.muted)
+            Text(Format.gpa(point.weighted))
+                .font(.figure(.caption, weight: .medium))
+                .foregroundStyle(tone.ink)
+        }
+    }
+
+    private func spokenValue(snapshot: WidgetSnapshot, history: [WidgetSnapshot.GPAHistoryPoint]) -> String {
+        let parts: [String?] = [
+            GPAChange(snapshot).map { "Latest \($0.spoken)" },
+            gpaTrendAccessibilityValue(history),
+            freshness.spoken,
+        ]
+        return parts.compactMap { $0 }.joined(separator: ". ")
     }
 }
 
