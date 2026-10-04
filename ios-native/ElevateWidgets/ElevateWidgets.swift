@@ -1561,11 +1561,85 @@ struct GradesWidgetView: View {
                 }
                 .widgetPage()
             } else {
-                WidgetEmptyStateView(systemImage: "books.vertical", title: "No current courses")
+                WidgetEmptyState(
+                    heading: "Grades",
+                    headingDetail: Format.termName(s.termShortName),
+                    title: freshness.isPartial ? "Classes didn't load" : "No classes this term",
+                    detail: freshness.isPartial
+                        ? "Open Elevate to refresh."
+                        : "Skyward has no classes for \(Format.termName(s.termShortName))."
+                )
             }
         } else {
-            NoDataView()
+            NoDataView(heading: "Grades")
         }
+    }
+
+    private func courseList(_ courses: [WidgetSnapshot.CourseGrade], rows: Int) -> some View {
+        let shown = min(rows, courses.count)
+        return VStack(alignment: .leading, spacing: 0) {
+            RuledList(items: courses, rows: rows, tone: tone, spacing: 0) {
+                courseRow($0)
+            }
+            if isLarge, courses.count > shown {
+                Text("\(courses.count - shown) more in Elevate")
+                    .font(.footnote)
+                    .foregroundStyle(tone.muted)
+                    .padding(.top, 4)
+            }
+        }
+    }
+
+    /// Weighted large and unweighted beside it, each over its label.
+    private func gpaFigures(weighted: Double, unweighted: Double?) -> some View {
+        HStack(alignment: .lastTextBaseline, spacing: 20) {
+            figure(Format.gpa(weighted), label: "Weighted GPA", size: figureSize, isAccented: true)
+            if let unweighted {
+                figure(Format.gpa(unweighted), label: "Unweighted", size: figureSize * 0.62)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "Weighted GPA \(Format.gpa(weighted))" + (unweighted.map { ", unweighted \(Format.gpa($0))" } ?? "")
+        )
+    }
+
+    private func figure(_ value: String, label: String, size: CGFloat, isAccented: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(value)
+                .font(.display(size: size))
+                .foregroundStyle(tone.ink)
+                .widgetAccentable(isAccented)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(tone.muted)
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+    }
+
+    private func courseRow(_ course: WidgetSnapshot.CourseGrade) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(course.name)
+                .font(.subheadline)
+                .foregroundStyle(tone.ink)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(Format.grade(course.score))
+                .font(.figure(.body, weight: .semibold))
+                .foregroundStyle(tone.grade(course.score))
+                .lineLimit(1)
+                .accessibilityLabel(spokenGrade(course.score))
+        }
+        .padding(.vertical, rowPadding)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func spokenGrade(_ score: Double?) -> String {
+        guard let score, score.isFinite else { return "No grade" }
+        return "\(Format.grade(score)) percent"
     }
 }
 
@@ -1575,23 +1649,29 @@ struct RecentGradesWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "RecentGradesWidget", provider: SnapshotProvider()) { entry in
             RecentGradesWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .themedWidgetContainer()
                 .privacySensitive(entry.snapshot != nil)
-                .widgetURL(URL(string: "com.zacharywilson.elevate://courses"))
+                .widgetURL(entry.snapshot?.recentGrades.first?.assignmentURL ?? URL(string: "com.zacharywilson.elevate://courses"))
                 .modifier(SnapshotFreshnessModifier(
                     snapshot: entry.snapshot,
                     section: entry.snapshot?.resolvedAssignmentStatus
                 ))
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         }
         .configurationDisplayName("Recent Grades")
-        .description("The latest assignments your teachers have graded.")
+        .description("Shows the scores on the assignments your teachers graded most recently.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
 
 struct RecentGradesWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetRenderingMode) private var renderingMode
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .largeTitle) var figureSize: CGFloat = 34
     let entry: SnapshotEntry
+
+    private var tone: Tone { Tone(mode: renderingMode) }
 
     var body: some View {
         if let s = entry.snapshot {
