@@ -1467,35 +1467,43 @@ struct SchoolPulseWidgetView: View {
                 .foregroundStyle(count > 0 ? tone.attention : tone.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            Text(title)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .widgetAccentable()
+                .accessibilityLabel((isLowerBound ? "At least " : "") + (count == 1 ? "1 assignment" : "\(count) assignments"))
+        } else {
+            unavailable
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(8)
-        .background(Color.secondary.opacity(0.09), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    private func attentionList(_ snapshot: WidgetSnapshot) -> some View {
-        let items = snapshot.missingAssignments.map { ("Missing", $0, Color.red) }
-            + (snapshot.absentAssignments ?? []).map { ("Absent", $0, Color.orange) }
-        return VStack(alignment: .leading, spacing: 6) {
-            Text("Needs attention")
-                .font(.caption.bold())
-            ForEach(Array(items.prefix(3).enumerated()), id: \.offset) { _, item in
-                HStack(spacing: 7) {
-                    Circle().fill(item.2).frame(width: 6, height: 6)
-                    Text(item.1.name)
-                        .font(.caption)
-                        .lineLimit(1)
-                    Spacer()
-                    Text(item.0)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(item.2)
-                }
-            }
+    /// The newest missing assignment, a verified clear, or what to do.
+    private func missingDetail(_ s: WidgetSnapshot, count: Int?) -> String {
+        if let first = s.missingAssignments.first {
+            let name = first.name.isEmpty ? "Untitled assignment" : first.name
+            return first.className.isEmpty ? name : "\(name), \(first.className)"
         }
+        if count == 0 { return "Nothing missing in \(Format.termName(s.termShortName))" }
+        return "Open Elevate to refresh."
+    }
+
+    /// A quiet group label with an optional figure or note at its end.
+    private func sectionLabel<Trailing: View>(
+        _ title: String,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(tone.muted)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            trailing()
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var unavailable: some View {
+        Text("Unavailable")
+            .font(.footnote)
+            .foregroundStyle(tone.muted)
     }
 }
 
@@ -1505,46 +1513,53 @@ struct GradesWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "GradesWidget", provider: SnapshotProvider()) { entry in
             GradesWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .themedWidgetContainer()
                 .privacySensitive(entry.snapshot != nil)
                 .widgetURL(URL(string: "com.zacharywilson.elevate://courses"))
                 .modifier(SnapshotFreshnessModifier(
                     snapshot: entry.snapshot,
                     section: entry.snapshot?.resolvedBaseStatus
                 ))
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         }
         .configurationDisplayName("Grades")
-        .description("Current grades for all of your classes.")
+        .description("Shows the current grade in each of your classes, with your GPA on the large size.")
         .supportedFamilies([.systemMedium, .systemLarge])
     }
 }
 
+/// Classes in schedule order with their term grade, as on Courses. The large
+/// size opens with the weighted and unweighted GPA.
 struct GradesWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetRenderingMode) private var renderingMode
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.snapshotFreshness) private var freshness
+    @ScaledMetric(relativeTo: .title) var figureSize: CGFloat = 30
     let entry: SnapshotEntry
 
-    private var maxRows: Int { family == .systemLarge ? 8 : 3 }
+    private var tone: Tone { Tone(mode: renderingMode) }
+    private var isLarge: Bool { family == .systemLarge }
+    private var rowPadding: CGFloat { dynamicTypeSize > .large ? 2 : 3 }
 
     var body: some View {
         if let s = entry.snapshot {
             if !s.courses.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("\(s.termShortName) Grades")
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if let updatedAt = s.resolvedBaseStatus.updatedAt {
-                        Text(updatedAt, style: .relative)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 0) {
+                    WidgetHeading(title: "Grades", detail: Format.termName(s.termShortName))
+                        .padding(.bottom, 4)
+                    if isLarge, let weighted = s.weightedGPA {
+                        gpaFigures(weighted: weighted, unweighted: s.unweightedGPA)
+                            .padding(.bottom, 8)
+                        Hairline(tone: tone)
                     }
+                    FittingRows(maximum: isLarge ? 8 : 4) { rows in
+                        courseList(s.courses, rows: rows)
+                    }
+                    .layoutPriority(1)
+                    Spacer(minLength: 0)
                 }
-                ForEach(s.courses.prefix(maxRows), id: \.self) { course in
-                    GradeMeterRow(course: course)
-                }
-                Spacer(minLength: 0)
-                }
+                .widgetPage()
             } else {
                 WidgetEmptyStateView(systemImage: "books.vertical", title: "No current courses")
             }
