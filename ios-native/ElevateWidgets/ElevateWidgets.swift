@@ -1675,57 +1675,24 @@ struct RecentGradesWidgetView: View {
 
     var body: some View {
         if let s = entry.snapshot {
-            if let latest = s.recentGrades.first, family == .systemSmall {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Latest Grade")
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(latest.gradeText)
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .foregroundStyle(accent)
-                        .minimumScaleFactor(0.5)
-                        .lineLimit(1)
-                    Text(latest.name)
-                        .font(.caption2.bold())
-                        .lineLimit(2)
-                    Text(latest.className)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            } else if !s.recentGrades.isEmpty {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Recent Grades")
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
-                    ForEach(s.recentGrades.prefix(4), id: \.self) { item in
-                        HStack(spacing: 8) {
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text(item.name)
-                                    .font(.caption)
-                                    .lineLimit(1)
-                                Text(item.className)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            Spacer()
-                            Text(item.gradeText)
-                                .font(.caption.bold().monospacedDigit())
-                                .foregroundStyle(accent)
-                            Text(item.date)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer(minLength: 0)
+            if let latest = s.recentGrades.first {
+                if family == .systemSmall {
+                    small(latest)
+                } else {
+                    medium(s)
                 }
             } else {
-                WidgetEmptyStateView(systemImage: "checkmark.circle", title: "No recent grades")
+                let incomplete = !s.resolvedAssignmentStatus.isComplete
+                WidgetEmptyState(
+                    heading: family == .systemSmall ? "Latest grade" : "Recent grades",
+                    title: incomplete ? "Grades didn't fully load" : "No graded work yet",
+                    detail: incomplete
+                        ? "Open Elevate to refresh."
+                        : "New grades from \(Format.termName(s.termShortName)) will appear here."
+                )
             }
         } else {
-            NoDataView()
+            NoDataView(heading: family == .systemSmall ? "Latest grade" : "Recent grades")
         }
     }
 }
