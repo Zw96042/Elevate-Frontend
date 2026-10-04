@@ -1857,7 +1857,70 @@ struct MissingAssignmentsWidgetView: View {
                 )
             }
         } else {
-            NoDataView()
+            NoDataView(heading: "Missing work")
+        }
+    }
+
+    private func figure(_ count: Count) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("\(count.value)\(count.isLowerBound ? "+" : "")")
+                .font(.display(size: figureSize))
+                .foregroundStyle(count.value > 0 ? tone.attention : tone.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .widgetAccentable()
+            Text(count.caption)
+                .font(.footnote)
+                .foregroundStyle(tone.muted)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(count.isLowerBound ? "At least \(count.value) missing assignments found so far" : count.isVerifiedClear ? "Nothing missing" : "\(count.value) missing assignments")
+    }
+
+    private func small(_ count: Count) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            WidgetHeading(title: "Missing work", showsFreshness: false)
+            Spacer(minLength: 4)
+            figure(count)
+            FreshnessNote(compact: true)
+                .padding(.top, 2)
+        }
+        .widgetPage()
+    }
+
+    private func medium(_ s: WidgetSnapshot, count: Count) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            WidgetHeading(title: "Missing work")
+                .padding(.bottom, 6)
+            HStack(alignment: .top, spacing: 12) {
+                figure(count)
+                    .fixedSize()
+                    .frame(minWidth: 72, alignment: .leading)
+                Hairline(tone: tone, vertical: true)
+                Group {
+                    if count.isVerifiedClear {
+                        Text("Every class in \(Format.termName(s.termShortName)) was checked.")
+                            .font(.footnote)
+                            .foregroundStyle(tone.muted)
+                            .lineLimit(3)
+                    } else {
+                        FittingRows(maximum: 3) { rows in
+                            missingList(s.missingAssignments, rows: rows)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .layoutPriority(1)
+            Spacer(minLength: 0)
+        }
+        .widgetPage()
+    }
+
+    private func missingList(_ items: [WidgetSnapshot.AssignmentItem], rows: Int) -> some View {
+        RuledList(items: items, rows: rows, tone: tone) {
+            AssignmentRow(item: $0, tone: tone)
         }
     }
 }
@@ -1868,13 +1931,14 @@ struct InboxWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "InboxWidget", provider: SnapshotProvider()) { entry in
             InboxWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .themedWidgetContainer()
                 .privacySensitive(entry.snapshot != nil)
                 .widgetURL(URL(string: "com.zacharywilson.elevate://inbox"))
                 .modifier(SnapshotFreshnessModifier(
                     snapshot: entry.snapshot,
                     section: entry.snapshot?.resolvedMessageStatus
                 ))
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         }
         .configurationDisplayName("Inbox")
         .description("Your most recent Skyward messages.")
@@ -1884,36 +1948,20 @@ struct InboxWidget: Widget {
 
 struct InboxWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetRenderingMode) private var renderingMode
+    @Environment(\.snapshotFreshness) private var freshness
     let entry: SnapshotEntry
 
-    private var maxRows: Int { family == .systemLarge ? 6 : 2 }
+    private var tone: Tone { Tone(mode: renderingMode) }
 
     var body: some View {
         if let s = entry.snapshot {
             if !s.messages.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                Text("Inbox")
-                    .font(.caption.bold())
-                    .foregroundStyle(.secondary)
-                ForEach(s.messages.prefix(maxRows), id: \.self) { message in
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: message.isAdministrator ? "building.columns" : "envelope")
-                            .font(.caption)
-                            .foregroundStyle(accent)
-                            .frame(width: 16)
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(message.subject)
-                                .font(.caption.weight(.semibold))
-                                .lineLimit(1)
-                            Text(message.from)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        Spacer()
-                        Text(message.date)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 0) {
+                    WidgetHeading(title: "Inbox")
+                        .padding(.bottom, 6)
+                    FittingRows(maximum: family == .systemLarge ? 6 : 2) { rows in
+                        messageList(s.messages, rows: rows)
                     }
                 }
                 Spacer(minLength: 0)
