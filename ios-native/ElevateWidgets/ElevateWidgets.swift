@@ -1963,14 +1963,27 @@ struct InboxWidgetView: View {
                     FittingRows(maximum: family == .systemLarge ? 6 : 2) { rows in
                         messageList(s.messages, rows: rows)
                     }
+                    .layoutPriority(1)
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
-                }
+                .widgetPage()
             } else {
-                WidgetEmptyStateView(systemImage: "envelope", title: "No messages")
+                WidgetEmptyState(
+                    heading: "Inbox",
+                    title: freshness.isPartial ? "Messages didn't load" : "No messages",
+                    detail: freshness.isPartial
+                        ? "Open Elevate to refresh."
+                        : "Messages from teachers and your school will appear here."
+                )
             }
         } else {
-            NoDataView()
+            NoDataView(heading: "Inbox", subject: "messages")
+        }
+    }
+
+    private func messageList(_ messages: [WidgetSnapshot.MessageItem], rows: Int) -> some View {
+        RuledList(items: messages, rows: rows, tone: tone, spacing: 6) {
+            MessageRow(message: $0, tone: tone)
         }
     }
 }
