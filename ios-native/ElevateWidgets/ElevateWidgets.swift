@@ -1843,70 +1843,18 @@ struct MissingAssignmentsWidgetView: View {
 
     var body: some View {
         if let s = entry.snapshot {
-            let missing = s.missingAssignments
-            let total = s.missingAssignmentsTotal
-            if family == .systemSmall {
-                VStack(alignment: .leading, spacing: 2) {
-                    Label("Missing Work", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption.bold())
-                        .foregroundStyle(.red)
-                    Spacer()
-                    Text(total.map(String.init) ?? "—")
-                        .font(.system(size: 38, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                    Text(total == 0 ? "All caught up!" : total.map { "assignment\($0 == 1 ? "" : "s") missing" } ?? "Some data unavailable")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+            if let count = missingCount(s) {
+                if family == .systemSmall {
+                    small(count)
+                } else {
+                    medium(s, count: count)
                 }
             } else {
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack {
-                        Text("Missing Work")
-                            .font(.caption.bold())
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        if total != 0 {
-                            Text(total.map(String.init) ?? "—")
-                                .font(.caption.bold())
-                                .foregroundStyle(.primary)
-                        }
-                    }
-                    if total == 0 {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            Label {
-                                Text("All caught up!")
-                                    .foregroundStyle(.primary)
-                            } icon: {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                            }
-                            .font(.callout.bold())
-                            Spacer()
-                        }
-                        Spacer()
-                    } else {
-                        ForEach(missing.prefix(4), id: \.self) { item in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    Text(item.name)
-                                        .font(.caption)
-                                        .lineLimit(1)
-                                    Text(item.className)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                Spacer()
-                                Text(item.date)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        Spacer(minLength: 0)
-                    }
-                }
+                WidgetEmptyState(
+                    heading: "Missing work",
+                    title: "Couldn't check every class",
+                    detail: "Open Elevate to refresh."
+                )
             }
         } else {
             NoDataView()
