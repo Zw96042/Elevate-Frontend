@@ -1695,6 +1695,96 @@ struct RecentGradesWidgetView: View {
             NoDataView(heading: family == .systemSmall ? "Latest grade" : "Recent grades")
         }
     }
+
+    private func small(_ latest: WidgetSnapshot.AssignmentItem) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            WidgetHeading(title: "Latest grade", showsFreshness: false)
+            Spacer(minLength: 4)
+            Text(latest.gradeText.isEmpty ? "—" : latest.gradeText)
+                .font(.display(size: figureSize))
+                .foregroundStyle(tone.grade(Format.percent(latest.gradeText)))
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .widgetAccentable()
+            Text(latest.name.isEmpty ? "Untitled assignment" : latest.name)
+                .font(.subheadline)
+                .foregroundStyle(tone.ink)
+                .lineLimit(1)
+            Text(latest.className)
+                .font(.footnote)
+                .foregroundStyle(tone.muted)
+                .lineLimit(1)
+            FreshnessNote(compact: true)
+                .padding(.top, 2)
+        }
+        .widgetPage()
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The latest score large on the leading side, the ones before it listed
+    /// beside it.
+    private func medium(_ s: WidgetSnapshot) -> some View {
+        let earlier = dynamicTypeSize <= .large ? Array(s.recentGrades.dropFirst()) : []
+        return VStack(alignment: .leading, spacing: 0) {
+            WidgetHeading(
+                title: "Recent grades",
+                detail: s.recentGradesTotal.map { "\($0) graded" }
+            )
+            .padding(.bottom, 6)
+            HStack(alignment: .top, spacing: 12) {
+                if let latest = s.recentGrades.first {
+                    latestColumn(latest)
+                        .frame(width: earlier.isEmpty ? nil : 108, alignment: .leading)
+                }
+                if !earlier.isEmpty {
+                    Hairline(tone: tone, vertical: true)
+                    FittingRows(maximum: 3) { rows in
+                        RuledList(items: earlier, rows: rows, tone: tone) { item in
+                            AssignmentRow(item: item, tone: tone) { grade(item, style: .body) }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+            }
+            .layoutPriority(1)
+            Spacer(minLength: 0)
+        }
+        .widgetPage()
+    }
+
+    @ViewBuilder
+    private func latestColumn(_ item: WidgetSnapshot.AssignmentItem) -> some View {
+        let column = VStack(alignment: .leading, spacing: 1) {
+            Text(item.gradeText.isEmpty ? "—" : item.gradeText)
+                .font(.display(size: figureSize))
+                .foregroundStyle(tone.grade(Format.percent(item.gradeText)))
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .widgetAccentable()
+            Text(item.name.isEmpty ? "Untitled assignment" : item.name)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(tone.ink)
+                .lineLimit(2)
+            Text(item.className)
+                .font(.footnote)
+                .foregroundStyle(tone.muted)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .combine)
+        if let url = item.assignmentURL {
+            Link(destination: url) { column }
+        } else {
+            column
+        }
+    }
+
+    private func grade(_ item: WidgetSnapshot.AssignmentItem, style: Font.TextStyle) -> some View {
+        Text(item.gradeText.isEmpty ? "—" : item.gradeText)
+            .font(.figure(style, weight: .semibold))
+            .foregroundStyle(tone.grade(Format.percent(item.gradeText)))
+            .lineLimit(1)
+            .fixedSize()
+    }
 }
 
 // MARK: - Missing assignments widget
@@ -1703,13 +1793,14 @@ struct MissingAssignmentsWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "MissingAssignmentsWidget", provider: SnapshotProvider()) { entry in
             MissingAssignmentsWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .themedWidgetContainer()
                 .privacySensitive(entry.snapshot != nil)
                 .widgetURL(URL(string: "com.zacharywilson.elevate://courses"))
                 .modifier(SnapshotFreshnessModifier(
                     snapshot: entry.snapshot,
                     section: entry.snapshot?.resolvedAssignmentStatus
                 ))
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         }
         .configurationDisplayName("Missing Work")
         .description("Assignments Skyward has flagged as missing.")
@@ -1717,9 +1808,38 @@ struct MissingAssignmentsWidget: Widget {
     }
 }
 
+/// The count first. A verified total is shown as is; when some classes
+/// didn't load, the count is what was found so far; nothing is called clear
+/// unless every class was checked.
 struct MissingAssignmentsWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetRenderingMode) private var renderingMode
+    @ScaledMetric(relativeTo: .largeTitle) var figureSize: CGFloat = 40
     let entry: SnapshotEntry
+
+    private var tone: Tone { Tone(mode: renderingMode) }
+
+    /// What the count means, or nil when nothing can be counted honestly.
+    private struct Count {
+        var value: Int
+        var caption: String
+        var isVerifiedClear: Bool
+        var isLowerBound = false
+    }
+
+    private func missingCount(_ s: WidgetSnapshot) -> Count? {
+        let isComplete = s.resolvedAssignmentStatus.isComplete
+        if let total = s.missingAssignmentsTotal {
+            if total == 0 {
+                return isComplete
+                    ? Count(value: 0, caption: "Nothing missing", isVerifiedClear: true)
+                    : nil
+            }
+            return Count(value: total, caption: total == 1 ? "assignment" : "assignments", isVerifiedClear: false, isLowerBound: !isComplete)
+        }
+        guard !s.missingAssignments.isEmpty else { return nil }
+        return Count(value: s.missingAssignments.count, caption: s.missingAssignments.count == 1 ? "assignment" : "assignments", isVerifiedClear: false, isLowerBound: true)
+    }
 
     var body: some View {
         if let s = entry.snapshot {
