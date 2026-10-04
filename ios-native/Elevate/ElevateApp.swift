@@ -189,7 +189,113 @@ struct RootTabView: View {
         }
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
-            await store.handleSceneBecameActive()
+            await store.notifications.refreshAuthorization()
+            await store.runForegroundRefreshLoop()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background {
+                store.endCourseGradeViewingSession()
+                Task { await BackgroundGradeRefresh.scheduleIfEnabled() }
+            } else if phase == .active {
+                openPendingURL()
+                openNotificationDestination()
+            }
+        }
+    }
+
+    /// The active domain's query as the system search field edits it, cut to
+    /// the router's limit. Lowering the field from another tab or under
+    /// Settings may empty it; that query is kept for the next visit. Clearing
+    /// it on Search, and account changes, still empty it.
+    private var searchText: Binding<String> {
+        Binding(get: { router.activeSearchQuery }, set: { text in
+            if text.isEmpty, router.selectedTab != .search || router.isShowingSettings { return }
+            router.setActiveSearchQuery(text)
+        })
+    }
+
+    /// Taps go through the router, so entering Search picks its domain from
+    /// the screen being left before that screen is hidden.
+    private var tabSelection: Binding<AppRouter.Tab> {
+        Binding(get: { router.selectedTab }, set: { router.select($0) })
+    }
+
+    private var searchPrompt: Text {
+        router.activeSearchDomain == .colleges ? Text("Search colleges") : Text("Search assignments")
+    }
+
+    /// Colleges when Search was entered from College profiles or a college;
+    /// assignments otherwise.
+    @ViewBuilder
+    private var searchContent: some View {
+        switch router.searchDomain {
+        case .colleges: CollegeSearchView()
+        case .assignments: AssignmentSearchView()
+        }
+    }
+
+    /// iOS 26 draws Search as the system's separate search tab beside the
+    /// Liquid Glass bar. Tapping it widens the field across the bar and
+    /// focuses it, above the keyboard. Earlier releases keep the standard
+    /// bar, with Search as its fourth item and its field on the page.
+    @ViewBuilder
+    private var tabs: some View {
+        if #available(iOS 26.0, *) {
+            TabView(selection: tabSelection) {
+                Tab("Courses", systemImage: "graduationcap", value: AppRouter.Tab.courses) {
+                    CoursesView()
+                }
+                Tab("Calendar", systemImage: "calendar", value: AppRouter.Tab.calendar) {
+                    CalendarView()
+                }
+                Tab("Inbox", systemImage: "envelope", value: AppRouter.Tab.inbox) {
+                    InboxView()
+                }
+                Tab(value: AppRouter.Tab.search, role: .search) {
+                    searchContent
+                }
+            }
+            .searchable(text: searchText, isPresented: $router.isSearchPresented, prompt: searchPrompt)
+            .tabViewSearchActivation(.searchTabSelection)
+        } else {
+            TabView(selection: tabSelection) {
+                CoursesView()
+                    .tabItem { Label("Courses", systemImage: "graduationcap") }
+                    .tag(AppRouter.Tab.courses)
+                CalendarView()
+                    .tabItem { Label("Calendar", systemImage: "calendar") }
+                    .tag(AppRouter.Tab.calendar)
+                InboxView()
+                    .tabItem { Label("Inbox", systemImage: "envelope") }
+                    .tag(AppRouter.Tab.inbox)
+                searchContent
+                    .tabItem { Label("Search", systemImage: "magnifyingglass") }
+                    .tag(AppRouter.Tab.search)
+            }
+        }
+    }
+
+    private func openPendingURL() {
+        guard scenePhase == .active, !appLock.isContentCovered, let url = pendingURL else { return }
+        if let link = AssignmentLink(url: url) {
+            guard let activeScope = store.notifications.accountScope else { return }
+            guard link.scope == activeScope else { pendingURL = nil; return }
+            guard let courses = store.courses else { return }
+            pendingURL = nil
+            guard let course = courses.first(where: {
+                SchoolNotifications.notificationCourseID(for: $0) == link.courseID
+            }), course.availableTerms.contains(link.term) else { return }
+            store.selectedTerm = link.term
+            router.showAssignment(course: course, term: link.term, assignmentID: link.assignmentID)
+            return
+        }
+        pendingURL = nil
+        if router.open(url) {
+            // The GPA widgets show the current school year.
+            store.selectedGradeLevel = store.currentGradeLevel
+        }
+    }
+
         }
     }
 }
