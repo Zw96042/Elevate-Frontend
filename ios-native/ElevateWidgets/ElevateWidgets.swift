@@ -1340,13 +1340,131 @@ struct SchoolPulseWidgetView: View {
         }
     }
 
-    private func pulseMetric(title: String, value: String, symbol: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Image(systemName: symbol)
-                .font(.caption.bold())
-                .foregroundStyle(color)
-            Text(value)
-                .font(.title3.bold().monospacedDigit())
+    // MARK: Sizes
+
+    private func medium(_ s: WidgetSnapshot) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            missingColumn(s)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Hairline(tone: tone, vertical: true)
+            inboxColumn(s)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.top, 8)
+    }
+
+    private func large(_ s: WidgetSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("Missing work") { missingFigure(s, style: .title2) }
+                .padding(.top, 8)
+            if !s.missingAssignments.isEmpty {
+                RuledList(items: s.missingAssignments, rows: missingRows, tone: tone, fills: false) {
+                    AssignmentRow(item: $0, tone: tone)
+                }
+                .padding(.top, 4)
+            } else {
+                Text(missingDetail(s, count: missingCount(s)))
+                    .font(.footnote)
+                    .foregroundStyle(tone.muted)
+                    .lineLimit(2)
+            }
+            Hairline(tone: tone)
+                .padding(.vertical, 10)
+            sectionLabel("Inbox") {
+                if s.messages.isEmpty, !s.resolvedMessageStatus.isComplete { unavailable }
+            }
+            if s.messages.isEmpty {
+                Text(s.resolvedMessageStatus.isComplete ? "No messages" : "Open Elevate to refresh.")
+                    .font(.footnote)
+                    .foregroundStyle(tone.muted)
+            } else {
+                FittingRows(maximum: 3) { rows in
+                    RuledList(items: s.messages, rows: rows, tone: tone) {
+                        MessageRow(message: $0, tone: tone)
+                    }
+                }
+                .padding(.top, 4)
+                .layoutPriority(1)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    // MARK: Medium columns
+
+    /// The count large, then the newest missing assignment.
+    @ViewBuilder
+    private func missingColumn(_ s: WidgetSnapshot) -> some View {
+        let column = VStack(alignment: .leading, spacing: 2) {
+            sectionLabel("Missing work") { EmptyView() }
+            Spacer(minLength: 2)
+            missingFigure(s, style: .title)
+            Text(missingDetail(s, count: missingCount(s)))
+                .font(.footnote)
+                .foregroundStyle(tone.muted)
+                .lineLimit(detailLines)
+        }
+        .accessibilityElement(children: .combine)
+        if let url = s.missingAssignments.first?.assignmentURL {
+            Link(destination: url) { column }
+        } else {
+            column
+        }
+    }
+
+    /// The newest message: its date, subject, and sender.
+    private func inboxColumn(_ s: WidgetSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            sectionLabel("Inbox") {
+                if let latest = s.messages.first {
+                    Text(Format.date(latest.date))
+                        .font(.footnote)
+                        .foregroundStyle(tone.muted)
+                }
+            }
+            Spacer(minLength: 2)
+            if let latest = s.messages.first {
+                Text(latest.subject.isEmpty ? "No subject" : latest.subject)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(tone.ink)
+                    .lineLimit(detailLines)
+                Text(Format.person(latest.from))
+                    .font(.footnote)
+                    .foregroundStyle(tone.muted)
+                    .lineLimit(1)
+            } else if s.resolvedMessageStatus.isComplete {
+                Text("No messages")
+                    .font(.subheadline)
+                    .foregroundStyle(tone.muted)
+            } else {
+                unavailable
+                Text("Open Elevate to refresh.")
+                    .font(.footnote)
+                    .foregroundStyle(tone.muted)
+                    .lineLimit(detailLines)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: Parts
+
+    /// A verified total, or the work found when some classes didn't load.
+    /// Zero only when every class was checked; otherwise unavailable.
+    private func missingCount(_ s: WidgetSnapshot) -> Int? {
+        if let total = s.missingAssignmentsTotal, total > 0 || s.resolvedAssignmentStatus.isComplete {
+            return total
+        }
+        return s.missingAssignments.isEmpty ? nil : s.missingAssignments.count
+    }
+
+    @ViewBuilder
+    private func missingFigure(_ s: WidgetSnapshot, style: Font.TextStyle) -> some View {
+        if let count = missingCount(s) {
+            let isLowerBound = s.missingAssignmentsTotal == nil || !s.resolvedAssignmentStatus.isComplete
+            Text("\(count)\(isLowerBound ? "+" : "")")
+                .font(.figure(style, weight: .semibold))
+                .foregroundStyle(count > 0 ? tone.attention : tone.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(title)
