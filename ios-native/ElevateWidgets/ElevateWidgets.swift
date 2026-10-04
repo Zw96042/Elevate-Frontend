@@ -1292,90 +1292,51 @@ struct SchoolPulseWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "SchoolPulseWidget", provider: SnapshotProvider()) { entry in
             SchoolPulseWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .themedWidgetContainer()
                 .privacySensitive(entry.snapshot != nil)
-                .widgetURL(URL(string: "com.zacharywilson.elevate://gpa"))
+                .widgetURL(URL(string: "com.zacharywilson.elevate://calendar"))
                 .modifier(SnapshotFreshnessModifier(
                     snapshot: entry.snapshot,
                     section: entry.snapshot.map {
-                        combinedStatus($0.resolvedBaseStatus, $0.resolvedAssignmentStatus)
+                        combinedStatus($0.resolvedAssignmentStatus, $0.resolvedMessageStatus)
                     }
                 ))
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         }
         .configurationDisplayName("School Pulse")
-        .description("GPA movement, missing work, and absences in one glance.")
+        .description("Missing work and your latest messages at a glance. Shows no grades.")
         .supportedFamilies([.systemMedium, .systemLarge])
     }
 }
 
+/// A grade-free look at the school day: missing work beside the newest
+/// message on the medium size, each listed on the large. Each section reads
+/// its own status, so one that didn't load is never shown as clear or empty.
 struct SchoolPulseWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetRenderingMode) private var renderingMode
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let entry: SnapshotEntry
+
+    private var tone: Tone { Tone(mode: renderingMode) }
+    private var isLarge: Bool { family == .systemLarge }
+    private var missingRows: Int { dynamicTypeSize <= .large ? 3 : 2 }
+    /// Lines for the newest item in a medium column.
+    private var detailLines: Int { dynamicTypeSize <= .large ? 2 : 1 }
 
     var body: some View {
         if let snapshot = entry.snapshot {
-            let missingTotal = snapshot.missingAssignmentsTotal
-            let absentTotal = snapshot.absentAssignmentsTotal
-            let isCaughtUp = missingTotal == 0 && absentTotal == 0
-            VStack(alignment: .leading, spacing: family == .systemLarge ? 12 : 8) {
-                HStack {
-                    Label("School Pulse", systemImage: "waveform.path.ecg")
-                        .font(.caption.bold())
-                    Spacer()
-                    Text(snapshot.termShortName)
-                        .font(.caption2.bold())
-                        .foregroundStyle(accent)
-                }
-                .foregroundStyle(.secondary)
-
-                HStack(spacing: 8) {
-                    pulseMetric(
-                        title: "GPA change",
-                        value: gpaDelta(snapshot).map { String(format: "%+.2f", $0) } ?? "—",
-                        symbol: (gpaDelta(snapshot) ?? 0) >= 0 ? "arrow.up.right" : "arrow.down.right",
-                        color: (gpaDelta(snapshot) ?? 0) >= 0 ? .green : .red
-                    )
-                    pulseMetric(
-                        title: "Missing",
-                        value: missingTotal.map(String.init) ?? "—",
-                        symbol: "exclamationmark.circle.fill",
-                        color: .red
-                    )
-                    pulseMetric(
-                        title: "Absent",
-                        value: absentTotal.map(String.init) ?? "—",
-                        symbol: "person.crop.circle.badge.xmark",
-                        color: .orange
-                    )
-                }
-
-                if family == .systemLarge {
-                    if let history = snapshot.gpaHistory, history.count > 1 {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text("Recent GPA movement")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Sparkline(values: history.map(\.weighted))
-                                .frame(height: 70)
-                        }
-                    }
-                    attentionList(snapshot)
+            VStack(alignment: .leading, spacing: 0) {
+                WidgetHeading(title: "School pulse", detail: Format.termName(snapshot.termShortName))
+                if isLarge {
+                    large(snapshot)
                 } else {
-                    Spacer(minLength: 0)
-                    HStack(spacing: 5) {
-                        Image(systemName: snapshot.missingAssignments.isEmpty
-                              && isCaughtUp
-                              ? "checkmark.circle.fill" : "bell.badge.fill")
-                            .foregroundStyle(isCaughtUp
-                                             ? .green : accent)
-                        Text(isCaughtUp
-                             ? "You're all caught up" : "Work needs your attention")
-                            .font(.caption2.weight(.semibold))
-                    }
+                    medium(snapshot)
                 }
             }
+            .widgetPage()
         } else {
-            NoDataView()
+            NoDataView(heading: "School pulse", subject: "assignments and messages")
         }
     }
 
