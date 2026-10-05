@@ -89,3 +89,60 @@ struct CalendarAgendaTests {
         #expect(CalendarMonth.days(in: october...october.adding(1)).count == 61)
         #expect(CalendarMonth.months(in: october...october.adding(2)).map(\.month) == [10, 11, 12])
 
+        let today = CalendarDay(year: 2026, month: 10, day: 9)
+        let base = CalendarMonth.browseRange(today: today, entryMonths: [])
+        #expect(base == CalendarMonth(year: 2026, month: 8)...CalendarMonth(year: 2027, month: 7))
+        let widened = CalendarMonth.browseRange(today: today, entryMonths: [CalendarMonth(year: 2026, month: 5), CalendarMonth(year: 2027, month: 9)])
+        #expect(widened == CalendarMonth(year: 2026, month: 5)...CalendarMonth(year: 2027, month: 9))
+        #expect(CalendarMonth.browseRange(today: CalendarDay(year: 2027, month: 3, day: 1), entryMonths: []).lowerBound.year == 2026)
+        #expect(CalendarMonth(year: 2020, month: 1).clamped(to: base) == base.lowerBound)
+        #expect(CalendarMonth(id: october.id) == october)
+        #expect(CalendarMonth(id: "2026-13") == nil && CalendarMonth(id: "2026") == nil && CalendarMonth(id: "x-1") == nil)
+    }
+
+    @Test("Days parse only valid school dates and name themselves relative to today")
+    func days() throws {
+        #expect(CalendarDay(iso: "2026-02-30") == nil)
+        #expect(CalendarDay(iso: nil) == nil)
+        #expect(CalendarDay(iso: " 2026-10-09 ")?.iso == "2026-10-09")
+        let sunday = calendar(firstWeekday: 1)
+        let today = try #require(CalendarDay(iso: "2026-10-09"))
+        #expect(today.relativeName(today: today, calendar: sunday) == "Today")
+        #expect(today.adding(1, calendar: sunday).relativeName(today: today, calendar: sunday) == "Tomorrow")
+        #expect(today.adding(-1, calendar: sunday).relativeName(today: today, calendar: sunday) == "Yesterday")
+        #expect(today.adding(3, calendar: sunday).relativeName(today: today, calendar: sunday) == "Monday")
+        #expect(today.adding(3, calendar: sunday).relativeName(today: today, calendar: sunday, abbreviated: true) == "Mon")
+        #expect(today.adding(23, calendar: sunday).iso == "2026-11-01")
+        #expect(today.calendarMonth == CalendarMonth(year: 2026, month: 10))
+        #expect(CalendarDay(year: 2026, month: 12, day: 31).adding(1, calendar: sunday).iso == "2027-01-01")
+    }
+
+    @Test("Identical source rows are ambiguous for personal marks")
+    func ambiguity() {
+        let course = UnifiedCourseData(corNumId: "c", stuId: "synthetic", section: "1", gbId: "book",
+            courseName: "Synthetic course", semester: .both, termLength: "", gradeYear: 12,
+            currentScores: [], historicalGrades: .init())
+        let info = GradeInfoResult(course: "Synthetic", instructor: "", litName: "TERM 3",
+            gradebook: [.init(category: "Daily", assignments: [
+                GradeInfoAssignment(date: "10/6/26", name: "Twin", meta: []),
+                GradeInfoAssignment(date: "10/6/26", name: "Twin", meta: []),
+                GradeInfoAssignment(date: "10/7/26", name: "Twin", meta: []),
+                GradeInfoAssignment(date: "10/6/26", name: "Only", meta: []),
+            ])])
+        let rows = CalendarAssignment.sourceAssignments(course: course, term: .q1, gradeInfo: info)
+        let ambiguous = AssignmentCompletion.ambiguousIDs(in: rows)
+        #expect(ambiguous == Set(rows.prefix(2).map(\.id)))
+        #expect(AssignmentCompletion.ambiguousIDs(in: []).isEmpty)
+    }
+
+    @Test("A multi-month event interval runs from the first month through the start of the month after the last")
+    func monthsInterval() throws {
+        let calendar = calendar()
+        let two = try #require(PersonalEventDays.monthsInterval(year: 2026, month: 12, count: 2, calendar: calendar))
+        #expect(PersonalEventDays.iso(two.start, calendar: calendar) == "2026-12-01")
+        #expect(PersonalEventDays.iso(two.end, calendar: calendar) == "2027-02-01")
+        let one = try #require(PersonalEventDays.monthsInterval(year: 2026, month: 10, count: 1, calendar: calendar))
+        #expect(one == PersonalEventDays.monthInterval(year: 2026, month: 10, calendar: calendar))
+        #expect(PersonalEventDays.monthsInterval(year: 2026, month: 10, count: 0, calendar: calendar) == nil)
+    }
+}
