@@ -101,3 +101,67 @@ struct AppLockStateTests {
         #expect(state.needsAutomaticUnlock)
     }
 
+    @Test("A late successful callback cannot unlock after background")
+    func staleUnlock() throws {
+        var state = AppLockState(isEnabled: true)
+        state.move(to: .active)
+        let oldAttempt = state.begin(.unlock)
+        let old = try #require(oldAttempt)
+        state.move(to: .background)
+        state.move(to: .active)
+        let currentAttempt = state.begin(.unlock)
+        let current = try #require(currentAttempt)
+        let acceptedOld = state.finish(old, succeeded: true)
+        #expect(!acceptedOld)
+        #expect(state.isLocked && state.challenge == current)
+        let acceptedCurrent = state.finish(current, succeeded: true)
+        #expect(acceptedCurrent)
+        #expect(!state.isLocked)
+    }
+
+    @Test("A late enable proof after background cannot change the saved preference")
+    func staleEnable() throws {
+        var state = AppLockState(isEnabled: false)
+        state.move(to: .active)
+        let attempt = state.begin(.enable)
+        let old = try #require(attempt)
+        state.move(to: .background)
+        let accepted = state.finish(old, succeeded: true)
+        #expect(!accepted)
+        #expect(!state.isEnabled)
+    }
+
+    @Test("Disabling cannot bypass a locked or inactive app")
+    func guardedDisable() throws {
+        var state = AppLockState(isEnabled: true)
+        let disabledBeforeActivation = state.disable()
+        #expect(!disabledBeforeActivation)
+        state.move(to: .active)
+        let disabledWhileLocked = state.disable()
+        #expect(!disabledWhileLocked)
+        let attempt = state.begin(.unlock)
+        let challenge = try #require(attempt)
+        state.finish(challenge, succeeded: true)
+        state.move(to: .inactive)
+        let disabledWhileInactive = state.disable()
+        #expect(!disabledWhileInactive)
+        state.move(to: .active)
+        let disabledWhileUnlocked = state.disable()
+        #expect(disabledWhileUnlocked)
+        state.move(to: .background)
+        #expect(!state.isEnabled && !state.isContentCovered)
+    }
+
+    @Test("Cancelling the enable preference rejects a late proof")
+    func preferenceChange() throws {
+        var state = AppLockState(isEnabled: false)
+        state.move(to: .active)
+        let attempt = state.begin(.enable)
+        let old = try #require(attempt)
+        let disabled = state.disable()
+        #expect(disabled)
+        let accepted = state.finish(old, succeeded: true)
+        #expect(!accepted)
+        #expect(!state.isEnabled)
+    }
+}
