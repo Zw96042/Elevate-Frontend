@@ -91,3 +91,70 @@ struct CollegeAdmissionsTests {
         #expect(english.note.contains("not a total") == true)
     }
 
+    @Test("Local context counts high-school credits separately from expected enrollments and preserves gaps")
+    func localCreditContext() throws {
+        let details = try #require(CollegeAdmissionsCatalog.details(for: "texas-state"))
+        let prior = transcript("English I", gradeYear: 9)
+        let middle = transcript("Algebra I", gradeYear: 8)
+        let live = enrollment("English II")
+        let rows = CollegePreparationContext.rows(details: details, courses: [prior, middle, live], asOf: date)
+        let english = try #require(rows.first { $0.subject == "English" })
+        #expect(english.earned == 1)
+        #expect(english.current == 0.5)
+        #expect(english.remaining == 2.5)
+        #expect(rows.first { $0.subject == "Mathematics" }?.earned == 0)
+        #expect(rows.first { $0.subject == "World language" }?.earned == nil)
+        #expect(live.historicalGrades.sm1 == nil)
+        let unknown = transcript("Uncatalogued Seminar", gradeYear: 10)
+        let reviewed = CollegePreparationContext.rows(details: details, courses: [prior, unknown, live], asOf: date)
+        #expect(reviewed.first { $0.subject == "English" }?.earned == 1)
+        #expect(reviewed.first { $0.subject == "English" }?.remaining == nil)
+        #expect(reviewed.first { $0.subject == "English" }?.availabilityReason?.contains("classification") == true)
+        let withoutTranscript = CollegePreparationContext.rows(details: details, courses: [live], asOf: date)
+        #expect(withoutTranscript.first { $0.subject == "English" }?.earned == nil)
+        #expect(withoutTranscript.first { $0.subject == "English" }?.current == 0.5)
+        #expect(withoutTranscript.first { $0.subject == "English" }?.remaining == nil)
+        var missingGrade = prior
+        missingGrade.gradeYear = nil
+        let missingGradeRows = CollegePreparationContext.rows(details: details, courses: [missingGrade], asOf: date)
+        #expect(missingGradeRows.first { $0.subject == "English" }?.earned == 0)
+        #expect(missingGradeRows.first { $0.subject == "English" }?.remaining == nil)
+        #expect(missingGradeRows.first { $0.subject == "English" }?.availabilityReason?.contains("review") == true)
+    }
+
+    @Test("Preparation respects source-bound planner credit and subject corrections")
+    func correctedCreditContext() throws {
+        let details = try #require(CollegeAdmissionsCatalog.details(for: "texas-state"))
+        let courses = [transcript("English I", gradeYear: 9), transcript("Uncatalogued Seminar", gradeYear: 10)]
+        let source = TranscriptCreditCalculator.calculate(courses: courses, asOf: date)
+        let corrections = source.records.map { record in
+            TranscriptCreditOverride(id: record.id, credits: record.name == "English I" ? 0.25 : 0.5,
+                subject: record.name == "English I" ? .math : .english)
+        }
+        let corrected = CollegePreparationContext.rows(details: details, courses: courses, creditOverrides: corrections, asOf: date)
+        #expect(corrected.first { $0.subject == "English" }?.earned == 1)
+        #expect(corrected.first { $0.subject == "English" }?.remaining == 3)
+        #expect(corrected.first { $0.subject == "Mathematics" }?.earned == 0.5)
+        #expect(corrected.first { $0.subject == "Mathematics" }?.remaining == 3.5)
+        #expect(corrected.first { $0.subject == "English" }?.availabilityReason?.contains("classification") == false)
+        let original = CollegePreparationContext.rows(details: details, courses: courses, asOf: date)
+        #expect(original.first { $0.subject == "English" }?.earned == 1)
+        #expect(original.first { $0.subject == "English" }?.remaining == nil)
+        #expect(original.first { $0.subject == "Mathematics" }?.earned == 0)
+    }
+
+    private var date: Date { ISO8601DateFormatter().date(from: "2026-10-06T12:00:00Z")! }
+    private func transcript(_ name: String, gradeYear: Int) -> UnifiedCourseData {
+        let grades = HistoricalGrades(sm1: "90", sm2: "90")
+        return UnifiedCourseData(courseId: nil, corNumId: "", stuId: "", section: "", gbId: "", courseName: name,
+            semester: .both, termLength: "1-4", gradeYear: gradeYear, currentScores: [], historicalGrades: grades,
+            academicYear: "2025-2026", historyRowKey: name, academicYearIsVerified: true, isTranscriptRecord: true,
+            postedHistoricalGrades: grades)
+    }
+    private func enrollment(_ name: String) -> UnifiedCourseData {
+        UnifiedCourseData(courseId: 1, corNumId: "synthetic", stuId: "synthetic", section: "1", gbId: "1", courseName: name,
+            semester: .unknown, termLength: "", gradeYear: nil, currentScores: [], historicalGrades: HistoricalGrades(),
+            academicYearIsVerified: false, isTranscriptRecord: false, isCurrentEnrollment: true,
+            currentEnrollmentSemester: .fall, currentEnrollmentGradeYear: 10, currentEnrollmentObservedAt: date)
+    }
+}
