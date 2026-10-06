@@ -92,3 +92,96 @@ struct CollegeGPATests {
         #expect(CollegeGPAStanding.compare(3.0, profile: p)?.cohortContext == nil) // lower bands unreported
     }
 
+    @Test("Comparisons retain source rounding and reporting-subset coverage")
+    func sourcePrecision() {
+        let jhu = CollegeGPAStanding.compare(3.8, profile: profile("hopkins"))!
+        #expect(jhu.higherBandPercent == nil && jhu.sameBandPercent == 25.36)
+        #expect(profile("stanford").reportingPercent == 69.60)
+        #expect(profile("hopkins").bands.map(\.percent).reduce(0, +) > 100)
+    }
+
+    @Test("Quartiles support bands, not interpolated percentiles or ranks at capped ties")
+    func quartiles() {
+        let ucla = profile("ucla")
+        for value in [4.0, 4.44, 4.6, 4.78, 4.8, 5] {
+            #expect(CollegeGPAStanding.compare(value, profile: ucla)?.title == "Your fully weighted GPA")
+            #expect(CollegeGPAStanding.compare(value, profile: ucla)?.cohortContext?.contains("4.44–4.78") == true)
+        }
+        #expect(CollegeGPAStanding.compare(4, profile: profile("berkeley"))?.title == "Highest possible unweighted GPA")
+    }
+
+    @Test("Invalid GPA is rejected; malformed class statistics never hide a valid perfect GPA")
+    func invalidData() {
+        for value in [Double.nan, .infinity, -.infinity, -1, 4.1] {
+            #expect(CollegeGPAStanding.compare(value, profile: profile("princeton")) == nil)
+        }
+        var p = profile("princeton")
+        p.bands[0].percent = 1
+        #expect(CollegeGPAStanding.compare(4, profile: p)?.title == "Highest possible unweighted GPA")
+        #expect(CollegeGPAStanding.compare(4, profile: p)?.cohortContext == nil)
+        p = profile("ucla")
+        p.quartiles?.lower = .nan
+        #expect(CollegeGPAStanding.compare(4, profile: p)?.title == "Your fully weighted GPA")
+        #expect(CollegeGPAStanding.compare(4, profile: p)?.cohortContext == nil)
+        p = profile("vanderbilt")
+        p.reportingPercent = 101
+        #expect(CollegeGPAStanding.compare(4, profile: p)?.title == "Highest possible unweighted GPA")
+        #expect(CollegeGPAStanding.compare(4, profile: p)?.cohortContext == nil)
+        p = profile("vanderbilt")
+        p.reportedMean = .nan
+        #expect(CollegeGPAStanding.compare(4, profile: p)?.cohortContext == nil)
+    }
+
+    @Test("Displayed GPA never rounds across a published band boundary")
+    func displayPrecision() {
+        let p = profile("princeton")
+        func result(_ value: Double) -> CollegeGPAResult {
+            CollegeGPAResult(profile: p, records: [GPAConversionRecord(id: "x", courseName: "Synthetic", gradeYear: 11, semester: .sm1, percentage: 90, points: value, source: .transcript)], skipped: [])
+        }
+        #expect(result(3.7499999).displayValue == "3.74")
+        #expect(result(3.999999999999).displayValue == "3.99")
+        #expect(result(3.999999999999).standing?.title == "Your unweighted GPA")
+        #expect(result(4).displayValue == "4.00")
+        #expect(result(4.6).displayValue == "4.60")
+    }
+
+    @Test("Vanderbilt's 31.6% is reporting-cohort share, never a student's percentile")
+    func perfectVanderbilt() {
+        let standing = CollegeGPAStanding.compare(4, profile: profile("vanderbilt"))!
+        #expect(standing.title == "Highest possible unweighted GPA")
+        #expect(!standing.title.contains("31.6"))
+        #expect(standing.sameBandPercent == 31.6 && standing.higherBandPercent == nil)
+        #expect(standing.cohortContext?.contains("31.6% of Fall 2025 enrolled first-year students reporting GPA") == true)
+        #expect(standing.cohortContext?.contains("not your individual percentile") == true)
+        var unpublished = profile("vanderbilt")
+        unpublished.bands = []; unpublished.reportedMean = nil; unpublished.reportingPercent = nil
+        #expect(CollegeGPAStanding.compare(4, profile: unpublished)?.title == "Highest possible unweighted GPA")
+        #expect(CollegeGPAStanding.compare(4, profile: unpublished)?.cohortContext == nil)
+    }
+
+    @Test("UC weighted totals keep a separately verified unweighted component")
+    func weightedAndUnweightedAreDistinct() {
+        let allA = CollegeGPACalculator.calculate(profile: profile("ucla"), courses: [course(1, "AP Biology", 10, "90")], asOf: date)
+        #expect(allA.value == 5 && allA.unweightedValue == 4)
+        #expect(allA.standing?.title == "Your fully weighted GPA")
+        let weightedFour = CollegeGPACalculator.calculate(profile: profile("ucla"), courses: [course(2, "AP Biology", 10, "80")], asOf: date)
+        #expect(weightedFour.value == 4 && weightedFour.unweightedValue == 3)
+        #expect(weightedFour.standing?.title == "Your fully weighted GPA")
+        #expect(weightedFour.standing?.detail.contains("All A") == false)
+    }
+
+    @Test("College search supports names, abbreviations, case, diacritics, whitespace and empty results")
+    func search() {
+        #expect(CollegeProfileCatalog.search("  jHu ").map(\.id) == ["hopkins"])
+        #expect(CollegeProfileCatalog.search("  Los    Angeles  ").map(\.id) == ["ucla", "usc"])
+        #expect(CollegeProfileCatalog.search("vÁndy").map(\.id) == ["vanderbilt"])
+        #expect(CollegeProfileCatalog.search("cwru").map(\.id) == ["case-western"])
+        #expect(CollegeProfileCatalog.search("ASU").map(\.id) == ["arizona-state"])
+        #expect(CollegeProfileCatalog.search("UIUC").map(\.id) == ["illinois"])
+        #expect(CollegeProfileCatalog.search("College that does not exist").isEmpty)
+        let all = CollegeProfileCatalog.search("   ")
+        #expect(all.count >= 64)
+        #expect(all.map(\.name) == all.map(\.name).sorted { $0.localizedStandardCompare($1) == .orderedAscending })
+        #expect(CollegeProfileCatalog.search("mIt").map(\.id) == ["mit"])
+    }
+
