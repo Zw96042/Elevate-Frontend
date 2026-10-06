@@ -185,3 +185,94 @@ struct CollegeGPATests {
         #expect(CollegeProfileCatalog.search("mIt").map(\.id) == ["mit"])
     }
 
+    @Test("Expanded publications preserve unavailable statistics and guidance distinctions")
+    func expandedCatalog() {
+        #expect(profile("boston-university").bands.map(\.percent) == [36, 36, 27, 1, 0, 0, 0, 0, 0])
+        #expect(profile("case-western").bands.count == 6 && profile("case-western").reportingPercent == 92)
+        #expect(profile("arizona").cohort == "Fall 2024" && profile("arizona").reportedMean == 3.47)
+        for id in ["mit", "yale", "pittsburgh"] {
+            let p = profile(id)
+            #expect(!p.hasPublishedStatistics && p.reportingPercent == nil)
+            #expect(CollegeGPAStanding.compare(4, profile: p)?.title == "Highest possible unweighted GPA")
+            #expect(CollegeGPAStanding.compare(4, profile: p)?.cohortContext == nil)
+        }
+        for id in ["wisconsin", "arizona-state"] {
+            let p = profile(id)
+            #expect(p.population == .admissionsGuidance && p.quartiles == nil)
+            #expect(p.publishedSummary != nil && !p.hasPublishedStatistics)
+        }
+        #expect(profile("purdue").population == .publishedProfile)
+        #expect(profile("illinois").cohort == "Rolling three-year admitted profile")
+    }
+
+    private func weightedProfile(_ method: CollegeGPAMethod) -> CollegeProfile {
+        CollegeProfile(id: "synthetic", name: "Synthetic college", cohort: "Synthetic cohort", population: .admitted,
+            method: method, sourceURL: URL(string: "https://example.com")!,
+            quartiles: CollegeGPAQuartiles(lower: 4.2, median: nil, upper: 4.6), publishedGPAScale: .weighted)
+    }
+
+    @Test("UGA uses core grades and AP arts with no Honors or dual-enrollment bonus")
+    func ugaCoreWeighting() {
+        let result = CollegeGPACalculator.calculate(profile: weightedProfile(.ugaWeighted), courses: [
+            course(1, "AP Biology", 9, "90"), course(2, "English Honors", 10, "90"),
+            course(3, "Dual Enrollment Calculus", 11, "90"), course(4, "AP Studio Art", 11, "90"),
+            course(5, "AP Music Theory", 11, "80"), course(6, "AP Computer Science", 11, "90"),
+            course(7, "Business Math", 10, "90"), course(8, "Journalism", 11, "90"),
+            course(9, "English", 12, "90", academicYear: "2026-2027"),
+        ], asOf: date)
+        #expect(result.records.map(\.points) == [5, 4, 4, 5, 4])
+        #expect(result.value == 4.4)
+        #expect(result.omittedRecords.count == 3)
+        #expect(result.skipped.contains { $0.reason == .inProgress })
+        #expect(result.calculationNotes.contains { $0.contains("3 completed") })
+        #expect(result.standing?.title == "Your weighted GPA")
+        #expect(result.standing?.cohortContext?.contains("4.20–4.60") == true)
+    }
+
+    @Test("UF counts AP electives while FSU limits its estimate to core subjects")
+    func floridaSubjectDifferences() {
+        let courses = [course(1, "AP Art", 10, "90"), course(2, "AP Computer Science", 11, "90"),
+            course(3, "Biology Honors", 9, "90"), course(4, "Dual Credit Algebra", 11, "90"),
+            course(5, "Pre-AP English", 9, "90"), course(6, "AICE History", 11, "90"),
+            course(7, "Robotics", 11, "90")]
+        let uf = CollegeGPACalculator.calculate(profile: weightedProfile(.ufWeighted), courses: courses, asOf: date)
+        #expect(uf.records.map(\.points) == [5, 5, 4.5, 5, 4.5, 5])
+        #expect(uf.omittedRecords.count == 1)
+        let fsu = CollegeGPACalculator.calculate(profile: weightedProfile(.fsuWeighted), courses: courses, asOf: date)
+        #expect(fsu.records.map(\.points) == [4.5, 5, 4.5, 5])
+        #expect(fsu.omittedRecords.count == 3)
+    }
+
+    @Test("Pre-level designations never become AP bonuses and district exceptions stay regular")
+    func explicitLevels() {
+        let titles = ["Pre-AP Biology", "English Pre AP", "PreIB Chemistry", "History Pre-AICE",
+            "Multivariable Calculus", "AP Biology", "IB Biology"]
+        let courses = titles.enumerated().map { course($0.offset, $0.element, 10, "90") }
+        let uf = CollegeGPACalculator.calculate(profile: weightedProfile(.ufWeighted), courses: courses, asOf: date)
+        #expect(uf.records.map(\.points) == [4.5, 4.5, 4.5, 4.5, 4, 5, 5])
+        let uga = CollegeGPACalculator.calculate(profile: weightedProfile(.ugaWeighted), courses: courses, asOf: date)
+        #expect(uga.records.map(\.points) == [4, 4, 4, 4, 4, 5, 5])
+        for name in titles.prefix(4) { #expect(!CollegeGPACalculator.isExplicitAPOrIB(name)) }
+    }
+
+    @Test("FSU C cutoff retains lower grades with no bonus; other unverified bonuses withhold the total")
+    func lowerGradeBonuses() {
+        let courses = [course(1, "AP Biology", 10, "70"), course(2, "English Honors", 11, "69.99"),
+            course(3, "AP Chemistry", 11, "0")]
+        let fsu = CollegeGPACalculator.calculate(profile: weightedProfile(.fsuWeighted), courses: courses, asOf: date)
+        #expect(fsu.records.map(\.points) == [3, 1, 0])
+        #expect(fsu.value == 4.0 / 3.0)
+        for method in [CollegeGPAMethod.ugaWeighted, .ufWeighted] {
+            let result = CollegeGPACalculator.calculate(profile: weightedProfile(method), courses: courses, asOf: date)
+            #expect(result.records.count == 3)
+            #expect(result.value == nil && result.unweightedValue == nil && result.standing == nil && result.displayValue == "—")
+            #expect(result.calculationNotes.contains { $0.contains("not been dropped") })
+        }
+        let regular = CollegeGPACalculator.calculate(profile: weightedProfile(.ufWeighted),
+            courses: [course(1, "English", 10, "60")], asOf: date)
+        #expect(regular.value == 1)
+        let cBoundary = CollegeGPACalculator.calculate(profile: weightedProfile(.ufWeighted),
+            courses: [course(1, "AP English", 10, "70")], asOf: date)
+        #expect(cBoundary.value == 3)
+    }
+
