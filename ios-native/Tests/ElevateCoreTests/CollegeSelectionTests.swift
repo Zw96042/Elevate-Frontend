@@ -90,3 +90,67 @@ struct CollegeSelectionTests {
         }
     }
 
+    @Test func malformedSchemaAndInvalidIDsRefuseToOverwriteStorage() throws {
+        try withDefaults { defaults in
+            let key = "account.synthetic-a.collegeSelection.v1"
+            let store = CollegeSelectionStore(accountIdentifier: "synthetic-a", defaults: defaults)
+            let malformedPayloads = [
+                try saved(["school"], version: 2), try saved([""]), try saved([" \n"]),
+                try saved(["school\u{0000}"]), try saved([String(repeating: "x", count: 129)]),
+                Data("{\"version\":1,\"collegeIDs\":[1]}".utf8), Data("{\"version\":1}".utf8)
+            ]
+            for payload in malformedPayloads {
+                defaults.set(payload, forKey: key)
+                #expect(store.storageUnavailable)
+                #expect(!store.setSelected(true, collegeID: "valid-school", expectedAccountIdentifier: "synthetic-a"))
+                #expect(defaults.data(forKey: key) == payload)
+            }
+            defaults.set("wrong defaults value type", forKey: key)
+            #expect(store.storageUnavailable)
+            #expect(!store.setSelected(true, collegeID: "school", expectedAccountIdentifier: "synthetic-a"))
+            #expect(defaults.string(forKey: key) == "wrong defaults value type")
+        }
+    }
+
+    @Test func safetyBoundsRejectAdditionalIDsWithoutLosingExistingChoices() throws {
+        try withDefaults { defaults in
+            let key = "account.synthetic-a.collegeSelection.v1"
+            let ids = (0..<CollegeSelectionStore.maximumIDs).map { "synthetic-school-\($0)" }
+            defaults.set(try saved(ids), forKey: key)
+            let store = CollegeSelectionStore(accountIdentifier: "synthetic-a", defaults: defaults)
+            let original = defaults.data(forKey: key)
+            #expect(store.selectedCollegeIDs == ids && !store.storageUnavailable)
+            #expect(store.setSelected(true, collegeID: ids[0], expectedAccountIdentifier: "synthetic-a"))
+            #expect(!store.setSelected(true, collegeID: "one-too-many", expectedAccountIdentifier: "synthetic-a"))
+            #expect(defaults.data(forKey: key) == original)
+            #expect(store.setSelected(false, collegeID: ids[0], expectedAccountIdentifier: "synthetic-a"))
+            #expect(store.setSelected(true, collegeID: "replacement", expectedAccountIdentifier: "synthetic-a"))
+            #expect(store.selectedCollegeIDs == Array(ids.dropFirst()) + ["replacement"])
+            let tooMany = try saved(ids + ["extra"])
+            defaults.set(tooMany, forKey: key)
+            #expect(store.storageUnavailable)
+            #expect(!store.setSelected(false, collegeID: "extra", expectedAccountIdentifier: "synthetic-a"))
+            #expect(defaults.data(forKey: key) == tooMany)
+        }
+    }
+
+    @Test func IDByteLimitAndSerializedDataLimitAreEnforced() throws {
+        try withDefaults { defaults in
+            let key = "account.synthetic-a.collegeSelection.v1"
+            let store = CollegeSelectionStore(accountIdentifier: "synthetic-a", defaults: defaults)
+            let boundary = String(repeating: "é", count: 64)
+            #expect(store.setSelected(true, collegeID: boundary, expectedAccountIdentifier: "synthetic-a"))
+            let original = defaults.data(forKey: key)
+            for id in [boundary + "é", "", "  ", "school\n"] {
+                #expect(!store.setSelected(true, collegeID: id, expectedAccountIdentifier: "synthetic-a"))
+                #expect(defaults.data(forKey: key) == original)
+            }
+            var oversized = try saved(["school"])
+            oversized.append(Data(repeating: 32, count: CollegeSelectionStore.maximumStorageBytes))
+            defaults.set(oversized, forKey: key)
+            #expect(store.storageUnavailable)
+            #expect(!store.setSelected(true, collegeID: "another", expectedAccountIdentifier: "synthetic-a"))
+            #expect(defaults.data(forKey: key) == oversized)
+        }
+    }
+}
