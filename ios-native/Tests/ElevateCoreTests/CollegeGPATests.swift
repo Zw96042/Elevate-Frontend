@@ -276,3 +276,94 @@ struct CollegeGPATests {
         #expect(cBoundary.value == 3)
     }
 
+    @Test("Unrecognized subjects withhold core estimates instead of silently raising the denominator's average")
+    func unknownSubject() {
+        for method in [CollegeGPAMethod.ugaWeighted, .ufWeighted, .fsuWeighted] {
+            let result = CollegeGPACalculator.calculate(profile: weightedProfile(method), courses: [
+                course(1, "English", 10, "90"), course(2, "Independent Study", 10, "60"),
+            ], asOf: date)
+            #expect(result.records.count == 1 && result.omittedRecords.count == 1)
+            #expect(result.value == nil && result.unavailableReason != nil)
+            #expect(result.calculationNotes.contains { $0.contains("eligibility") && $0.contains("unverified") })
+        }
+    }
+
+    @Test("District trailing H earns Florida Honors credit but no UGA or UC bonus")
+    func districtHonorsSuffix() {
+        let courses = [course(1, "ENGLISH 1 H", 10, "95"), course(2, "GEOMETRY H", 10, "80")]
+        for method in [CollegeGPAMethod.ufWeighted, .fsuWeighted, .ucfWeighted] {
+            let result = CollegeGPACalculator.calculate(profile: weightedProfile(method), courses: courses, asOf: date)
+            #expect(result.records.map(\.points) == [4.5, 3.5])
+            #expect(result.value == 4)
+        }
+        for p in [weightedProfile(.ugaWeighted), profile("ucla")] {
+            #expect(CollegeGPACalculator.calculate(profile: p, courses: courses, asOf: date).records.map(\.points) == [4, 3])
+        }
+    }
+
+    @Test("Art History follows explicit UGA and UF rules; unresolved Florida core classification withholds the total")
+    func artHistoryEligibility() {
+        let titles = ["Art History", "AP Art History", "APHISART", "IB Art History", "AICE Art History"]
+        for title in titles {
+            let courses = [course(1, "English", 10, "95"), course(2, title, 10, "80")]
+            let uga = CollegeGPACalculator.calculate(profile: weightedProfile(.ugaWeighted), courses: courses, asOf: date)
+            let ugaBonus = title == "AP Art History" || title == "APHISART" || title == "IB Art History"
+            #expect(uga.records.map(\.points) == [4, ugaBonus ? 4 : 3])
+            #expect(uga.value != nil && uga.omittedRecords.isEmpty)
+            let uf = CollegeGPACalculator.calculate(profile: weightedProfile(.ufWeighted), courses: courses, asOf: date)
+            if title == "Art History" {
+                #expect(uf.value == nil && uf.unweightedValue == nil)
+                #expect(uf.omittedRecords.map(\.courseName) == [title])
+            } else {
+                #expect(uf.value == 4 && uf.records.count == 2)
+            }
+            for method in [CollegeGPAMethod.fsuWeighted, .ucfWeighted] {
+                let result = CollegeGPACalculator.calculate(profile: weightedProfile(method), courses: courses, asOf: date)
+                #expect(result.value == nil && result.unweightedValue == nil && result.standing == nil)
+                #expect(result.records.count == 1 && result.omittedRecords.map(\.courseName) == [title])
+                #expect(result.unavailableReason == "Course eligibility is unverified.")
+                #expect(result.calculationNotes.contains { $0.contains("Art History") && $0.contains("not verified") })
+            }
+        }
+        // The caveat concerns core admission methods, not a blanket arts ban.
+        let uc = CollegeGPACalculator.calculate(profile: profile("ucla"), courses: [course(1, "APHISART", 10, "90")], asOf: date)
+        #expect(uc.value == 5 && uc.omittedRecords.isEmpty)
+        for method in [CollegeGPAMethod.ufWeighted, .fsuWeighted, .ucfWeighted] {
+            let mixed = CollegeGPACalculator.calculate(profile: weightedProfile(method), courses: [
+                course(1, "Art History", 10, "100"), course(2, "English", 10, "80")], asOf: date)
+            #expect(mixed.records.map(\.points) == [3])
+            #expect(mixed.omittedRecords.map(\.percentage) == [100])
+            #expect(mixed.value == nil && mixed.unweightedValue == nil && mixed.displayValue == "—")
+        }
+    }
+
+    @Test("Exact catalog short codes preserve core subjects and explicit AP weighting")
+    func catalogAliases() {
+        let names = ["APUSH", "APENG3", "ALG2", "GEOM", "BIO", "CHEM", "GOVT", "APMACECO", "APCALCBC",
+            "AP Macroeconomics", "AP Microeconomics"]
+        let courses = names.enumerated().map { course($0.offset, $0.element, 10, "95") }
+        for p in [weightedProfile(.ugaWeighted), weightedProfile(.ufWeighted), weightedProfile(.fsuWeighted),
+                  weightedProfile(.ucfWeighted), profile("ucla")] {
+            let result = CollegeGPACalculator.calculate(profile: p, courses: courses, asOf: date)
+            #expect(result.records.map(\.points) == [5, 5, 4, 4, 4, 4, 4, 5, 5, 5, 5])
+            #expect(result.value != nil && result.omittedRecords.isEmpty)
+        }
+        #expect(!CollegeGPACalculator.isExplicitAPOrIB("Applied Music"))
+        #expect(!CollegeGPACalculator.isExplicitAPOrIB("APUSH invented suffix"))
+        #expect(!CollegeGPACalculator.isExplicitAPOrIB("Pre-AP APUSH"))
+        #expect(!CollegeGPACalculator.isExplicitAPOrIB("PreAP Biology"))
+    }
+
+    @Test("Known noncore classes do not make academic-core estimates unavailable")
+    func knownNoncoreSubjects() {
+        let excluded = ["Soccer", "Baseball", "Softball", "Track", "Golf", "Swimming", "Cross Country",
+            "Cheerleading", "Personal Fitness", "Team Sports", "Yoga", "Guitar", "MUS1GTR", "Office Aide",
+            "Peer Partners", "MAPS", "Robotics III", "Engineering", "Personal Financial Literacy", "TACS2"]
+        let courses = [course(100, "English", 10, "95")] + excluded.enumerated().map { course($0.offset, $0.element, 10, "60") }
+        for method in [CollegeGPAMethod.ugaWeighted, .ufWeighted, .fsuWeighted, .ucfWeighted] {
+            let result = CollegeGPACalculator.calculate(profile: weightedProfile(method), courses: courses, asOf: date)
+            #expect(result.value == 4)
+            #expect(result.records.count == 1 && result.omittedRecords.count == excluded.count)
+        }
+    }
+
