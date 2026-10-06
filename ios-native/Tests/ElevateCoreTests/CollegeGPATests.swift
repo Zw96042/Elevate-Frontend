@@ -367,3 +367,89 @@ struct CollegeGPATests {
         }
     }
 
+    @Test("AP computer-science aliases stay electives; UCF has core-only weighting and withholds uncertain low bonuses")
+    func ucfCoreAndCutoff() {
+        let courses = [course(1, "APCSP", 10, "95"), course(2, "APTACSA", 10, "95"), course(3, "English H", 10, "95")]
+        let uf = CollegeGPACalculator.calculate(profile: weightedProfile(.ufWeighted), courses: courses, asOf: date)
+        #expect(uf.records.map(\.points) == [5, 5, 4.5])
+        for method in [CollegeGPAMethod.ugaWeighted, .fsuWeighted, .ucfWeighted] {
+            let result = CollegeGPACalculator.calculate(profile: weightedProfile(method), courses: courses, asOf: date)
+            #expect(result.records.count == 1 && result.omittedRecords.count == 2)
+            #expect(result.value == (method == .ugaWeighted ? 4 : 4.5))
+        }
+        let low = CollegeGPACalculator.calculate(profile: profile("ucf"), courses: [
+            course(1, "English H", 10, "69"), course(2, "AP Biology", 10, "95")], asOf: date)
+        #expect(low.value == nil && low.records.count == 2)
+        #expect(low.unavailableReason == "Bonus treatment for lower grades is unverified.")
+        let regular = CollegeGPACalculator.calculate(profile: profile("ucf"), courses: [course(1, "English", 10, "60")], asOf: date)
+        #expect(regular.value == 1)
+    }
+
+    @Test("UC omits known nonacademic courses but retains arts and discloses remaining A–G uncertainty")
+    func ucSubjectExclusions() {
+        let excluded = ["PE", "Athletics", "Girls Soccer", "Health", "HLTH ED", "Office Aide", "MAPS"]
+        let courses = [course(100, "APBIO2", 10, "95"), course(101, "Art 1", 10, "80"),
+            course(102, "MUS1GTR", 10, "80"), course(103, "APCSP", 10, "95")]
+            + excluded.enumerated().map { course($0.offset, $0.element, 10, "100") }
+        let weighted = CollegeGPACalculator.calculate(profile: profile("ucla"), courses: courses, asOf: date)
+        #expect(weighted.records.map(\.points) == [5, 3, 3, 5])
+        #expect(weighted.value == 4 && weighted.omittedRecords.count == excluded.count)
+        #expect(weighted.calculationNotes.contains { $0.contains("A–G eligibility is unverified") })
+        #expect(weighted.calculationNotes.contains { $0.contains("7 completed") })
+        let unweighted = CollegeGPACalculator.calculate(profile: profile("berkeley"), courses: courses, asOf: date)
+        #expect(unweighted.value == 3.5 && unweighted.omittedRecords.count == excluded.count)
+        let uncertain = CollegeGPACalculator.calculate(profile: profile("ucla"), courses: [
+            course(1, "Principles of Health Science", 10, "90"), course(2, "Independent Study", 10, "80")], asOf: date)
+        #expect(uncertain.records.count == 2 && uncertain.omittedRecords.isEmpty)
+        #expect(uncertain.calculationNotes.contains { $0.contains("unverified") })
+    }
+
+    @Test("Published scales never match a generic unweighted estimate to weighted cohort statistics")
+    func incompatibleSourceScales() {
+        var generic = profile("princeton")
+        generic.publishedGPAScale = .weighted
+        #expect(CollegeGPAStanding.compare(4, profile: generic)?.cohortContext == nil)
+        #expect(CollegeGPAStanding.compare(4, profile: generic)?.sameBandPercent == nil)
+        var weighted = weightedProfile(.ufWeighted)
+        weighted.publishedGPAScale = .unweighted
+        #expect(CollegeGPAStanding.compare(4, profile: weighted)?.cohortContext == nil)
+        #expect(CollegeGPAMethod.ugaWeighted.gradeYears == nil)
+        #expect(CollegeGPAMethod.fsuWeighted.maximum == 5)
+    }
+
+    @Test("Expanded catalog preserves unique identities and independently validates published GPA scales")
+    func catalogScaleIntegrity() {
+        let profiles = CollegeProfileCatalog.profiles
+        #expect(profiles.count >= 64)
+        #expect(Set(profiles.map(\.id)).count == profiles.count)
+        for p in profiles {
+            #expect(p.sourceURL.scheme == "https")
+            let limit = p.publishedGPAScale == .unweighted ? 4.0 : 5.0
+            if let mean = p.reportedMean { #expect(mean.isFinite && (0...limit).contains(mean)) }
+            if let q = p.quartiles {
+                #expect(q.lower.isFinite && q.upper.isFinite)
+                #expect(q.lower >= 0 && q.lower <= q.upper && q.upper <= limit)
+                if let median = q.median { #expect((q.lower...q.upper).contains(median)) }
+            }
+            if let coverage = p.reportingPercent { #expect((0...100).contains(coverage)) }
+        }
+        #expect(profile("georgia").method == .ugaWeighted)
+        #expect(profile("florida").method == .ufWeighted)
+        #expect(profile("florida-state").method == .fsuWeighted)
+        #expect(profile("ucf").publishedGPAScale == .weighted)
+        #expect(profile("ucf").method == .ucfWeighted)
+        #expect(profile("ucf").definitionSourceURL != nil)
+        #expect(profile("ucla").publishedGPAScale == .weighted)
+        #expect(profile("berkeley").publishedGPAScale == .unweighted)
+    }
+
+    private func course(_ id: Int, _ name: String, _ year: Int, _ sm1: String?,
+                        academicYear: String = "2025-2026") -> UnifiedCourseData {
+        let grades = HistoricalGrades(pr1: nil, pr2: nil, pr3: nil, pr4: nil, pr5: nil, pr6: nil, pr7: nil, pr8: nil,
+            rc1: nil, rc2: nil, rc3: nil, rc4: nil, ex1: nil, ex2: nil, sm1: sm1, sm2: nil, finalGrade: nil)
+        return UnifiedCourseData(courseId: nil, corNumId: "", stuId: "", section: "", gbId: "", courseName: name,
+            instructor: nil, period: nil, time: nil, semester: .fall, termLength: "1 - 2", gradeYear: year,
+            currentScores: [], historicalGrades: grades, academicYear: academicYear, historyRowKey: "synthetic-\(id)",
+            academicYearIsVerified: true, isTranscriptRecord: true, postedHistoricalGrades: grades)
+    }
+}
