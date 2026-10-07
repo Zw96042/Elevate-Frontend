@@ -98,3 +98,111 @@ struct GPAConversionTests {
         #expect(report([]).value == nil)
     }
 
+    @Test("Duplicate source records count once and conflicting posted grades count neither")
+    func duplicateRecords() {
+        let source = course(sm1: "90", sm2: "80")
+        let repeated = report([source, source])
+        #expect(repeated.includedCount == 2)
+        #expect(repeated.skippedRecords.allSatisfy { $0.reason == .duplicateRecord })
+        #expect(Set(repeated.skippedRecords.map(\.id)).count == repeated.skippedCount)
+        var conflict = source
+        conflict.historicalGrades.sm1 = "70"
+        let disputed = report([source, conflict])
+        #expect(disputed.includedCount == 1)
+        #expect(disputed.value == 3)
+        #expect(disputed.skippedRecords.filter { $0.reason == .conflictingDuplicate }.count == 2)
+        var missing = source
+        missing.historicalGrades.sm1 = nil
+        #expect(report([missing, source]).includedCount == 2)
+    }
+
+    @Test("Manual records fill only years with no Skyward courses, with full precision")
+    func manualFallback() {
+        let result = GPAConversionCalculator.calculate(
+            courses: [course(year: 10, sm1: nil)],
+            manualClassesByYear: [
+                9: [ManualClass(className: "AP History", sm1: 90, sm2: nil)],
+                10: [ManualClass(className: "English", sm1: 100, sm2: 100)],
+                11: [ManualClass(className: "English", sm1: 80, sm2: 80)],
+            ], policy: .unweighted4Point
+        )
+        #expect(result.includedCount == 3)
+        #expect(result.includedRecords.allSatisfy { $0.source == .manual })
+        #expect(result.value == 10.0 / 3.0)
+        #expect(result.includedRecords.map(\.gradeYear) == [9, 11, 11])
+    }
+
+    @Test("Current semesters become eligible only after the district's final school day")
+    func completedSemesterBoundaries() {
+        var current = course(year: 11, sm1: "90", sm2: "80")
+        current.academicYear = "2026-2027"
+        current.academicYearIsVerified = true
+        for (date, expectedTerms) in [
+            (date(2026, 10, 4), [TermLabel]()),
+            (date(2026, 12, 18, hour: 23, minute: 59, second: 59), []),
+            (date(2026, 12, 19), [.sm1]),
+            (date(2027, 1, 5), [.sm1]),
+            (date(2027, 5, 21, hour: 23, minute: 59, second: 59), [.sm1]),
+            (date(2027, 5, 22), [.sm1, .sm2]),
+        ] {
+            let result = completed([current], asOf: date)
+            #expect(result.includedRecords.map(\.semester) == expectedTerms)
+            #expect(result.skippedCount == 2 - expectedTerms.count)
+            #expect(result.skippedRecords.allSatisfy { $0.reason == .inProgress })
+        }
+        // The ordinary converter retains its previous behavior when the gate
+        // is omitted, including numeric fields on ongoing courses.
+        #expect(report([current]).includedCount == 2)
+    }
+
+    @Test("Verified source years distinguish completed, current, and future records")
+    func completedSourceYears() {
+        var past = course(id: 1, year: 10, sm1: "0", sm2: "90")
+        past.academicYear = "2025-2026"
+        var current = course(id: 2, year: 11, sm1: "95", sm2: "95")
+        current.academicYear = "2026-2027"
+        var future = course(id: 3, year: 12, sm1: "100", sm2: "100")
+        future.academicYear = "2027-2028"
+        future.academicYearIsVerified = true
+        let result = completed([past, current, future], asOf: date(2026, 10, 4))
+        #expect(result.includedRecords.map(\.percentage) == [0, 90])
+        #expect(result.value == 2)
+        #expect(result.skippedRecords.filter { $0.reason == .inProgress }.count == 4)
+        #expect(completed([future], asOf: date(2027, 5, 22)).includedCount == 0)
+    }
+
+    @Test("School years advance on Chicago August 1, independently of a displayed semester")
+    func completedSchoolYearAndTimezone() {
+        var current = course(sm1: "90", sm2: "80")
+        current.academicYear = "2026-2027"
+        let chicagoMidnight = date(2026, 8, 1)
+        #expect(completed([current], asOf: chicagoMidnight.addingTimeInterval(-1)).includedCount == 0)
+        #expect(completed([current], asOf: chicagoMidnight).includedCount == 0)
+        let nextSchoolYear = date(2027, 8, 1)
+        #expect(completed([current], asOf: nextSchoolYear.addingTimeInterval(-1)).includedCount == 2)
+        #expect(completed([current], asOf: nextSchoolYear).includedCount == 2)
+        let semesterMidnight = date(2026, 12, 19)
+        #expect(completed([current], asOf: semesterMidnight.addingTimeInterval(-1)).includedCount == 0)
+        #expect(completed([current], asOf: semesterMidnight).includedCount == 1)
+    }
+
+    @Test("Merged and manufactured live records cannot masquerade as completed transcript grades")
+    func completedMergedAndManufactured() {
+        var merged = course(id: 1, year: 11, sm1: "99", sm2: "99")
+        merged.isTranscriptRecord = true
+        merged.postedHistoricalGrades = grades(sm1: "90", sm2: "80")
+        merged.currentAcademicYearIsVerified = nil
+        var manufactured = course(id: 2, year: 11, sm1: "95", sm2: "95")
+        manufactured.academicYear = "2025-2026"
+        manufactured.academicYearIsVerified = false
+        manufactured.isTranscriptRecord = true
+        let october = completed([merged, manufactured], asOf: date(2026, 10, 4))
+        #expect(october.value == nil)
+        #expect(october.skippedRecords.allSatisfy { $0.reason == .inProgress })
+        let december = completed([merged, manufactured], asOf: date(2026, 12, 19))
+        #expect(december.includedRecords.map(\.percentage) == [90, 95])
+        #expect(december.includedRecords.allSatisfy { $0.semester == .sm1 })
+        manufactured.academicYear = "2027-2028"
+        #expect(completed([manufactured], asOf: date(2026, 12, 19)).value == nil)
+    }
+
