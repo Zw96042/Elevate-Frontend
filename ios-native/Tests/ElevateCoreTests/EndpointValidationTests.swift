@@ -14,6 +14,82 @@ struct EndpointValidationTests {
     </body></html>
     """
 
+    private let ungradedTerm = """
+    <div>
+      <h2 class="gb_heading"><a>Algebra II</a><a>Ms. Rivera</a></h2>
+      <div id="stuTermSummaryGrid_1"><table id="grid_stuTermSummaryGrid_1">
+        <thead><tr><th>Q2 Grade <span>10/12/2026 - 12/18/2026</span></th></tr></thead>
+        <tbody><tr class=""><td>&nbsp;</td><td></td></tr></tbody>
+      </table></div>
+      <h2 class="gb_heading">Grade Details</h2>
+    </div>
+    """
+
+    @Test("A complete ungraded term response can omit the assignment grid")
+    func validGridlessUngradedTerm() throws {
+        let result = try SkywardGradesAPI.parseGradeInfoHTML(
+            ungradedTerm, rawResponse: "<output><![CDATA[\(ungradedTerm)]]></output>"
+        )
+        #expect(result.course == "Algebra II")
+        #expect(result.litName == "Q2")
+        #expect(result.grade == nil)
+        #expect(result.score == nil)
+        #expect(result.gradebook.isEmpty)
+    }
+
+    @Test("An outer layout table does not turn the term header into a summary row")
+    func wrappedGridlessUngradedTerm() throws {
+        let html = "<table><tbody><tr><td>\(ungradedTerm)</td></tr></tbody></table>"
+        let result = try SkywardGradesAPI.parseGradeInfoHTML(
+            html, rawResponse: "<output><![CDATA[\(html)]]></output>"
+        )
+        #expect(result.litName == "Q2")
+        #expect(result.gradebook.isEmpty)
+        #expect(result.score == nil)
+    }
+
+    @Test("Only the complete blank two-cell summary can replace a missing assignment grid")
+    func invalidGridlessTerms() {
+        let malformed = [
+            ungradedTerm.replacingOccurrences(of: "<td>&nbsp;</td>", with: "<td>Q2</td>"),
+            ungradedTerm.replacingOccurrences(of: "<td></td>", with: "<td>94</td>"),
+            ungradedTerm.replacingOccurrences(of: "<td></td>", with: "<td>Unavailable</td>"),
+            ungradedTerm.replacingOccurrences(of: "<td></td>", with: ""),
+            ungradedTerm.replacingOccurrences(of: "</tbody>", with: "<tr><td></td><td></td></tr></tbody>"),
+            ungradedTerm.replacingOccurrences(of: "<a>Algebra II</a>", with: "<a></a>"),
+            ungradedTerm.replacingOccurrences(of: "Q2 Grade ", with: ""),
+            ungradedTerm + "<a id='showAssignmentInfo'>Assignment</a>",
+            ungradedTerm + "<table><tr class='sf_Section cat'><td></td><td>Tests</td></tr></table>",
+        ]
+        for html in malformed {
+            #expect(throws: SkywardError.self) {
+                _ = try SkywardGradesAPI.parseGradeInfoHTML(
+                    html, rawResponse: "<output><![CDATA[\(html)]]></output>"
+                )
+            }
+        }
+        for raw in [ungradedTerm, "<output><![CDATA[\(ungradedTerm)"] {
+            #expect(throws: SkywardError.self) {
+                _ = try SkywardGradesAPI.parseGradeInfoHTML(ungradedTerm, rawResponse: raw)
+            }
+        }
+    }
+
+    @Test("An ungraded term cannot hide an expired loader session")
+    func expiredGridlessTerm() {
+        do {
+            _ = try SkywardGradesAPI.parseGradeInfoHTML(
+                ungradedTerm,
+                rawResponse: "<data><![CDATA[]]></data><output><![CDATA[\(ungradedTerm)]]></output>"
+            )
+            Issue.record("Expected session expiry")
+        } catch SkywardError.sessionExpired {
+            // Session validation takes precedence over a blank summary.
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
     @Test("A structurally valid empty gradebook remains a legitimate empty result")
     func validEmptyGradebook() throws {
         let result = try SkywardGradesAPI.parseGradeInfoHTML(
@@ -230,7 +306,7 @@ struct EndpointValidationTests {
         }
     }
 
-    @Test("Valid pre-high-school credit sections are omitted without rejecting the transcript")
+    @Test("Pre-high-school rows are preserved for credit planning without entering the GPA subset")
     func preHighSchoolCreditSection() throws {
         let blanks = (0..<16).map { _ in ["h": ""] }
         let result = try SkywardHistoryAPI.condenseAcademicHistory([
@@ -242,7 +318,8 @@ struct EndpointValidationTests {
             ]]],
         ])
 
-        #expect(result["2024-2025"] == nil)
+        #expect(result["2024-2025"]?.courses.isEmpty == true)
+        #expect(result["2024-2025"]?.planningTranscriptCourses?.first?.name == "Algebra I")
         #expect(result["2025-2026"]?.grade == 9)
         #expect(result["2025-2026"]?.courses["Biology"] != nil)
     }
@@ -269,6 +346,43 @@ struct EndpointValidationTests {
     func validEmptyInbox() throws {
         let messages = try SkywardMessagesAPI.parseMessages("<ul id='messageFeed'></ul>")
         #expect(messages.isEmpty)
+    }
+
+    @Test("Skyward's capitalized MessageFeed empty state remains empty")
+    func capitalizedEmptyInbox() throws {
+        let html = """
+        <html><body class="sf_studentAccess">
+          <ul id="MessageFeed"><li class="emptyFeed">No messages...</li></ul>
+        </body></html>
+        """
+        #expect(try SkywardMessagesAPI.parseMessages(html).isEmpty)
+    }
+
+    @Test("A capitalized feed cannot hide malformed messages or an expired session")
+    func invalidCapitalizedInbox() {
+        #expect(throws: SkywardError.self) {
+            _ = try SkywardMessagesAPI.parseMessages(
+                "<ul id='MessageFeed'><li>Unexpected server response</li></ul>"
+            )
+        }
+        #expect(throws: SkywardError.self) {
+            _ = try SkywardMessagesAPI.parseMessages("""
+            <ul id="MessageFeed"><li class="feedItem allowRemove">
+              <div class="messageWrap" data-wall-id="synthetic"></div>
+            </li></ul>
+            """)
+        }
+        do {
+            _ = try SkywardMessagesAPI.parseMessages("""
+            <ul id="MessageFeed"><li class="emptyFeed">No messages...</li></ul>
+            <p>Your session has expired</p>
+            """)
+            Issue.record("Expected session expiry")
+        } catch SkywardError.sessionExpired {
+            // Session validation takes precedence over the empty feed.
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
     }
 
     @Test("A populated inbox still parses")
