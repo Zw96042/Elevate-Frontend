@@ -203,3 +203,102 @@ struct CourseHistoryTests {
         #expect(raw.first { $0.historyRowKey == "progress" }?.postedGrades.pr1 == "A")
     }
 
+    @Test("Unique complementary semesters combine only their display snapshot and stable source IDs")
+    func displayComplementarySemesters() throws {
+        let fall = displayCourse("Physics", grades: HistoricalGrades(rc1: "85.00", sm1: " 86 ", finalGrade: "86"))
+        let spring = displayCourse("Physics_2", grades: HistoricalGrades(rc3: "89", sm2: "P", finalGrade: "P"))
+        let input = [fall, spring]
+        let entries = CourseHistoryDisplay.entries(courses: input)
+        let merged = try #require(entries.first)
+        #expect(entries.count == 1)
+        #expect(merged.sourceRowIDs.count == 2)
+        #expect(merged.course.postedGrades.rc1 == "85.00")
+        #expect(merged.course.postedGrades.sm1 == " 86 ")
+        #expect(merged.course.postedGrades.rc3 == "89")
+        #expect(merged.course.postedGrades.sm2 == "P")
+        #expect(merged.course.postedGrades.finalGrade == "P")
+        #expect(merged.course.id == fall.id || merged.course.id == spring.id)
+        #expect(CourseHistoryDisplay.entries(courses: input.reversed()) == entries)
+        #expect(input == [fall, spring])
+        #expect(fall.postedGrades.sm2 == nil && spring.postedGrades.sm1 == nil)
+        #expect(merged.course.historicalGrades == fall.historicalGrades || merged.course.historicalGrades == spring.historicalGrades)
+    }
+
+    @Test("Conflicting, ambiguous and distinct source titles cannot be combined")
+    func displayAmbiguousRows() {
+        let fall = displayCourse("Physics", grades: HistoricalGrades(sm1: "86"))
+        let spring = displayCourse("Physics_2", grades: HistoricalGrades(sm2: "90"))
+        let repeatFall = displayCourse("Physics_3", grades: HistoricalGrades(sm1: "86"))
+        #expect(CourseHistoryDisplay.entries(courses: [fall, spring, repeatFall]).count == 3)
+        #expect(CourseHistoryDisplay.entries(courses: [fall, repeatFall]).count == 2)
+        var conflicting = spring
+        conflicting.postedHistoricalGrades?.rc1 = "80"
+        #expect(CourseHistoryDisplay.entries(courses: [fall, conflicting]).count == 2)
+        var otherTitle = spring
+        otherTitle.courseName = "PHYSICS"
+        #expect(CourseHistoryDisplay.entries(courses: [fall, otherTitle]).count == 2)
+        var otherCatalog = spring
+        var catalogFall = fall
+        catalogFall.corNumId = "catalog-one"
+        otherCatalog.corNumId = "catalog-two"
+        #expect(CourseHistoryDisplay.entries(courses: [catalogFall, otherCatalog]).count == 2)
+        let rcOnly = displayCourse("Physics_4", grades: HistoricalGrades(rc3: "91"))
+        #expect(CourseHistoryDisplay.entries(courses: [fall, rcOnly]).map(\.course) == [fall])
+        #expect(CourseHistoryReport(courses: [fall, rcOnly]).courses(inAcademicYear: "2025-2026").count == 2)
+    }
+
+    @Test("School years and grade-year identities remain separate and dropped duplicates do not prevent a unique pair")
+    func displayYearIdentity() {
+        let fall = displayCourse("Physics", grades: HistoricalGrades(sm1: "86"))
+        let spring = displayCourse("Physics_2", grades: HistoricalGrades(sm2: "90"))
+        let dropped = displayCourse("Physics_3", grades: HistoricalGrades())
+        #expect(CourseHistoryDisplay.entries(courses: [fall, spring, dropped]).count == 1)
+        var anotherYear = spring
+        anotherYear.academicYear = "2024-2025"
+        #expect(CourseHistoryDisplay.entries(courses: [fall, anotherYear]).count == 2)
+        var anotherGrade = spring
+        anotherGrade.gradeYear = 11
+        #expect(CourseHistoryDisplay.entries(courses: [fall, anotherGrade]).count == 2)
+        var unknownSource = spring
+        unknownSource.historyRowKey = nil
+        #expect(CourseHistoryDisplay.entries(courses: [fall, unknownSource]).count == 2)
+    }
+
+    @Test("LOTE keeps its acronym capitalization in shared course titles")
+    func loteFormatting() {
+        #expect(ClassNameFormatter.format("LOTE_SPANISH_II") == "LOTE Spanish II")
+        #expect(ClassNameFormatter.format("lote_credit") == "LOTE Credit")
+        #expect(ClassNameFormatter.format("AP_COMPUTER_SCIENCE_A") == "AP Computer Science A")
+    }
+
+    private func displayCourse(_ row: String, grades: HistoricalGrades) -> UnifiedCourseData {
+        UnifiedCourseData(corNumId: "", stuId: "", section: "", gbId: "", courseName: "Physics",
+            semester: .both, termLength: "1 - 4", gradeYear: 10, currentScores: [], historicalGrades: grades,
+            academicYear: "2025-2026", historyRowKey: row, academicYearIsVerified: true,
+            isTranscriptRecord: true, postedHistoricalGrades: grades)
+    }
+
+    private func coursesWithCurrentYear() -> [UnifiedCourseData] {
+        let history: AcademicHistory = [
+            "2024-2025": AcademicYear(grade: 10, courses: ["Physics": HistoryCourse(courseName: "Physics")]),
+            "2025-2026": AcademicYear(grade: 10, courses: ["Physics": HistoryCourse(courseName: "Physics")]),
+            "2026-2027": AcademicYear(grade: 10, courses: [
+                "Physics": HistoryCourse(courseName: "Physics"),
+                "Completed": HistoryCourse(courseName: "Completed", terms: "1 - 2", sm1: "90"),
+            ]),
+        ]
+        var courses = UnifiedCourseTransformer.transform(history: SkywardHistoryAPI.combine(history: history, gradebook: [liveCourse()]))
+        // This fixture deliberately supplies independent current-year evidence.
+        // Real combine output must never infer it from a matching grade/name.
+        for index in courses.indices where courses[index].hasGradebookParams {
+            courses[index].currentAcademicYearIsVerified = true
+        }
+        return courses
+    }
+
+    private func liveCourse() -> GradebookCourse {
+        GradebookCourse(course: 100, courseName: "Physics", instructor: "Teacher", period: 1,
+                        scores: [("TERM 3", 90)], stuId: "synthetic-student", corNumId: 100,
+                        section: "01", gbId: "synthetic-book")
+    }
+}
