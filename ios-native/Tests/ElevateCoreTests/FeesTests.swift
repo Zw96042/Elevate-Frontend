@@ -91,3 +91,83 @@ struct FeesTests {
         }
     }
 
+    @Test("Explicit unavailable state requires the recognized complete page")
+    func unavailable() throws {
+        #expect(try SkywardFeesAPI.parse(document("<p>Fee management is unavailable.</p>")).availability == .unavailable)
+        for html in [
+            "<title>Maintenance</title><body>Fee management is unavailable</body>",
+            document("<p>Maintenance in progress</p>"),
+            "<title>Fee Management</title><body><p>Fees unavailable</p>",
+        ] {
+            #expect(throws: SkywardError.self) { _ = try SkywardFeesAPI.parse(html) }
+        }
+    }
+
+    @Test("Wrapped layout tables are ignored and nested record-cell tables are rejected")
+    func ownership() throws {
+        let wrapped = "<table><tbody><tr><td>" + page(fees: row(feeValues)) + "</td></tr></tbody></table>"
+        #expect(try SkywardFeesAPI.parse(wrapped).fees.count == 1)
+        var values = feeValues
+        values[2] = "<table><tbody>" + row(feeValues) + "</tbody></table>"
+        #expect(throws: SkywardError.self) { _ = try SkywardFeesAPI.parse(page(fees: row(values))) }
+    }
+
+    @Test("Optional tbody close is accepted but missing row/cell/table closures remain errors")
+    func structure() throws {
+        let complete = page(fees: row(feeValues), payments: row(paymentValues))
+        #expect(try SkywardFeesAPI.parse(complete.replacingOccurrences(of: "</tbody>", with: "")).fees.count == 1)
+        for html in [
+            complete.replacingOccurrences(of: "</table>", with: ""),
+            complete.replacingOccurrences(of: "</tr>", with: ""),
+            complete.replacingOccurrences(of: "</td>", with: ""),
+            page(fees: "<tr><td>Unknown row</td></tr>"),
+            page(fees: "<div>Unknown body content</div>"),
+            complete.replacingOccurrences(of: "<th>RemainingDue</th>", with: ""),
+            complete.replacingOccurrences(of: "<th>AmountDue</th>", with: "<th>Other amount</th>"),
+        ] {
+            #expect(throws: SkywardError.self) { _ = try SkywardFeesAPI.parse(html) }
+        }
+    }
+
+    @Test("Header whitespace and br labels normalize without changing source fields")
+    func headerNormalization() throws {
+        let html = page(fees: row(feeValues))
+            .replacingOccurrences(of: "<th>AmountCharged</th>", with: "<th>Amount<br>Charged</th>")
+            .replacingOccurrences(of: "<th>SchoolYear</th>", with: "<th> School \n Year </th>")
+        #expect(try SkywardFeesAPI.parse(html).fees.count == 1)
+    }
+
+    @Test("Expired and login responses remain session errors")
+    func sessionExpiry() {
+        for html in ["Your session has expired", "<title>Family Access</title><form id='detailform'><input type='password'></form>"] {
+            do {
+                _ = try SkywardFeesAPI.parse(html)
+                Issue.record("Expected session expiry")
+            } catch SkywardError.sessionExpired {
+                // Expected.
+            } catch {
+                Issue.record("Unexpected error category")
+            }
+        }
+    }
+
+    @Test("Ambiguous student grids and oversized payloads cannot become records")
+    func limitsAndScope() {
+        let duplicate = page(fees: row(feeValues)) + table(id: "grid_FeesDet2", headers: feeHeaders, rows: row(feeValues))
+        #expect(throws: SkywardError.self) { _ = try SkywardFeesAPI.parse(duplicate) }
+        #expect(throws: SkywardError.self) {
+            _ = try SkywardFeesAPI.parse(String(repeating: "x", count: SkywardFeesAPI.maximumHTMLBytes + 1))
+        }
+        let many = String(repeating: row(feeValues), count: SkywardFeesAPI.maximumRows + 1)
+        #expect(throws: SkywardError.self) { _ = try SkywardFeesAPI.parse(page(fees: many)) }
+    }
+
+    private func row(_ values: [String]) -> String { "<tr>" + values.map { "<td>\($0)</td>" }.joined() + "</tr>" }
+    private func table(id: String, headers: [String], rows: String) -> String {
+        "<table id='\(id)'><thead><tr>" + headers.map { "<th>\($0)</th>" }.joined() + "</tr></thead><tbody>\(rows)</tbody></table>"
+    }
+    private func document(_ content: String) -> String { "<html><head><title>Fee Management</title></head><body>\(content)</body></html>" }
+    private func page(fees: String = "", payments: String = "") -> String {
+        document(table(id: "grid_FeesDet1", headers: feeHeaders, rows: fees) + table(id: "grid_PaymentsDet1", headers: paymentHeaders, rows: payments))
+    }
+}
