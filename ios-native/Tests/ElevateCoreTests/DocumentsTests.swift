@@ -90,3 +90,78 @@ final class DocumentsTests: XCTestCase {
         XCTAssertNil(record.created)
     }
 
+    func testUnsupportedSignaturesStayVisibleWithoutDownload() throws {
+        let scripts = [handler(flags: "true,false"), handler(flags: "false,true"), handler(kind: "generatedReport"),
+                       handler().replacingOccurrences(of: "#anchorA", with: "anchorA"), handler(extra: ",'additional'"), "", "sfportfolio.eSignCheck(false,false,'synthetic-esign','blobLink','\(location)');",
+                       handler().replacingOccurrences(of: "'synthetic-esign'", with: "dangerousExpression()")]
+        for script in scripts {
+            let parsed = try SkywardDocumentsAPI.parsePage(page(script: script), baseUrl: base)
+            XCTAssertEqual(parsed.data.documents.count, 1)
+            XCTAssertFalse(parsed.data.documents[0].canOpen)
+            XCTAssertTrue(parsed.locations.isEmpty)
+        }
+    }
+
+    func testInvalidResourceOriginsAndStudentPhotoPathsCannotOpen() throws {
+        let paths = ["https://attacker.example.test/qdirconfig123.p?blobid=synthetic", "//attacker.example.test/qdirconfig123.p?blobid=synthetic",
+                     "qdirconfig123.p?StuPic=1&blobid=synthetic", "qdirconfig123.p?blobid=", "other.p?blobid=synthetic",
+                     "javascript:dangerousExpression()"]
+        for path in paths {
+            let parsed = try SkywardDocumentsAPI.parsePage(page(script: handler(path: path)), baseUrl: base)
+            XCTAssertFalse(parsed.data.documents[0].canOpen)
+            XCTAssertTrue(parsed.locations.isEmpty)
+        }
+    }
+
+    func testSameOriginAbsoluteBlobCanOpen() throws {
+        let parsed = try SkywardDocumentsAPI.parsePage(page(script: handler(path: base + location)), baseUrl: base)
+        XCTAssertTrue(parsed.data.documents[0].canOpen)
+    }
+
+    func testMalformedTruncatedNestedAndAmbiguousTablesFail() {
+        let malformed = [String(page().prefix(80)), page().replacingOccurrences(of: "</table>", with: ""),
+                         page().replacingOccurrences(of: "</td>", with: "", range: page().range(of: "</td>")),
+                         page().replacingOccurrences(of: "<td>PDF</td>", with: "<td><table><tr><td>PDF</td></tr></table></td>"),
+                         page() + page(), page().replacingOccurrences(of: "<th>Created</th>", with: "<th>Unexpected</th>"),
+                         page(rows: row() + "<tr><td colspan='3'>No documents</td></tr>"),
+                         page(rows: "<tr><td colspan='3'>No documents</td></tr><tr><td colspan='3'>No documents</td></tr>", script: ""),
+                         page(script: handler() + handler()), "<html><body>Maintenance</body></html>"]
+        for html in malformed { XCTAssertThrowsError(try SkywardDocumentsAPI.parse(html)) }
+    }
+
+    func testBalancedButMisorderedClosingTagsFail() {
+        let html = page().replacingOccurrences(of: "<td>01/02/2026</td></tr>", with: "<td>01/02/2026</tr></td>")
+        XCTAssertThrowsError(try SkywardDocumentsAPI.parse(html))
+    }
+
+    func testDuplicateRowAnchorIDsFail() {
+        XCTAssertThrowsError(try SkywardDocumentsAPI.parse(page(rows: row() + row())))
+    }
+
+    func testUnrecognizedTableBodyContentAndHeadersFail() {
+        let cases = [page(rows: "", script: "").replacingOccurrences(of: "<tbody>", with: "").replacingOccurrences(of: "</tbody>", with: ""),
+                     page(rows: "<div>Unrecognized content</div>", script: ""),
+                     page(rows: "", script: "").replacingOccurrences(of: "<tbody>", with: "<div>Unexpected</div><tbody>"),
+                     page(rows: "", script: "").replacingOccurrences(of: "<tbody>", with: "Unexpected text<tbody>"),
+                     page(rows: "<tr><th>Description</th><th>Type</th><th>Created</th></tr>", script: ""),
+                     page().replacingOccurrences(of: "<th>Description</th><th>Type</th><th>Created</th>", with: "<th>Type</th><th>Description</th><th>Created</th>")]
+        for html in cases { XCTAssertThrowsError(try SkywardDocumentsAPI.parse(html)) }
+    }
+
+    func testCompleteHeaderAndEmptyBodyAreVerifiedEmpty() throws {
+        let data = try SkywardDocumentsAPI.parse(page(rows: "", script: ""))
+        XCTAssertTrue(data.documents.isEmpty)
+        XCTAssertEqual(data.availability, .available)
+    }
+
+    func testExpiredSessionAndSizeLimitFail() {
+        XCTAssertThrowsError(try SkywardDocumentsAPI.parse("Your session has expired")) { error in
+            guard case SkywardError.sessionExpired = error else { return XCTFail("Expected session expiry") }
+        }
+        XCTAssertThrowsError(try SkywardDocumentsAPI.parse(page() + String(repeating: " ", count: 4_000_001)))
+    }
+
+    func testOmittedTbodyClosingIsAccepted() {
+        XCTAssertNoThrow(try SkywardDocumentsAPI.parse(page().replacingOccurrences(of: "</tbody>", with: "")))
+    }
+}
