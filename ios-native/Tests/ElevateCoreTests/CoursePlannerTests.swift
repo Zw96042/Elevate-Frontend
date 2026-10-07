@@ -191,3 +191,103 @@ struct CoursePlannerTests {
         #expect(report.officialSkippedCount > 0)
     }
 
+    @Test("Credits do not invisibly change the equal-semester projection denominator")
+    func semesterWeighting() {
+        let report = calculate(CoursePlan(plannedCourses: [
+            entry("One semester", credits: 0.5, score: 80), entry("Other credit allocation", credits: 1, score: 100),
+        ]))
+        #expect(report.plannedTotal == 1.5)
+        #expect(projection(report, .districtPercentage).projected == 90)
+        #expect(projection(report, .districtPercentage).plannedCount == 2)
+    }
+
+    @Test("Account-local planner payload preserves personal entries and checklist across encoding")
+    func persistenceRoundTrip() throws {
+        let plan = CoursePlan(earnedCourses: [entry("Earned")], plannedCourses: [entry("Future", level: .honors, score: 91)],
+                              checkedRequirements: [.speech, .cprAndAED])
+        #expect(try JSONDecoder().decode(CoursePlan.self, from: JSONEncoder().encode(plan)) == plan)
+    }
+
+    @Test("Verified current AP English reduces expected deficit without awarding credit or GPA")
+    func currentEnrollmentProgress() throws {
+        let live = currentCourse("AP English Language and Composition")
+        let report = calculate(CoursePlan(), official: [live])
+        let english = try #require(report.requirements.first { $0.subject == .english })
+        #expect(english.earned == 0)
+        #expect(english.current == 1)
+        #expect(english.planned == 0)
+        #expect(english.remaining == 3)
+        #expect(english.earnedRemaining == 4)
+        #expect(report.currentTotal == 1)
+        #expect(report.earnedTotal == 0)
+        #expect(report.combinedTotal == 1)
+        #expect(report.earnedRemainingTotal == 26)
+        #expect(report.currentCourses.first?.status == .expected)
+        #expect(report.gpa.allSatisfy { $0.officialBaseline == nil && $0.projected == nil })
+        #expect(live.currentScores.first?.score == 55)
+    }
+
+    @Test("Every current course stays visible and recognized subjects reduce the correct balances")
+    func currentScheduleCoverage() {
+        let recognized = ["AP English Language and Composition", "Precalculus", "AP Physics 1&2", "AP United States History",
+                          "Spanish III", "Girls Swimming and Diving Varsity", "AP Computer Science Principles", "Sports Medicine"]
+        let courses = (recognized + ["Uncatalogued Seminar"]).map { currentCourse($0) }
+        let report = calculate(CoursePlan(), official: courses)
+        #expect(report.currentCourses.count == courses.count)
+        #expect(report.currentCourses.filter { $0.status == .expected }.count == recognized.count)
+        #expect(report.currentTotal == 9)
+        #expect(report.earnedTotal == 0)
+        #expect(report.remainingTotal == 17)
+        #expect(report.requirements.first { $0.subject == .english }?.remaining == 3)
+        #expect(report.requirements.first { $0.subject == .science }?.remaining == 2)
+        #expect(report.requirements.first { $0.subject == .physicalEducation }?.remaining == 0)
+        #expect(report.requirements.first { $0.subject == .elective }?.current == 2)
+        #expect(report.requirements.reduce(0) { $0 + $1.combined } == report.combinedTotal)
+        let unknown = report.currentCourses.first { $0.name == "Uncatalogued Seminar" }
+        #expect(unknown?.status == .needsReview)
+        #expect(unknown?.credits == 0)
+        #expect(unknown?.subject == nil)
+    }
+
+    @Test("A planned current-equivalent course is held unless its future scope is distinct")
+    func plannedEnrollmentReconciliation() {
+        let live = currentCourse("AP English Language and Composition", semester: .fall)
+        let duplicate = entry("English III Honors", credits: 0.5, score: 100)
+        var nextYear = duplicate
+        nextYear.id = UUID()
+        nextYear.academicYear = "2027-2028"
+        var spring = duplicate
+        spring.id = UUID()
+        spring.academicYear = "2026-2027"
+        spring.semester = .sm2
+        let report = calculate(CoursePlan(plannedCourses: [duplicate, nextYear, spring]), official: [live])
+        #expect(report.currentTotal == 0.5)
+        #expect(report.plannedTotal == 1)
+        #expect(report.manualPlannedReviewCourses.map(\.id) == [duplicate.id])
+        #expect(report.issues.contains { $0.reason == .currentEnrollmentOverlap })
+        #expect(projection(report, .districtPercentage).plannedCount == 2)
+    }
+
+    @Test("Manual earned additions matching current enrollment need reconciliation")
+    func earnedEnrollmentReconciliation() {
+        var duplicate = entry("English III Honors", credits: 1)
+        duplicate.isSupplemental = true
+        let report = calculate(CoursePlan(earnedCourses: [duplicate]), official: [currentCourse("AP English Language and Composition")])
+        #expect(report.earnedTotal == 0)
+        #expect(report.currentTotal == 1)
+        #expect(report.manualReviewCourses.map(\.id) == [duplicate.id])
+    }
+
+    @Test("Unverified year and unknown course allocations remain reviewable")
+    func currentReviewDoesNotFabricateCredits() {
+        var unknownYear = currentCourse("English I")
+        unknownYear.currentAcademicYearIsVerified = nil
+        let unknown = calculate(CoursePlan(), official: [unknownYear])
+        #expect(unknown.currentTotal == 0)
+        #expect(unknown.currentCourses.first?.status == .needsReview)
+        let unknownCourse = calculate(CoursePlan(), official: [currentCourse("Uncatalogued Seminar")])
+        #expect(unknownCourse.currentTotal == 0)
+        #expect(unknownCourse.currentCourses.first?.subject == nil)
+        #expect(unknownCourse.currentCourses.first?.status == .needsReview)
+    }
+
