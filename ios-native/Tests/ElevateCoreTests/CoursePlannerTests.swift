@@ -94,3 +94,100 @@ struct CoursePlannerTests {
         #expect(report.requirements.first { $0.subject == .english }?.remaining == 4)
     }
 
+    @Test("Covering credit targets retains independently unverified requirements")
+    func checklistIndependent() {
+        let courses = CoursePlanPath.westlakeDistinguished.requirements.flatMap { requirement in
+            let full = Int(requirement.credits)
+            var records = (0..<full).map { entry("\(requirement.subject.title) \($0)", credits: 1, subject: requirement.subject) }
+            let partial = requirement.credits - Double(full)
+            if partial > 0 { records.append(entry("Partial", credits: partial, subject: requirement.subject)) }
+            return records
+        }
+        let report = calculate(CoursePlan(earnedCourses: courses, checkedRequirements: [.speech]))
+        #expect(report.creditTargetsCovered)
+        #expect(report.earnedTotal == 26)
+        #expect(report.uncheckedRequirements.count == CoursePlanChecklistItem.allCases.count - 1)
+        #expect(report.uncheckedRequirements.contains(.algebraII))
+        #expect(report.uncheckedRequirements.contains(.sameWorldLanguage))
+    }
+
+    @Test("Manual earned grades cannot duplicate official GPA; planned grades cannot change baseline")
+    func immutableOfficialBaseline() {
+        let source = officialCourse(score: "80")
+        let plan = CoursePlan(earnedCourses: [entry("Already imported", score: 100)],
+                              plannedCourses: [entry("Future English", score: 100)])
+        let report = calculate(plan, official: [source])
+        let district = projection(report, .districtPercentage)
+        #expect(district.officialBaseline == 80)
+        #expect(district.projected == 90)
+        #expect(district.officialCount == 1)
+        #expect(district.plannedCount == 1)
+        #expect(source.historicalGrades.sm1 == "80")
+        #expect(GPAConversionCalculator.calculate(courses: [source], policy: .unweighted4Point,
+                                                 completedOnly: true, asOf: date).value == 3)
+    }
+
+    @Test("GPA exclusions do not remove allocated credits or imply a passed course")
+    func independentGPAAndCredits() {
+        var excluded = entry("Athletics", subject: .physicalEducation, score: 90)
+        excluded.excludedFromGPA = true
+        let plan = CoursePlan(plannedCourses: [excluded, entry("Unknown grade"), entry("Future course", score: 50)])
+        let report = calculate(plan)
+        #expect(report.plannedTotal == 1.5)
+        #expect(projection(report, .generic4Point).projected == 0)
+        #expect(projection(report, .generic4Point).plannedCount == 1)
+        #expect(projection(report, .generic4Point).skippedPlannedCount == 2)
+        #expect(report.issues.contains { $0.reason == .excludedFromGPA })
+        #expect(report.issues.contains { $0.reason == .missingScore })
+    }
+
+    @Test("Invalid credits and duplicate identities cannot inflate progress or GPA")
+    func malformedCredits() {
+        let invalid = [Double.nan, .infinity, -1, 0, 4.1].map { entry("Invalid", credits: $0, score: 90) }
+        let duplicate = entry("Duplicate", score: 100)
+        let report = calculate(CoursePlan(earnedCourses: [duplicate], plannedCourses: invalid + [duplicate]))
+        #expect(report.earnedTotal == 0)
+        #expect(report.plannedTotal == 0)
+        #expect(projection(report, .districtPercentage).projected == nil)
+        #expect(report.issues.filter { $0.reason == .invalidCredits }.count == 5)
+        #expect(report.issues.filter { $0.reason == .duplicateID }.count == 2)
+    }
+
+    @Test("Invalid expected scores are skipped while valid allocated credits survive")
+    func malformedScores() {
+        let scores = [Double.nan, .infinity, -1, 1e10]
+        let report = calculate(CoursePlan(plannedCourses: scores.map { entry("Bad grade", score: $0) }))
+        #expect(report.plannedTotal == 2)
+        #expect(report.issues.filter { $0.reason == .invalidScore }.count == 4)
+        #expect(report.gpa.allSatisfy { $0.projected == nil && $0.plannedCount == 0 })
+    }
+
+    @Test("Projection uses existing generic cutoffs and selected levels, not course-name guesses")
+    func projectedPolicies() {
+        let report = calculate(CoursePlan(plannedCourses: [
+            entry("Named AP but explicit regular", score: 89.99),
+            entry("Advanced choice", level: .ap, score: 90),
+            entry("Honors choice", level: .honors, score: 90),
+        ]))
+        #expect(projection(report, .generic4Point).projected == 11.0 / 3)
+        #expect(projection(report, .generic5Point).projected == 12.5 / 3)
+        #expect(projection(report, .districtWeightedPercentage).projected == (89.99 + 100 + 95) / 3)
+        #expect(projection(report, .districtPercentage).officialBaseline == nil)
+    }
+
+    @Test("Planner GPA follows completed source records and excludes in-progress quarters")
+    func noLiveSemesterProjection() {
+        var live = officialCourse(score: "99")
+        live.isTranscriptRecord = false
+        live.postedHistoricalGrades = nil
+        live.academicYear = "2026-2027"
+        live.courseId = 1
+        live.corNumId = "1"
+        live.section = "1"
+        live.gbId = "1"
+        live.stuId = "synthetic"
+        let report = calculate(CoursePlan(), official: [live])
+        #expect(projection(report, .districtPercentage).officialBaseline == nil)
+        #expect(report.officialSkippedCount > 0)
+    }
+
