@@ -206,3 +206,100 @@ struct GPAConversionTests {
         #expect(completed([manufactured], asOf: date(2026, 12, 19)).value == nil)
     }
 
+    @Test("A real live overlay cannot inherit completion from a prior transcript year")
+    func completedRealLiveMergeWithUnknownGrade() {
+        let history: AcademicHistory = ["2025-2026": AcademicYear(grade: 11, courses: [
+            "English": HistoryCourse(courseName: "English", terms: "1 - 4", sm1: "90", sm2: "80"),
+        ])]
+        let live: [GradebookCourse] = [
+            GradebookCourse(course: 100, courseName: "English", instructor: "Synthetic", period: 1,
+                time: nil, scores: [("SEM 1", 100), ("SEM 2", 100)], stuId: "synthetic",
+                corNumId: 100, section: "01", gbId: "book-100"),
+            GradebookCourse(course: 200, courseName: "AP Biology", instructor: "Synthetic", period: 2,
+                time: nil, scores: [("SEM 1", 100), ("SEM 2", 100)], stuId: "synthetic",
+                corNumId: 200, section: "01", gbId: "book-200"),
+        ]
+        let merged = SkywardHistoryAPI.combine(history: history, gradebook: live, fallbackGrade: nil)
+        let courses = UnifiedCourseTransformer.transform(history: merged)
+        let biology = courses.first { $0.courseName == "AP Biology" }
+        #expect(biology?.isTranscriptRecord == false)
+        #expect(biology?.academicYear == "2025-2026")
+        #expect(biology?.academicYearIsVerified == true)
+        #expect(biology?.currentAcademicYearIsVerified == nil)
+        let october = completed(courses, asOf: date(2026, 10, 4))
+        #expect(october.includedRecords.map(\.percentage) == [90, 80])
+        #expect(october.includedRecords.allSatisfy { $0.courseName == "English" && $0.source == .transcript })
+        #expect(october.skippedRecords.filter { $0.courseName == "AP Biology" }.allSatisfy { $0.reason == .inProgress })
+        let december = completed(courses, asOf: date(2026, 12, 19))
+        #expect(december.includedRecords.filter { $0.courseName == "AP Biology" }.map(\.semester) == [.sm1])
+        let may = completed(courses, asOf: date(2027, 5, 22))
+        #expect(may.includedRecords.filter { $0.courseName == "AP Biology" }.map(\.semester) == [.sm1, .sm2])
+        #expect(may.includedRecords.filter { $0.courseName == "English" }.map(\.percentage) == [90, 80])
+        #expect(report(courses).includedCount == 4)
+    }
+
+    @Test("Undated completed records require an immutable snapshot or an earlier known nonlive grade year")
+    func completedUndatedEvidence() {
+        var immutable = archived(course(id: 1, year: 9, sm1: "100"))
+        immutable.isTranscriptRecord = true
+        immutable.postedHistoricalGrades = grades(sm1: "80", sm2: nil)
+        let ambiguous = archived(course(id: 2, year: 10, sm1: "90"))
+        #expect(completed([immutable, ambiguous], asOf: date(2026, 10, 4)).includedRecords.map(\.percentage) == [80])
+        let live = course(id: 3, year: 11, sm1: "95")
+        let anchored = completed([immutable, ambiguous, live], asOf: date(2026, 10, 4))
+        #expect(anchored.includedRecords.map(\.gradeYear) == [9, 10])
+        var futureGrade = immutable
+        futureGrade.gradeYear = 12
+        #expect(completed([live, futureGrade], asOf: date(2027, 5, 22)).includedCount == 1)
+        immutable.gradeYear = nil
+        #expect(completed([immutable], asOf: date(2026, 10, 4)).skippedRecords.allSatisfy { $0.reason == .unknownYear })
+    }
+
+    @Test("Completed manual fallback excludes current and future work without guessing an unknown year")
+    func completedManualFallback() {
+        let manual: [Int: [ManualClass]] = [
+            9: [ManualClass(className: "English", sm1: 80, sm2: 90)],
+            11: [ManualClass(className: "Chemistry", sm1: 100, sm2: 100)],
+            12: [ManualClass(className: "Physics", sm1: 100, sm2: 100)],
+        ]
+        let result = GPAConversionCalculator.calculate(
+            courses: [course(year: 11, sm1: "90")], manualClassesByYear: manual,
+            policy: .unweighted4Point, completedOnly: true, asOf: date(2026, 10, 4)
+        )
+        #expect(result.includedRecords.map(\.gradeYear) == [9, 9])
+        #expect(result.includedRecords.allSatisfy { $0.source == .manual })
+        #expect(result.skippedRecords.filter { $0.gradeYear == 12 }.allSatisfy { $0.reason == .inProgress })
+        let noAnchor = GPAConversionCalculator.calculate(
+            courses: [], manualClassesByYear: manual, policy: .unweighted4Point,
+            completedOnly: true, asOf: date(2027, 5, 22)
+        )
+        #expect(noAnchor.value == nil)
+        #expect(noAnchor.skippedCount == 6)
+    }
+
+    @Test("Completion filtering retains duplicate, zero, pass-code, and missing-grade behavior")
+    func completedDiagnostics() {
+        var past = course(id: 1, year: 10, sm1: "0", sm2: "P")
+        past.academicYear = "2025-2026"
+        var quartersOnly = course(id: 2, year: 10, sm1: nil)
+        quartersOnly.academicYear = "2025-2026"
+        quartersOnly.historicalGrades.rc1 = "100"
+        quartersOnly.historicalGrades.rc2 = "100"
+        let result = completed([past, past, quartersOnly], asOf: date(2026, 10, 4))
+        #expect(result.value == 0)
+        #expect(result.includedCount == 1)
+        #expect(result.skippedRecords.filter { $0.reason == .duplicateRecord }.count == 2)
+        #expect(result.skippedRecords.filter { $0.reason == .nonnumericGrade }.count == 1)
+        #expect(result.skippedRecords.filter { $0.reason == .missingGrade }.count == 2)
+        #expect(Set(result.skippedRecords.map(\.id)).count == result.skippedCount)
+        // A manufactured ongoing duplicate must not replace or conflict with
+        // the verified prior-year semester on the same source identity.
+        var manufactured = past
+        manufactured.academicYearIsVerified = false
+        manufactured.historicalGrades.sm1 = "100"
+        let mixed = completed([past, manufactured], asOf: date(2026, 10, 4))
+        #expect(mixed.includedRecords.map(\.percentage) == [0])
+        #expect(mixed.skippedRecords.filter { $0.reason == .inProgress }.count == 2)
+        #expect(!mixed.skippedRecords.contains { $0.reason == .conflictingDuplicate })
+    }
+
