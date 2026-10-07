@@ -291,3 +291,61 @@ struct CoursePlannerTests {
         #expect(unknownCourse.currentCourses.first?.status == .needsReview)
     }
 
+    @Test("Explicitly future-year plans remain usable when current enrollment year is unavailable")
+    func futurePlanWithUndatedEnrollment() {
+        var enrollment = currentCourse("English III")
+        enrollment.academicYear = nil
+        enrollment.academicYearIsVerified = nil
+        enrollment.currentAcademicYearIsVerified = nil
+        var future = entry("English III", credits: 1)
+        future.academicYear = "2027-2028"
+        let unscoped = entry("English III", credits: 1)
+        let report = calculate(CoursePlan(plannedCourses: [future, unscoped]), official: [enrollment])
+        #expect(report.currentTotal == 0)
+        #expect(report.plannedTotal == 1)
+        #expect(report.manualPlannedReviewCourses.map(\.id) == [unscoped.id])
+    }
+
+    @Test("Future scope fields round-trip and malformed scopes cannot count")
+    func futureScopePersistence() throws {
+        var next = entry("English III", score: 99)
+        next.academicYear = "2027-2028"
+        next.semester = .sm1
+        let plan = CoursePlan(plannedCourses: [next])
+        #expect(try JSONDecoder().decode(CoursePlan.self, from: JSONEncoder().encode(plan)) == plan)
+        #expect(plan.isValidForStorage)
+        next.semester = .q1
+        let invalid = CoursePlan(plannedCourses: [next])
+        #expect(!invalid.isValidForStorage)
+        #expect(calculate(invalid).plannedTotal == 0)
+        next.semester = .sm1
+        next.academicYear = "current"
+        #expect(!CoursePlan(plannedCourses: [next]).isValidForStorage)
+    }
+
+    private func currentCourse(_ name: String, semester: Semester = .both) -> UnifiedCourseData {
+        UnifiedCourseData(courseId: 10, corNumId: "synthetic-course", stuId: "synthetic-student", section: "1", gbId: "10",
+            courseName: name, semester: semester, termLength: semester == .fall ? "1-2" : semester == .spring ? "3-4" : "1-4",
+            gradeYear: 11, currentScores: [BucketScore(bucket: "TERM 3", score: 55)], historicalGrades: HistoricalGrades(rc1: "55"),
+            academicYear: "2026-2027", academicYearIsVerified: true, currentAcademicYearIsVerified: true, isTranscriptRecord: false)
+    }
+
+    private var date: Date { ISO8601DateFormatter().date(from: "2026-10-04T12:00:00Z")! }
+    private func calculate(_ plan: CoursePlan, official: [UnifiedCourseData] = []) -> CoursePlanReport {
+        CoursePlanner.calculate(plan: plan, officialCourses: official, asOf: date)
+    }
+    private func projection(_ report: CoursePlanReport, _ policy: CoursePlanGPAPolicy) -> CoursePlanGPAProjection {
+        report.gpa.first { $0.policy == policy }!
+    }
+    private func entry(_ name: String, credits: Double = 0.5, subject: CoursePlanSubject = .english,
+                       level: CoursePlanLevel = .regular, score: Double? = nil) -> CoursePlanCourse {
+        CoursePlanCourse(name: name, credits: credits, subject: subject, level: level, score: score)
+    }
+    private func officialCourse(score: String) -> UnifiedCourseData {
+        let grades = HistoricalGrades(sm1: score)
+        return UnifiedCourseData(courseId: nil, corNumId: "", stuId: "", section: "", gbId: "", courseName: "English I",
+                                 semester: .fall, termLength: "1", gradeYear: 9, currentScores: [], historicalGrades: grades,
+                                 academicYear: "2025-2026", historyRowKey: "synthetic", academicYearIsVerified: true,
+                                 isTranscriptRecord: true, postedHistoricalGrades: grades)
+    }
+}
