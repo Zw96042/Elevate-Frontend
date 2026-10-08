@@ -303,3 +303,102 @@ struct GPAConversionTests {
         #expect(!mixed.skippedRecords.contains { $0.reason == .conflictingDuplicate })
     }
 
+    @Test("College statistics retain sourced cohorts, populations, and comparison limitations")
+    func profileCatalog() {
+        let profiles = CollegeProfileCatalog.profiles
+        #expect(profiles.count >= 70)
+        #expect(Set(profiles.map(\.id)).count == profiles.count)
+        #expect(profiles.allSatisfy { $0.sourceURL.scheme == "https" && ["2026-10-04", "2026-10-06"].contains($0.verifiedOn) })
+        #expect(profiles.allSatisfy { !$0.id.isEmpty && !$0.name.isEmpty && !$0.cohort.isEmpty && !$0.method.explanation.isEmpty })
+        #expect(profiles.first { $0.id == "ucla" }?.population == .admitted)
+        #expect(profiles.first { $0.id == "princeton" }?.population == .enrolled)
+        #expect(profiles.first { $0.id == "ucla" }?.cohort == "Fall 2025")
+        #expect(profiles.first { $0.id == "vanderbilt" }?.reportingPercent == 99.8)
+        #expect(profiles.first { $0.id == "arizona" }?.cohort == "Fall 2024")
+        #expect(profiles.first { $0.id == "arizona" }?.sourceURL.lastPathComponent == "CDS-2024-2025-FINAL.pdf")
+
+        for profile in profiles {
+            // Published statistics have their own scale. An unavailable
+            // college formula's legacy generic 4.0 estimate is not that scale.
+            let publishedMaximum: Double = profile.publishedGPAScale == .unweighted ? 4 : 5
+            if let mean = profile.reportedMean {
+                #expect(mean.isFinite && (0...publishedMaximum).contains(mean))
+            }
+            if let coverage = profile.reportingPercent {
+                #expect(coverage.isFinite && (0...100).contains(coverage))
+                #expect(profile.population == .enrolled)
+            }
+            if let quartiles = profile.quartiles {
+                #expect(quartiles.lower.isFinite && quartiles.upper.isFinite)
+                #expect(quartiles.lower >= 0 && quartiles.lower <= quartiles.upper && quartiles.upper <= publishedMaximum)
+                if let median = quartiles.median {
+                    #expect(median.isFinite && (quartiles.lower...quartiles.upper).contains(median))
+                }
+            }
+            if !profile.bands.isEmpty {
+                #expect(profile.population == .enrolled && profile.reportingPercent != nil)
+                #expect(profile.bands.allSatisfy { $0.percent.isFinite && (0...100).contains($0.percent) })
+                #expect(abs(profile.bands.map(\.percent).reduce(0, +) - 100) <= 0.05)
+                #expect(profile.bands.allSatisfy { band in
+                    band.minimum.isFinite && (0...profile.method.maximum).contains(band.minimum)
+                        && (band.maximum.map { $0.isFinite && $0 > band.minimum && $0 <= profile.method.maximum }
+                            ?? (band.minimum == profile.method.maximum))
+                })
+            }
+            if profile.population == .admissionsGuidance {
+                #expect(!profile.hasPublishedStatistics && profile.reportingPercent == nil)
+                #expect(profile.publishedSummary?.isEmpty == false && profile.publicationNote?.isEmpty == false)
+            } else if !profile.hasPublishedStatistics {
+                #expect(profile.reportingPercent == nil)
+                #expect(profile.publicationNote?.isEmpty == false)
+                #expect(profile.population == .publishedProfile || profile.publishedSummary?.isEmpty == false)
+            }
+        }
+        for id in ["mit", "yale", "pittsburgh"] {
+            let unpublished = profiles.first { $0.id == id }
+            #expect(unpublished != nil && unpublished?.cohort == "2025–26 publication")
+            #expect(unpublished?.bands.isEmpty == true && unpublished?.reportedMean == nil && unpublished?.reportingPercent == nil)
+        }
+        #expect(profiles.first { $0.id == "arizona-state" }?.population == .admissionsGuidance)
+        #expect(profiles.first { $0.id == "wisconsin" }?.population == .admissionsGuidance)
+    }
+
+    private func report(_ courses: [UnifiedCourseData], policy: GPAConversionPolicy = .unweighted4Point) -> GPAConversionReport {
+        GPAConversionCalculator.calculate(courses: courses, policy: policy)
+    }
+
+    private func completed(_ courses: [UnifiedCourseData], asOf: Date) -> GPAConversionReport {
+        GPAConversionCalculator.calculate(courses: courses, policy: .unweighted4Point, completedOnly: true, asOf: asOf)
+    }
+
+    private func archived(_ source: UnifiedCourseData) -> UnifiedCourseData {
+        var course = source
+        course.corNumId = ""
+        course.gbId = ""
+        course.section = ""
+        return course
+    }
+
+    private func date(_ year: Int, _ month: Int, _ day: Int, hour: Int = 0,
+                      minute: Int = 0, second: Int = 0) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Chicago")!
+        return calendar.date(from: DateComponents(year: year, month: month, day: day,
+                                                  hour: hour, minute: minute, second: second))!
+    }
+
+    private func course(id: Int = 1, name: String = "English", year: Int? = 9,
+                        sm1: String?, sm2: String? = nil, semester: Semester = .both) -> UnifiedCourseData {
+        UnifiedCourseData(
+            courseId: id, corNumId: String(id), stuId: "synthetic", section: "1", gbId: String(id),
+            courseName: name, instructor: nil, period: nil, time: nil, semester: semester,
+            termLength: "1 - 4", gradeYear: year, currentScores: [],
+            historicalGrades: grades(sm1: sm1, sm2: sm2)
+        )
+    }
+    private func grades(sm1: String?, sm2: String?) -> HistoricalGrades {
+        HistoricalGrades(pr1: nil, pr2: nil, pr3: nil, pr4: nil, pr5: nil, pr6: nil, pr7: nil, pr8: nil,
+                         rc1: nil, rc2: nil, rc3: nil, rc4: nil, ex1: nil, ex2: nil,
+                         sm1: sm1, sm2: sm2, finalGrade: nil)
+    }
+}
