@@ -194,3 +194,115 @@ struct GradeNotificationLedgerTests {
         #expect(restored.delivery(for: events[0].id) == nil)
     }
 
+    @Test func recoveredGradesDropObsoleteRetriesAndRetainCumulativeBaseline() throws {
+        var ledger = GradeNotificationLedger(threshold: 0.5)
+        ledger.observe(["course": 95], term: .q1)
+        let dip = try #require(ledger.observe(["course": 85], term: .q1).first)
+        ledger.markSchedulingFailed(eventID: dip.id)
+        #expect(ledger.observe(["course": 95.2], term: .q1).isEmpty)
+        #expect(ledger.pendingEvents.isEmpty)
+        #expect(ledger.delivery(for: dip.id) == nil)
+        let rise = try #require(ledger.observe(["course": 95.6], term: .q1).first)
+        #expect(rise.previousScore == 95)
+        #expect(rise.currentScore == 95.6)
+        #expect(rise.id != dip.id)
+    }
+
+    @Test func pendingDirectionReversalsKeepIDWithLatestOfficialPayload() throws {
+        var ledger = GradeNotificationLedger()
+        ledger.observe(["course": 95], term: .q1)
+        let rise = try #require(ledger.observe(["course": 96], term: .q1).first)
+        ledger.markSchedulingFailed(eventID: rise.id)
+        let fall = try #require(ledger.observe(["course": 94], term: .q1).first)
+        #expect(fall.id == rise.id)
+        #expect(fall.previousScore == 95 && fall.currentScore == 94)
+        #expect(ledger.delivery(for: fall.id) == .retry)
+        ledger.markSchedulingAccepted(eventID: fall.id)
+        #expect(ledger.observe(["course": 94], term: .q1).isEmpty)
+        #expect(ledger.observe(["course": 95], term: .q1).first?.previousScore == 94)
+    }
+
+    @Test func realTransformationKeepsMergedLiveEnrollmentEligible() throws {
+        let gradebook = GradebookCourse(course: 100, courseName: "Physics", instructor: "Teacher", period: 1,
+                                       time: nil, scores: [("TERM 3", 95)], stuId: "synthetic-student",
+                                       corNumId: 100, section: "01", gbId: "synthetic-book")
+        let history: AcademicHistory = [
+            "2026-2027": AcademicYear(grade: 11, courses: [
+                "Physics": HistoryCourse(courseName: "Physics", terms: "1 - 4", isTranscriptRecord: true),
+                "Recorded": HistoryCourse(courseName: "Recorded", terms: "1 - 4", rc1: "99", isTranscriptRecord: true),
+            ]),
+            "2025-2026": AcademicYear(grade: 10, courses: ["Earlier": HistoryCourse(courseName: "Earlier", rc1: "85")]),
+        ]
+        let courses = UnifiedCourseTransformer.transform(history: SkywardHistoryAPI.combine(history: history, gradebook: [gradebook]))
+        let live = try #require(courses.first { $0.courseId == 100 })
+        #expect(live.currentAcademicYearIsVerified == nil)
+        #expect(live.isTranscriptRecord == true)
+        #expect(live.currentScores.first { $0.bucket == "Q1" }?.score == 95)
+        #expect(GradeNotificationLedger.eligibleCourses(in: courses).map(\.id) == [live.id])
+        var olderLive = live
+        olderLive.gradeYear = 10
+        olderLive.gbId = "older-book"
+        #expect(GradeNotificationLedger.eligibleCourses(in: [olderLive, live]).map(\.id) == [live.id])
+        var unknownYear = live
+        unknownYear.gradeYear = nil
+        #expect(GradeNotificationLedger.eligibleCourses(in: [unknownYear]).count == 1)
+        #expect(GradeNotificationLedger.eligibleCourses(in: [unknownYear, live]).map(\.id) == [live.id])
+    }
+
+    @Test func preferencesAndReminderRoundTrip() throws {
+        let preferences = NotificationPreferences()
+        #expect(!preferences.gradeChanges && preferences.reminders)
+        let reminder = LocalReminder(courseID: "synthetic", term: .q2, title: "Review notes", courseName: "Course", fireDate: Date(timeIntervalSince1970: 100))
+        #expect(try JSONDecoder().decode(LocalReminder.self, from: JSONEncoder().encode(reminder)) == reminder)
+    }
+
+    @Test func retiredContentFlagsDoNotAlterSavedAlertChoices() throws {
+        for oldConsent in [true, false] {
+            let legacy = Data("{\"gradeChanges\":true,\"reminders\":false,\"showGradePreviews\":\(oldConsent),\"showNames\":\(oldConsent)}".utf8)
+            let decoded = try JSONDecoder().decode(NotificationPreferences.self, from: legacy)
+            #expect(decoded.gradeChanges && !decoded.reminders)
+            let encoded = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(decoded)) as? [String: Bool])
+            #expect(Set(encoded.keys) == ["gradeChanges", "reminders"])
+        }
+        #expect(try JSONDecoder().decode(NotificationPreferences.self, from: Data("{}".utf8)) == NotificationPreferences())
+    }
+
+    @Test func notificationBodiesAlwaysIncludeAvailableNamesAndNeverRequireConsent() {
+        #expect(NotificationText.contentVersion == 3)
+        #expect(NotificationText.gradeChanges(courseNames: ["Synthetic biology"])
+                == "Grades updated in Synthetic biology. Open Elevate to review them.")
+        #expect(NotificationText.gradeChanges(courseNames: ["", " \n"]) == "Your grades changed. Open Elevate to review them.")
+        #expect(NotificationText.reminder(courseName: " Synthetic biology ", title: " Lab report\n") == "Synthetic biology: Lab report")
+        #expect(NotificationText.reminder(courseName: " ", title: "\n") == "You have a school reminder. Open Elevate to view it.")
+        #expect(NotificationText.reminder(courseName: "", title: "Essay") == "Essay")
+        #expect(NotificationText.reminder(courseName: "Biology", title: "") == "Biology: School reminder")
+    }
+
+    @Test func gradeBodiesDeduplicateNamesAndBoundDisclosureWithAnHonestRemainingCount() {
+        let names = [" Biology ", "", "Biology", "History", "Physics", "English", "Spanish", "History"]
+        #expect(NotificationText.gradeChanges(courseNames: names)
+                == "Grades updated in Biology, History, Physics, and 2 other classes. Open Elevate to review them.")
+        #expect(NotificationText.gradeChanges(courseNames: ["Biology", "History", "Physics", "English"])
+                == "Grades updated in Biology, History, Physics, and 1 other class. Open Elevate to review them.")
+        #expect(NotificationText.gradeChanges(courseNames: ["Biology", "History"])
+                == "Grades updated in Biology and History. Open Elevate to review them.")
+        #expect(NotificationText.gradeChanges(courseNames: ["Biology", "History", "Physics"])
+                == "Grades updated in Biology, History, and Physics. Open Elevate to review them.")
+    }
+
+    @Test func officialScoresCannotEnterTheNamesOnlyBodyBuilder() throws {
+        var ledger = GradeNotificationLedger()
+        ledger.observe(["synthetic": 97.1234], term: .q1)
+        let event = try #require(ledger.observe(["synthetic": 82.5678], term: .q1).first)
+        do {
+            let body = NotificationText.gradeChanges(courseNames: ["Synthetic course"])
+            #expect(!body.contains(String(event.currentScore)))
+            #expect(!body.contains("82.57"))
+            #expect(!body.contains("97.12"))
+            #expect(!body.contains("%"))
+            let reminder = NotificationText.reminder(courseName: "Synthetic course", title: "Synthetic assignment")
+            #expect(!reminder.contains("82.57"))
+            #expect(!reminder.contains("97.12"))
+        }
+    }
+}
