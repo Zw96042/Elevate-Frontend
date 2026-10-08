@@ -4,6 +4,60 @@ import Testing
 
 @Suite("Grade math")
 struct GradeMathTests {
+    @Test("Skyward Capstone aliases retain their names and receive the district bonus")
+    func capstoneCourseAliases() {
+        let aliases = [
+            "Independent Study In English (1)",
+            "Independent Study in English I",
+            "English Independent Study I (AP Capstone: Seminar) - LA145",
+            "INDEPENDENT_STUDY_IN_ENGLISH_1_(AP_CAPSTONE:_SEMINAR)",
+            "LA145",
+        ]
+        for title in aliases {
+            #expect(ClassNameFormatter.format(title.replacingOccurrences(of: " ", with: "_")) != "AP Seminar")
+            #expect(CourseLevelDetector.level(for: title) == .ap)
+            let result = GPACalculator.termGPAs(manualClasses: [
+                ManualClass(className: title, sm1: 95, sm2: nil),
+                ManualClass(className: "English 1", sm1: 85, sm2: nil),
+            ])["SM1"]
+            #expect(result?.weighted == 95)
+            #expect(result?.unweighted == 90)
+            #expect(GPAConversionPolicy.weighted5Point.points(for: 95, level: CourseLevelDetector.level(for: title)) == 5)
+            let course = UnifiedCourseData(
+                courseId: 1, corNumId: "synthetic", stuId: "sample", section: "1", gbId: "sample",
+                courseName: title, instructor: nil, period: 1, time: nil, semester: .both,
+                termLength: "1 - 4", gradeYear: 10, currentScores: [.init(bucket: "Q1", score: 95)],
+                historicalGrades: HistoricalGrades(
+                    pr1: nil, pr2: nil, pr3: nil, pr4: nil, pr5: nil, pr6: nil, pr7: nil, pr8: nil,
+                    rc1: "95", rc2: nil, rc3: nil, rc4: nil, ex1: nil, ex2: nil,
+                    sm1: "95", sm2: nil, finalGrade: nil
+                )
+            )
+            let identity = course.id
+            let skyward = GPACalculator.termGPAs(courses: [course])
+            #expect(skyward["RC1"]?.weighted == 105)
+            #expect(skyward["SM1"]?.weighted == 105)
+            #expect(skyward["RC1"]?.unweighted == 95)
+            #expect(course.courseName == title && course.id == identity)
+        }
+        for title in ["Independent Study in English II", "English Independent Study 2 (AP Capstone: Research) - LA146", "LA146"] {
+            #expect(ClassNameFormatter.format(title) != "AP Research")
+            #expect(CourseLevelDetector.level(for: title) == .ap)
+        }
+        for title in ["Independent Study in English", "Independent Study in English III", "Independent Study in English 10", "Independent Study in English 1 Workshop", "Independent Study in Science 1", "Independent Study in English 1 - LA146", "LA147"] {
+            #expect(CourseLevelDetector.level(for: title) == .regular)
+            #expect(ClassNameFormatter.format(title) != "AP Seminar")
+            #expect(ClassNameFormatter.format(title) != "AP Research")
+        }
+    }
+
+    @Test("Independent Study names keep their complete parenthetical description")
+    func completeIndependentStudyNames() {
+        #expect(ClassNameFormatter.format("INDEPENDENT_STUDY_IN_ENGLISH_(1)") == "Independent Study In English (1)")
+        #expect(ClassNameFormatter.format("ENGLISH_INDEPENDENT_STUDY_I_(AP_CAPSTONE:_SEMINAR)") == "English Independent Study I (AP Capstone: Seminar)")
+        #expect(ClassNameFormatter.format("INDEPENDENT_STUDY_IN_ENGLISH_(II)") == "Independent Study In English (II)")
+    }
+
     @Test("A real zero remains a grade instead of becoming missing")
     func zeroCourseTotal() {
         let assignment = CalcAssignment(
