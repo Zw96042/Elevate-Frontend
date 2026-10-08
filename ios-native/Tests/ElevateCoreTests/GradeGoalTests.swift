@@ -98,3 +98,107 @@ struct GradeGoalTests {
         #expect(GradeCalculator.summary(assignments: evaluated, categoryWeights: ["A": 50, "B": 50], sourceCategories: categories).courseTotal == 92.01)
     }
 
+    @Test("Original fractional weights retain decimal contribution ties")
+    func originalWeights() {
+        let assignments = [row("a", earned: nil, category: "A"), row("b", earned: 0, category: "B"), row("c", earned: 0, category: "C")]
+        let result = GradeGoalSolver.assignment(target: 15.34, assignments: assignments,
+                                              categories: [category("A", 1), category("B", 2), category("C", 3)],
+                                              choice: .existingID("a"), ungradedPolicy: .requireAllGraded)
+        #expect(result.requiredEarned == 92.01)
+        #expect(result.resultingGrade == 15.34)
+    }
+
+    @Test("Empty weighted category activation renormalizes the full scenario")
+    func categoryActivation() {
+        let result = GradeGoalSolver.assignment(target: 90, assignments: [row(earned: 100, category: "Homework")],
+                                              categories: [category("Homework", 20), category("Tests", 80)],
+                                              choice: .new(category: "Tests", possible: 100), ungradedPolicy: .ignoreUngraded)
+        #expect(result.status == .required)
+        #expect(result.requiredEarned == 87.5)
+        #expect(result.resultingGrade == 90)
+        let normalized = GradeGoalSolver.assignment(target: 90, assignments: [],
+                                                  categories: [category("Homework", 20), category("Tests", 80)],
+                                                  choice: .new(category: "Tests", possible: 100), ungradedPolicy: .ignoreUngraded)
+        #expect(normalized.requiredEarned == 90)
+    }
+
+    @Test("Replacing one score differs from adding work; ID and index agree")
+    func replacingVersusAdding() {
+        let assignments = [row(earned: 80)]
+        for choice: GradeGoalAssignmentChoice in [.existingID("a"), .existingIndex(0)] {
+            let result = GradeGoalSolver.assignment(target: 90, assignments: assignments, categories: [],
+                                                  choice: choice, ungradedPolicy: .ignoreUngraded)
+            #expect(result.requiredEarned == 90)
+        }
+        let added = GradeGoalSolver.assignment(target: 90, assignments: assignments, categories: [],
+                                             choice: .new(category: "Tests", possible: 100), ungradedPolicy: .ignoreUngraded)
+        #expect(added.requiredEarned == 100)
+        #expect(assignments[0].grade == 80)
+    }
+
+    @Test("Unknown scores require an explicit exclusion assumption and never become zero")
+    func ungradedWork() {
+        let assignments = [row(earned: 100), row("unknown", earned: nil)]
+        let choice = GradeGoalAssignmentChoice.new(category: "Tests", possible: 100)
+        let unresolved = GradeGoalSolver.assignment(target: 90, assignments: assignments, categories: [],
+                                                  choice: choice, ungradedPolicy: .requireAllGraded)
+        #expect(unresolved.status == .unavailable(.unresolvedAssignments))
+        #expect(unresolved.requiredEarned == nil)
+        let ignored = GradeGoalSolver.assignment(target: 90, assignments: assignments, categories: [],
+                                               choice: choice, ungradedPolicy: .ignoreUngraded)
+        #expect(ignored.requiredEarned == 80)
+        let weighted = GradeGoalSolver.assignment(target: 90, assignments: assignments, categories: [category("Tests", 100)],
+                                                choice: choice, ungradedPolicy: .ignoreUngraded)
+        #expect(weighted.requiredEarned == 79.99) // 89.995 rounds to 90.00.
+    }
+
+    @Test("Excluded work cannot be solved or influence other requirements")
+    func exclusions() {
+        let excluded = row("excluded", earned: 0, excluded: true)
+        let cannotSolve = GradeGoalSolver.assignment(target: 90, assignments: [excluded], categories: [],
+                                                   choice: .existingID("excluded"), ungradedPolicy: .ignoreUngraded)
+        #expect(cannotSolve.status == .unavailable(.excludedAssignment))
+        let ignored = GradeGoalSolver.assignment(target: 90, assignments: [excluded, row(earned: 100)], categories: [],
+                                               choice: .new(category: "Tests", possible: 100), ungradedPolicy: .ignoreUngraded)
+        #expect(ignored.requiredEarned == 80)
+    }
+
+    @Test("Inputs reject negative, nonfinite, nonpositive possible points and invalid categories")
+    func invalidInputs() {
+        for invalid in [-1.0, Double.nan, Double.infinity] {
+            #expect(GradeGoalSolver.semesterExam(target: invalid, firstQuarter: 90, secondQuarter: 90).status == .unavailable(.invalidInput))
+            #expect(GradeGoalSolver.semesterExam(target: 90, firstQuarter: invalid, secondQuarter: 90).status == .unavailable(.invalidInput))
+            #expect(GradeGoalSolver.semesterExam(target: 90, firstQuarter: 90, secondQuarter: 90, postedExam: invalid).status == .unavailable(.invalidInput))
+            let badScore = GradeGoalSolver.assignment(target: 90, assignments: [row(earned: invalid)], categories: [],
+                                                    choice: .existingIndex(0), ungradedPolicy: .ignoreUngraded)
+            #expect(badScore.status == .unavailable(.invalidInput))
+        }
+        for possible in [0.0, -1, Double.nan, Double.infinity] {
+            let invalid = GradeGoalSolver.assignment(target: 90, assignments: [], categories: [],
+                                                   choice: .new(category: "Tests", possible: possible), ungradedPolicy: .ignoreUngraded)
+            #expect(invalid.status == .unavailable(.invalidInput))
+        }
+        for weight in [-1.0, Double.nan, Double.infinity] {
+            let result = GradeGoalSolver.assignment(target: 90, assignments: [], categories: [category("Tests", weight)],
+                                                  choice: .new(category: "Tests", possible: 100), ungradedPolicy: .ignoreUngraded)
+            #expect(result.status == .unavailable(.invalidWeights))
+        }
+        let ineffective = GradeGoalSolver.assignment(target: 90, assignments: [], categories: [category("Tests", 0)],
+                                                   choice: .new(category: "Tests", possible: 100), ungradedPolicy: .ignoreUngraded)
+        #expect(ineffective.status == .unavailable(.noEffectiveCategory))
+        let duplicate = GradeGoalSolver.assignment(target: 90, assignments: [], categories: [category("Tests", 50), category("Tests", 50)],
+                                                 choice: .new(category: "Tests", possible: 100), ungradedPolicy: .ignoreUngraded)
+        #expect(duplicate.status == .unavailable(.invalidWeights))
+    }
+
+    @Test("Impossible bounded searches and missing identities return typed failures")
+    func boundedFailure() {
+        let result = GradeGoalSolver.assignment(target: 1_000_000, assignments: [row(earned: 0, possible: 1_000_000)], categories: [],
+                                              choice: .new(category: "Tests", possible: 1_000_000), ungradedPolicy: .ignoreUngraded,
+                                              maximumPercentage: nil)
+        #expect(result.status == .unavailable(.searchLimit))
+        let absent = GradeGoalSolver.assignment(target: 90, assignments: [], categories: [],
+                                              choice: .existingID("absent"), ungradedPolicy: .ignoreUngraded)
+        #expect(absent.status == .unavailable(.assignmentNotFound))
+    }
+}
