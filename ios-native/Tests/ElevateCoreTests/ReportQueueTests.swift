@@ -100,3 +100,50 @@ final class ReportQueueTests: XCTestCase {
         XCTAssertEqual(count, 1)
     }
 
+    func testTransportFailureDoesNotContinueQueue() async throws {
+        do {
+            _ = try await SkywardReportQueueAPI.generate(baseUrl: base, sessionCodes: codes,
+                description: "Synthetic", program: "reports/example.p", parameters: "",
+                transport: { _, _ in throw SkywardError.network("Synthetic offline") }, sleep: { _ in XCTFail("Must not poll after transport failure") })
+            XCTFail("Expected transport error")
+        } catch SkywardError.network(let message) { XCTAssertEqual(message, "Synthetic offline") }
+    }
+
+    func testUnknownQueueStateFailsWithoutExecutingCommand() async throws {
+        let queue = QueueTransport(states: ["dangerousExpression()"])
+        do {
+            _ = try await SkywardReportQueueAPI.generate(baseUrl: base, sessionCodes: codes,
+                description: "Synthetic", program: "reports/example.p", parameters: "",
+                transport: { try await queue.send($0, fields: $1) }, sleep: { await queue.sleep($0) })
+            XCTFail("Expected unknown status error")
+        } catch SkywardError.invalidResponse { }
+        let count = await queue.requests.count
+        XCTAssertEqual(count, 2)
+    }
+
+    func testQueueEnvelopeIsTiedToRequestedCall() throws {
+        let parsed = try SkywardReportQueueAPI.parseResponse(Self.response(id: "123", messages: ["row", "token"]), requestID: "123")
+        XCTAssertEqual(parsed.messages, ["row", "token"])
+        XCTAssertThrowsError(try SkywardReportQueueAPI.parseResponse(Self.response(id: "124", messages: ["row", "token"]), requestID: "123"))
+        XCTAssertThrowsError(try SkywardReportQueueAPI.parseResponse("<response><sff>", requestID: "123"))
+        XCTAssertThrowsError(try SkywardReportQueueAPI.parseResponse("<html>Maintenance</html>", requestID: "123"))
+    }
+
+    func testMalformedExpressionAndOversizedMetadataAreRejected() {
+        let valid = Self.response(id: "123", messages: ["row", "token"])
+        let cases = [valid.replacingOccurrences(of: "'message':'row'", with: "'message':dangerousExpression()"),
+                     valid.replacingOccurrences(of: "'message':'row'", with: "'other':'row'"),
+                     Self.response(id: "123", messages: [], status: "failure"),
+                     valid.replacingOccurrences(of: "</script>", with: "sff.httpCalls['123'] = {'messages':[], 'options':{'status':'success'}};</script>"),
+                     valid + String(repeating: " ", count: 5_000_001)]
+        for source in cases {
+            XCTAssertThrowsError(try SkywardReportQueueAPI.parseResponse(source, requestID: "123"))
+        }
+    }
+
+    func testQueueLogoutRemainsSessionExpiry() {
+        XCTAssertThrowsError(try SkywardReportQueueAPI.parseResponse(Self.response(id: "123", messages: [], status: "logout"), requestID: "123")) { error in
+            guard case SkywardError.sessionExpired = error else { return XCTFail("Expected expired session") }
+        }
+    }
+}
