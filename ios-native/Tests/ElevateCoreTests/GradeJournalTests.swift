@@ -93,3 +93,104 @@ struct GradeJournalTests {
         #expect(observe(&journal, [assignment(score: 60)], seconds: 6).first?.previousScore == 50)
     }
 
+    @Test func orderingDoesNotChangeAssignmentIdentityOrEventIdentity() throws {
+        var first = GradeJournal(), second = GradeJournal()
+        observe(&first, [assignment(), assignment("Essay")], seconds: 0)
+        observe(&second, [assignment("Essay"), assignment()], seconds: 0)
+        let a = observe(&first, [assignment(score: 95), assignment("Essay", score: 96)], seconds: 1)
+        let b = observe(&second, [assignment("Essay", score: 96), assignment(score: 95)], seconds: 1)
+        #expect(a == b)
+        #expect(Set(a.map(\.id)).count == 2)
+        var restored = try JSONDecoder().decode(GradeJournal.self, from: JSONEncoder().encode(first))
+        #expect(observe(&restored, [assignment(score: 95), assignment("Essay", score: 96)], seconds: 2).isEmpty)
+        #expect(restored.events == first.events)
+    }
+
+    @Test func countAgeAndScopeRetentionAreBoundedAndClearingReseeds() {
+        var journal = GradeJournal(maximumEvents: 2, maximumScopes: 2, retentionDays: 1)
+        journal.observeAverage(90, courseID: "a", courseName: "A", term: .q1, at: t0)
+        for n in 1...4 {
+            journal.observeAverage(Double(90 + n), courseID: "a", courseName: "A", term: .q1, at: t0.addingTimeInterval(Double(n)))
+        }
+        #expect(journal.events.count == 2 && journal.events.first?.currentScore == 94)
+        journal.observeAverage(90, courseID: "b", courseName: "B", term: .q1, at: t0.addingTimeInterval(5))
+        journal.observeAverage(90, courseID: "c", courseName: "C", term: .q1, at: t0.addingTimeInterval(6))
+        #expect(journal.observeAverage(10, courseID: "a", courseName: "A", term: .q1, at: t0.addingTimeInterval(7)).isEmpty)
+        journal.observeAverage(90, courseID: "d", courseName: "D", term: .q1, at: t0.addingTimeInterval(86_500))
+        #expect(journal.events.isEmpty)
+        observe(&journal, [assignment()], seconds: 86_501)
+        #expect(!observe(&journal, [assignment(score: 50)], seconds: 86_502).isEmpty)
+        journal.clearHistory()
+        #expect(journal.events.isEmpty)
+        #expect(observe(&journal, [assignment(score: 20)], seconds: 86_503).isEmpty)
+    }
+
+    @Test func persistentAccountsStayIsolatedAndReloadBetweenWriters() throws {
+        let suite = "GradeJournalTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let a = GradeJournalStore(accountIdentifier: "a", defaults: defaults)
+        let b = GradeJournalStore(accountIdentifier: "b", defaults: defaults)
+        a.observeAssignments(gradebook([assignment()]), courseID: "course", courseName: "Synthetic", term: .q1, at: t0, expectedAccountIdentifier: "a")
+        #expect(b.observeAssignments(gradebook([assignment(score: 10)]), courseID: "course", courseName: "Synthetic", term: .q1, at: t0, expectedAccountIdentifier: "b").isEmpty)
+        let relaunched = GradeJournalStore(accountIdentifier: "a", defaults: defaults)
+        #expect(relaunched.observeAssignments(gradebook([assignment(score: 91)]), courseID: "course", courseName: "Synthetic", term: .q1, at: t0.addingTimeInterval(1), expectedAccountIdentifier: "a").count == 1)
+        #expect(a.events.count == 1 && b.events.isEmpty)
+        #expect(a.observeAssignments(gradebook([assignment(score: 1)]), courseID: "course", courseName: "Synthetic", term: .q1, at: t0.addingTimeInterval(2), expectedAccountIdentifier: "b").isEmpty)
+        #expect(a.observeAssignments(gradebook([assignment(score: 92)]), courseID: "course", courseName: "Synthetic", term: .q1, at: t0.addingTimeInterval(2), expectedAccountIdentifier: "a").first?.previousScore == 91)
+        a.clearHistory(expectedAccountIdentifier: "b")
+        #expect(a.events.count == 2)
+        a.clearHistory(expectedAccountIdentifier: "a")
+        #expect(a.events.isEmpty)
+        #expect(a.observeAssignments(gradebook([assignment(score: 5)]), courseID: "course", courseName: "Synthetic", term: .q1, at: t0.addingTimeInterval(3), expectedAccountIdentifier: "a").isEmpty)
+        #expect(b.observeAssignments(gradebook([assignment(score: 11)]), courseID: "course", courseName: "Synthetic", term: .q1, at: t0.addingTimeInterval(1), expectedAccountIdentifier: "b").first?.previousScore == 10)
+    }
+
+    @Test func malformedStorageIsPreservedUntilExplicitClear() throws {
+        let suite = "GradeJournalTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let key = "account.a.gradeJournal.v1", malformed = Data("invalid journal".utf8)
+        defaults.set(malformed, forKey: key)
+        let store = GradeJournalStore(accountIdentifier: "a", defaults: defaults)
+        #expect(store.hasUnreadableHistory && store.events.isEmpty)
+        #expect(store.observeAssignments(gradebook([assignment()]), courseID: "course", courseName: "Synthetic", term: .q1,
+                                         at: t0, expectedAccountIdentifier: "a").isEmpty)
+        #expect(defaults.data(forKey: key) == malformed)
+        store.clearHistory(expectedAccountIdentifier: "a")
+        #expect(!store.hasUnreadableHistory)
+        #expect(store.observeAssignments(gradebook([assignment()]), courseID: "course", courseName: "Synthetic", term: .q1,
+                                         at: t0, expectedAccountIdentifier: "a").isEmpty)
+        #expect(defaults.data(forKey: key) != nil)
+    }
+
+    @Test func courseAverageIntegrationUsesLiveOfficialBucketsOnly() throws {
+        let suite = "GradeJournalTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = GradeJournalStore(accountIdentifier: "a", defaults: defaults)
+        #expect(store.observeCourseAverages(courses: [course(score: 90)], at: t0, expectedAccountIdentifier: "a").isEmpty)
+        var updated = course(score: 91)
+        updated.historicalGrades.rc2 = "99"
+        #expect(store.observeCourseAverages(courses: [updated], source: .cached,
+                                            at: t0.addingTimeInterval(1), expectedAccountIdentifier: "a").isEmpty)
+        let events = store.observeCourseAverages(courses: [updated], at: t0.addingTimeInterval(2), expectedAccountIdentifier: "a")
+        #expect(events.count == 1 && events.first?.term == .q1)
+        #expect(events.first?.previousScore == 90 && events.first?.currentScore == 91)
+        #expect(store.observeCourseAverages(courses: [updated], at: t0.addingTimeInterval(3), expectedAccountIdentifier: "a").isEmpty)
+        var transcript = course(score: 40)
+        transcript.courseId = nil; transcript.gbId = ""
+        #expect(store.observeCourseAverages(courses: [transcript], at: t0.addingTimeInterval(4), expectedAccountIdentifier: "a").isEmpty)
+        #expect(store.observeCourseAverages(courses: [course(score: 1), course(score: 2)],
+                                            at: t0.addingTimeInterval(5), expectedAccountIdentifier: "a").isEmpty)
+        #expect(store.events.count == 1)
+    }
+
+    @Test func oversizeSnapshotsCannotReplaceLastValidAssignmentState() {
+        var journal = GradeJournal()
+        observe(&journal, [assignment()], seconds: 0)
+        let tooMany = (0...1_000).map { assignment("Synthetic \($0)") }
+        #expect(observe(&journal, tooMany, seconds: 1).isEmpty)
+        #expect(observe(&journal, [assignment(score: 91)], seconds: 2).first?.previousScore == 90)
+    }
+}
