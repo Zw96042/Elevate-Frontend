@@ -89,3 +89,108 @@ struct GradeNotificationLedgerTests {
         #expect(ledger.pendingEvents.map(\.term) == [.q2])
     }
 
+    @Test func viewingBeforeObservationDoesNotCreateAnAfterViewingAlert() throws {
+        var ledger = GradeNotificationLedger()
+        let old = Date(timeIntervalSince1970: 100), fresh = old.addingTimeInterval(10)
+        ledger.observe(["course": 95], term: .q1, at: old)
+        ledger.markViewed(courseID: "course", term: .q1, score: 95.01, sourceDate: fresh)
+        #expect(ledger.observe(["course": 95.01], term: .q1, at: fresh).isEmpty)
+        let unseen = try #require(ledger.observe(["course": 94], term: .q1, at: fresh.addingTimeInterval(1)).first)
+        ledger.markSchedulingAccepted(eventID: unseen.id)
+        #expect(ledger.observe(["course": 95.01], term: .q1, at: fresh.addingTimeInterval(2)).count == 1)
+    }
+
+    @Test func viewedRequestSurvivesRelaunchWithoutForegroundPresentation() throws {
+        var ledger = GradeNotificationLedger()
+        ledger.observe(["course": 90], term: .q1)
+        let event = try #require(ledger.observe(["course": 91], term: .q1).first)
+        ledger.associateRequest("request", eventIDs: [event.id])
+        ledger.markSchedulingAccepted(eventID: event.id)
+        #expect(ledger.unseenEvents(forRequest: "request").count == 1)
+        ledger.markViewed(courseID: "course", term: .q1, score: 91, sourceDate: Date())
+        let restored = try JSONDecoder().decode(GradeNotificationLedger.self, from: JSONEncoder().encode(ledger))
+        #expect(restored.unseenEvents(forRequest: "request").isEmpty)
+        #expect(restored.delivery(for: event.id) != .consumed)
+    }
+
+    @Test func newerDisplayedValueSuppressesAnObsoleteRequestButOldCacheDoesNot() throws {
+        var ledger = GradeNotificationLedger()
+        let old = Date(timeIntervalSince1970: 100), fresh = old.addingTimeInterval(10)
+        ledger.observe(["course": 90], term: .q1, at: old)
+        let event = try #require(ledger.observe(["course": 91], term: .q1, at: fresh).first)
+        ledger.associateRequest("request", eventIDs: [event.id])
+        ledger.markViewed(courseID: "course", term: .q1, score: 90, sourceDate: old)
+        #expect(ledger.unseenEvents(forRequest: "request").count == 1)
+        ledger.markViewed(courseID: "course", term: .q1, score: 92, sourceDate: fresh.addingTimeInterval(1))
+        #expect(ledger.unseenEvents(forRequest: "request").isEmpty)
+        #expect(ledger.observe(["course": 92], term: .q1, at: fresh.addingTimeInterval(1)).isEmpty)
+    }
+
+    @Test func legacyThresholdMigrationDoesNotBackfillOldSmallChanges() throws {
+        var ledger = GradeNotificationLedger(threshold: 0.5)
+        ledger.observe(["course": 95], term: .q1)
+        ledger.observe(["course": 95.4], term: .q1)
+        var restored = try JSONDecoder().decode(GradeNotificationLedger.self, from: JSONEncoder().encode(ledger))
+        #expect(restored.observe(["course": 95.4], term: .q1).isEmpty)
+        #expect(restored.observe(["course": 95.41], term: .q1).count == 1)
+    }
+
+    @Test func nilIsNeverZeroAndInvalidNumbersAreIgnored() throws {
+        var ledger = GradeNotificationLedger()
+        #expect(ledger.observe(["course": nil], term: .q1).isEmpty)
+        #expect(ledger.observe(["course": .nan], term: .q1).isEmpty)
+        let available = try #require(ledger.observe(["course": 0], term: .q1).first)
+        #expect(available.kind == .gradeAvailable)
+        #expect(available.previousScore == nil)
+        #expect(available.currentScore == 0)
+        ledger.markSchedulingAccepted(eventID: available.id)
+        #expect(ledger.observe(["course": nil], term: .q1).isEmpty)
+        #expect(ledger.observe(["course": 99], term: .q1).first?.kind == .gradeAvailable)
+    }
+
+    @Test func invalidSourcesAndOlderObservationsDoNotChangeHistory() {
+        var ledger = GradeNotificationLedger()
+        let now = Date(timeIntervalSince1970: 100)
+        ledger.observe(["course": 95], term: .q1, at: now)
+        for source: GradeObservationSource in [.cached, .failed, .staleAccount, .cancelled, .incomplete] {
+            #expect(ledger.observe(["course": 10], term: .q1, source: source, at: now).isEmpty)
+        }
+        #expect(ledger.observe(["course": 10], term: .q1, at: now.addingTimeInterval(-1)).isEmpty)
+        #expect(ledger.latestObservedScore(courseID: "course", term: .q1) == 95)
+    }
+
+    @Test func retriesKeepTheirIDAndAdvanceOnlyOnAcceptedScheduling() throws {
+        var ledger = GradeNotificationLedger()
+        ledger.observe(["course": 95], term: .q1)
+        let event = try #require(ledger.observe(["course": 96], term: .q1).first)
+        ledger.markSchedulingFailed(eventID: event.id)
+        #expect(ledger.delivery(for: event.id) == .retry)
+        #expect(ledger.observe(["course": 97], term: .q1).map(\.id) == [event.id])
+        #expect(ledger.pendingEvents.count == 1)
+        #expect(ledger.pendingEvents.first?.currentScore == 97)
+        ledger.markSchedulingAccepted(eventID: event.id)
+        #expect(ledger.pendingEvents.isEmpty)
+        #expect(ledger.observe(["course": 97], term: .q1).isEmpty)
+        let next = try #require(ledger.observe(["course": 98], term: .q1).first)
+        #expect(next.previousScore == 97)
+        #expect(next.currentScore == 98)
+        ledger.consumeWithoutAlert(eventID: next.id)
+        #expect(ledger.observe(["course": 98], term: .q1).isEmpty)
+    }
+
+    @Test func persistedRetrySurvivesRelaunchAndStorageIsBounded() throws {
+        var ledger = GradeNotificationLedger(maximumEntries: 2)
+        ledger.observe(["a": 90, "b": 90], term: .q1)
+        let events = ledger.observe(["a": 91, "b": 91], term: .q1)
+        ledger.markSchedulingFailed(eventID: try #require(events.first).id)
+        let data = try JSONEncoder().encode(ledger)
+        var restored = try JSONDecoder().decode(GradeNotificationLedger.self, from: data)
+        #expect(restored.pendingEvents == ledger.pendingEvents)
+        restored.observe(["c": 90], term: .q1)
+        restored.observe(["c": 91], term: .q1)
+        #expect(restored.pendingEvents.count == 2)
+        restored.markSchedulingAccepted(eventID: events[0].id)
+        #expect(restored.observe(["a": 92], term: .q1).count == 1)
+        #expect(restored.delivery(for: events[0].id) == nil)
+    }
+
