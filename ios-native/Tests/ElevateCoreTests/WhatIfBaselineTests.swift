@@ -98,3 +98,104 @@ struct WhatIfBaselineTests {
         #expect(GradeCalculator.summary(assignments: changed, categoryWeights: ["A": 50, "B": 50]).courseTotal == 92.52)
     }
 
+    @Test("Original weights preserve decimal ties after display normalization")
+    func originalWeights() {
+        let source = [1.0, 2, 3].enumerated().map { index, weight in
+            GradeCategory(category: "C\(index)", weight: weight, adjustedWeight: nil, assignments: [])
+        }
+        let assignments = source.enumerated().map { index, category in
+            var value = assignment(grade: index == 0 ? 92.01 : 0)
+            value.category = category.category
+            return value
+        }
+        let normalized = GradeCalculator.normalizedWeights(categories: source, assignments: assignments)
+        let result = GradeCalculator.summary(assignments: assignments, categoryWeights: normalized, sourceCategories: source)
+        #expect(result.courseTotal == 15.34)
+        #expect(result.categories["C0"]?.weight == normalized["C0"])
+    }
+
+    @Test("Contribution math retains decimal inputs, extra credit, exclusions, and negative scores")
+    func decimalInputsAndStatuses() {
+        var first = assignment(grade: 10.001)
+        first.outOf = 10
+        var bonus = assignment(grade: 0.002)
+        bonus.outOf = 0
+        let excluded = assignment(grade: 1000, excluded: true)
+        let nilGrade = assignment(grade: nil)
+        let result = GradeCalculator.summary(assignments: [first, bonus, excluded, nilGrade], categoryWeights: ["Tests": 100])
+        #expect(result.courseTotal == 100.03)
+        #expect(result.categories["Tests"]?.rawPoints == 10.003)
+        #expect(first.grade == 10.001)
+        #expect(GradeCalculator.summary(assignments: [assignment(grade: -1.015)], categoryWeights: ["Tests": 100]).courseTotal == -1.02)
+        #expect(GradeCalculator.summary(assignments: [excluded, nilGrade], categoryWeights: ["Tests": 100]).courseTotal == nil)
+    }
+
+    @Test("An unavailable untouched quarter preserves its posted grade for semester predictions")
+    func unavailableQuarterBaseline() {
+        // Q2's fetch failed with no cached source; no Q2 edits are saved.
+        let second = WhatIfGradePresentation.resolve(
+            official: 80, calculated: nil, hasEffectiveChanges: false
+        ).value
+        #expect(GradeCalculator.semesterTotal(firstQuarter: 90, secondQuarter: second, finalExamGrade: 85) == 85)
+        // An edit to Q1 must not erase the untouched Q2 component either.
+        let editedFirst = WhatIfGradePresentation.resolve(
+            official: 90, calculated: 95, hasEffectiveChanges: true
+        ).value
+        #expect(GradeCalculator.semesterTotal(firstQuarter: editedFirst, secondQuarter: second, finalExamGrade: 85) == 87)
+        // Saved changes in the unavailable quarter cannot silently use its posted value.
+        let unavailableEdited = WhatIfGradePresentation.resolve(
+            official: 80, calculated: nil, hasEffectiveChanges: true
+        )
+        #expect(unavailableEdited.value == nil)
+        #expect(unavailableEdited.source == .estimate)
+    }
+
+    @Test("Unavailable edited quarters cannot become a numeric single-quarter semester estimate")
+    func unavailableEditedSemester() {
+        let knownFirst = 90.0
+        let unknownEditedSecond = WhatIfGradePresentation.resolve(
+            official: 80, calculated: nil, hasEffectiveChanges: true
+        ).value
+        // The district calculator legitimately supports truly absent quarters.
+        // Missing source data with saved edits is a different presentation state.
+        let calculated = GradeCalculator.semesterTotal(
+            firstQuarter: knownFirst, secondQuarter: unknownEditedSecond, finalExamGrade: 85
+        )
+        #expect(calculated == 90)
+        let unknown = WhatIfGradePresentation.resolve(
+            official: 85, calculated: calculated, hasEffectiveChanges: true,
+            calculationUnavailable: true
+        )
+        #expect(unknown.value == nil)
+        #expect(unknown.source == .estimate)
+        let trulyAbsent = WhatIfGradePresentation.resolve(
+            official: nil, calculated: calculated, hasEffectiveChanges: true,
+            calculationUnavailable: false
+        )
+        #expect(trulyAbsent.value == 90)
+        #expect(WhatIfGradePresentation.resolve(
+            official: 85, calculated: calculated, hasEffectiveChanges: false,
+            calculationUnavailable: true
+        ).value == 85)
+    }
+
+    @Test("A sole unresolved quarter override is an unavailable estimate even without an exam edit")
+    func soleUnavailableOverride() {
+        let loadedAssignments: [CalcAssignment] = []
+        let savedOverrides = ["unavailable-q2": AssignmentGradeOverride(grade: 95)]
+        let knownChanges = AssignmentGradeEdits.hasEffectiveChanges(savedOverrides, to: loadedAssignments)
+        #expect(!knownChanges)
+        let unavailableEditedQuarter = !savedOverrides.isEmpty
+        for editing in [true, false] {
+            let changed = editing && (knownChanges || unavailableEditedQuarter)
+            let shown = WhatIfGradePresentation.resolve(
+                official: 85,
+                calculated: GradeCalculator.semesterTotal(firstQuarter: 90, secondQuarter: nil, finalExamGrade: nil),
+                hasEffectiveChanges: changed, calculationUnavailable: unavailableEditedQuarter
+            )
+            #expect(shown.value == (editing ? nil : 85))
+            #expect(shown.source == (editing ? .estimate : .official))
+        }
+    }
+
+}
