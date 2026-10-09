@@ -97,3 +97,131 @@ struct WhatIfScenarioTests {
         #expect(edited[0].isNoCount)
     }
 
+    @Test("Semester recalculates only changed quarters and preserves posted values in untouched quarters")
+    func semesterPostedGrades() {
+        let q1 = book(earned: 40, posted: 91.4999)
+        let q2 = book(earned: 20, posted: 93.5)
+        let baseline = source(term: .sm1, books: ["Q1": q1, "Q2": q2], official: 92.123, exam: 80)
+        let snapshot = WhatIfScenarioSnapshot(overridesByQuarter: ["Q1": [id(q1): .init(grade: 92.5)]])
+        let result = WhatIfScenarioEvaluator.evaluate(snapshot, source: baseline)
+        #expect(result.quarterGrades["Q1"] == 92.5)
+        #expect(result.quarterGrades["Q2"] == 93.5)
+        #expect(result.value == GradeCalculator.semesterTotal(firstQuarter: 92.5, secondQuarter: 93.5, finalExamGrade: 80))
+        #expect(result.officialValue == 92.123)
+        let examOnly = WhatIfScenarioEvaluator.evaluate(.init(finalExamGrade: 100), source: baseline)
+        #expect(examOnly.value == GradeCalculator.semesterTotal(firstQuarter: 91.4999, secondQuarter: 93.5, finalExamGrade: 100))
+        #expect(WhatIfScenarioEvaluator.evaluate(.init(), source: baseline).value == 92.123)
+    }
+
+    @Test("Missing untouched gradebooks can use posted grades; edited missing sources fail closed")
+    func missingGradebooks() {
+        let q1 = book()
+        let baseline = source(term: .sm1, books: ["Q1": q1], posted: ["Q2": 90], official: 85, exam: 80)
+        let changed = WhatIfScenarioSnapshot(overridesByQuarter: ["Q1": [id(q1): .init(grade: 100)]])
+        #expect(WhatIfScenarioEvaluator.evaluate(changed, source: baseline).value == 92)
+        let missing = WhatIfScenarioSnapshot(overridesByQuarter: ["Q2": ["saved-q2": .init(grade: 95)]])
+        let unavailable = WhatIfScenarioEvaluator.evaluate(missing, source: baseline)
+        #expect(unavailable.value == nil)
+        #expect(unavailable.issue == .unavailableGradebook(quarter: "Q2"))
+        #expect(unavailable.officialValue == 85)
+        #expect(unavailable.presentation.source == .estimate)
+        let absent = source(term: .sm1, books: ["Q1": q1], official: nil)
+        #expect(WhatIfScenarioEvaluator.evaluate(changed, source: absent).value == 100)
+        let noQuarterGrades = source(term: .sm1, books: [:], official: 85)
+        #expect(WhatIfScenarioEvaluator.evaluate(.init(finalExamGrade: 95), source: noQuarterGrades).issue
+                == .unavailableCalculation(quarter: "SM1"))
+    }
+
+    @Test("Stale overrides and assignment collisions are visible rather than silently discarded")
+    func staleAndCollidingIDs() {
+        let info = book()
+        let stale = WhatIfScenarioSnapshot(overridesByQuarter: ["Q1": ["gone": .init(grade: 95)]])
+        #expect(WhatIfScenarioEvaluator.evaluate(stale, source: source()).issue == .staleAssignmentIDs(quarter: "Q1", count: 1))
+        let collision = WhatIfScenarioSnapshot(assignmentsByQuarter: ["Q1": [added(id: id(info))]])
+        #expect(WhatIfScenarioEvaluator.evaluate(collision, source: source()).issue == .assignmentIDCollision)
+        let duplicate = WhatIfScenarioSnapshot(assignmentsByQuarter: ["Q1": [added(), added()]])
+        #expect(duplicate.validationIssue(for: .q1) == .assignmentIDCollision)
+        var twice = info
+        twice.gradebook[0].assignments.append(info.gradebook[0].assignments[0])
+        let ids = AssignmentGradeEdits.assignments(from: twice, className: "Synthetic", term: .q1).map(\.id)
+        #expect(Set(ids).count == 2)
+        let onlySecond = WhatIfScenarioSnapshot(overridesByQuarter: ["Q1": [ids[1]: .init(grade: 100)]])
+        #expect(WhatIfScenarioEvaluator.evaluate(onlySecond, source: source(books: ["Q1": twice])).value == 90)
+    }
+
+    @Test("Nonfinite snapshots, invalid categories, and unavailable edited totals remain unavailable")
+    func invalidInputs() {
+        for number in [Double.nan, Double.infinity, -Double.infinity, 1_000_001] {
+            #expect(WhatIfScenarioSnapshot(finalExamGrade: number).validationIssue(for: .sm1) == .invalidScore)
+            #expect(WhatIfScenarioSnapshot(assignmentsByQuarter: ["Q1": [added(earned: number)]]).validationIssue(for: .q1) == .invalidScore)
+        }
+        var bad = book()
+        bad.gradebook.append(bad.gradebook[0])
+        let snapshot = WhatIfScenarioSnapshot(assignmentsByQuarter: ["Q1": [added()]])
+        #expect(WhatIfScenarioEvaluator.evaluate(snapshot, source: source(books: ["Q1": bad])).issue == .invalidCategories)
+        let info = book()
+        let removed = WhatIfScenarioSnapshot(overridesByQuarter: ["Q1": [id(info): .init(grade: nil)]])
+        #expect(WhatIfScenarioEvaluator.evaluate(removed, source: source()).issue == .unavailableCalculation(quarter: "Q1"))
+        var wrongCategory = added()
+        wrongCategory.category = "Removed category"
+        #expect(WhatIfScenarioEvaluator.evaluate(.init(assignmentsByQuarter: ["Q1": [wrongCategory]]), source: source()).issue
+                == .unavailableCategory(quarter: "Q1", category: "Removed category"))
+    }
+
+    @Test("Verified empty points quarters can receive hypothetical work while unavailable quarters cannot")
+    func emptyQuarter() {
+        var empty = book(posted: nil, weight: nil)
+        empty.gradebook = []
+        let addedWork = WhatIfScenarioSnapshot(assignmentsByQuarter: ["Q1": [added(earned: 104.123456789)]])
+        let result = WhatIfScenarioEvaluator.evaluate(addedWork, source: source(books: ["Q1": empty], official: nil))
+        #expect(result.value == GradeCalculator.pointsTotal(assignments: [WhatIfScenarioEvaluator.assignment(from: added(earned: 104.123456789))]))
+        #expect(result.presentation.source == .estimate)
+        #expect(WhatIfScenarioEvaluator.evaluate(addedWork, source: source(books: [:], official: nil)).issue == .unavailableGradebook(quarter: "Q1"))
+    }
+
+    @Test("Scenario library reloads, renames, and deletes without crossing account/course/term ownership")
+    func libraryPersistenceAndIsolation() throws {
+        let suite = "WhatIfScenarioTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let fixedDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let first = WhatIfScenarioLibrary(accountIdentifier: "synthetic-first", defaults: defaults,
+                                          identifierGenerator: { "first-id" }, now: { fixedDate })
+        let second = WhatIfScenarioLibrary(accountIdentifier: "synthetic-second", defaults: defaults,
+                                           identifierGenerator: { "first-id" }, now: { fixedDate })
+        let snapshot = WhatIfScenarioSnapshot(assignmentsByQuarter: ["Q1": [added()]])
+        let saved = try first.save(name: "  Quiz plan  ", classKey: "course-a", term: .q1,
+                                   snapshot: snapshot, expectedAccountIdentifier: "synthetic-first")
+        let otherAccount = try second.save(name: "Account two", classKey: "course-a", term: .q1,
+                                          snapshot: .init(), expectedAccountIdentifier: "synthetic-second")
+        #expect(saved.name == "Quiz plan")
+        #expect(saved.createdAt == fixedDate)
+        #expect(otherAccount.id == saved.id) // Account libraries are independent.
+        let reloaded = WhatIfScenarioLibrary(accountIdentifier: "synthetic-first", defaults: defaults)
+        #expect(reloaded.scenarios(classKey: "course-a", term: .q1) == [saved])
+        #expect(reloaded.scenarios(classKey: "course-a", term: .q2).isEmpty)
+        #expect(reloaded.scenarios(classKey: "course-b", term: .q1).isEmpty)
+        let renamed = try reloaded.rename(id: saved.id, name: "Revised plan", expectedAccountIdentifier: "synthetic-first")
+        #expect(renamed.snapshot == snapshot)
+        #expect(renamed.id == saved.id)
+        #expect(renamed.createdAt == fixedDate)
+        #expect(second.scenarios(classKey: "course-a", term: .q1) == [otherAccount])
+        #expect(throws: WhatIfScenarioLibraryError.accountChanged) {
+            try reloaded.rename(id: saved.id, name: "Wrong account", expectedAccountIdentifier: "synthetic-second")
+        }
+        #expect(throws: WhatIfScenarioLibraryError.accountChanged) {
+            try reloaded.delete(id: saved.id, expectedAccountIdentifier: "synthetic-second")
+        }
+        #expect(throws: WhatIfScenarioLibraryError.accountChanged) {
+            try reloaded.save(name: "Wrong account", classKey: "course-a", term: .q1,
+                              snapshot: .init(), expectedAccountIdentifier: "synthetic-second")
+        }
+        #expect(reloaded.scenarios(classKey: "course-a", term: .q1) == [renamed])
+        try reloaded.delete(id: saved.id, expectedAccountIdentifier: "synthetic-first")
+        #expect(reloaded.scenarios(classKey: "course-a", term: .q1).isEmpty)
+        #expect(second.scenarios(classKey: "course-a", term: .q1) == [otherAccount])
+        #expect(throws: WhatIfScenarioLibraryError.scenarioNotFound) {
+            try reloaded.delete(id: saved.id, expectedAccountIdentifier: "synthetic-first")
+        }
+    }
+
