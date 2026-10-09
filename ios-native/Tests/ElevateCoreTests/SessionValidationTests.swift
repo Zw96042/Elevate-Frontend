@@ -296,3 +296,100 @@ struct LoaderStatusTests {
         }
     }
 
+    @Test("Verified whole-call metadata preserves request identity and bounded message data")
+    func wholeCallResponse() throws {
+        let raw = """
+        <?xml version="1.0"?>
+        <response><output><![CDATA[]]></output><data><![CDATA[]]></data>
+        <sff><![CDATA[<script type='text/javascript' data-source='loader'>
+        sff.httpCalls['123'] = {'messages':[{show:false,type:'info',message:'Synthetic report ready'}], 'options':{status:'success'}};
+        </script>]]></sff></response>
+        """
+        let parsed = try SkywardLoaderMetadata.parse(raw)
+        let calls = try #require(parsed)
+        let call = try #require(calls.first)
+        #expect(calls.count == 1)
+        #expect(call.requestID == "123")
+        #expect(call.status == "success")
+        #expect(call.messages?.first?["message"] as? String == "Synthetic report ready")
+        #expect(call.messages?.first?["show"] as? Bool == false)
+        #expect(calls.first { $0.requestID == "other-request" } == nil)
+        try SkywardHTTP.checkSessionExpired(raw)
+    }
+
+    @Test("Logout metadata takes precedence over otherwise empty grade and history output")
+    func logoutBeforeEmptyOutput() {
+        let emptyGradebook = "<script>$.extend((sff.getValue('sf_gridObjects') || {}), {stuGradesGrid_1_2:{tb:{r:[]}}}));</script>"
+        let emptyHistory = "<title>Academic History</title><body>No records</body>"
+        for output in [emptyGradebook, emptyHistory, ""] {
+            let raw = envelope("sff.httpCalls['123'].options={status:'logout'};", output: output)
+            do {
+                _ = try SkywardHistoryAPI.parseGradebookHTML(raw)
+                Issue.record("Expected expiry before empty parsing")
+            } catch SkywardError.sessionExpired {} catch { Issue.record("Unexpected error: \(error)") }
+            do {
+                _ = try SkywardGradesAPI.parseGradeInfoHTML(output, rawResponse: raw)
+                Issue.record("Expected raw-envelope expiry")
+            } catch SkywardError.sessionExpired {} catch { Issue.record("Unexpected error: \(error)") }
+        }
+    }
+
+    @Test("Other error statuses fail validation without triggering reauthentication")
+    func nonAuthenticationStatuses() {
+        for status in ["maintenance", "invalid", "error", "LOGOUT"] {
+            do {
+                try SkywardHTTP.checkSessionExpired(envelope("sff.httpCalls['123'].options={status:'\(status)'};"))
+                Issue.record("Expected unsuccessful loader response")
+            } catch SkywardError.invalidResponse {} catch { Issue.record("Unexpected error: \(error)") }
+        }
+    }
+
+    @Test("Success, messages and inert script examples never signal logout")
+    func falseLogoutMentions() throws {
+        let examples = [
+            "sff.httpCalls['123'].options={status:'success',message:'logout'};",
+            "sff.httpCalls['123'].messages=[{text:'logout'}];",
+            "sff.httpCalls['123'].options={status:'valid',nested:{status:'logout'}};",
+            #"var example = "sff.httpCalls['123'].options={status:'logout'};";"#,
+            "function logout() { sff.httpCalls['123'].options={status:'logout'}; };",
+            "const example = `sff.httpCalls['123'].options={status:'logout'};`;",
+            "const example = `outer ${`sff.httpCalls['123'].options={status:'logout'};`}`;",
+            "// sff.httpCalls['123'].options={status:'logout'};\n",
+            "/* sff.httpCalls['123'].options={status:'logout'}; */",
+            #"var example = /;sff.httpCalls['123'].options={status:'logout'};/;"#,
+        ]
+        for script in examples { try SkywardHTTP.checkSessionExpired(envelope(script)) }
+        try SkywardHTTP.checkSessionExpired("<html><a href='logout'>Logout</a><script>function logout() {}</script></html>")
+        try SkywardHTTP.checkSessionExpired(envelope("", output: "sff.httpCalls['123'].options={status:'logout'};"))
+        try SkywardHTTP.checkSessionExpired("<response><sff><![CDATA[<template><script>sff.httpCalls['123'].options={status:'logout'};</script></template>]]></sff></response>")
+    }
+
+    @Test("Malformed or executable options are errors instead of empty success or expiry")
+    func malformedMetadata() {
+        for script in [
+            "sff.httpCalls['123'].options={status:'logout';",
+            "sff.httpCalls['123'].options={status:logout};",
+            "sff.httpCalls['123'].options={status:(() => 'logout')()};",
+            "sff.httpCalls['123'].options={status:`logout`};",
+            "sff.httpCalls['123'].options={status:'logout'} + dynamicOptions;",
+            "sff.httpCalls['123'].options={status:'logout',status:'success'};",
+            "sff.httpCalls['123']={options:{status:logout},messages:[]};",
+            "sff.httpCalls['123']={options:{status:'logout'},options:{status:'success'}};",
+            "sff.httpCalls['123']={options:{status:'success'},messages:'logout'};",
+            "sff.httpCalls['123'].options={status:'logout'};sff.httpCalls['123'].options={status:'success'};",
+        ] {
+            assertInvalid(envelope(script))
+        }
+        assertInvalid("<response><sff><![CDATA[sff.httpCalls['123'].options={status:'logout'};")
+        assertInvalid("<response><sff><![CDATA[<script>sff.httpCalls['123'].options={status:'logout'};]]></sff></response>")
+        assertInvalid("<response><sff><script>sff.httpCalls['123'].options={status:'logout'};</script></sff></response>")
+        assertInvalid(envelope(String(repeating: " ", count: 512_001)))
+    }
+
+    private func assertInvalid(_ raw: String) {
+        do {
+            try SkywardHTTP.checkSessionExpired(raw)
+            Issue.record("Expected metadata validation failure")
+        } catch SkywardError.invalidResponse {} catch { Issue.record("Unexpected error: \(error)") }
+    }
+}
