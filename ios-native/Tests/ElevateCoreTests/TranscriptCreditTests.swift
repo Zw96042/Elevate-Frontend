@@ -90,3 +90,103 @@ struct TranscriptCreditTests {
         #expect(calculate([row("Uncatalogued Seminar", grade: 10)]).unresolved.count == 2)
     }
 
+    @Test("Middle-school high-school aliases retain eligibility and source-bound corrections")
+    func acceleratedAliasesAndCorrections() throws {
+        let report = calculate([
+            row("PreAP ALG I", grade: 6), row("ALG1H", grade: 8), row("GEO H", grade: 7), row("GEOMP", grade: 8), row("ALG II Honors", grade: 8),
+            row("SPN1", grade: 8), row("SPN1H", grade: 8), row("Spanish Level I", grade: 8),
+            row("HLTH ED", grade: 8, terms: "1-2", spring: nil),
+        ])
+        #expect(report.credits(for: .math) == 3)
+        #expect(report.credits(for: .worldLanguage) == 1)
+        #expect(report.credits(for: .health) == 0.5)
+        #expect(report.unresolved.isEmpty)
+        let rows = [row("PE", grade: 8, terms: "1-2", spring: nil)]
+        let excluded = try #require(calculate(rows).records.first)
+        let correction = TranscriptCreditOverride(id: excluded.id, credits: 0.5, subject: .physicalEducation)
+        let corrected = TranscriptCreditCalculator.calculate(courses: [], planningTranscriptCourses: rows,
+            overrides: [correction], asOf: date)
+        #expect(corrected.total == 0.5)
+        #expect(corrected.records.first?.id == excluded.id)
+        #expect(corrected.records.first?.status == .corrected)
+        #expect(corrected.orphanedOverrideIDs.isEmpty)
+    }
+
+    @Test("Actual athletics recognize roster variants without classifying sport-related academic titles")
+    func athleticsAliases() {
+        for name in ["Water Polo", "Waterpolo 1", "Boys & Girls Water Polo", "Water Polo JV", "Football 9th Grade",
+                     "Football 9th Grade - AT832A/B", "Girls Volleyball 1", "Tennis Junior Varsity", "Swimming/Diving", "Cheerleader", "9th Grade Girls Athletics",
+                     "Basketball Boys 9th Grade AT833A/B*", "Volleyball Girls 9th Grade - AT830A/B*", "Girls Track & Field Varsity",
+                     "Swimming and Diving Junior Varsity", "AT031C", "PE880D"] {
+            let report = calculate([row(name)])
+            #expect(report.credits(for: .physicalEducation) == 1)
+            #expect(report.unresolved.isEmpty)
+        }
+        for name in ["Football History", "Water Polo Management", "Sports Science"] {
+            #expect(calculate([row(name)]).total == 0)
+            #expect(calculate([row(name)]).unresolved.count == 2)
+        }
+        let duplicates = calculate([row("Water Polo"), row("Boys Waterpolo 1"), row("Water Polo", year: "2024-2025")])
+        #expect(duplicates.credits(for: .physicalEducation) == 2)
+        #expect(calculate([row("Water Polo", grade: 8)]).unresolved.isEmpty)
+        #expect(calculate([row("Water Polo", grade: 8)]).total == 0)
+        #expect(calculate([row("PE"), row("Physical Education"), row("P.E.")]).total == 1)
+    }
+
+    @Test("Catalog display suffixes and sports medicine distinguish subject and equivalent credit")
+    func catalogNamesAndSportsMedicine() {
+        let report = calculate([
+            row("AP LANGUAGE AND COMPOSITION (AP ENGLISH III) - LA118 (APENGLAN)"),
+            row("ALGEBRA II HONORS - MA240 (ALG2)"), row("AP COMPUTER SCIENCE PRINCIPLES - TC736 (PRINIT)"),
+            row("ATHLETIC TRAINING - SPORTS MEDICINE (SPORTMD1, SPORTMD2, SPORTMD3)"),
+            row("AT100A/B"), row("SPORTMD1"),
+        ])
+        #expect(report.credits(for: .english) == 1)
+        #expect(report.credits(for: .math) == 1)
+        #expect(report.credits(for: .elective) == 2)
+        #expect(report.credits(for: .physicalEducation) == 0)
+        #expect(report.unresolved.isEmpty)
+        #expect(calculate([row("Football History - LA999")]).unresolved.count == 2)
+        #expect(calculate([row("Sports Management - TC999")]).credits(for: .physicalEducation) == 0)
+    }
+
+    @Test("Current athletics aliases share enrollment allocation and completed-credit limits")
+    func currentAthleticsAliases() {
+        let report = current([live("Water Polo"), live("Boys Waterpolo 1")])
+        #expect(report.count == 1)
+        #expect(report.first?.credits == 1)
+        #expect(report.first?.subject == .physicalEducation)
+        let earned = TranscriptCreditCalculator.calculate(courses: [],
+            planningTranscriptCourses: [row("Water Polo", year: "2026-2027", terms: "1-2", spring: nil)],
+            overrides: [], asOf: ISO8601DateFormatter().date(from: "2027-01-10T12:00:00Z")!)
+        let afterFall = TranscriptCreditCalculator.currentCourses(courses: [live("Boys Water Polo")], earned: earned,
+            asOf: ISO8601DateFormatter().date(from: "2027-01-10T12:00:00Z")!)
+        #expect(earned.total == 0.5)
+        #expect(afterFall.first?.credits == 0.5)
+        var middle = live("English 8")
+        middle.gradeYear = 8
+        #expect(current([middle]).first?.status == .excluded)
+        #expect(current([middle]).first?.credits == 0)
+    }
+
+    @Test("Conflicting equivalent grades remain reviewable without awarding that semester")
+    func conflictingRows() {
+        let report = calculate([row("English I", fall: "80"), row("English I Honors", fall: "90")])
+        #expect(report.total == 0.5)
+        #expect(report.unresolved.count == 1)
+        let conflict = calculate([row("English I", fall: "80", spring: nil), row("English I", fall: "P", spring: nil)])
+        #expect(conflict.total == 0)
+    }
+
+    @Test("Fall averaging needs provenance review; spring failure is never averaged up")
+    func averagingBoundary() {
+        let fallReview = calculate([row("English I", fall: "65", spring: "85")])
+        #expect(fallReview.total == 0.5)
+        #expect(fallReview.unresolved.first?.semester == .sm1)
+        let springFail = calculate([row("English I", fall: "95", spring: "65")])
+        #expect(springFail.total == 0.5)
+        #expect(springFail.records.first { $0.semester == .sm2 }?.status == .notEarned)
+        let unrecoverable = calculate([row("English I", fall: "64", spring: "95")])
+        #expect(unrecoverable.unresolved.isEmpty)
+    }
+
