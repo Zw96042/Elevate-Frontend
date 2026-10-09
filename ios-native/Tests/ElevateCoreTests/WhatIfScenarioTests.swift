@@ -225,3 +225,113 @@ struct WhatIfScenarioTests {
         }
     }
 
+    @Test("Unreadable scenario storage survives reads and every mutation until explicit scoped recovery")
+    func corruptLibraryRecovery() throws {
+        let suite = "WhatIfScenarioTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let key = "account.synthetic-first.namedWhatIfScenarios"
+        let corrupt = Data("unreadable synthetic data".utf8)
+        defaults.set(corrupt, forKey: key)
+        defaults.set(Data("unrelated".utf8), forKey: "account.synthetic-second.namedWhatIfScenarios")
+        let library = WhatIfScenarioLibrary(accountIdentifier: "synthetic-first", defaults: defaults)
+        #expect(library.hasUnreadableScenarios)
+        #expect(library.scenarios(classKey: "course", term: .q1).isEmpty)
+        #expect(throws: WhatIfScenarioLibraryError.corruptStorage) {
+            try library.save(name: "Plan", classKey: "course", term: .q1, snapshot: .init(), expectedAccountIdentifier: "synthetic-first")
+        }
+        #expect(throws: WhatIfScenarioLibraryError.corruptStorage) {
+            try library.rename(id: "unknown", name: "Plan", expectedAccountIdentifier: "synthetic-first")
+        }
+        #expect(throws: WhatIfScenarioLibraryError.corruptStorage) {
+            try library.delete(id: "unknown", expectedAccountIdentifier: "synthetic-first")
+        }
+        #expect(defaults.data(forKey: key) == corrupt)
+        #expect(throws: WhatIfScenarioLibraryError.accountChanged) {
+            try library.clearUnreadableScenarios(expectedAccountIdentifier: "synthetic-second")
+        }
+        #expect(defaults.data(forKey: key) == corrupt)
+        try library.clearUnreadableScenarios(expectedAccountIdentifier: "synthetic-first")
+        #expect(!library.hasUnreadableScenarios)
+        #expect(defaults.data(forKey: key) == nil)
+        #expect(defaults.data(forKey: "account.synthetic-second.namedWhatIfScenarios") == Data("unrelated".utf8))
+        let saved = try library.save(name: "Recovered", classKey: "course", term: .q1, snapshot: .init(), expectedAccountIdentifier: "synthetic-first")
+        try library.clearUnreadableScenarios(expectedAccountIdentifier: "synthetic-first")
+        #expect(library.scenarios(classKey: "course", term: .q1) == [saved])
+    }
+
+    @Test("Scenario limits, invalid names, bad snapshots, and generated ID collisions preserve prior saves")
+    func libraryBoundsAndValidation() throws {
+        let suite = "WhatIfScenarioTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let library = WhatIfScenarioLibrary(accountIdentifier: "synthetic", defaults: defaults,
+                                            identifierGenerator: { "fixed-id" })
+        let saved = try library.save(name: "Plan", classKey: "course", term: .q1, snapshot: .init(), expectedAccountIdentifier: "synthetic")
+        #expect(throws: WhatIfScenarioLibraryError.identifierCollision) {
+            try library.save(name: "Plan two", classKey: "course", term: .q1, snapshot: .init(), expectedAccountIdentifier: "synthetic")
+        }
+        for name in ["  \n", String(repeating: "x", count: 101)] {
+            #expect(throws: WhatIfScenarioLibraryError.invalidName) {
+                try library.rename(id: saved.id, name: name, expectedAccountIdentifier: "synthetic")
+            }
+        }
+        #expect(throws: WhatIfScenarioLibraryError.invalidSnapshot(.invalidTermOwnership)) {
+            try library.save(name: "Wrong quarter", classKey: "course", term: .q1,
+                             snapshot: .init(finalExamGrade: 90), expectedAccountIdentifier: "synthetic")
+        }
+        #expect(library.scenarios(classKey: "course", term: .q1) == [saved])
+        let key = "account.synthetic.namedWhatIfScenarios"
+        let fifty = (0..<50).map { index in
+            WhatIfScenario(id: "id-\(index)", name: "Plan", classKey: "course", term: index.isMultiple(of: 2) ? .q1 : .q2, snapshot: .init())
+        }
+        defaults.set(try JSONEncoder().encode(fifty), forKey: key)
+        #expect(!library.hasUnreadableScenarios)
+        #expect(throws: WhatIfScenarioLibraryError.limitReached) {
+            try library.save(name: "Over course limit", classKey: "course", term: .sm1, snapshot: .init(), expectedAccountIdentifier: "synthetic")
+        }
+        let fiveHundred = (0..<500).map { index in
+            WhatIfScenario(id: "id-\(index)", name: "Plan", classKey: "course-\(index / 50)", term: .q1, snapshot: .init())
+        }
+        defaults.set(try JSONEncoder().encode(fiveHundred), forKey: key)
+        #expect(!library.hasUnreadableScenarios)
+        #expect(throws: WhatIfScenarioLibraryError.limitReached) {
+            try library.save(name: "Over total limit", classKey: "new-course", term: .q1, snapshot: .init(), expectedAccountIdentifier: "synthetic")
+        }
+        var duplicateIDs = fifty
+        duplicateIDs[1].id = duplicateIDs[0].id
+        defaults.set(try JSONEncoder().encode(duplicateIDs), forKey: key)
+        #expect(library.hasUnreadableScenarios)
+    }
+
+    @Test("One oversized nested snapshot cannot overwrite valid saves or bypass the read boundary")
+    func libraryPayloadBoundary() throws {
+        let suite = "WhatIfScenarioTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let key = "account.synthetic.namedWhatIfScenarios"
+        let library = WhatIfScenarioLibrary(accountIdentifier: "synthetic", defaults: defaults)
+        let saved = try library.save(name: "Preserved", classKey: "course", term: .q1, snapshot: .init(), expectedAccountIdentifier: "synthetic")
+        let originalBytes = try #require(defaults.data(forKey: key))
+        var largeAssignment = added()
+        largeAssignment.name = String(repeating: "x", count: 8 * 1024 * 1024)
+        let oversizedSnapshot = WhatIfScenarioSnapshot(assignmentsByQuarter: ["Q1": [largeAssignment]])
+        #expect(throws: WhatIfScenarioLibraryError.limitReached) {
+            try library.save(name: "Too large", classKey: "course", term: .q1,
+                             snapshot: oversizedSnapshot, expectedAccountIdentifier: "synthetic")
+        }
+        #expect(defaults.data(forKey: key) == originalBytes)
+        #expect(library.scenarios(classKey: "course", term: .q1) == [saved])
+        #expect(!library.hasUnreadableScenarios)
+        let oversizedRecord = WhatIfScenario(name: "Too large", classKey: "course", term: .q1, snapshot: oversizedSnapshot)
+        let oversizedBytes = try JSONEncoder().encode([oversizedRecord])
+        defaults.set(oversizedBytes, forKey: key)
+        #expect(library.hasUnreadableScenarios)
+        #expect(library.scenarios(classKey: "course", term: .q1).isEmpty)
+        #expect(throws: WhatIfScenarioLibraryError.corruptStorage) {
+            try library.save(name: "Must not overwrite", classKey: "course", term: .q1,
+                             snapshot: .init(), expectedAccountIdentifier: "synthetic")
+        }
+        #expect(defaults.data(forKey: key) == oversizedBytes)
+    }
+
