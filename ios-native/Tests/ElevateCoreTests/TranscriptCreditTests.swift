@@ -309,3 +309,108 @@ struct TranscriptCreditTests {
         #expect(unresolved.unresolved.count == 1)
     }
 
+    @Test("Planning-only middle-school years cannot date or reclassify live enrollment")
+    func planningYearsDoNotChangeLiveMerge() throws {
+        let middle = row("Algebra I", year: "2024-2025", grade: 8)
+        let combined = SkywardHistoryAPI.combine(history: [
+            "2024-2025": AcademicYear(grade: 8, courses: [:], planningTranscriptCourses: [middle]),
+        ], gradebook: [GradebookCourse(course: 1, courseName: "English I", instructor: "Synthetic", period: 1,
+            scores: [(bucket: "SEM 1", score: 95)])], fallbackGrade: 9)
+        let current = try #require(combined["current"])
+        #expect(current.grade == 9)
+        #expect(current.academicYearIsVerified == false)
+        #expect(current.courses.count == 1)
+        #expect(current.courses.values.first?.isTranscriptRecord == false)
+        let transformed = UnifiedCourseTransformer.transform(history: combined)
+        #expect(transformed.count == 1)
+        #expect(transformed[0].gradeYear == 9)
+        #expect(transformed[0].historicalGrades.sm1 == "95")
+        #expect(transformed[0].planningTranscriptCourses == [middle])
+        #expect(TranscriptCreditCalculator.calculate(courses: transformed, asOf: date).total == 1)
+    }
+
+    @Test("Stored plan validation bounds malformed corrections and duplicate identifiers")
+    func storageBounds() {
+        #expect(CoursePlan().isValidForStorage)
+        #expect(CoursePlan(creditOverrides: [.init(id: "source", credits: 0, subject: .english)]).isValidForStorage)
+        for credits in [Double.nan, .infinity, -1, 4.1] {
+            #expect(!CoursePlan(creditOverrides: [.init(id: "source", credits: credits, subject: .english)]).isValidForStorage)
+        }
+        let override = TranscriptCreditOverride(id: "source", credits: 1, subject: .english)
+        #expect(!CoursePlan(creditOverrides: [override, override]).isValidForStorage)
+        #expect(!CoursePlan(creditOverrides: [.init(id: String(repeating: "x", count: 16_385), credits: 1, subject: .english)]).isValidForStorage)
+        #expect(throws: DecodingError.self) { _ = try JSONDecoder().decode(CoursePlan.self, from: Data("{}".utf8)) }
+    }
+
+    @Test("Current enrollment preserves annual and single-semester catalog caps")
+    func currentCatalogAllocations() {
+        let report = current([
+            live("AP Physics 1&2"), live("Multivariable Calculus", semester: .fall),
+            live("Linear Algebra", semester: .spring), live("Robotics II"),
+        ])
+        #expect(report.first { $0.name == "AP Physics 1&2" }?.credits == 2)
+        #expect(report.first { $0.name == "Multivariable Calculus" }?.credits == 1)
+        #expect(report.first { $0.name == "Linear Algebra" }?.credits == 0.5)
+        #expect(report.first { $0.name == "Robotics II" }?.subject == .elective)
+        #expect(report.allSatisfy { $0.status == .expected })
+        #expect(current([live("Multivariable Calculus")]).first?.credits == 1)
+    }
+
+    @Test("Duplicate live identities and split semesters produce one stable enrollment allocation")
+    func currentEnrollmentDeduplication() throws {
+        let fall = live("English III", semester: .fall)
+        var spring = live("AP English Language and Composition", semester: .spring)
+        spring.gbId = "spring"
+        let report = current([fall, fall, spring])
+        #expect(report.count == 1)
+        #expect(report.first?.credits == 1)
+        #expect(report.first?.sourceCourseIDs.count == 2)
+        #expect(report.first?.semesters == [.sm1, .sm2])
+        #expect(current([spring, fall]).map(\.id) == report.map(\.id))
+        var changedGrade = fall
+        changedGrade.currentScores = [BucketScore(bucket: "TERM 3", score: 100)]
+        #expect(current([changedGrade, spring]).map(\.id) == report.map(\.id))
+    }
+
+    @Test("Completed semesters and already earned equivalents never count as current prospective credit")
+    func currentEarnedBoundary() {
+        let january = ISO8601DateFormatter().date(from: "2027-01-10T12:00:00Z")!
+        let rows = [row("English III", year: "2026-2027", grade: 11, spring: nil)]
+        let earned = TranscriptCreditCalculator.calculate(courses: [], planningTranscriptCourses: rows, asOf: january)
+        #expect(earned.total == 0.5)
+        let enrolled = TranscriptCreditCalculator.currentCourses(courses: [live("AP English Language and Composition")], earned: earned, asOf: january)
+        #expect(enrolled.first?.credits == 0.5)
+        #expect(enrolled.first?.semesters == [.sm2])
+        let completed = TranscriptCreditCalculator.currentCourses(courses: [live("English III", semester: .fall)], earned: earned, asOf: january)
+        #expect(completed.first?.credits == 0)
+        let previous = calculate([row("English III")])
+        #expect(current([live("AP English Language and Composition")], earned: previous).first?.credits == 0)
+        let pe = calculate((2022...2025).map { row("PE", year: "\($0)-\($0 + 1)") })
+        #expect(pe.total == 4)
+        #expect(current([live("PE")], earned: pe).first?.credits == 0)
+    }
+
+    @Test("Past years, carriers and incomplete gradebook identity are never current enrollment")
+    func currentProvenanceBoundary() {
+        var past = live("English III")
+        past.academicYear = "2025-2026"
+        #expect(current([past]).isEmpty)
+        var noParams = live("English III")
+        noParams.gbId = ""
+        #expect(current([noParams]).isEmpty)
+        var carrier = live("English III")
+        carrier.isPlanningOnly = true
+        #expect(current([carrier]).isEmpty)
+        var guessed = live("English III")
+        guessed.academicYearIsVerified = false
+        guessed.currentAcademicYearIsVerified = nil
+        #expect(current([guessed]).first?.status == .needsReview)
+        #expect(current([guessed]).first?.credits == 0)
+        var ambiguous = live("English IV")
+        ambiguous.academicYear = nil
+        let mixed = current([live("English III"), ambiguous])
+        #expect(mixed.first { $0.name == "English III" }?.credits == 1)
+        #expect(mixed.first { $0.name == "English IV" }?.status == .needsReview)
+        #expect(mixed.first { $0.name == "English IV" }?.credits == 0)
+    }
+
