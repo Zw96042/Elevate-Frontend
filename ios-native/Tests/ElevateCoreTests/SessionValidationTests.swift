@@ -201,3 +201,98 @@ private actor ControlledLogin {
     private var pending: [Int: CheckedContinuation<SkywardSessionCodes, Never>] = [:]
     private var waiters: [(Int, CheckedContinuation<Void, Never>)] = []
 
+    func start() async -> SkywardSessionCodes {
+        let index = callCount
+        callCount += 1
+        return await withCheckedContinuation { continuation in
+            pending[index] = continuation
+            let ready = waiters.filter { $0.0 <= callCount }
+            waiters.removeAll { $0.0 <= callCount }
+            for (_, waiter) in ready { waiter.resume() }
+        }
+    }
+
+    func waitForCalls(_ count: Int) async {
+        guard callCount < count else { return }
+        await withCheckedContinuation { waiters.append((count, $0)) }
+    }
+
+    func complete(_ index: Int, with codes: SkywardSessionCodes) {
+        pending.removeValue(forKey: index)?.resume(returning: codes)
+    }
+}
+
+private actor RequestCalls {
+    private(set) var count = 0
+    func record() { count += 1 }
+}
+
+@Suite("Session response validation")
+struct SessionResponseValidationTests {
+    private let emptyGradebook = "<script>$.extend((sff.getValue('sf_gridObjects') || {}), {stuGradesGrid_1_2:{tb:{r:[]}}}));</script>"
+
+    @Test("Expired responses take precedence over a complete empty course grid")
+    func expiryCannotBecomeEmptyCourses() {
+        for marker in ["Your session has expired", "Your session has timed out", "Session has ended",
+                       "<div>Family Access</div><form id='detailform'><input name='password'></form>"] {
+            do {
+                _ = try SkywardHistoryAPI.parseGradebookHTML(emptyGradebook + marker)
+                Issue.record("Expected explicit session expiry")
+            } catch SkywardError.sessionExpired {} catch { Issue.record("Unexpected error: \(error)") }
+        }
+    }
+
+    @Test("Valid empty course grids are retained without being mistaken for expiry")
+    func validEmptyCourseGrid() throws {
+        #expect(try SkywardHistoryAPI.parseGradebookHTML(emptyGradebook).isEmpty)
+    }
+
+    @Test("A Family Access title alone is not evidence of an expired session")
+    func maintenanceIsNotAuthenticationFailure() {
+        do {
+            _ = try SkywardHistoryAPI.parseGradebookHTML("<title>Family Access</title><body>Maintenance in progress</body>")
+            Issue.record("Expected incompatible response")
+        } catch SkywardError.invalidResponse {} catch { Issue.record("Unexpected error: \(error)") }
+    }
+
+    @Test("A generic WebSpeed failure does not establish session expiry")
+    func webSpeedServerFailure() throws {
+        try SkywardHTTP.checkSessionExpired("<title>WebSpeed Error</title><body>Service unavailable for maintenance</body>")
+        do {
+            _ = try SkywardHistoryAPI.parseGradebookHTML("<title>WebSpeed Error</title><body>Service unavailable for maintenance</body>")
+            Issue.record("Expected response validation failure")
+        } catch SkywardError.invalidResponse {} catch { Issue.record("Unexpected error: \(error)") }
+    }
+
+    @Test("An expiry outside the loader output cannot be lost during extraction")
+    func loaderEnvelopeExpiry() {
+        let fragment = "<div>Incomplete grade info</div>"
+        do {
+            _ = try SkywardGradesAPI.parseGradeInfoHTML(fragment, rawResponse: "<status>Your session has expired</status><output><![CDATA[\(fragment)]]></output>")
+            Issue.record("Expected explicit session expiry")
+        } catch SkywardError.sessionExpired {} catch { Issue.record("Unexpected error: \(error)") }
+    }
+}
+
+@Suite("Typed Skyward loader status")
+struct LoaderStatusTests {
+    private func envelope(_ script: String, output: String = "") -> String {
+        "<response><sff><![CDATA[<script type='text/javascript'>\(script)</script>]]></sff><output><![CDATA[\(output)]]></output></response>"
+    }
+
+    @Test("Only an explicit loader options logout status expires the session")
+    func explicitLogout() {
+        for script in [
+            "sff.httpCalls['123'].options = {status:'logout'};",
+            "sff.httpCalls['123'] = {'messages': [], 'options': {status:'logout'}};",
+            "sff . httpCalls [ 123 ] . options = { status: \"logout\", message: 'Session replaced' }",
+            "/* metadata */ sff.httpCalls[\"123\"].messages=[]; sff.httpCalls[\"123\"].options={ 'status': 'logout' };",
+            #"sff.httpCalls['123'].options={status:'\x6cogout'};"#,
+        ] {
+            do {
+                try SkywardHTTP.checkSessionExpired(envelope(script))
+                Issue.record("Expected typed logout expiry")
+            } catch SkywardError.sessionExpired {} catch { Issue.record("Unexpected error: \(error)") }
+        }
+    }
+
