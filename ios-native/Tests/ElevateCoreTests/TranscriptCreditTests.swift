@@ -414,3 +414,115 @@ struct TranscriptCreditTests {
         #expect(mixed.first { $0.name == "English IV" }?.credits == 0)
     }
 
+    @Test("Independent enrollment remains classified when assignment request parameters are incomplete")
+    func enrollmentWithoutAssignmentParameters() {
+        var english = observedLive("AP English Language and Composition")
+        english.gbId = ""
+        english.section = ""
+        var unknown = observedLive("Uncatalogued Seminar")
+        unknown.gbId = ""
+        let report = current([english, unknown])
+        #expect(report.count == 2)
+        #expect(report.first { $0.name == english.courseName }?.credits == 0.5)
+        #expect(report.first { $0.name == english.courseName }?.subject == .english)
+        #expect(report.first { $0.name == unknown.courseName }?.status == .needsReview)
+        #expect(report.first { $0.name == unknown.courseName }?.subject == nil)
+        #expect(report.first { $0.name == unknown.courseName }?.credits == 0)
+        english.isCurrentEnrollment = nil
+        #expect(current([english]).isEmpty)
+    }
+
+    @Test("Unknown or conflicting current terms remain reviewable rather than guessing a full year")
+    func currentTermBoundary() {
+        var unknown = live("English III", semester: .unknown)
+        unknown.termLength = ""
+        #expect(current([unknown]).first?.status == .needsReview)
+        #expect(current([unknown]).first?.credits == 0)
+        var conflict = live("English III", semester: .fall)
+        conflict.termLength = "3-4"
+        #expect(current([conflict]).first?.status == .needsReview)
+        #expect(current([conflict]).first?.credits == 0)
+        let future = live("Linear Algebra", semester: .spring)
+        #expect(current([future]).first?.credits == 0.5)
+    }
+
+    @Test("Independent live evidence counts one active observed semester without a fabricated year")
+    func independentObservedEnrollment() {
+        var course = observedLive("AP English Language and Composition")
+        course.semester = .both
+        course.termLength = "1-4"
+        course.currentEnrollmentSemester = .both
+        let report = current([course, course])
+        #expect(report.count == 1)
+        #expect(report.first?.credits == 0.5)
+        #expect(report.first?.academicYear == nil)
+        #expect(report.first?.semesters == [.sm1])
+        #expect(report.first?.status == .expected)
+        #expect(current([observedLive("AP Physics 1&2")]).first?.credits == 1)
+        #expect(current([observedLive("Multivariable Calculus")]).first?.credits == 1)
+        let earned = calculate([row("English III", terms: "1-2", spring: nil)])
+        #expect(current([course], earned: earned).first?.credits == 0)
+    }
+
+    @Test("Independent cached enrollment expires at semester/year changes and cannot borrow transcript grade levels")
+    func observedEnrollmentBounds() {
+        let course = observedLive("English III")
+        let empty = calculate([])
+        for asOf in ["2027-01-10T12:00:00Z", "2027-10-04T12:00:00Z"] {
+            let date = ISO8601DateFormatter().date(from: asOf)!
+            let report = TranscriptCreditCalculator.currentCourses(courses: [course], earned: empty, asOf: date)
+            #expect(report.first?.credits == 0)
+            #expect(report.first?.status == .needsReview)
+        }
+        var missing = course
+        missing.currentEnrollmentGradeYear = nil
+        #expect(current([missing]).first?.status == .needsReview)
+        #expect(current([missing]).first?.credits == 0)
+        missing = course
+        missing.currentEnrollmentObservedAt = date.addingTimeInterval(60)
+        #expect(current([missing]).first?.credits == 0)
+        missing = course
+        missing.isCurrentEnrollment = nil
+        #expect(current([missing]).first?.credits == 0)
+    }
+
+    private func observedLive(_ name: String) -> UnifiedCourseData {
+        var course = live(name)
+        course.currentAcademicYearIsVerified = nil
+        course.academicYearIsVerified = false
+        course.academicYear = "current"
+        course.isCurrentEnrollment = true
+        course.currentEnrollmentSemester = .fall
+        course.currentEnrollmentGradeYear = 11
+        course.currentEnrollmentObservedAt = date
+        return course
+    }
+
+    private func current(_ courses: [UnifiedCourseData], earned: TranscriptCreditReport? = nil) -> [CurrentCourseCredit] {
+        TranscriptCreditCalculator.currentCourses(courses: courses, earned: earned ?? calculate([]), asOf: date)
+    }
+    private func live(_ name: String, semester: Semester = .both) -> UnifiedCourseData {
+        UnifiedCourseData(courseId: 1, corNumId: "synthetic-\(name)", stuId: "synthetic-student", section: "1", gbId: "1",
+            courseName: name, semester: semester, termLength: semester == .fall ? "1-2" : semester == .spring ? "3-4" : "1-4",
+            gradeYear: 11, currentScores: [BucketScore(bucket: "TERM 3", score: 55)], historicalGrades: HistoricalGrades(rc1: "55"),
+            academicYear: "2026-2027", academicYearIsVerified: true, currentAcademicYearIsVerified: true, isTranscriptRecord: false)
+    }
+
+    private var date: Date { ISO8601DateFormatter().date(from: "2026-10-04T12:00:00Z")! }
+    private func row(_ name: String, year: String = "2025-2026", grade: Int? = 9,
+                     terms: String = "1-4", fall: String? = "80", spring: String? = "90") -> PlanningTranscriptCourse {
+        PlanningTranscriptCourse(academicYear: year, gradeYear: grade, name: name, terms: terms, sm1: fall, sm2: spring)
+    }
+    private func calculate(_ rows: [PlanningTranscriptCourse]) -> TranscriptCreditReport {
+        TranscriptCreditCalculator.calculate(courses: [], planningTranscriptCourses: rows, asOf: date)
+    }
+    private func header(_ value: String) -> [String: Any] { ["c": [["h": value]]] }
+    private func gridRow(_ name: String, linked: Bool) -> [String: Any] {
+        var columns = Array(repeating: ["h": ""], count: 18)
+        columns[0] = ["h": linked ? "<a>\(name)</a>" : name]
+        columns[1] = ["h": "1-4"]
+        columns[9] = ["h": "80"]
+        columns[17] = ["h": "90"]
+        return ["c": columns]
+    }
+}
