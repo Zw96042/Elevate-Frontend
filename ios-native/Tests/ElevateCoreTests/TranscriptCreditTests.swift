@@ -190,3 +190,122 @@ struct TranscriptCreditTests {
         #expect(unrecoverable.unresolved.isEmpty)
     }
 
+    @Test("Pass codes, missing and invalid scores never fabricate credits")
+    func invalidScores() {
+        for score in ["P", "CR", "NaN", "Infinity", "1e99", "-1", ""] {
+            let report = calculate([row("English I", terms: "1-2", fall: score, spring: nil)])
+            #expect(report.total == 0)
+            #expect(report.unresolved.count == 1)
+        }
+        #expect(calculate([row("English I", terms: "1-2", fall: "70", spring: nil)]).total == 0.5)
+        #expect(calculate([row("Unknown course", terms: "1-2", spring: nil)]).unresolved.count == 1)
+        #expect(calculate([row("AP Cybersecurity", terms: "1-2", spring: nil)]).total == 0.5)
+        #expect(calculate([row("Office Aide")]).total == 0)
+    }
+
+    @Test("Current and future semesters and unverified years do not become earned credit")
+    func completionBoundary() {
+        #expect(calculate([row("English I", year: "2026-2027")]).total == 0)
+        #expect(calculate([row("English I", year: "2027-2028")]).total == 0)
+        #expect(calculate([row("English I", year: "unknown")]).unresolved.count == 2)
+        #expect(calculate([row("English I", grade: nil)]).total == 0)
+        let olderPhysics = calculate([row("AP Physics 1&2", year: "2019-2020")])
+        #expect(olderPhysics.unresolved.count == 2)
+    }
+
+    @Test("Corrections replace estimates, stay source-bound and survive source ordering")
+    func correctionProvenance() throws {
+        let rows = [row("English I"), row("Unknown course", terms: "1-2", spring: nil)]
+        let initial = calculate(rows)
+        let englishFall = try #require(initial.records.first { $0.name == "English I" && $0.semester == .sm1 })
+        let unknown = try #require(initial.records.first { $0.name == "Unknown course" })
+        let changes = [TranscriptCreditOverride(id: englishFall.id, credits: 0, subject: .english),
+                       TranscriptCreditOverride(id: unknown.id, credits: 1, subject: .elective)]
+        let corrected = TranscriptCreditCalculator.calculate(courses: [], planningTranscriptCourses: rows.reversed(), overrides: changes, asOf: date)
+        #expect(corrected.total == 1.5)
+        #expect(corrected.records.filter { $0.status == .corrected }.count == 2)
+        #expect(corrected.orphanedOverrideIDs.isEmpty)
+        var changed = rows
+        changed[0].sm1 = "99"
+        let refreshed = TranscriptCreditCalculator.calculate(courses: [], planningTranscriptCourses: changed, overrides: changes, asOf: date)
+        #expect(refreshed.orphanedOverrideIDs == [englishFall.id])
+        let conflicting = TranscriptCreditCalculator.calculate(courses: [], planningTranscriptCourses: rows,
+            overrides: [changes[0], changes[0]], asOf: date)
+        #expect(conflicting.records.first { $0.id == englishFall.id }?.status == .needsReview)
+    }
+
+    @Test("Legacy aggregate credits require reconciliation and missing additions cannot duplicate detected courses")
+    func manualReconciliation() {
+        let rows = [row("English I"), row("English II"), row("AP English Language and Composition")]
+        let legacy = CoursePlanCourse(name: "English credits", credits: 3, subject: .english)
+        var missing = CoursePlanCourse(name: "Transferred elective", credits: 1, subject: .elective)
+        missing.isSupplemental = true
+        var duplicate = CoursePlanCourse(name: "English I Honors", credits: 1, subject: .english)
+        duplicate.isSupplemental = true
+        let report = CoursePlanner.calculate(plan: CoursePlan(earnedCourses: [legacy, missing, duplicate]), officialCourses: [],
+            planningTranscriptCourses: rows, asOf: date)
+        #expect(report.earnedTotal == 4)
+        #expect(report.requirements.first { $0.subject == .english }?.earned == 3)
+        #expect(report.manualEarnedCourses.map(\.name) == ["Transferred elective"])
+        #expect(report.manualReviewCourses.count == 2)
+        #expect(report.gpa.allSatisfy { $0.officialBaseline == nil })
+    }
+
+    @Test("Parser preserves non-linked and middle-school rows without expanding official grades")
+    func parserAndTransport() throws {
+        let grids: [String: Any] = ["gradeGrid_1_2_3": ["tb": ["r": [
+            header("2024 - 2025 Grade 8"), gridRow("Algebra I", linked: false),
+            header("2025 - 2026 Grade 9"), gridRow("English I", linked: true), gridRow("AP Art History", linked: false), gridRow("PE", linked: true),
+        ]]]]
+        let history = try SkywardHistoryAPI.condenseAcademicHistory(grids)
+        #expect(history["2024-2025"]?.courses.isEmpty == true)
+        #expect(history["2025-2026"]?.courses.count == 1)
+        let transported = UnifiedCourseTransformer.transform(history: history)
+        #expect(transported.count == 1)
+        #expect(transported[0].courseName == "English I")
+        #expect(transported[0].historicalGrades.sm1 == "80")
+        #expect(transported[0].planningTranscriptCourses?.count == 4)
+        #expect(TranscriptCreditCalculator.calculate(courses: transported, asOf: date).total == 4)
+        #expect(GPACalculator.termGPAs(courses: transported)["SM1"]?.unweighted == 80)
+        let onlyMiddle = UnifiedCourseTransformer.transform(history: ["2024-2025": history["2024-2025"]!])
+        #expect(onlyMiddle.count == 1)
+        #expect(onlyMiddle[0].isPlanningOnly == true)
+        #expect(onlyMiddle[0].currentScores.isEmpty)
+        #expect(onlyMiddle[0].historicalGrades.sm1 == nil)
+        #expect(onlyMiddle[0].historicalGrades.sm2 == nil)
+        #expect(!onlyMiddle[0].hasGradebookParams)
+        #expect(onlyMiddle[0].availableTerms.isEmpty)
+        #expect(GPACalculator.termGPAs(courses: onlyMiddle).isEmpty)
+        #expect(CourseHistoryReport(courses: onlyMiddle).knownAcademicYears.isEmpty)
+        #expect(GPATimeline.allYears(courses: onlyMiddle, manualClassesByYear: [:]).isEmpty)
+    }
+
+    @Test("Older caches and plans decode while absent credit provenance remains absent")
+    func backwardsCompatibility() throws {
+        let plan = CoursePlan(earnedCourses: [CoursePlanCourse(name: "English credits", credits: 3, subject: .english)])
+        var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(plan)) as? [String: Any])
+        object.removeValue(forKey: "creditOverrides")
+        let restored = try JSONDecoder().decode(CoursePlan.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(restored.creditOverrides.isEmpty)
+        #expect(restored.earnedCourses[0].isSupplemental == nil)
+        let history = try JSONDecoder().decode(AcademicYear.self, from: Data(#"{"grade":9,"courses":{}}"#.utf8))
+        #expect(history.planningTranscriptCourses == nil)
+        let official = UnifiedCourseTransformer.transform(history: ["2025-2026": AcademicYear(grade: 9, courses: [
+            "English I": HistoryCourse(courseName: "English I", terms: "1-2", sm1: "85", isTranscriptRecord: true),
+        ])])
+        let decoded = try JSONDecoder().decode([UnifiedCourseData].self, from: JSONEncoder().encode(official))
+        #expect(decoded[0].planningTranscriptCourses == nil)
+        #expect(decoded[0].isPlanningOnly == nil)
+        #expect(TranscriptCreditCalculator.calculate(courses: decoded, asOf: date).total == 0.5)
+        var liveOnly = decoded[0]
+        liveOnly.isTranscriptRecord = false
+        liveOnly.postedHistoricalGrades = nil
+        #expect(TranscriptCreditCalculator.calculate(courses: [liveOnly], asOf: date).total == 0)
+        var annualSummaryOnly = decoded[0]
+        annualSummaryOnly.historicalGrades = HistoricalGrades(rc1: "95", finalGrade: "95")
+        annualSummaryOnly.postedHistoricalGrades = annualSummaryOnly.historicalGrades
+        let unresolved = TranscriptCreditCalculator.calculate(courses: [annualSummaryOnly], asOf: date)
+        #expect(unresolved.total == 0)
+        #expect(unresolved.unresolved.count == 1)
+    }
+
