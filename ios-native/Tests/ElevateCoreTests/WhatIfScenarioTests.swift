@@ -335,3 +335,37 @@ struct WhatIfScenarioTests {
         #expect(defaults.data(forKey: key) == oversizedBytes)
     }
 
+    @Test("Nonfinite generated dates and unreadable encoded timestamps preserve saved bytes")
+    func libraryTimestampValidation() throws {
+        let suite = "WhatIfScenarioTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let key = "account.synthetic.namedWhatIfScenarios"
+        let library = WhatIfScenarioLibrary(accountIdentifier: "synthetic", defaults: defaults)
+        let saved = try library.save(name: "Preserved", classKey: "course", term: .q1,
+                                     snapshot: .init(), expectedAccountIdentifier: "synthetic")
+        let originalBytes = try #require(defaults.data(forKey: key))
+        for interval in [Double.infinity, -Double.infinity, Double.nan] {
+            let invalidDate = WhatIfScenarioLibrary(accountIdentifier: "synthetic", defaults: defaults,
+                                                    now: { Date(timeIntervalSinceReferenceDate: interval) })
+            #expect(throws: WhatIfScenarioLibraryError.invalidSnapshot(.invalidScore)) {
+                try invalidDate.save(name: "Invalid timestamp", classKey: "course", term: .q1,
+                                     snapshot: .init(), expectedAccountIdentifier: "synthetic")
+            }
+            #expect(defaults.data(forKey: key) == originalBytes)
+        }
+        #expect(library.scenarios(classKey: "course", term: .q1) == [saved])
+        // JSON's numeric syntax permits this exponent, but Date's Double cannot
+        // represent it. The default decoder rejects it before record validation.
+        let invalidTimestamp = Data("""
+        [{"id":"invalid-date","name":"Plan","classKey":"course","term":"Q1 Grades","createdAt":1e309,"snapshot":{"assignmentsByQuarter":{},"overridesByQuarter":{}}}]
+        """.utf8)
+        defaults.set(invalidTimestamp, forKey: key)
+        #expect(library.hasUnreadableScenarios)
+        #expect(library.scenarios(classKey: "course", term: .q1).isEmpty)
+        #expect(throws: WhatIfScenarioLibraryError.corruptStorage) {
+            try library.delete(id: "invalid-date", expectedAccountIdentifier: "synthetic")
+        }
+        #expect(defaults.data(forKey: key) == invalidTimestamp)
+    }
+}
