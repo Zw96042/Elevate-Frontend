@@ -92,3 +92,103 @@ Public sources confirm the feature, but no exact Eanes Student Access endpoint
 or request contract was established. Do not implement a guessed
 `sfattendance001.w` endpoint or assume a JSON REST response.
 
+The next technical step is a read-only inspection of the Attendance page under
+an authenticated Eanes student account. Establish:
+
+1. Initial page URL/method and required session, student, school/entity,
+   track and year fields, if any.
+2. The response structure: HTML/grid data, calendar data, or follow-up dialogs.
+3. Requests for year changes, date ranges, row details, pagination and the
+   attendance-code legend, if provided.
+4. Coverage: daily versus period records, dates, course/period identifiers,
+   raw codes, descriptions, reasons, comments and any official totals.
+5. Explicit evidence for zero records versus unavailable/disabled access,
+   expired sessions, maintenance pages and unexpected schema.
+
+Keep any live inspection private: do not save or print credentials, cookies,
+session codes, raw student responses or screenshots. Record only structural
+field names and types; build synthetic fixtures for parser tests.
+
+### Proposed implementation after the contract is verified
+
+- `Networking/SkywardAttendanceAPI.swift`: reuse `SkywardHTTP`, session
+  validation and the existing data-only parsers as appropriate to the actual
+  response. Keep parsing out of views.
+- Attendance records: retain date-only school dates, daily/period granularity,
+  raw code and source description, optional reason/course/period, and stable
+  source identity. Preserve unknown codes; do not infer meanings from letters.
+- `DataService`: load through the existing session-retry path, with coalescing,
+  cancellation, generation guards and account/student/year-scoped caching.
+- `AppStore`: independent records, loading/error/freshness state and refresh
+  task; clear/cancel all of it on account changes and logout. Attendance failure
+  must not prevent grades or Inbox from loading.
+- Fetch on first attendance visit and refresh as needed. Do not multiply
+  foreground network work solely because a new tab exists.
+- Show source records and verified summaries. Period absences are not unique
+  absent days; an exception-only feed does not establish total days present or
+  an attendance percentage. Avoid calculating exam eligibility or credit risk
+  from incomplete records.
+
+Eanes distinguishes funded/unfunded absence codes. Westlake also describes
+period-level records and a 24–36-hour update window. Preserve source meanings
+and true refresh timestamps. Displaying attendance is the requested scope;
+absence submission/correction would be a separate write feature.
+
+## Navigation integration
+
+The app currently declares Courses and Inbox in `ElevateApp.swift`, with tab
+selection and widget deep links in `Views/AppRouter.swift`. Adding the requested
+two destinations means extending both and giving each page its own navigation
+state. Preserve Courses as the landing page, GPA inside Courses, existing widget
+links, and the account-change reset for every account-bound pushed destination.
+
+Reuse the fixed `screenTitle`, scope `ChoiceSheet`, `StatusStrip`, refresh,
+login, empty and error components. History should own its selected year/term so
+browsing it does not silently change the current Courses or GPA selection.
+Update the two-tab description in native AGENTS/README when implementation
+actually changes navigation. No final visual design was produced here.
+
+## Verification for implementation
+
+- History: exact year retention, duplicate names/rows, repeated grade years,
+  missing current-grade evidence, half-year courses, posted zero/letter/missing
+  grades, cache decoding, and unchanged GPA calculations.
+- Attendance: verified populated/empty/unavailable pages; daily versus period
+  records; multiple records on one day; unknown codes; date-only handling;
+  pagination/year changes; malformed/truncated/maintenance/login responses.
+- Services/store: session expiry retry; failed refresh keeps valid cache and
+  original timestamp; account switch/logout during requests; independent
+  attendance failures.
+- UI: all four destinations, back/tab continuity, scope selection, sign-in,
+  loading/empty/error/offline refresh, large text, VoiceOver, Reduce Motion.
+- Run core tests, signed Debug simulator verification, unsigned Release build
+  and analysis. Core tests exclude AppStore, DataService, auth API and views.
+
+## Evidence and verification status
+
+Local source reviewed: `Elevate/Networking/SkywardHistoryAPI.swift`,
+`SkywardHTTP.swift`, `Models/Models.swift`, `Services/DataService.swift`,
+`Store/AppStore.swift`, `Views/AppRouter.swift`, `ElevateApp.swift`, Courses/GPA/
+ClassDetail views, history/merge tests, and legacy academic-history integration.
+
+Public sources read October 3, 2026:
+
+- [Eanes attendance](https://www.eanesisd.net/parents/attendance): Family Access
+  records and district attendance-code descriptions.
+- [Westlake attendance](https://whs.eanesisd.net/school/attendance): period
+  absences and the source update window.
+- [Skyward Family Access](https://www.skyward.com/products/student-information-system/family-engagement/family-access):
+  attendance is a portal feature.
+- [Google's Skyward SMS 2.0 integration setup](https://support.google.com/edu/classroom/answer/9356588?hl=en):
+  its OneRoster route uses district setup/vendor keys and secrets. This is a
+  separate integration route, not an endpoint usable with Elevate's existing
+  student session. It does not establish an attendance API for this app.
+
+No authenticated attendance request, live schema validation or UI/device test
+was performed. Public third-party scraper listings did not establish an
+attendance contract; they are not dependencies proposed for Elevate.
+
+Observed baseline verification: `swift test` passed 96 tests in 12 suites;
+`git diff --check` passed. No app build was run for this documentation-only
+assessment. The passing tests verify existing core behavior, not attendance
+support or the proposed navigation.
