@@ -204,3 +204,54 @@ and encoded size. Invalid or corrupt account storage is preserved and blocked
 from overwriting until explicit reset. Account-scope guards prevent stale UI
 writes; no plan writes to Skyward or changes enrollment.
 
+The planning projection is carried through the existing account-scoped course
+cache on one deterministic normal record, or an empty `isPlanningOnly` transport
+carrier when no official high-school records exist. AppStore extracts the payload
+and strips carriers before publishing courses. Notification, journal, migration,
+background and direct grade/history/timeline consumers exclude carriers. Optional
+fields preserve older cache decoding and older caches fall back only to immutable
+posted transcript semester grades. GPA inclusion and live course selection remain
+unchanged.
+
+## GPA projection
+
+Baseline uses `GPAConversionCalculator`'s completed posted semester records in
+known grades 9–12, retaining its missing-grade, pass-code, completion and
+conflicting-duplicate exclusions. This is a calculated baseline, not a fetched
+official transcript GPA. Source courses are immutable. Manual earned-credit
+entries never contribute grades, which prevents them from duplicating imported
+semester grades; they may consequently include credit without a GPA baseline.
+
+Projected values add only planned semester records with eligible finite,
+nonnegative expected scores, using `AcademicScoreValue`'s magnitude bound. Every
+included record counts once regardless of the supplied credits, matching the
+existing equal-semester conversion assumption where verified source credits are
+unavailable. **Enter each semester separately**; a 1-credit allocation with one
+expected score does not secretly become two semester GPA records. Missing,
+invalid and explicitly excluded planned grades leave planned credits intact but
+are skipped from GPA with a visible reason/count. With no completed source grades,
+baseline is unavailable and any projected GPA reflects future entries alone.
+
+Named policies preserve Elevate's district percentage average and weighted
+percentage calculation (+10 AP level / +5 Honors, 110 cap per weighted record)
+and reuse `GPAConversionPolicy` for the generic 4.0/5.0 thresholds and bonuses.
+Official records retain existing course-name level detection; planned records use
+the user's explicit level selection. They do not apply a college's eligibility,
+credit-weighting or repeat rules. Neither future grades nor manual credit entries
+enter official GPA, college standing, course averages or widgets.
+
+## Verification boundary
+
+`TranscriptCreditTests` verifies automatic subject/credit rules, middle-school
+eligibility, duplicates/conflicts/repeats, invalid grades, completion, correction
+provenance, legacy reconciliation, parser/cache compatibility and storage bounds.
+`CoursePlannerTests` exercises credit deficits, partial allocations, category
+coverage independent of total/endorsement, duplicate identities, malformed
+credits/scores, GPA-only exclusions, completed-grade provenance, baseline
+immutability, manual/official duplication prevention, named-policy projections,
+equal-semester weighting and persistence round-trip. Core tests do not establish
+device UI behavior or counselor approval of an individual graduation plan. Current
+regressions also cover expected AP English deficits without earned/GPA changes,
+source-year ambiguity, real gradebook identity, catalog semester/annual caps,
+completed/previously earned equivalents, split terms and stable deduplication, unknown
+classification, manual overlap review and scoped future-plan persistence.
