@@ -265,7 +265,7 @@ struct AssignmentImpactSheet: View {
     private func calculator(for candidate: AssignmentImpactCandidate) -> some View {
         let entry = self.entry
         let earned = entry.enteredPoints
-        let outcomes = earned.map { outcomes(for: candidate, earned: $0) } ?? []
+        let outcomes = earned.map { self.outcomes(for: candidate, earned: $0) } ?? []
         let shared = outcomes.first.flatMap { sharedMessage($0.result, candidate: candidate) }
 
         GroupLabel("Score")

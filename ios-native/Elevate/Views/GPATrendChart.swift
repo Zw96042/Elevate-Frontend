@@ -306,7 +306,7 @@ struct GPATrendChart: View {
         }
         .onDisappear { scrubFraction = nil }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(seriesName) GPA trend")
+        .accessibilityLabel(Text("\(seriesName) GPA trend"))
         .accessibilityValue(accessibilityValue)
         .accessibilityHint("Swipe up or down to hear each term.")
         .accessibilityAdjustableAction(adjust)

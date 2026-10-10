@@ -95,11 +95,7 @@ struct WhatIfScenariosSheet: View {
                     }
                     if !isLibraryUnreadable {
                         ForEach(scenarios) { scenario in
-                            VStack(spacing: 0) {
-                                InsetDivider()
-                                savedRow(scenario, evaluation: evaluations[scenario.id])
-                            }
-                            .transition(.opacity)
+                            savedRowWithDivider(scenario, evaluation: evaluations[scenario.id])
                         }
                     }
 
@@ -219,6 +215,15 @@ struct WhatIfScenariosSheet: View {
     private var currentDetail: String {
         guard let estimate = current.estimate else { return "Can't estimate from the loaded gradebooks" }
         return comparison(estimate, official: current.officialValue) ?? "Estimate"
+    }
+
+    private func savedRowWithDivider(_ scenario: WhatIfScenario,
+                                     evaluation: WhatIfScenarioEvaluation?) -> some View {
+        VStack(spacing: 0) {
+            InsetDivider()
+            savedRow(scenario, evaluation: evaluation)
+        }
+        .transition(.opacity)
     }
 
     @ViewBuilder
