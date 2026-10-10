@@ -84,33 +84,7 @@ struct WhatIfScenariosSheet: View {
                             .padding(.top, 12)
                     }
 
-                    GroupLabel("Compare")
-                        .frame(minHeight: 32, alignment: .bottomLeading)
-                        .padding(.top, 12)
-                        .padding(.bottom, 4)
-                    skywardRow
-                    if current.hasEffectiveChanges {
-                        InsetDivider()
-                        currentRow
-                    }
-                    if !isLibraryUnreadable {
-                        ForEach(scenarios) { scenario in
-                            savedRowWithDivider(scenario, evaluation: evaluations[scenario.id])
-                        }
-                    }
-
-                    if isLibraryUnreadable {
-                        unreadableSection
-                            .padding(.top, 16)
-                    } else if scenarios.isEmpty {
-                        EmptyStateView(
-                            title: "No saved scenarios",
-                            message: current.hasEffectiveChanges
-                                ? "Save current changes to compare them later."
-                                : "Make what-if changes, then save them here."
-                        )
-                        .accessibilityIdentifier("scenario.empty")
-                    }
+                    comparisons(evaluations)
 
                     notes
                 }
@@ -215,6 +189,39 @@ struct WhatIfScenariosSheet: View {
     private var currentDetail: String {
         guard let estimate = current.estimate else { return "Can't estimate from the loaded gradebooks" }
         return comparison(estimate, official: current.officialValue) ?? "Estimate"
+    }
+
+    /// The Compare rows, kept out of `body` so Xcode 26 can type-check the
+    /// sheet in reasonable time.
+    @ViewBuilder
+    private func comparisons(_ evaluations: [String: WhatIfScenarioEvaluation]) -> some View {
+        GroupLabel("Compare")
+            .frame(minHeight: 32, alignment: .bottomLeading)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+        skywardRow
+        if current.hasEffectiveChanges {
+            InsetDivider()
+            currentRow
+        }
+        if !isLibraryUnreadable {
+            ForEach(scenarios) { scenario in
+                savedRowWithDivider(scenario, evaluation: evaluations[scenario.id])
+            }
+        }
+
+        if isLibraryUnreadable {
+            unreadableSection
+                .padding(.top, 16)
+        } else if scenarios.isEmpty {
+            EmptyStateView(
+                title: "No saved scenarios",
+                message: current.hasEffectiveChanges
+                    ? "Save current changes to compare them later."
+                    : "Make what-if changes, then save them here."
+            )
+            .accessibilityIdentifier("scenario.empty")
+        }
     }
 
     private func savedRowWithDivider(_ scenario: WhatIfScenario,

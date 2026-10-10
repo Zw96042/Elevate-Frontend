@@ -267,6 +267,21 @@ struct GPATrendChart: View {
     }
 
     var body: some View {
+        // Split from the accessibility modifiers below so Xcode 26 can
+        // type-check each chain in reasonable time.
+        chart
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("\(seriesName) GPA trend"))
+            .accessibilityValue(accessibilityValue)
+            .accessibilityHint("Swipe up or down to hear each term.")
+            .accessibilityAdjustableAction(adjust)
+            .accessibilityChartDescriptor(
+                GPAChartDescriptor(title: "\(seriesName) GPA by term", points: points)
+            )
+            .accessibilityIdentifier("gpa.chart")
+    }
+
+    private var chart: some View {
         VStack(alignment: .leading, spacing: 6) {
             GeometryReader { proxy in
                 plot(in: proxy.size)
@@ -305,15 +320,6 @@ struct GPATrendChart: View {
             if reduced { settle() }
         }
         .onDisappear { scrubFraction = nil }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("\(seriesName) GPA trend"))
-        .accessibilityValue(accessibilityValue)
-        .accessibilityHint("Swipe up or down to hear each term.")
-        .accessibilityAdjustableAction(adjust)
-        .accessibilityChartDescriptor(
-            GPAChartDescriptor(title: "\(seriesName) GPA by term", points: points)
-        )
-        .accessibilityIdentifier("gpa.chart")
     }
 
     /// An end of the curve: its term (with the school year on All years) and
