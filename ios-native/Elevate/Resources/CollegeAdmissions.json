@@ -1,0 +1,2585 @@
+{
+  "checkedOn": "2026-10-06",
+  "profiles": [
+    {
+      "id": "texas-state",
+      "name": "Texas State University",
+      "isNew": true,
+      "searchAliases": [
+        "TXST",
+        "Bobcats"
+      ],
+      "location": "San Marcos, Texas",
+      "locationSourceURL": "https://www.admissions.txst.edu/future-students/freshman/admission-requirements.html",
+      "admissionsURL": "https://www.admissions.txst.edu/future-students/freshman/admission-requirements.html",
+      "sourceURL": "https://www.admissions.txst.edu/future-students/freshman/admission-requirements.html",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "recommended",
+          "sourceURL": "https://www.admissions.txst.edu/future-students/freshman/admission-requirements.html",
+          "note": "Recommended curriculum for assured admission; applicants without it enter review."
+        },
+        {
+          "subject": "Mathematics",
+          "units": 4,
+          "kind": "recommended",
+          "sourceURL": "https://www.admissions.txst.edu/future-students/freshman/admission-requirements.html",
+          "note": "Recommended curriculum for assured admission; applicants without it enter review."
+        },
+        {
+          "subject": "Science",
+          "units": 4,
+          "kind": "recommended",
+          "sourceURL": "https://www.admissions.txst.edu/future-students/freshman/admission-requirements.html",
+          "note": "Recommended curriculum for assured admission; applicants without it enter review."
+        },
+        {
+          "subject": "Social studies",
+          "units": 3,
+          "kind": "recommended",
+          "sourceURL": "https://www.admissions.txst.edu/future-students/freshman/admission-requirements.html",
+          "note": "Recommended curriculum for assured admission; applicants without it enter review."
+        },
+        {
+          "subject": "World language",
+          "units": 2,
+          "kind": "recommended",
+          "sourceURL": "https://www.admissions.txst.edu/future-students/freshman/admission-requirements.html",
+          "note": "Recommended curriculum for assured admission; applicants without it enter review."
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "Assured admission combines diploma type with class rank and, outside the top quarter, test scores. Top-75% applicants without qualifying scores receive holistic review; fourth-quarter applicants need qualifying scores.",
+          "sourceURL": "https://www.admissions.txst.edu/future-students/freshman/admission-requirements.html"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "unt",
+      "name": "University of North Texas",
+      "isNew": true,
+      "searchAliases": [
+        "UNT",
+        "North Texas"
+      ],
+      "location": "Denton, Texas",
+      "locationSourceURL": "https://www.unt.edu/admissions/freshman/admission-requirements.html",
+      "admissionsURL": "https://www.unt.edu/admissions/freshman/admission-requirements.html",
+      "sourceURL": "https://www.unt.edu/admissions/freshman/admission-requirements.html",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "A cumulative unweighted high-school GPA of 3.25 is one guaranteed-admission route; UNT standardizes GPAs to a 4.0 scale. A separate 3.0 core-course GPA route uses four years each of English, math and science and three of social science. These are alternative eligibility routes, not a class-average comparison.",
+          "sourceURL": "https://www.unt.edu/admissions/freshman/admission-requirements.html"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "ut-arlington",
+      "name": "University of Texas at Arlington",
+      "isNew": true,
+      "searchAliases": [
+        "UTA",
+        "UT Arlington"
+      ],
+      "location": "Arlington, Texas",
+      "locationSourceURL": "https://www.uta.edu/admissions/apply/freshmen",
+      "admissionsURL": "https://www.uta.edu/admissions/apply/freshmen",
+      "sourceURL": "https://www.uta.edu/admissions/apply/freshmen",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "An unweighted 3.25 GPA on a 4.0 scale or top-quartile rank is a guaranteed-admission route; other class-rank routes combine test scores and advanced credits. Applicants outside these criteria receive individual holistic review.",
+          "sourceURL": "https://www.uta.edu/admissions/apply/freshmen"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "sfa",
+      "name": "Stephen F. Austin State University",
+      "isNew": true,
+      "searchAliases": [
+        "SFA",
+        "Stephen F Austin"
+      ],
+      "location": "Nacogdoches, Texas",
+      "locationSourceURL": "https://www.sfasu.edu/apply/first-year",
+      "admissionsURL": "https://www.sfasu.edu/apply/first-year",
+      "sourceURL": "https://www.sfasu.edu/apply/first-year",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "For 2025–26 and 2026–27 terms, SFA is test optional and automatically admits applicants in the top quarter. Other applicants are reviewed using available information; some scholarships still require scores.",
+          "sourceURL": "https://www.sfasu.edu/apply/first-year"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "oklahoma",
+      "name": "University of Oklahoma",
+      "isNew": true,
+      "searchAliases": [
+        "OU",
+        "Sooners"
+      ],
+      "location": "Norman, Oklahoma",
+      "locationSourceURL": "https://www.ou.edu/admissions/apply/freshman/requirements-factors",
+      "admissionsURL": "https://www.ou.edu/admissions/apply/freshman/requirements-factors",
+      "sourceURL": "https://www.ou.edu/admissions/apply/freshman/requirements-factors",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "sourceURL": "https://www.ou.edu/admissions/apply/freshman/requirements-factors",
+          "note": ""
+        },
+        {
+          "subject": "Mathematics",
+          "units": 3,
+          "kind": "required",
+          "sourceURL": "https://www.ou.edu/admissions/apply/freshman/requirements-factors",
+          "note": "Four units recommended; Algebra I/II, geometry and higher college-preparatory math."
+        },
+        {
+          "subject": "Laboratory science",
+          "units": 3,
+          "kind": "required",
+          "sourceURL": "https://www.ou.edu/admissions/apply/freshman/requirements-factors",
+          "note": ""
+        },
+        {
+          "subject": "Social studies",
+          "units": 3,
+          "kind": "required",
+          "sourceURL": "https://www.ou.edu/admissions/apply/freshman/requirements-factors",
+          "note": ""
+        },
+        {
+          "subject": "Academic electives",
+          "units": 2,
+          "kind": "required",
+          "sourceURL": "https://www.ou.edu/admissions/apply/freshman/requirements-factors",
+          "note": "Additional units from listed subjects, computer science or foreign language."
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "OU gives greatest weight to high-school grades and reviews core GPA, course rigor and test scores. It compares a student's GPA with other OU applicants and applicants from the same high school; this does not publish a complete recalculation formula.",
+          "sourceURL": "https://www.ou.edu/admissions/apply/freshman/requirements-factors"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "oklahoma-state",
+      "name": "Oklahoma State University",
+      "isNew": true,
+      "searchAliases": [
+        "OSU",
+        "OK State"
+      ],
+      "location": "Stillwater, Oklahoma",
+      "locationSourceURL": "https://go.okstate.edu/admissions/freshman/admission-requirements",
+      "admissionsURL": "https://go.okstate.edu/admissions/freshman/admission-requirements",
+      "sourceURL": "https://go.okstate.edu/admissions/freshman/admission-requirements",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "sourceURL": "https://go.okstate.edu/admissions/freshman/admission-requirements",
+          "note": ""
+        },
+        {
+          "subject": "Mathematics",
+          "units": 3,
+          "kind": "required",
+          "sourceURL": "https://go.okstate.edu/admissions/freshman/admission-requirements",
+          "note": ""
+        },
+        {
+          "subject": "Social studies",
+          "units": 3,
+          "kind": "required",
+          "sourceURL": "https://go.okstate.edu/admissions/freshman/admission-requirements",
+          "note": ""
+        },
+        {
+          "subject": "Laboratory science",
+          "units": 3,
+          "kind": "required",
+          "sourceURL": "https://go.okstate.edu/admissions/freshman/admission-requirements",
+          "note": ""
+        },
+        {
+          "subject": "Academic electives",
+          "units": 2,
+          "kind": "required",
+          "sourceURL": "https://go.okstate.edu/admissions/freshman/admission-requirements",
+          "note": "Listed core subjects, computer science or foreign language."
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "OSU uses a weighted cumulative GPA based on a 4.0 scale for admissions and scholarships. Its published page does not specify individual course bonuses. A 3.0 GPA in the 15-unit core is one assured-admission route; programs can have additional criteria.",
+          "sourceURL": "https://go.okstate.edu/admissions/freshman/admission-requirements"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "arkansas",
+      "name": "University of Arkansas",
+      "isNew": true,
+      "searchAliases": [
+        "UARK",
+        "Arkansas",
+        "Razorbacks"
+      ],
+      "location": "Fayetteville, Arkansas",
+      "locationSourceURL": "https://admissions.uark.edu/apply/new-freshman.php",
+      "admissionsURL": "https://admissions.uark.edu/apply/new-freshman.php",
+      "sourceURL": "https://admissions.uark.edu/apply/new-freshman.php",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "Admissions evaluates GPAs on a 4.0 base and gives one extra grade point only to AP, IB and clearly indicated dual-enrollment courses. GPAs containing Honors or Pre-AP weight may be recalculated. Subject eligibility and lower-grade treatment are not fully specified here; do not implement a complete formula from this statement.",
+          "sourceURL": "https://admissions.uark.edu/apply/new-freshman.php"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "nebraska",
+      "name": "University of Nebraska–Lincoln",
+      "isNew": true,
+      "searchAliases": [
+        "UNL",
+        "Nebraska"
+      ],
+      "location": "Lincoln, Nebraska",
+      "locationSourceURL": "https://admissions.unl.edu/apply/admission-requirements/first-year/",
+      "admissionsURL": "https://admissions.unl.edu/apply/admission-requirements/first-year/",
+      "sourceURL": "https://admissions.unl.edu/apply/admission-requirements/first-year/",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "sourceURL": "https://admissions.unl.edu/apply/admission-requirements/first-year/",
+          "note": ""
+        },
+        {
+          "subject": "Mathematics",
+          "units": 4,
+          "kind": "required",
+          "sourceURL": "https://admissions.unl.edu/apply/admission-requirements/first-year/",
+          "note": "Algebra I, Algebra II, geometry, and a course building on Algebra II."
+        },
+        {
+          "subject": "Science",
+          "units": 3,
+          "kind": "required",
+          "sourceURL": "https://admissions.unl.edu/apply/admission-requirements/first-year/",
+          "note": "Two units from biology, chemistry, physics or earth science; one unit includes laboratory instruction."
+        },
+        {
+          "subject": "Social studies",
+          "units": 3,
+          "kind": "required",
+          "sourceURL": "https://admissions.unl.edu/apply/admission-requirements/first-year/",
+          "note": ""
+        },
+        {
+          "subject": "World language",
+          "units": 2,
+          "kind": "required",
+          "sourceURL": "https://admissions.unl.edu/apply/admission-requirements/first-year/",
+          "note": "Same language; students unable to take two years may still qualify."
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "Assured admission requires the 16-unit curriculum and one performance criterion: 3.0 cumulative GPA, ACT 20, SAT 1040, or top-half rank. Engineering and other colleges may add requirements.",
+          "sourceURL": "https://admissions.unl.edu/apply/admission-requirements/first-year/"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "kansas-state",
+      "name": "Kansas State University",
+      "isNew": true,
+      "searchAliases": [
+        "K-State",
+        "KSU"
+      ],
+      "location": "Manhattan, Kansas",
+      "locationSourceURL": "https://www.k-state.edu/admissions/undergrad/manhattan/apply/incoming-freshmen/requirements.html",
+      "admissionsURL": "https://www.k-state.edu/admissions/undergrad/manhattan/apply/incoming-freshmen/requirements.html",
+      "sourceURL": "https://www.k-state.edu/admissions/undergrad/manhattan/apply/incoming-freshmen/requirements.html",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "Assured admission uses a cumulative weighted or unweighted high-school GPA of 3.25, or ACT 21/SAT 1060; college coursework taken in high school must have at least a 2.0 GPA when applicable. Applicants below these criteria receive individual review; some majors have additional requirements.",
+          "sourceURL": "https://www.k-state.edu/admissions/undergrad/manhattan/apply/incoming-freshmen/requirements.html"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "lsu",
+      "name": "Louisiana State University",
+      "isNew": true,
+      "searchAliases": [
+        "LSU",
+        "Louisiana State"
+      ],
+      "location": "Baton Rouge, Louisiana",
+      "locationSourceURL": "https://www.lsu.edu/admissions/apply/freshman.php",
+      "admissionsURL": "https://www.lsu.edu/admissions/apply/freshman.php",
+      "sourceURL": "https://www.lsu.edu/admissions/apply/freshman.php",
+      "cohort": "Published admitted profile; cohort year not stated",
+      "population": "Admitted first-year students",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "LSU considers overall high-school performance, course rigor, grade trends and intended-major preparation. For 2027 entry, applicants below a cumulative weighted GPA of 3.5 must submit ACT or SAT scores; higher-GPA applicants can apply test optional.",
+          "sourceURL": "https://www.lsu.edu/admissions/apply/freshman.php"
+        }
+      ],
+      "satRange": {
+        "lower": 1170,
+        "upper": 1350,
+        "population": "Admitted students with test scores; excludes test-optional students",
+        "cohort": "Published admitted profile; cohort year not stated",
+        "sourceURL": "https://www.lsu.edu/admissions/apply/freshman.php"
+      },
+      "actRange": {
+        "lower": 24,
+        "upper": 29,
+        "population": "Admitted students with test scores; excludes test-optional students",
+        "cohort": "Published admitted profile; cohort year not stated",
+        "sourceURL": "https://www.lsu.edu/admissions/apply/freshman.php"
+      },
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "rice",
+      "name": "Rice University",
+      "isNew": false,
+      "searchAliases": [
+        "Rice"
+      ],
+      "location": "Houston, Texas",
+      "locationSourceURL": "https://admission.rice.edu/apply/class-profile",
+      "admissionsURL": "https://admission.rice.edu/apply/class-profile",
+      "sourceURL": "https://admission.rice.edu/apply/class-profile",
+      "cohort": "Class of 2029, 2024–25 admission cycle; eighth-week census",
+      "population": "First-year applicants and deposited students (separately labeled)",
+      "preparation": [],
+      "gpaPolicyFacts": [],
+      "satRange": {
+        "lower": 1510,
+        "upper": 1560,
+        "population": "Deposited students reporting SAT",
+        "cohort": "Class of 2029, 2024–25 admission cycle; eighth-week census",
+        "sourceURL": "https://admission.rice.edu/apply/class-profile"
+      },
+      "actRange": {
+        "lower": 34,
+        "upper": 36,
+        "population": "Deposited students reporting ACT",
+        "cohort": "Class of 2029, 2024–25 admission cycle; eighth-week census",
+        "sourceURL": "https://admission.rice.edu/apply/class-profile"
+      },
+      "acceptance": {
+        "applicants": 36791,
+        "admitted": 2948,
+        "cohort": "Class of 2029, 2024–25 admission cycle; eighth-week census",
+        "population": "All first-year applicants",
+        "sourceURL": "https://admission.rice.edu/apply/class-profile"
+      },
+      "enrollment": {
+        "count": 1263,
+        "cohort": "Class of 2029, 2024–25 admission cycle; eighth-week census",
+        "population": "Enrolled first-year students",
+        "sourceURL": "https://admission.rice.edu/apply/class-profile"
+      },
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "mit",
+      "name": "MIT",
+      "isNew": false,
+      "searchAliases": [
+        "Massachusetts Institute of Technology"
+      ],
+      "location": "Cambridge, Massachusetts",
+      "locationSourceURL": "https://mitadmissions.org/apply/process/stats/",
+      "admissionsURL": "https://mitadmissions.org/apply/process/stats/",
+      "sourceURL": "https://mitadmissions.org/apply/process/stats/",
+      "cohort": "Class of 2029",
+      "population": "Admitted first-year students",
+      "preparation": [],
+      "gpaPolicyFacts": [],
+      "actRange": {
+        "lower": 34,
+        "upper": 36,
+        "population": "Admitted first-year students",
+        "cohort": "Class of 2029",
+        "sourceURL": "https://mitadmissions.org/apply/process/stats/"
+      },
+      "satSections": [
+        {
+          "section": "Math",
+          "lower": 780,
+          "upper": 800,
+          "population": "Admitted first-year students",
+          "cohort": "Class of 2029",
+          "sourceURL": "https://mitadmissions.org/apply/process/stats/"
+        },
+        {
+          "section": "Evidence-Based Reading and Writing",
+          "lower": 740,
+          "upper": 780,
+          "population": "Admitted first-year students",
+          "cohort": "Class of 2029",
+          "sourceURL": "https://mitadmissions.org/apply/process/stats/"
+        }
+      ],
+      "acceptance": {
+        "applicants": 29281,
+        "admitted": 1334,
+        "cohort": "Class of 2029",
+        "population": "All first-year applicants",
+        "sourceURL": "https://mitadmissions.org/apply/process/stats/"
+      },
+      "checkedOn": "2026-10-06",
+      "testMeans": []
+    },
+    {
+      "id": "alabama",
+      "name": "University of Alabama",
+      "isNew": true,
+      "searchAliases": [
+        "UA",
+        "Alabama",
+        "Crimson Tide"
+      ],
+      "location": "Tuscaloosa, Alabama",
+      "locationSourceURL": "https://admissions.ua.edu/freshman/requirements/",
+      "admissionsURL": "https://admissions.ua.edu/freshman/requirements/",
+      "sourceURL": "https://admissions.ua.edu/freshman/requirements/",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.ua.edu/freshman/requirements/"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 3,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.ua.edu/freshman/requirements/"
+        },
+        {
+          "subject": "Science",
+          "units": 3,
+          "kind": "required",
+          "note": "Two courses should have laboratory components.",
+          "sourceURL": "https://admissions.ua.edu/freshman/requirements/"
+        },
+        {
+          "subject": "Academic electives",
+          "units": 10,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.ua.edu/freshman/requirements/"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "For 2027 entry, applicants with a cumulative high-school GPA below 3.0 must submit ACT or SAT scores. All 2028 entrants will need scores. These are testing requirements rather than a published class GPA or admission guarantee.",
+          "sourceURL": "https://admissions.ua.edu/freshman/requirements/"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "mississippi-state",
+      "name": "Mississippi State University",
+      "isNew": true,
+      "searchAliases": [
+        "MSU",
+        "Mississippi State"
+      ],
+      "location": "Starkville, Mississippi",
+      "locationSourceURL": "https://www.admissions.msstate.edu/apply/admission-process/freshman-admissions",
+      "admissionsURL": "https://www.admissions.msstate.edu/apply/admission-process/freshman-admissions",
+      "sourceURL": "https://www.admissions.msstate.edu/apply/admission-process/freshman-admissions",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://www.admissions.msstate.edu/apply/admission-process/freshman-admissions"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 4,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://www.admissions.msstate.edu/apply/admission-process/freshman-admissions"
+        },
+        {
+          "subject": "Science",
+          "units": 3,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://www.admissions.msstate.edu/apply/admission-process/freshman-admissions"
+        },
+        {
+          "subject": "Social studies",
+          "units": 3,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://www.admissions.msstate.edu/apply/admission-process/freshman-admissions"
+        },
+        {
+          "subject": "Fine arts",
+          "units": 1,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://www.admissions.msstate.edu/apply/admission-process/freshman-admissions"
+        },
+        {
+          "subject": "Academic electives",
+          "units": 2,
+          "kind": "required",
+          "note": "Advanced-elective alternatives include world language and advanced academic/technical courses.",
+          "sourceURL": "https://www.admissions.msstate.edu/apply/admission-process/freshman-admissions"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "Admission criteria differ for Mississippi residents and nonresidents. The required College Preparatory Curriculum is reviewed separately; test-optional applicants receive review using high-school performance and other factors. The source lists 18 total units including a technology unit.",
+          "sourceURL": "https://www.admissions.msstate.edu/apply/admission-process/freshman-admissions"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "iowa",
+      "name": "University of Iowa",
+      "isNew": true,
+      "searchAliases": [
+        "UIowa",
+        "Iowa",
+        "Hawkeyes"
+      ],
+      "location": "Iowa City, Iowa",
+      "locationSourceURL": "https://admissions.uiowa.edu/academics/first-year-admission",
+      "admissionsURL": "https://admissions.uiowa.edu/academics/first-year-admission",
+      "sourceURL": "https://admissions.uiowa.edu/academics/first-year-admission",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "note": "Liberal Arts/Business/Education/Public Health baseline; program rules differ.",
+          "sourceURL": "https://admissions.uiowa.edu/academics/first-year-admission"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 3,
+          "kind": "required",
+          "note": "Liberal Arts/Business/Education/Public Health baseline. Engineering requires four years of math.",
+          "sourceURL": "https://admissions.uiowa.edu/academics/first-year-admission"
+        },
+        {
+          "subject": "Science",
+          "units": 3,
+          "kind": "required",
+          "note": "Liberal Arts/Business/Education/Public Health baseline; program rules differ.",
+          "sourceURL": "https://admissions.uiowa.edu/academics/first-year-admission"
+        },
+        {
+          "subject": "Social studies",
+          "units": 3,
+          "kind": "required",
+          "note": "Liberal Arts/Business/Education/Public Health baseline; program rules differ.",
+          "sourceURL": "https://admissions.uiowa.edu/academics/first-year-admission"
+        },
+        {
+          "subject": "World language",
+          "units": 2,
+          "kind": "required",
+          "note": "Same language.",
+          "sourceURL": "https://admissions.uiowa.edu/academics/first-year-admission"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "The Regent Admission Index combines ACT-equivalent score ×3, cumulative GPA ×30, and core-course years ×5. GPA may be weighted or unweighted; a non-4-point GPA is converted. This is an admission index, not a new admissions GPA formula.",
+          "sourceURL": "https://admissions.uiowa.edu/academics/first-year-admission"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": [],
+      "preparationScope": "Liberal Arts, Business, Education and Public Health baseline. Engineering requires four years of mathematics; program requirements differ."
+    },
+    {
+      "id": "iowa-state",
+      "name": "Iowa State University",
+      "isNew": true,
+      "searchAliases": [
+        "ISU",
+        "Iowa State",
+        "Cyclones"
+      ],
+      "location": "Ames, Iowa",
+      "locationSourceURL": "https://catalog.iastate.edu/admissions/",
+      "admissionsURL": "https://catalog.iastate.edu/admissions/",
+      "sourceURL": "https://catalog.iastate.edu/admissions/",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://catalog.iastate.edu/admissions/"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 3,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://catalog.iastate.edu/admissions/"
+        },
+        {
+          "subject": "Science",
+          "units": 3,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://catalog.iastate.edu/admissions/"
+        },
+        {
+          "subject": "Social studies",
+          "units": 2,
+          "kind": "required",
+          "note": "Liberal Arts and Sciences requires three years and two years of one foreign language; Engineering also requires two years of one foreign language.",
+          "sourceURL": "https://catalog.iastate.edu/admissions/"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "Iowa State uses the Regent Admission Index when scores are reported: test-equivalent ×3 + cumulative GPA ×30 + core-course years ×5. A 245 index plus minimum courses is an automatic-offer route; test-optional applications receive academic-record review. This index is not a GPA scale.",
+          "sourceURL": "https://catalog.iastate.edu/admissions/"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "missouri",
+      "name": "University of Missouri",
+      "isNew": true,
+      "searchAliases": [
+        "Mizzou",
+        "MU"
+      ],
+      "location": "Columbia, Missouri",
+      "locationSourceURL": "https://admissions.missouri.edu/apply/freshmen/admission-requirements/",
+      "admissionsURL": "https://admissions.missouri.edu/apply/freshmen/admission-requirements/",
+      "sourceURL": "https://admissions.missouri.edu/apply/freshmen/admission-requirements/",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.missouri.edu/apply/freshmen/admission-requirements/"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 4,
+          "kind": "required",
+          "note": "Algebra I or higher.",
+          "sourceURL": "https://admissions.missouri.edu/apply/freshmen/admission-requirements/"
+        },
+        {
+          "subject": "Science",
+          "units": 3,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.missouri.edu/apply/freshmen/admission-requirements/"
+        },
+        {
+          "subject": "Social studies",
+          "units": 3,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.missouri.edu/apply/freshmen/admission-requirements/"
+        },
+        {
+          "subject": "World language",
+          "units": 2,
+          "kind": "required",
+          "note": "Same language.",
+          "sourceURL": "https://admissions.missouri.edu/apply/freshmen/admission-requirements/"
+        },
+        {
+          "subject": "Fine arts",
+          "units": 1,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.missouri.edu/apply/freshmen/admission-requirements/"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "Mizzou calculates core GPA from all English, science, social studies and foreign-language courses; math at Algebra I or higher; and the highest grade in a fine-arts course. The page does not fully specify weighting or grade-point mapping. Fall 2027 applicants may choose test-optional review.",
+          "sourceURL": "https://admissions.missouri.edu/apply/freshmen/admission-requirements/"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "indiana",
+      "name": "Indiana University Bloomington",
+      "isNew": true,
+      "searchAliases": [
+        "IU",
+        "Indiana",
+        "Hoosiers"
+      ],
+      "location": "Bloomington, Indiana",
+      "locationSourceURL": "https://bloomington.iu.edu/admissions/apply/freshman/admission-standards.html",
+      "admissionsURL": "https://bloomington.iu.edu/admissions/apply/freshman/admission-standards.html",
+      "sourceURL": "https://bloomington.iu.edu/admissions/apply/freshman/admission-standards.html",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "note": "Source specifies eight semester credits.",
+          "sourceURL": "https://bloomington.iu.edu/admissions/apply/freshman/admission-standards.html"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 3.5,
+          "kind": "required",
+          "note": "Seven semester credits, including algebra, geometry and an advanced course; discrete mathematics and quantitative reasoning are not approved alternatives.",
+          "sourceURL": "https://bloomington.iu.edu/admissions/apply/freshman/admission-standards.html"
+        },
+        {
+          "subject": "Social studies",
+          "units": 3,
+          "kind": "required",
+          "note": "Six semester credits including U.S. history and world history/civilization/geography.",
+          "sourceURL": "https://bloomington.iu.edu/admissions/apply/freshman/admission-standards.html"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "IU reviews performance and cumulative GPA in college-preparatory coursework, tests when submitted, and the application essay. The page calls for at least 34 semester credits of college preparation; listed categories here are a subset, not the full audit.",
+          "sourceURL": "https://bloomington.iu.edu/admissions/apply/freshman/admission-standards.html"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": [],
+      "preparationScope": "Selected categories from the 34-semester-credit preparation pattern; this is not the complete course requirement list."
+    },
+    {
+      "id": "uconn",
+      "name": "University of Connecticut",
+      "isNew": true,
+      "searchAliases": [
+        "UConn",
+        "Connecticut"
+      ],
+      "location": "Storrs, Connecticut",
+      "locationSourceURL": "https://admissions.uconn.edu/apply/first-year/requirements/",
+      "admissionsURL": "https://admissions.uconn.edu/apply/first-year/requirements/",
+      "sourceURL": "https://admissions.uconn.edu/apply/first-year/requirements/",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.uconn.edu/apply/first-year/requirements/"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 3,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.uconn.edu/apply/first-year/requirements/"
+        },
+        {
+          "subject": "Social studies",
+          "units": 2,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.uconn.edu/apply/first-year/requirements/"
+        },
+        {
+          "subject": "Laboratory science",
+          "units": 2,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.uconn.edu/apply/first-year/requirements/"
+        },
+        {
+          "subject": "World language",
+          "units": 2,
+          "kind": "required",
+          "note": "Same language; three units strongly recommended. Native-language and accessibility exceptions are described in the source.",
+          "sourceURL": "https://admissions.uconn.edu/apply/first-year/requirements/"
+        },
+        {
+          "subject": "Academic electives",
+          "units": 3,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.uconn.edu/apply/first-year/requirements/"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "UConn recalculates applicants' high-school GPAs during admission review. Its source confirms recalculation but does not publish a full grade-point or course-bonus formula; Elevate cannot label its generic estimate as UConn's GPA.",
+          "sourceURL": "https://admissions.uconn.edu/apply/first-year/requirements/"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "rutgers",
+      "name": "Rutgers University–New Brunswick",
+      "isNew": true,
+      "searchAliases": [
+        "Rutgers",
+        "Rutgers New Brunswick"
+      ],
+      "location": "New Brunswick, New Jersey",
+      "locationSourceURL": "https://admissions.rutgers.edu/apply/how-we-make-decisions",
+      "admissionsURL": "https://admissions.rutgers.edu/apply/how-we-make-decisions",
+      "sourceURL": "https://admissions.rutgers.edu/apply/how-we-make-decisions",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "note": "School of Arts and Sciences baseline; Nursing, Engineering, Mason Gross and other Rutgers schools have different requirements.",
+          "sourceURL": "https://admissions.rutgers.edu/apply/how-we-make-decisions"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 3,
+          "kind": "required",
+          "note": "School of Arts and Sciences baseline; Nursing, Engineering, Mason Gross and other Rutgers schools have different requirements.",
+          "sourceURL": "https://admissions.rutgers.edu/apply/how-we-make-decisions"
+        },
+        {
+          "subject": "Science",
+          "units": 2,
+          "kind": "required",
+          "note": "School of Arts and Sciences baseline; Nursing, Engineering, Mason Gross and other Rutgers schools have different requirements.",
+          "sourceURL": "https://admissions.rutgers.edu/apply/how-we-make-decisions"
+        },
+        {
+          "subject": "World language",
+          "units": 2,
+          "kind": "required",
+          "note": "School of Arts and Sciences baseline; Nursing, Engineering, Mason Gross and other Rutgers schools have different requirements.",
+          "sourceURL": "https://admissions.rutgers.edu/apply/how-we-make-decisions"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "Rutgers–New Brunswick publishes separate admitted profiles and course requirements for each undergraduate school. Do not pool these school ranges into a single university-wide statistic.",
+          "sourceURL": "https://admissions.rutgers.edu/apply/how-we-make-decisions"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": [],
+      "preparationScope": "School of Arts and Sciences baseline. Nursing, Engineering, Mason Gross and other Rutgers schools have different requirements."
+    },
+    {
+      "id": "delaware",
+      "name": "University of Delaware",
+      "isNew": true,
+      "searchAliases": [
+        "UD",
+        "Delaware"
+      ],
+      "location": "Newark, Delaware",
+      "locationSourceURL": "https://www.udel.edu/apply/undergraduate-admissions/apply-to-ud/preparing-to-apply/",
+      "admissionsURL": "https://www.udel.edu/apply/undergraduate-admissions/apply-to-ud/preparing-to-apply/",
+      "sourceURL": "https://www.udel.edu/apply/undergraduate-admissions/apply-to-ud/preparing-to-apply/",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "Delaware is test optional. Its preparation guidance emphasizes strong grades in junior-year coursework, especially subjects related to the intended major, and consistent extracurricular commitment. This page does not supply a school-wide GPA recalculation.",
+          "sourceURL": "https://www.udel.edu/apply/undergraduate-admissions/apply-to-ud/preparing-to-apply/"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "wpi",
+      "name": "Worcester Polytechnic Institute",
+      "isNew": true,
+      "searchAliases": [
+        "WPI"
+      ],
+      "location": "Worcester, Massachusetts",
+      "locationSourceURL": "https://www.wpi.edu/admissions/undergraduate/apply/how-to",
+      "admissionsURL": "https://www.wpi.edu/admissions/undergraduate/apply/how-to",
+      "sourceURL": "https://www.wpi.edu/admissions/undergraduate/apply/how-to",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "WPI's first-year application requires high-school transcripts and recommendations and is test optional: applicants choose whether to submit scores. The page does not publish a calculable admissions GPA.",
+          "sourceURL": "https://www.wpi.edu/admissions/undergraduate/apply/how-to"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "rpi",
+      "name": "Rensselaer Polytechnic Institute",
+      "isNew": true,
+      "searchAliases": [
+        "RPI",
+        "Rensselaer"
+      ],
+      "location": "Troy, New York",
+      "locationSourceURL": "https://undergrad.admissions.rpi.edu/prospective-students",
+      "admissionsURL": "https://undergrad.admissions.rpi.edu/prospective-students",
+      "sourceURL": "https://undergrad.admissions.rpi.edu/prospective-students",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "recommended",
+          "note": "High-school coursework guidance.",
+          "sourceURL": "https://undergrad.admissions.rpi.edu/prospective-students"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 4,
+          "kind": "recommended",
+          "note": "Through precalculus; calculus recommended.",
+          "sourceURL": "https://undergrad.admissions.rpi.edu/prospective-students"
+        },
+        {
+          "subject": "Science",
+          "units": 3,
+          "kind": "recommended",
+          "note": "Including chemistry and laboratory physics; biology recommended and required for bio-focused majors. Physical/conceptual science is not laboratory physics.",
+          "sourceURL": "https://undergrad.admissions.rpi.edu/prospective-students"
+        },
+        {
+          "subject": "Social studies",
+          "units": 3,
+          "kind": "recommended",
+          "note": "High-school coursework guidance.",
+          "sourceURL": "https://undergrad.admissions.rpi.edu/prospective-students"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "RPI's test-optional policy has a Physician-Scientist Program exception requiring appropriate test scores.",
+          "sourceURL": "https://undergrad.admissions.rpi.edu/prospective-students"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "rochester",
+      "name": "University of Rochester",
+      "isNew": true,
+      "searchAliases": [
+        "URochester"
+      ],
+      "location": "Rochester, New York",
+      "locationSourceURL": "https://admissions.rochester.edu/applying/first-year-students/",
+      "admissionsURL": "https://admissions.rochester.edu/applying/first-year-students/",
+      "sourceURL": "https://admissions.rochester.edu/applying/first-year-students/",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "Rochester is test optional and accepts self-reported scores in review, with official verification required for enrolling students who submitted them. Published homeschool-course recommendations must not be treated as universal applicant requirements.",
+          "sourceURL": "https://admissions.rochester.edu/applying/first-year-students/"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "sdsu",
+      "name": "San Diego State University",
+      "isNew": true,
+      "searchAliases": [
+        "SDSU",
+        "San Diego State"
+      ],
+      "location": "San Diego, California",
+      "locationSourceURL": "https://admissions.sdsu.edu/first-years",
+      "admissionsURL": "https://admissions.sdsu.edu/first-years",
+      "sourceURL": "https://admissions.sdsu.edu/first-years",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "note": "CSU A–G baseline with C− or better; four math years and three science years recommended. Exact approved-course rules apply.",
+          "sourceURL": "https://admissions.sdsu.edu/first-years"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 3,
+          "kind": "required",
+          "note": "CSU A–G baseline with C− or better; four math years and three science years recommended. Exact approved-course rules apply.",
+          "sourceURL": "https://admissions.sdsu.edu/first-years"
+        },
+        {
+          "subject": "Laboratory science",
+          "units": 2,
+          "kind": "required",
+          "note": "CSU A–G baseline with C− or better; four math years and three science years recommended. Exact approved-course rules apply.",
+          "sourceURL": "https://admissions.sdsu.edu/first-years"
+        },
+        {
+          "subject": "Social studies",
+          "units": 2,
+          "kind": "required",
+          "note": "CSU A–G baseline with C− or better; four math years and three science years recommended. Exact approved-course rules apply.",
+          "sourceURL": "https://admissions.sdsu.edu/first-years"
+        },
+        {
+          "subject": "World language",
+          "units": 2,
+          "kind": "required",
+          "note": "CSU A–G baseline with C− or better; four math years and three science years recommended. Exact approved-course rules apply.",
+          "sourceURL": "https://admissions.sdsu.edu/first-years"
+        },
+        {
+          "subject": "Fine arts",
+          "units": 1,
+          "kind": "required",
+          "note": "CSU A–G baseline with C− or better; four math years and three science years recommended. Exact approved-course rules apply.",
+          "sourceURL": "https://admissions.sdsu.edu/first-years"
+        },
+        {
+          "subject": "Academic electives",
+          "units": 1,
+          "kind": "required",
+          "note": "CSU A–G baseline with C− or better; four math years and three science years recommended. Exact approved-course rules apply.",
+          "sourceURL": "https://admissions.sdsu.edu/first-years"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "SDSU does not use SAT/ACT scores for first-year admission eligibility. Non-California applicants need at least a 3.0 qualifying A–G GPA; every major is competitive. This minimum does not predict admission.",
+          "sourceURL": "https://admissions.sdsu.edu/first-years"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "cal-poly",
+      "name": "California Polytechnic State University, San Luis Obispo",
+      "isNew": true,
+      "searchAliases": [
+        "Cal Poly",
+        "Cal Poly SLO"
+      ],
+      "location": "San Luis Obispo, California",
+      "locationSourceURL": "https://www.calpoly.edu/admissions/first-year-student/selection-criteria",
+      "admissionsURL": "https://www.calpoly.edu/admissions/first-year-student/selection-criteria",
+      "sourceURL": "https://www.calpoly.edu/admissions/first-year-student/selection-criteria",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "Cal Poly considers grades 9–11 weighted GPA from college-preparatory coursework. The page permits up to eight semester bonuses for designated Honors, college-level, AP or IB courses. Eligibility distinctions and grade-point treatment require the linked detailed requirements before implementation.",
+          "sourceURL": "https://www.calpoly.edu/admissions/first-year-student/selection-criteria"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "colorado-state",
+      "name": "Colorado State University",
+      "isNew": true,
+      "searchAliases": [
+        "CSU",
+        "Colorado State"
+      ],
+      "location": "Fort Collins, Colorado",
+      "locationSourceURL": "https://admissions.colostate.edu/apply/recommended-classes/",
+      "admissionsURL": "https://admissions.colostate.edu/apply/recommended-classes/",
+      "sourceURL": "https://admissions.colostate.edu/apply/recommended-classes/",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "recommended",
+          "note": "CSU's recommendations; applicants with deficiencies may still receive review.",
+          "sourceURL": "https://admissions.colostate.edu/apply/recommended-classes/"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 4,
+          "kind": "recommended",
+          "note": "CSU's recommendations; applicants with deficiencies may still receive review.",
+          "sourceURL": "https://admissions.colostate.edu/apply/recommended-classes/"
+        },
+        {
+          "subject": "Science",
+          "units": 3,
+          "kind": "recommended",
+          "note": "Two laboratory sciences.",
+          "sourceURL": "https://admissions.colostate.edu/apply/recommended-classes/"
+        },
+        {
+          "subject": "Social studies",
+          "units": 3,
+          "kind": "recommended",
+          "note": "CSU's recommendations; applicants with deficiencies may still receive review.",
+          "sourceURL": "https://admissions.colostate.edu/apply/recommended-classes/"
+        },
+        {
+          "subject": "World language",
+          "units": 2,
+          "kind": "recommended",
+          "note": "Same language.",
+          "sourceURL": "https://admissions.colostate.edu/apply/recommended-classes/"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "CSU can admit students with recommended-course deficiencies when other strengths establish preparation. Course-subject classification follows the student's high school rather than a guessed title classifier.",
+          "sourceURL": "https://admissions.colostate.edu/apply/recommended-classes/"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "oregon-state",
+      "name": "Oregon State University",
+      "isNew": true,
+      "searchAliases": [
+        "OSU",
+        "Oregon State"
+      ],
+      "location": "Corvallis, Oregon",
+      "locationSourceURL": "https://admissions.oregonstate.edu/admission-requirements",
+      "admissionsURL": "https://admissions.oregonstate.edu/admission-requirements",
+      "sourceURL": "https://admissions.oregonstate.edu/admission-requirements",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "note": "Language arts focused on reading, writing/composition or literature; C− or better.",
+          "sourceURL": "https://admissions.oregonstate.edu/admission-requirements"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 3,
+          "kind": "required",
+          "note": "C− or better; four years encouraged. Engineering has additional math guidance.",
+          "sourceURL": "https://admissions.oregonstate.edu/admission-requirements"
+        },
+        {
+          "subject": "World language",
+          "units": 2,
+          "kind": "required",
+          "note": "One published route is two high-school years averaging C− or better; alternative proficiency routes and deficiency remedies are available.",
+          "sourceURL": "https://admissions.oregonstate.edu/admission-requirements"
+        },
+        {
+          "subject": "Science",
+          "units": 3,
+          "kind": "required",
+          "note": "C− or better in each class, including one year each in two different sciences.",
+          "sourceURL": "https://admissions.oregonstate.edu/admission-requirements"
+        },
+        {
+          "subject": "Social studies",
+          "units": 3,
+          "kind": "required",
+          "note": "C− or better in each class.",
+          "sourceURL": "https://admissions.oregonstate.edu/admission-requirements"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "Oregon State reviews academic preparation and achievement holistically. Some subject requirements can be met through documented alternatives; the listed year counts do not establish a complete automated eligibility decision.",
+          "sourceURL": "https://admissions.oregonstate.edu/admission-requirements"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "ut-el-paso",
+      "name": "University of Texas at El Paso",
+      "isNew": true,
+      "searchAliases": [
+        "UTEP",
+        "Miners"
+      ],
+      "location": "El Paso, Texas",
+      "locationSourceURL": "https://www.utep.edu/admissions/first-time-in-college/",
+      "admissionsURL": "https://www.utep.edu/admissions/first-time-in-college/",
+      "sourceURL": "https://www.utep.edu/admissions/first-time-in-college/",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "UTEP offers assured-admission paths using diploma type, high-school rank and test scores, plus reviewed admission through the START Program for eligible students outside those paths. START provides first-term math and/or English preparation.",
+          "sourceURL": "https://www.utep.edu/admissions/first-time-in-college/"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "sam-houston",
+      "name": "Sam Houston State University",
+      "isNew": true,
+      "searchAliases": [
+        "SHSU",
+        "Sam Houston"
+      ],
+      "location": "Huntsville, Texas",
+      "locationSourceURL": "https://catalog.shsu.edu/undergraduate/academic-policies-procedures/admission-standards/",
+      "admissionsURL": "https://catalog.shsu.edu/undergraduate/academic-policies-procedures/admission-standards/",
+      "sourceURL": "https://catalog.shsu.edu/undergraduate/academic-policies-procedures/admission-standards/",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "An unweighted GPA of 3.0 is one automatic-admission route, with or without test scores. Other routes include eligible rank, GPA/test combinations and at least 12 transferable dual-credit hours with a 2.5 GPA; required diploma plans and program criteria still apply.",
+          "sourceURL": "https://catalog.shsu.edu/undergraduate/academic-policies-procedures/admission-standards/"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "mcgill",
+      "name": "McGill University",
+      "isNew": true,
+      "searchAliases": [
+        "McGill",
+        "Montreal"
+      ],
+      "location": "Montréal, Québec, Canada",
+      "locationSourceURL": "https://www.mcgill.ca/undergraduate-admissions/apply/requirements/us",
+      "admissionsURL": "https://www.mcgill.ca/undergraduate-admissions/apply/requirements/us",
+      "sourceURL": "https://www.mcgill.ca/undergraduate-admissions/apply/requirements/us",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "Applicants following a U.S. high-school curriculum",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "McGill reviews grades 10–12, including program prerequisites and failed or repeated courses. Self-report grades in their original format, without averaging, converting or applying weight. Published typical admission grades vary by program and are not a university-wide GPA formula.",
+          "sourceURL": "https://www.mcgill.ca/undergraduate-admissions/apply/requirements/us"
+        },
+        {
+          "text": "For Fall 2027, listed programs offer an ACT/SAT opt-out. Program-specific subject prerequisites remain; grades from an American high school do not map to McGill's undergraduate grading scale.",
+          "sourceURL": "https://www.mcgill.ca/undergraduate-admissions/apply/requirements/us"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "toronto",
+      "name": "University of Toronto",
+      "isNew": true,
+      "searchAliases": [
+        "U of T",
+        "UofT",
+        "Toronto"
+      ],
+      "location": "Toronto, Ontario, Canada",
+      "locationSourceURL": "https://future.utoronto.ca/requirements-international-high-schools",
+      "admissionsURL": "https://future.utoronto.ca/requirements-international-high-schools",
+      "sourceURL": "https://future.utoronto.ca/requirements-international-high-schools",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "Applicants following a U.S. high-school curriculum",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 1,
+          "kind": "required",
+          "note": "Senior/Grade 12 equivalent English; this is not a total high-school English-year requirement.",
+          "sourceURL": "https://future.utoronto.ca/requirements-international-high-schools",
+          "comparisonScope": "seniorEnglish"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "U of T expects an accredited U.S. high-school diploma, rigorous coursework and the highest available level of prerequisite subjects. Additional prerequisites vary by program. Applicants may submit SAT/ACT scores; Engineering requires disclosure of all test scores.",
+          "sourceURL": "https://future.utoronto.ca/requirements-international-high-schools"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": [],
+      "preparationScope": "Senior/Grade 12 equivalent English only. Additional prerequisites vary by program; earlier English credits do not establish this requirement."
+    },
+    {
+      "id": "oxford",
+      "name": "University of Oxford",
+      "isNew": true,
+      "searchAliases": [
+        "Oxford"
+      ],
+      "location": "Oxford, England, United Kingdom",
+      "locationSourceURL": "https://www.ox.ac.uk/admissions/undergraduate/courses/admissions-requirements/international-qualifications",
+      "admissionsURL": "https://www.ox.ac.uk/admissions/undergraduate/courses/admissions-requirements/international-qualifications",
+      "sourceURL": "https://www.ox.ac.uk/admissions/undergraduate/courses/admissions-requirements/international-qualifications",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "Applicants using U.S. AP qualifications",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "Oxford's U.S. qualification routes use four AP exams at grade 5, or three APs at grade 5 plus ACT/SAT, with required AP subjects and score thresholds set by the course's A-level-equivalent standard. ACT/SAT thresholds span 31–33 and 1460–1480. These are qualification routes, not admitted-student middle-50% ranges.",
+          "sourceURL": "https://www.ox.ac.uk/admissions/undergraduate/courses/admissions-requirements/international-qualifications"
+        },
+        {
+          "text": "Math-requiring courses prefer Calculus BC when available and accept AB if BC is unavailable. AB and BC do not count as two separate subjects. SAT/ACT scores must come from one sitting; Oxford does not superscore.",
+          "sourceURL": "https://www.ox.ac.uk/admissions/undergraduate/courses/admissions-requirements/international-qualifications"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "ubc",
+      "name": "University of British Columbia",
+      "isNew": true,
+      "searchAliases": [
+        "UBC",
+        "British Columbia"
+      ],
+      "location": "Vancouver and Kelowna, British Columbia, Canada",
+      "locationSourceURL": "https://you.ubc.ca/applying-ubc/requirements/international-high-schools/",
+      "admissionsURL": "https://you.ubc.ca/applying-ubc/requirements/international-high-schools/",
+      "sourceURL": "https://you.ubc.ca/applying-ubc/requirements/international-high-schools/",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "International-high-school applicants",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "UBC requires both general and degree-specific prerequisites, selected by the applicant's curriculum/country and intended degree. English-language competency is assessed separately. This page does not support one university-wide U.S. GPA formula or SAT/ACT class range.",
+          "sourceURL": "https://you.ubc.ca/applying-ubc/requirements/international-high-schools/"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "villanova",
+      "name": "Villanova University",
+      "isNew": true,
+      "searchAliases": [
+        "Villanova",
+        "Nova"
+      ],
+      "location": "Villanova, Pennsylvania",
+      "locationSourceURL": "https://www.villanova.edu/university/undergraduate-admission/applying-to-villanova/first-year-applicants.html",
+      "admissionsURL": "https://www.villanova.edu/university/undergraduate-admission/applying-to-villanova/first-year-applicants.html",
+      "sourceURL": "https://www.villanova.edu/university/undergraduate-admission/applying-to-villanova/first-year-applicants.html",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "Mathematics",
+          "units": 4,
+          "kind": "required",
+          "note": "School of Business only; calculus should be included if offered. Engineering separately requires physics and precalculus.",
+          "sourceURL": "https://www.villanova.edu/university/undergraduate-admission/applying-to-villanova/first-year-applicants.html"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "Villanova's preparation is college-specific: engineering requires physics and precalculus; Nursing requires a year each of biology and chemistry. Test optional through the 2026–27 campaign, with a homeschool exception. Do not apply Business's four-year math rule to every college.",
+          "sourceURL": "https://www.villanova.edu/university/undergraduate-admission/applying-to-villanova/first-year-applicants.html"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": [],
+      "preparationScope": "School of Business mathematics only. Engineering separately requires physics and precalculus; other colleges have different prerequisites."
+    },
+    {
+      "id": "san-diego",
+      "name": "University of San Diego",
+      "isNew": true,
+      "searchAliases": [
+        "USD",
+        "University San Diego"
+      ],
+      "location": "San Diego, California",
+      "locationSourceURL": "https://www.sandiego.edu/admission-and-aid/undergraduate/apply/application-requirements.php",
+      "admissionsURL": "https://www.sandiego.edu/admission-and-aid/undergraduate/apply/application-requirements.php",
+      "sourceURL": "https://www.sandiego.edu/admission-and-aid/undergraduate/apply/application-requirements.php",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "recommended",
+          "note": "",
+          "sourceURL": "https://www.sandiego.edu/admission-and-aid/undergraduate/apply/application-requirements.php"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 3,
+          "kind": "recommended",
+          "note": "Three or four years recommended.",
+          "sourceURL": "https://www.sandiego.edu/admission-and-aid/undergraduate/apply/application-requirements.php"
+        },
+        {
+          "subject": "Science",
+          "units": 3,
+          "kind": "recommended",
+          "note": "Three or four years, including two with labs.",
+          "sourceURL": "https://www.sandiego.edu/admission-and-aid/undergraduate/apply/application-requirements.php"
+        },
+        {
+          "subject": "World language",
+          "units": 3,
+          "kind": "recommended",
+          "note": "Three or four years recommended.",
+          "sourceURL": "https://www.sandiego.edu/admission-and-aid/undergraduate/apply/application-requirements.php"
+        },
+        {
+          "subject": "Social studies",
+          "units": 2,
+          "kind": "recommended",
+          "note": "",
+          "sourceURL": "https://www.sandiego.edu/admission-and-aid/undergraduate/apply/application-requirements.php"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "USD recommends four or five academic subjects each year throughout high school and accelerated coursework where appropriate. These are preparation recommendations rather than an admissions GPA formula.",
+          "sourceURL": "https://www.sandiego.edu/admission-and-aid/undergraduate/apply/application-requirements.php"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "lehigh",
+      "name": "Lehigh University",
+      "isNew": true,
+      "searchAliases": [
+        "Lehigh"
+      ],
+      "location": "Bethlehem, Pennsylvania",
+      "locationSourceURL": "https://catalog.lehigh.edu/informationofgeneralinterest/admissionanddeposit/",
+      "admissionsURL": "https://catalog.lehigh.edu/informationofgeneralinterest/admissionanddeposit/",
+      "sourceURL": "https://catalog.lehigh.edu/informationofgeneralinterest/admissionanddeposit/",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "note": "Minimum coursework; well-qualified applicants can receive a world-language waiver.",
+          "sourceURL": "https://catalog.lehigh.edu/informationofgeneralinterest/admissionanddeposit/"
+        },
+        {
+          "subject": "World language",
+          "units": 2,
+          "kind": "required",
+          "note": "Minimum coursework; well-qualified applicants can receive a world-language waiver.",
+          "sourceURL": "https://catalog.lehigh.edu/informationofgeneralinterest/admissionanddeposit/"
+        },
+        {
+          "subject": "Social studies",
+          "units": 2,
+          "kind": "required",
+          "note": "Minimum coursework; well-qualified applicants can receive a world-language waiver.",
+          "sourceURL": "https://catalog.lehigh.edu/informationofgeneralinterest/admissionanddeposit/"
+        },
+        {
+          "subject": "Laboratory science",
+          "units": 2,
+          "kind": "required",
+          "note": "Minimum coursework; well-qualified applicants can receive a world-language waiver.",
+          "sourceURL": "https://catalog.lehigh.edu/informationofgeneralinterest/admissionanddeposit/"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 3,
+          "kind": "required",
+          "note": "Minimum coursework; well-qualified applicants can receive a world-language waiver.",
+          "sourceURL": "https://catalog.lehigh.edu/informationofgeneralinterest/admissionanddeposit/"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 4,
+          "kind": "recommended",
+          "note": "Engineering and Business applicants are advised to include calculus.",
+          "sourceURL": "https://catalog.lehigh.edu/informationofgeneralinterest/admissionanddeposit/"
+        },
+        {
+          "subject": "Laboratory science",
+          "units": 4,
+          "kind": "recommended",
+          "note": "Engineering and Business applicants are advised to include calculus.",
+          "sourceURL": "https://catalog.lehigh.edu/informationofgeneralinterest/admissionanddeposit/"
+        },
+        {
+          "subject": "Social studies",
+          "units": 4,
+          "kind": "recommended",
+          "note": "Engineering and Business applicants are advised to include calculus.",
+          "sourceURL": "https://catalog.lehigh.edu/informationofgeneralinterest/admissionanddeposit/"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "Lehigh reviews rigor, academic improvement or decline, senior-year performance and grades related to the intended area of study. Most admitted students exceed minimum coursework requirements.",
+          "sourceURL": "https://catalog.lehigh.edu/informationofgeneralinterest/admissionanddeposit/"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "denver",
+      "name": "University of Denver",
+      "isNew": true,
+      "searchAliases": [
+        "DU",
+        "Denver"
+      ],
+      "location": "Denver, Colorado",
+      "locationSourceURL": "https://www.du.edu/admission-aid/undergraduate/first-year-applicants/admission-standards",
+      "admissionsURL": "https://www.du.edu/admission-aid/undergraduate/first-year-applicants/admission-standards",
+      "sourceURL": "https://www.du.edu/admission-aid/undergraduate/first-year-applicants/admission-standards",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "recommended",
+          "note": "",
+          "sourceURL": "https://www.du.edu/admission-aid/undergraduate/first-year-applicants/admission-standards"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 3,
+          "kind": "recommended",
+          "note": "Three or four years; calculus recommended for Engineering, Computer Science or Business.",
+          "sourceURL": "https://www.du.edu/admission-aid/undergraduate/first-year-applicants/admission-standards"
+        },
+        {
+          "subject": "World language",
+          "units": 3,
+          "kind": "recommended",
+          "note": "Three or four years.",
+          "sourceURL": "https://www.du.edu/admission-aid/undergraduate/first-year-applicants/admission-standards"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "Denver has no minimum GPA or mandatory high-school subject pattern. It accepts weighted GPA when offered by the school. Its Fall 2025 admitted weighted mean is 3.79, but weighting methods vary and this is not an unweighted comparison.",
+          "sourceURL": "https://www.du.edu/admission-aid/undergraduate/first-year-applicants/admission-standards"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "emory",
+      "name": "Emory University",
+      "isNew": false,
+      "searchAliases": [
+        "Emory College"
+      ],
+      "location": "Atlanta, Georgia",
+      "locationSourceURL": "https://admissions.drupal.emory.edu/why-emory/student-profile",
+      "admissionsURL": "https://admissions.drupal.emory.edu/why-emory/student-profile",
+      "sourceURL": "https://admissions.drupal.emory.edu/why-emory/student-profile",
+      "cohort": "Emory College Class of 2030, data as of June 2026",
+      "population": "Admitted Emory College first-year students with reported scores",
+      "preparation": [],
+      "gpaPolicyFacts": [],
+      "satRange": {
+        "lower": 1500,
+        "upper": 1550,
+        "population": "Admitted Emory College first-year students with reported scores",
+        "cohort": "Emory College Class of 2030, data as of June 2026",
+        "sourceURL": "https://admissions.drupal.emory.edu/why-emory/student-profile"
+      },
+      "actRange": {
+        "lower": 34,
+        "upper": 35,
+        "population": "Admitted Emory College first-year students with reported scores",
+        "cohort": "Emory College Class of 2030, data as of June 2026",
+        "sourceURL": "https://admissions.drupal.emory.edu/why-emory/student-profile"
+      },
+      "acceptance": {
+        "applicants": 42873,
+        "admitted": 3852,
+        "population": "Emory College applicants",
+        "cohort": "Emory College Class of 2030, data as of June 2026",
+        "sourceURL": "https://admissions.drupal.emory.edu/why-emory/student-profile"
+      },
+      "enrollment": {
+        "count": 1507,
+        "population": "Emory College enrolled first-year students",
+        "cohort": "Emory College Class of 2030, data as of June 2026",
+        "sourceURL": "https://admissions.drupal.emory.edu/why-emory/student-profile"
+      },
+      "publicationNote": "Oxford College has a separate profile. The snapshot is June 2026; the source does not publish SAT/ACT reporting coverage here.",
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "purdue",
+      "name": "Purdue University",
+      "isNew": false,
+      "searchAliases": [
+        "Purdue"
+      ],
+      "location": "West Lafayette and Indianapolis, Indiana",
+      "locationSourceURL": "https://admissions.purdue.edu/become-student/class-profile/",
+      "admissionsURL": "https://admissions.purdue.edu/become-student/class-profile/",
+      "sourceURL": "https://admissions.purdue.edu/become-student/class-profile/",
+      "cohort": "2025 published profile",
+      "population": "Published 2025 first-year profile; score-range population not explicitly specified",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "Purdue reports GPA for class context after converting grades to an unweighted 4.0; it says aggregate GPA is not a factor in admission review, which instead reads courses and grades.",
+          "sourceURL": "https://admissions.purdue.edu/become-student/class-profile/"
+        }
+      ],
+      "acceptance": {
+        "ratePercent": 43.4,
+        "population": "All first-year applicants",
+        "cohort": "2025 published profile",
+        "sourceURL": "https://admissions.purdue.edu/become-student/class-profile/"
+      },
+      "publicationNote": "Score ranges are omitted because their admitted or enrolled population is unclear. This profile includes West Lafayette and Indianapolis.",
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "illinois",
+      "name": "University of Illinois Urbana-Champaign",
+      "isNew": false,
+      "searchAliases": [
+        "UIUC",
+        "Illinois"
+      ],
+      "location": "Urbana and Champaign, Illinois",
+      "locationSourceURL": "https://www.admissions.illinois.edu/class-profile/",
+      "admissionsURL": "https://www.admissions.illinois.edu/class-profile/",
+      "sourceURL": "https://www.admissions.illinois.edu/class-profile/",
+      "cohort": "Rolling past-three-year admitted profile; exact year span unspecified",
+      "population": "Admitted first-year students with reported scores",
+      "preparation": [],
+      "gpaPolicyFacts": [],
+      "satRange": {
+        "lower": 1440,
+        "upper": 1540,
+        "population": "Admitted first-year students with reported scores",
+        "cohort": "Rolling past-three-year admitted profile; exact year span unspecified",
+        "sourceURL": "https://www.admissions.illinois.edu/class-profile/"
+      },
+      "actRange": {
+        "lower": 31,
+        "upper": 35,
+        "population": "Admitted first-year students with reported scores",
+        "cohort": "Rolling past-three-year admitted profile; exact year span unspecified",
+        "sourceURL": "https://www.admissions.illinois.edu/class-profile/"
+      },
+      "publicationNote": "The admitted profile covers three years without naming them. Individual college and major ranges can differ.",
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "florida",
+      "name": "University of Florida",
+      "isNew": false,
+      "searchAliases": [
+        "UF"
+      ],
+      "location": "Gainesville, Florida",
+      "locationSourceURL": "https://admissions.ufl.edu/apply/freshman/our-decision-process",
+      "admissionsURL": "https://admissions.ufl.edu/apply/freshman/our-decision-process",
+      "sourceURL": "https://admissions.ufl.edu/apply/freshman/our-decision-process",
+      "cohort": "Class of 2030 admitted profile, July 2026",
+      "population": "Admitted first-year students",
+      "preparation": [],
+      "gpaPolicyFacts": [],
+      "satRange": {
+        "lower": 1420,
+        "upper": 1520,
+        "population": "Admitted first-year students",
+        "cohort": "Class of 2030 admitted profile, July 2026",
+        "sourceURL": "https://admissions.ufl.edu/apply/freshman/our-decision-process"
+      },
+      "actRange": {
+        "lower": 32,
+        "upper": 35,
+        "population": "Admitted first-year students",
+        "cohort": "Class of 2030 admitted profile, July 2026",
+        "sourceURL": "https://admissions.ufl.edu/apply/freshman/our-decision-process"
+      },
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "vanderbilt",
+      "name": "Vanderbilt University",
+      "isNew": false,
+      "searchAliases": [
+        "Vandy"
+      ],
+      "location": "Nashville, Tennessee",
+      "locationSourceURL": "https://admissions.vanderbilt.edu/profile",
+      "admissionsURL": "https://admissions.vanderbilt.edu/profile",
+      "sourceURL": "https://admissions.vanderbilt.edu/profile",
+      "cohort": "Fall 2025",
+      "population": "Entering first-year students with reported scores",
+      "preparation": [],
+      "gpaPolicyFacts": [],
+      "actRange": {
+        "lower": 34,
+        "upper": 35,
+        "population": "Entering first-year students with reported scores",
+        "cohort": "Fall 2025",
+        "sourceURL": "https://admissions.vanderbilt.edu/profile"
+      },
+      "acceptance": {
+        "applicants": 48658,
+        "admitted": 2592,
+        "population": "All first-year applicants",
+        "cohort": "Fall 2025",
+        "sourceURL": "https://admissions.vanderbilt.edu/profile"
+      },
+      "satSections": [
+        {
+          "section": "Evidence-Based Reading and Writing",
+          "lower": 740,
+          "upper": 770,
+          "population": "Entering first-year students with reported scores",
+          "cohort": "Fall 2025",
+          "sourceURL": "https://admissions.vanderbilt.edu/profile"
+        },
+        {
+          "section": "Math",
+          "lower": 770,
+          "upper": 790,
+          "population": "Entering first-year students with reported scores",
+          "cohort": "Fall 2025",
+          "sourceURL": "https://admissions.vanderbilt.edu/profile"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "testMeans": []
+    },
+    {
+      "id": "georgia",
+      "name": "University of Georgia",
+      "isNew": false,
+      "searchAliases": [
+        "UGA"
+      ],
+      "location": "Athens, Georgia",
+      "locationSourceURL": "https://admissions.uga.edu/blog/2026-final-freshman-admit-decisions/",
+      "admissionsURL": "https://admissions.uga.edu/blog/2026-final-freshman-admit-decisions/",
+      "sourceURL": "https://admissions.uga.edu/blog/2026-final-freshman-admit-decisions/",
+      "cohort": "Fall 2026 admitted decision snapshot, March 6, 2026",
+      "population": "Admitted students in November/December and March waves",
+      "preparation": [],
+      "gpaPolicyFacts": [],
+      "satRange": {
+        "lower": 1360,
+        "upper": 1500,
+        "population": "Admitted students whose SAT was their strongest submitted test or only submitted test",
+        "cohort": "Fall 2026 admitted decision snapshot, March 6, 2026",
+        "sourceURL": "https://admissions.uga.edu/blog/2026-final-freshman-admit-decisions/"
+      },
+      "actRange": {
+        "lower": 31,
+        "upper": 34,
+        "population": "Admitted students whose ACT was their strongest submitted test or only submitted test",
+        "cohort": "Fall 2026 admitted decision snapshot, March 6, 2026",
+        "sourceURL": "https://admissions.uga.edu/blog/2026-final-freshman-admit-decisions/"
+      },
+      "acceptance": {
+        "applicants": 51600,
+        "admitted": 15400,
+        "isApproximate": true,
+        "cohort": "Fall 2026 admitted decision snapshot, March 6, 2026",
+        "population": "Entire Fall 2026 admitted decision snapshot",
+        "sourceURL": "https://admissions.uga.edu/blog/2026-final-freshman-admit-decisions/"
+      },
+      "publicationNote": "Early admission counts are published as 51,600+ applicants and 15,400+ admits, before later waitlist changes. SAT and ACT describe different strongest-test subsets.",
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "tcu",
+      "name": "Texas Christian University",
+      "isNew": false,
+      "searchAliases": [
+        "TCU"
+      ],
+      "location": "Fort Worth, Texas",
+      "locationSourceURL": "https://admissions.tcu.edu/frequently-asked-questions/what-is-the-admitted-student-profile.php",
+      "admissionsURL": "https://admissions.tcu.edu/frequently-asked-questions/what-is-the-admitted-student-profile.php",
+      "sourceURL": "https://admissions.tcu.edu/frequently-asked-questions/what-is-the-admitted-student-profile.php",
+      "cohort": "Fall 2026 entering class; updated September 18, 2026",
+      "population": "Entering first-year students with reported scores",
+      "preparation": [],
+      "gpaPolicyFacts": [],
+      "satRange": {
+        "lower": 1310,
+        "upper": 1460,
+        "population": "Entering first-year students with reported scores",
+        "cohort": "Fall 2026 entering class; updated September 18, 2026",
+        "sourceURL": "https://admissions.tcu.edu/frequently-asked-questions/what-is-the-admitted-student-profile.php"
+      },
+      "actRange": {
+        "lower": 29,
+        "upper": 33,
+        "population": "Entering first-year students with reported scores",
+        "cohort": "Fall 2026 entering class; updated September 18, 2026",
+        "sourceURL": "https://admissions.tcu.edu/frequently-asked-questions/what-is-the-admitted-student-profile.php"
+      },
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "trinity",
+      "name": "Trinity University",
+      "isNew": false,
+      "searchAliases": [
+        "Trinity"
+      ],
+      "location": "San Antonio, Texas",
+      "locationSourceURL": "https://trinity.edu/news/welcome-class-2030",
+      "admissionsURL": "https://trinity.edu/news/welcome-class-2030",
+      "sourceURL": "https://trinity.edu/news/welcome-class-2030",
+      "cohort": "Class of 2030, August 18, 2026 incoming snapshot",
+      "population": "Incoming first-year students",
+      "preparation": [],
+      "gpaPolicyFacts": [],
+      "acceptance": {
+        "ratePercent": 28,
+        "population": "All first-year applicants",
+        "cohort": "Class of 2030, August 18, 2026 incoming snapshot",
+        "sourceURL": "https://trinity.edu/news/welcome-class-2030"
+      },
+      "enrollment": {
+        "count": 660,
+        "population": "Incoming first-year students",
+        "cohort": "Class of 2030, August 18, 2026 incoming snapshot",
+        "sourceURL": "https://trinity.edu/news/welcome-class-2030"
+      },
+      "testMeans": [
+        {
+          "test": "SAT",
+          "value": 1404,
+          "population": "Incoming students reporting SAT; test-specific coverage not stated",
+          "cohort": "Class of 2030, August 18, 2026 incoming snapshot",
+          "sourceURL": "https://trinity.edu/news/welcome-class-2030"
+        },
+        {
+          "test": "ACT",
+          "value": 32,
+          "population": "Incoming students reporting ACT; test-specific coverage not stated",
+          "cohort": "Class of 2030, August 18, 2026 incoming snapshot",
+          "sourceURL": "https://trinity.edu/news/welcome-class-2030"
+        }
+      ],
+      "publicationNote": "Means, not middle-50% ranges. 41% submitted test scores in aggregate; SAT-specific and ACT-specific coverage is not reported. The article reports 11,632 applications but only a rounded admit rate.",
+      "checkedOn": "2026-10-06",
+      "satSections": []
+    },
+    {
+      "id": "nc-state",
+      "name": "North Carolina State University",
+      "isNew": false,
+      "searchAliases": [
+        "NC State",
+        "NCSU"
+      ],
+      "location": "Raleigh, North Carolina",
+      "locationSourceURL": "https://admissions.ncsu.edu/apply/fast-facts/",
+      "admissionsURL": "https://admissions.ncsu.edu/apply/fast-facts/",
+      "sourceURL": "https://admissions.ncsu.edu/apply/fast-facts/",
+      "cohort": "Fall 2026",
+      "population": "First-year applicants and enrolled students, separately labeled",
+      "preparation": [],
+      "gpaPolicyFacts": [],
+      "acceptance": {
+        "ratePercent": 41,
+        "population": "All first-year applicants",
+        "cohort": "Fall 2026",
+        "sourceURL": "https://admissions.ncsu.edu/apply/fast-facts/",
+        "applicants": 47900
+      },
+      "enrollment": {
+        "count": 6090,
+        "population": "Incoming first-year students",
+        "cohort": "Fall 2026",
+        "sourceURL": "https://admissions.ncsu.edu/apply/fast-facts/"
+      },
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "florida-state",
+      "name": "Florida State University",
+      "isNew": false,
+      "searchAliases": [
+        "FSU"
+      ],
+      "location": "Tallahassee, Florida",
+      "locationSourceURL": "https://admissions.fsu.edu/counselors",
+      "admissionsURL": "https://admissions.fsu.edu/counselors",
+      "sourceURL": "https://admissions.fsu.edu/counselors",
+      "cohort": "Fall 2026",
+      "population": "All admitted first-year students",
+      "preparation": [],
+      "gpaPolicyFacts": [],
+      "satRange": {
+        "lower": 1380,
+        "upper": 1480,
+        "population": "All admitted first-year students",
+        "cohort": "Fall 2026",
+        "sourceURL": "https://admissions.fsu.edu/counselors"
+      },
+      "actRange": {
+        "lower": 31,
+        "upper": 34,
+        "population": "All admitted first-year students",
+        "cohort": "Fall 2026",
+        "sourceURL": "https://admissions.fsu.edu/counselors"
+      },
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "ucf",
+      "name": "University of Central Florida",
+      "isNew": false,
+      "searchAliases": [
+        "UCF"
+      ],
+      "location": "Orlando, Florida",
+      "locationSourceURL": "https://www.ucf.edu/about-ucf/facts/",
+      "admissionsURL": "https://www.ucf.edu/about-ucf/facts/",
+      "sourceURL": "https://www.ucf.edu/about-ucf/facts/",
+      "cohort": "Fall 2025",
+      "population": "Enrolled first-time-in-college students",
+      "preparation": [],
+      "gpaPolicyFacts": [],
+      "acceptance": {
+        "applicants": 51692,
+        "admitted": 17027,
+        "population": "Fall 2025 first-time-in-college applicants",
+        "cohort": "Fall 2025",
+        "sourceURL": "https://www.ucf.edu/about-ucf/facts/"
+      },
+      "enrollment": {
+        "count": 4699,
+        "population": "Fall 2025 first-time-in-college students",
+        "cohort": "Fall 2025",
+        "sourceURL": "https://www.ucf.edu/about-ucf/facts/"
+      },
+      "testMeans": [
+        {
+          "test": "SAT",
+          "value": 1347,
+          "population": "Enrolled first-time-in-college students",
+          "cohort": "Fall 2025",
+          "sourceURL": "https://www.ucf.edu/about-ucf/facts/"
+        },
+        {
+          "test": "ACT",
+          "value": 29.2,
+          "population": "Enrolled first-time-in-college students",
+          "cohort": "Fall 2025",
+          "sourceURL": "https://www.ucf.edu/about-ucf/facts/"
+        }
+      ],
+      "publicationNote": "Test values are averages, not middle-50% ranges. The separate Burnett Honors College and Summer–Fall combined totals are not used.",
+      "checkedOn": "2026-10-06",
+      "satSections": []
+    },
+    {
+      "id": "baylor",
+      "name": "Baylor University",
+      "isNew": false,
+      "searchAliases": [
+        "Baylor"
+      ],
+      "location": "Waco, Texas",
+      "locationSourceURL": "https://admissions.web.baylor.edu/admission/incoming-freshman/recommended-high-school-coursework",
+      "admissionsURL": "https://admissions.web.baylor.edu/admission/incoming-freshman/recommended-high-school-coursework",
+      "sourceURL": "https://admissions.web.baylor.edu/admission/incoming-freshman/recommended-high-school-coursework",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "recommended",
+          "note": "",
+          "sourceURL": "https://admissions.web.baylor.edu/admission/incoming-freshman/recommended-high-school-coursework"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 4,
+          "kind": "recommended",
+          "note": "Through precalculus.",
+          "sourceURL": "https://admissions.web.baylor.edu/admission/incoming-freshman/recommended-high-school-coursework"
+        },
+        {
+          "subject": "Laboratory science",
+          "units": 4,
+          "kind": "recommended",
+          "note": "Biology and chemistry for predentistry, premedicine or Nursing.",
+          "sourceURL": "https://admissions.web.baylor.edu/admission/incoming-freshman/recommended-high-school-coursework"
+        },
+        {
+          "subject": "Social studies",
+          "units": 3,
+          "kind": "recommended",
+          "note": "",
+          "sourceURL": "https://admissions.web.baylor.edu/admission/incoming-freshman/recommended-high-school-coursework"
+        },
+        {
+          "subject": "World language",
+          "units": 2,
+          "kind": "recommended",
+          "note": "Same language.",
+          "sourceURL": "https://admissions.web.baylor.edu/admission/incoming-freshman/recommended-high-school-coursework"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "Baylor explicitly describes these as recommendations and has no specific course requirements for admission consideration.",
+          "sourceURL": "https://admissions.web.baylor.edu/admission/incoming-freshman/recommended-high-school-coursework"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "ucla",
+      "name": "UCLA",
+      "isNew": false,
+      "searchAliases": [],
+      "location": "Los Angeles, California",
+      "locationSourceURL": "https://admission.ucla.edu/apply/first-year/first-year-profile/2025",
+      "admissionsURL": "https://admission.ucla.edu/apply/first-year/first-year-profile/2025",
+      "sourceURL": "https://admission.ucla.edu/apply/first-year/first-year-profile/2025",
+      "cohort": "Fall 2025",
+      "population": "Admitted first-year students",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "note": "UC A–G subject pattern; course eligibility unverified.",
+          "sourceURL": "https://admission.universityofcalifornia.edu/admission-requirements/first-year-requirements/subject-requirement-a-g.html"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 3,
+          "kind": "required",
+          "note": "UC A–G subject pattern; course eligibility unverified.",
+          "sourceURL": "https://admission.universityofcalifornia.edu/admission-requirements/first-year-requirements/subject-requirement-a-g.html"
+        },
+        {
+          "subject": "Science",
+          "units": 2,
+          "kind": "required",
+          "note": "UC A–G subject pattern; course eligibility unverified.",
+          "sourceURL": "https://admission.universityofcalifornia.edu/admission-requirements/first-year-requirements/subject-requirement-a-g.html"
+        },
+        {
+          "subject": "Social studies",
+          "units": 2,
+          "kind": "required",
+          "note": "UC A–G subject pattern; course eligibility unverified.",
+          "sourceURL": "https://admission.universityofcalifornia.edu/admission-requirements/first-year-requirements/subject-requirement-a-g.html"
+        },
+        {
+          "subject": "World language",
+          "units": 2,
+          "kind": "required",
+          "note": "UC A–G subject pattern; course eligibility unverified.",
+          "sourceURL": "https://admission.universityofcalifornia.edu/admission-requirements/first-year-requirements/subject-requirement-a-g.html"
+        },
+        {
+          "subject": "Fine arts",
+          "units": 1,
+          "kind": "required",
+          "note": "UC A–G subject pattern; course eligibility unverified.",
+          "sourceURL": "https://admission.universityofcalifornia.edu/admission-requirements/first-year-requirements/subject-requirement-a-g.html"
+        },
+        {
+          "subject": "Academic electives",
+          "units": 1,
+          "kind": "required",
+          "note": "UC A–G subject pattern; course eligibility unverified.",
+          "sourceURL": "https://admission.universityofcalifornia.edu/admission-requirements/first-year-requirements/subject-requirement-a-g.html"
+        }
+      ],
+      "gpaPolicyFacts": [],
+      "acceptance": {
+        "applicants": 145085,
+        "admitted": 13659,
+        "population": "All first-year applicants",
+        "cohort": "Fall 2025",
+        "sourceURL": "https://admission.ucla.edu/apply/first-year/first-year-profile/2025"
+      },
+      "enrollment": {
+        "count": 6553,
+        "population": "Enrolled first-year students",
+        "cohort": "Fall 2025",
+        "sourceURL": "https://admission.ucla.edu/apply/first-year/first-year-profile/2025"
+      },
+      "publicationNote": "UC requires C or better in 15 yearlong A–G courses, at least 11 before the final high-school year. Course eligibility and alternative exam/college-credit routes need individual verification.",
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "berkeley",
+      "name": "UC Berkeley",
+      "isNew": false,
+      "searchAliases": [],
+      "location": "Berkeley, California",
+      "locationSourceURL": "https://admissions.berkeley.edu/apply-to-berkeley/student-profile/",
+      "admissionsURL": "https://admissions.berkeley.edu/apply-to-berkeley/student-profile/",
+      "sourceURL": "https://admissions.berkeley.edu/apply-to-berkeley/student-profile/",
+      "cohort": "Fall 2026",
+      "population": "Admitted first-year students",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "note": "UC A–G subject pattern; course eligibility unverified.",
+          "sourceURL": "https://admission.universityofcalifornia.edu/admission-requirements/first-year-requirements/subject-requirement-a-g.html"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 3,
+          "kind": "required",
+          "note": "UC A–G subject pattern; course eligibility unverified.",
+          "sourceURL": "https://admission.universityofcalifornia.edu/admission-requirements/first-year-requirements/subject-requirement-a-g.html"
+        },
+        {
+          "subject": "Science",
+          "units": 2,
+          "kind": "required",
+          "note": "UC A–G subject pattern; course eligibility unverified.",
+          "sourceURL": "https://admission.universityofcalifornia.edu/admission-requirements/first-year-requirements/subject-requirement-a-g.html"
+        },
+        {
+          "subject": "Social studies",
+          "units": 2,
+          "kind": "required",
+          "note": "UC A–G subject pattern; course eligibility unverified.",
+          "sourceURL": "https://admission.universityofcalifornia.edu/admission-requirements/first-year-requirements/subject-requirement-a-g.html"
+        },
+        {
+          "subject": "World language",
+          "units": 2,
+          "kind": "required",
+          "note": "UC A–G subject pattern; course eligibility unverified.",
+          "sourceURL": "https://admission.universityofcalifornia.edu/admission-requirements/first-year-requirements/subject-requirement-a-g.html"
+        },
+        {
+          "subject": "Fine arts",
+          "units": 1,
+          "kind": "required",
+          "note": "UC A–G subject pattern; course eligibility unverified.",
+          "sourceURL": "https://admission.universityofcalifornia.edu/admission-requirements/first-year-requirements/subject-requirement-a-g.html"
+        },
+        {
+          "subject": "Academic electives",
+          "units": 1,
+          "kind": "required",
+          "note": "UC A–G subject pattern; course eligibility unverified.",
+          "sourceURL": "https://admission.universityofcalifornia.edu/admission-requirements/first-year-requirements/subject-requirement-a-g.html"
+        }
+      ],
+      "gpaPolicyFacts": [],
+      "acceptance": {
+        "applicants": 133157,
+        "admitted": 13992,
+        "population": "All first-year applicants",
+        "cohort": "Fall 2026",
+        "sourceURL": "https://admissions.berkeley.edu/apply-to-berkeley/student-profile/"
+      },
+      "publicationNote": "UC requires C or better in 15 yearlong A–G courses, at least 11 before the final high-school year. Course eligibility and alternative exam/college-credit routes need individual verification.",
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "maryland",
+      "name": "University of Maryland",
+      "isNew": false,
+      "searchAliases": [
+        "UMD"
+      ],
+      "location": "College Park, Maryland",
+      "locationSourceURL": "https://admissions.umd.edu/apply/freshman-applicants",
+      "admissionsURL": "https://admissions.umd.edu/apply/freshman-applicants",
+      "sourceURL": "https://admissions.umd.edu/apply/freshman-applicants",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.umd.edu/apply/freshman-applicants"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 4,
+          "kind": "required",
+          "note": "Algebra I, geometry, Algebra II and a fourth course using substantive algebra if Algebra II was completed before senior year.",
+          "sourceURL": "https://admissions.umd.edu/apply/freshman-applicants"
+        },
+        {
+          "subject": "Science",
+          "units": 3,
+          "kind": "required",
+          "note": "At least two areas and two lab experiences.",
+          "sourceURL": "https://admissions.umd.edu/apply/freshman-applicants"
+        },
+        {
+          "subject": "Social studies",
+          "units": 3,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.umd.edu/apply/freshman-applicants"
+        },
+        {
+          "subject": "World language",
+          "units": 2,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.umd.edu/apply/freshman-applicants"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "Competitive applicants generally exceed the minimum coursework. Limited Enrollment Programs may have additional entry requirements; course completion does not guarantee a preferred major.",
+          "sourceURL": "https://admissions.umd.edu/apply/freshman-applicants"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "harvard",
+      "name": "Harvard University",
+      "isNew": false,
+      "searchAliases": [
+        "Harvard"
+      ],
+      "location": "Cambridge, Massachusetts",
+      "locationSourceURL": "https://college.harvard.edu/guides/preparing-college",
+      "admissionsURL": "https://college.harvard.edu/guides/preparing-college",
+      "sourceURL": "https://college.harvard.edu/guides/preparing-college",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "recommended",
+          "note": "",
+          "sourceURL": "https://college.harvard.edu/guides/preparing-college"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 4,
+          "kind": "recommended",
+          "note": "A challenging sequence aligned with interests; calculus is explicitly not required.",
+          "sourceURL": "https://college.harvard.edu/guides/preparing-college"
+        },
+        {
+          "subject": "Science",
+          "units": 4,
+          "kind": "recommended",
+          "note": "",
+          "sourceURL": "https://college.harvard.edu/guides/preparing-college"
+        },
+        {
+          "subject": "Social studies",
+          "units": 2,
+          "kind": "recommended",
+          "note": "History for at least two years, preferably three.",
+          "sourceURL": "https://college.harvard.edu/guides/preparing-college"
+        },
+        {
+          "subject": "World language",
+          "units": 4,
+          "kind": "recommended",
+          "note": "Single language.",
+          "sourceURL": "https://college.harvard.edu/guides/preparing-college"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "Harvard assesses available course opportunities and interests. Its preparation guidance prioritizes mathematical foundations and does not require every applicant to take calculus.",
+          "sourceURL": "https://college.harvard.edu/guides/preparing-college"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "ut-austin",
+      "name": "University of Texas at Austin",
+      "isNew": false,
+      "searchAliases": [
+        "UT Austin",
+        "UT"
+      ],
+      "location": "Austin, Texas",
+      "locationSourceURL": "https://admissions.utexas.edu/apply/freshman/",
+      "admissionsURL": "https://admissions.utexas.edu/apply/freshman/",
+      "sourceURL": "https://admissions.utexas.edu/apply/freshman/",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [
+        {
+          "subject": "English",
+          "units": 4,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.utexas.edu/apply/application-materials/high-school-prerequisites/"
+        },
+        {
+          "subject": "Mathematics",
+          "units": 3,
+          "kind": "required",
+          "note": "Four credits strongly recommended.",
+          "sourceURL": "https://admissions.utexas.edu/apply/application-materials/high-school-prerequisites/"
+        },
+        {
+          "subject": "Science",
+          "units": 2,
+          "kind": "required",
+          "note": "Four credits strongly recommended.",
+          "sourceURL": "https://admissions.utexas.edu/apply/application-materials/high-school-prerequisites/"
+        },
+        {
+          "subject": "Social studies",
+          "units": 3,
+          "kind": "required",
+          "note": "",
+          "sourceURL": "https://admissions.utexas.edu/apply/application-materials/high-school-prerequisites/"
+        },
+        {
+          "subject": "World language",
+          "units": 2,
+          "kind": "required",
+          "note": "Same language; UT also accepts ASL and computer science for this prerequisite.",
+          "sourceURL": "https://admissions.utexas.edu/apply/application-materials/high-school-prerequisites/"
+        }
+      ],
+      "gpaPolicyFacts": [
+        {
+          "text": "UT requires at least one official SAT or ACT score. Calculus readiness is a separate requirement for Engineering, Geosciences and specified environmental/computer-science majors; approved markers include transcript credit or test results.",
+          "sourceURL": "https://admissions.utexas.edu/apply/freshman/"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    },
+    {
+      "id": "texas-am",
+      "name": "Texas A&M University",
+      "isNew": false,
+      "searchAliases": [
+        "TAMU",
+        "A&M"
+      ],
+      "location": "College Station, Texas",
+      "locationSourceURL": "https://admissions.tamu.edu/apply/freshman/index.html",
+      "admissionsURL": "https://admissions.tamu.edu/apply/freshman/index.html",
+      "sourceURL": "https://admissions.tamu.edu/apply/freshman/index.html",
+      "cohort": "Current admissions guidance, checked October 6, 2026",
+      "population": "First-year applicants",
+      "preparation": [],
+      "gpaPolicyFacts": [
+        {
+          "text": "Texas A&M is test optional. All Engineering applicants, including automatically admitted students, are separately reviewed for placement into General Engineering. Academic review includes all attempted high-school courses and grades, rigor, GPA and rank.",
+          "sourceURL": "https://admissions.tamu.edu/apply/freshman/index.html"
+        }
+      ],
+      "checkedOn": "2026-10-06",
+      "satSections": [],
+      "testMeans": []
+    }
+  ]
+}

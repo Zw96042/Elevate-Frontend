@@ -1,0 +1,47 @@
+name: Native iOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: native-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Run core tests
+        run: swift test
+
+      - name: Build unsigned Release app
+        run: >-
+          xcodebuild
+          -project Elevate.xcodeproj
+          -scheme Elevate
+          -configuration Release
+          -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "$RUNNER_TEMP/ElevateDerivedData"
+          CODE_SIGNING_ALLOWED=NO
+          build
+
+      - name: Run static analysis
+        run: >-
+          xcodebuild
+          -project Elevate.xcodeproj
+          -scheme Elevate
+          -configuration Release
+          -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "$RUNNER_TEMP/ElevateAnalyze"
+          CODE_SIGNING_ALLOWED=NO
+          analyze

@@ -1,0 +1,1116 @@
+import SwiftUI
+import UIKit
+
+/// Today and the next six days for Calendar's quarter: Skyward's dated
+/// assignments, every assignment Skyward marks Missing in that quarter, the
+/// account's reminders by the day they fire, and undated work. Days and
+/// times are America/Chicago school days, as `SchoolWeek` builds them.
+/// Done is a personal mark only; it never changes Skyward's statuses or
+/// reminders. Checked-off work moves from every group into Done at the end.
+struct ThisWeekView: View {
+    @Environment(AppStore.self) private var store
+    @Environment(AppRouter.self) private var router
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Recomputed on activation and at each new school day.
+    @State private var now = Date()
+    /// The account this page opened for. Marks and reminders are written
+    /// only while it is still the current account.
+    @State private var openedScope: String?
+    @State private var didCaptureScope = false
+    @State private var reminder: ReminderRequest?
+    @State private var showsUndated = false
+    @State private var showsDoneList = false
+    /// The first check-off on this page opens Done, so the student sees
+    /// where the assignment went; later ones respect their choice.
+    @State private var didRevealDoneList = false
+    @State private var confirmingClearMarks = false
+    @State private var doneError: String?
+    @State private var doneRevision = 0
+
+    /// Changes whenever loading should start over or stop: another account,
+    /// sign-in state, quarter, this tab leaving view, or the app backgrounding.
+    private struct LoadIdentity: Hashable {
+        var accountRevision: Int
+        var coursesRevision: Int
+        var canShowData: Bool
+        var term: TermLabel
+        var isSelected: Bool
+        var isActive: Bool
+    }
+
+    private var loadIdentity: LoadIdentity {
+        LoadIdentity(
+            accountRevision: store.accountRevision,
+            coursesRevision: store.coursesRefreshRevision,
+            canShowData: store.canShowData,
+            term: store.calendarTerm,
+            isSelected: router.selectedTab == .calendar,
+            isActive: scenePhase == .active
+        )
+    }
+
+    var body: some View {
+        let plan = SchoolWeekPlan(data: loadedData, reminders: weekReminders, completedIDs: activeDoneIDs,
+                                  now: now) { Self.isLinked($0, to: $1) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if currentScope == nil {
+                    EmptyStateView(
+                        title: "This week isn't available",
+                        message: "Connect your Skyward account to see assignments and reminders."
+                    )
+                    .padding(.horizontal, Metrics.page)
+                    .accessibilityIdentifier("week.unavailable")
+                } else {
+                    statusStrip
+                        .padding(.horizontal, Metrics.page)
+                    scopeLines(plan.week)
+                        .padding(.horizontal, Metrics.page)
+                    content(plan)
+                        .padding(.top, 8)
+                }
+            }
+            .padding(.bottom, 32)
+        }
+        .softScrollEdges()
+        .visibleRefreshable { await store.refreshCalendar(force: true) }
+        .background(Color.appBackground.ignoresSafeArea())
+        .navigationTitle("This Week")
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("week.screen")
+        .onAppear {
+            if !didCaptureScope {
+                openedScope = store.localAccountScope
+                didCaptureScope = true
+            }
+            now = Date()
+        }
+        // Calendar's root pauses its own loading while this page is pushed,
+        // so this is the page's only refresh owner.
+        .task(id: loadIdentity) {
+            let identity = loadIdentity
+            guard identity.isSelected, identity.isActive, identity.canShowData else { return }
+            await store.refreshCalendar()
+        }
+        .task(id: plan.week.firstDay) { await advanceAtNextSchoolDay() }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in now = Date() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { now = Date() }
+        }
+        .sheet(item: $reminder) { request in ReminderSheet(request: request) }
+        .alert("Clear Done marks?", isPresented: $confirmingClearMarks) {
+            Button("Clear", role: .destructive, action: clearDoneMarks)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your saved Done marks for this account will be removed. Skyward isn't changed.")
+        }
+        .sensoryFeedback(.success, trigger: doneRevision)
+        .onChange(of: store.accountRevision) { _, _ in
+            reminder = nil
+            confirmingClearMarks = false
+            showsUndated = false
+            showsDoneList = false
+            didRevealDoneList = false
+            doneError = nil
+        }
+    }
+
+    /// Sleeps until the next America/Chicago day, then moves the week.
+    private func advanceAtNextSchoolDay() async {
+        let calendar = ThisWeekScope.calendar
+        guard let next = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date())) else { return }
+        do { try await Task.sleep(for: .seconds(max(1, next.timeIntervalSinceNow + 1))) } catch { return }
+        now = Date()
+    }
+
+    // MARK: - Scope
+
+    /// The current account, while it is the one this page opened for.
+    private var currentScope: String? {
+        guard store.canShowData, let scope = store.localAccountScope else { return nil }
+        if didCaptureScope, openedScope != scope { return nil }
+        return scope
+    }
+
+    /// Writes need the opened account to still be current everywhere.
+    private var writableScope: String? {
+        guard didCaptureScope, let scope = openedScope, store.localAccountScope == scope,
+              store.planning.accountScope == scope else { return nil }
+        return scope
+    }
+
+    private var showsDone: Bool {
+        guard let scope = currentScope else { return false }
+        return store.planning.accountScope == scope && !store.planning.completionUnavailable
+    }
+
+    /// Marks move work only while they belong to this account and can be
+    /// changed; otherwise every assignment stays in its active group.
+    private var activeDoneIDs: Set<String> {
+        showsDone ? store.planning.completedIDs : []
+    }
+
+    private var canRemind: Bool {
+        guard let scope = currentScope else { return false }
+        return store.notifications.accountScope == scope
+    }
+
+    private var weekReminders: [LocalReminder] {
+        currentScope == nil ? [] : ThisWeekScope.reminders(store)
+    }
+
+    // MARK: - Sources
+
+    private enum SourceState: Equatable {
+        case loading
+        case failed(String)
+        case loaded
+    }
+
+    /// Saved assignments for Calendar's quarter only.
+    private var calendarData: SchoolCalendarData? {
+        guard currentScope != nil, let data = store.calendarData, data.term == store.calendarTerm else { return nil }
+        return data
+    }
+
+    /// Data in which no class resolved shows nothing, so it is a failure
+    /// rather than an empty week.
+    private var assignmentState: SourceState {
+        guard let data = calendarData,
+              data.resolvedCourseCount > 0 || data.failedCourseNames.isEmpty else {
+            if let error = store.calendarError, !store.calendarLoading { return .failed(error) }
+            return .loading
+        }
+        return .loaded
+    }
+
+    private var loadedData: SchoolCalendarData? {
+        assignmentState == .loaded ? calendarData : nil
+    }
+
+    private var eligible: [UnifiedCourseData] {
+        SchoolCalendar.eligibleCourses(store.courses ?? [], term: store.calendarTerm)
+    }
+
+    // MARK: - Status and scope
+
+    private var statusStrip: some View {
+        StatusStrip(
+            lastUpdated: assignmentState == .loaded ? store.calendarLastUpdated : nil,
+            isRefreshing: store.calendarLoading && assignmentState == .loaded,
+            error: assignmentState == .loaded ? store.calendarError : nil
+        ) {
+            await store.refreshCalendar(force: true)
+        } control: {
+            ScopePicker(
+                title: "Assignment quarter",
+                valueName: store.calendarTerm.displayName,
+                hint: "Selects the quarter whose assignments are listed",
+                identifier: "week.quarter",
+                groups: [
+                    ChoiceGroup(title: "Fall semester", options: [TermLabel.q1, .q2].map(quarterOption)),
+                    ChoiceGroup(title: "Spring semester", options: [TermLabel.q3, .q4].map(quarterOption)),
+                ],
+                selection: Binding(get: { store.calendarTerm }, set: { chooseQuarter($0) })
+            )
+        }
+    }
+
+    private func quarterOption(_ term: TermLabel) -> ChoiceOption<TermLabel> {
+        ChoiceOption(value: term, title: term.displayName, identifier: "week.quarter.\(term.shortName)")
+    }
+
+    /// Calendar's quarter changes only by an explicit choice here or there.
+    private func chooseQuarter(_ term: TermLabel) {
+        guard currentScope != nil, term != store.calendarTerm else { return }
+        store.calendarTerm = term
+    }
+
+    private func scopeLines(_ week: SchoolWeek) -> some View {
+        let term = store.calendarTerm
+        let quarters = ThisWeekScope.quarters(for: week)
+        let other = quarters.first { $0 != term }
+        return VStack(alignment: .leading, spacing: 0) {
+            note("Today through \(ThisWeekScope.shortDay(week.lastDay)). Assignments from \(term.displayName).")
+                .accessibilityIdentifier("week.scope")
+            if let other {
+                note(quarters.contains(term)
+                     ? "Some of these days are in \(other.displayName). Only \(term.displayName) assignments are listed."
+                     : "These days are in \(other.displayName). Calendar is set to \(term.displayName).")
+                    .accessibilityIdentifier("week.mismatch")
+                Button("Show \(other.displayName)") { chooseQuarter(other) }
+                    .buttonStyle(ActionTextButtonStyle())
+                    .accessibilityHint("Sets Calendar's assignment quarter")
+                    .accessibilityIdentifier("week.mismatch.show")
+            }
+        }
+    }
+
+    // MARK: - Content
+
+    @ViewBuilder
+    private func content(_ plan: SchoolWeekPlan) -> some View {
+        switch assignmentState {
+        case .loading:
+            loadingRows
+        case .failed(let error):
+            InlineErrorState(title: "Couldn't load assignments", message: error) {
+                await store.refreshCalendar(force: true)
+            }
+            .padding(.horizontal, Metrics.page)
+            .padding(.top, 8)
+            .accessibilityIdentifier("week.error")
+        case .loaded:
+            if let data = loadedData {
+                loaded(plan, data: data)
+            }
+        }
+        // Personal reminders are local and remain available while Skyward
+        // assignments are loading or unavailable.
+        if assignmentState != .loaded {
+            ForEach(plan.days.filter { !plan.shownReminders(on: $0).isEmpty }) { day in
+                dayGroup(day, plan: plan)
+            }
+        }
+    }
+
+    private var loadingRows: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(0..<4, id: \.self) { index in
+                if index > 0 { InsetDivider(leading: WeekRowMetrics.textInset) }
+                SkeletonRow(lines: [SkeletonLine(.body, [16, 12, 18, 10][index]),
+                                    SkeletonLine(.subheadline, [11, 14, 9, 12][index])])
+                    .padding(.leading, WeekRowMetrics.textInset)
+            }
+        }
+        .padding(.horizontal, Metrics.page)
+        .padding(.top, 8)
+        .loadingPlaceholder("Loading this week")
+        .accessibilityIdentifier("week.loading")
+    }
+
+    @ViewBuilder
+    private func loaded(_ plan: SchoolWeekPlan, data: SchoolCalendarData) -> some View {
+        let coverage = ThisWeekScope.coverage(data, courses: store.courses ?? [])
+        let isComplete = coverage.missing.isEmpty && coverage.saved.isEmpty && store.calendarError == nil
+        let days = plan.days.filter { !$0.assignments.isEmpty || !plan.shownReminders(on: $0).isEmpty }
+
+        if !coverage.missing.isEmpty || !coverage.saved.isEmpty {
+            coverageNote(coverage)
+                .padding(.horizontal, Metrics.page)
+        }
+        completionNotes
+            .padding(.horizontal, Metrics.page)
+
+        if !plan.missing.isEmpty {
+            GroupLabel("Missing in Skyward")
+                .padding(.horizontal, Metrics.page)
+                .padding(.top, 16)
+                .accessibilityIdentifier("week.missing")
+            ForEach(Array(plan.missing.enumerated()), id: \.element.id) { index, assignment in
+                if index > 0 { InsetDivider(leading: WeekRowMetrics.textInset).padding(.horizontal, Metrics.page) }
+                assignmentRow(assignment, plan: plan, context: .missing, reminderTimes: [], key: "missing.\(index)")
+            }
+        }
+
+        if days.isEmpty {
+            emptyState(plan, data: data, isComplete: isComplete)
+                .padding(.horizontal, Metrics.page)
+                .padding(.top, 8)
+        } else {
+            ForEach(days) { day in
+                dayGroup(day, plan: plan)
+            }
+        }
+
+        if !plan.undated.isEmpty {
+            undatedGroup(plan)
+        }
+
+        if !plan.done.isEmpty {
+            doneGroup(plan)
+        }
+
+        note("Done is only for you. It doesn't change Skyward or your reminders, and Missing stays until your teacher clears it.")
+            .padding(.horizontal, Metrics.page)
+            .padding(.top, 20)
+            .accessibilityIdentifier("week.footer")
+    }
+
+    @ViewBuilder
+    private var completionNotes: some View {
+        if currentScope != nil, store.planning.accountScope == currentScope, store.planning.completionUnavailable {
+            VStack(alignment: .leading, spacing: 0) {
+                note("Done marks can't be saved on this iPhone right now.")
+                    .accessibilityIdentifier("week.completion.unavailable")
+                Button("Clear Done marks") { confirmingClearMarks = true }
+                    .buttonStyle(ActionTextButtonStyle())
+                    .accessibilityHint("Removes saved Done marks so new ones can be saved")
+                    .accessibilityIdentifier("week.completion.clear")
+            }
+        } else if showsDone, let doneError {
+            note(doneError)
+                .accessibilityIdentifier("week.done.error")
+        }
+    }
+
+    /// No active work in any of the seven days. A verified empty week needs
+    /// every class to have loaded in the latest refresh; a week whose work
+    /// is all checked off is caught up, not empty.
+    private func emptyState(_ plan: SchoolWeekPlan, data: SchoolCalendarData, isComplete: Bool) -> some View {
+        let term = store.calendarTerm.displayName
+        let through = ThisWeekScope.shortDay(plan.week.lastDay)
+        let asOf = store.calendarLastUpdated.map { ", as of \(UpdatedText.short($0))" } ?? ""
+        let title: String
+        let message: String
+        let identifier: String
+        if store.courses != nil, eligible.isEmpty {
+            title = "Assignments aren't available for \(term)"
+            message = "None of your current classes has a Skyward gradebook for this quarter."
+            identifier = "week.noClasses"
+        } else if plan.doneDueCount > 0 {
+            title = isComplete ? "All caught up through \(through)" : "All caught up in the classes that loaded"
+            message = isComplete
+                ? "Everything Skyward lists due these days is marked Done\(asOf)."
+                : "Everything due these days in the saved \(term) assignments is marked Done\(asOf)."
+            identifier = isComplete ? "week.caughtUp" : "week.caughtUpPartial"
+        } else if isComplete {
+            title = "Nothing due through \(through)"
+            message = "Skyward lists no \(term) assignments due these days\(asOf)."
+            identifier = "week.empty"
+        } else {
+            title = "Nothing due in the classes that loaded"
+            message = "The saved \(term) assignments list nothing due these days\(asOf)."
+            identifier = "week.emptyPartial"
+        }
+        return EmptyStateView(title: title, message: message)
+            .accessibilityIdentifier(identifier)
+    }
+
+    private func coverageNote(_ coverage: (missing: [String], saved: [String])) -> some View {
+        func names(_ list: [String]) -> String {
+            ListFormatter.localizedString(byJoining: list.map(WeekCourseTitle.display))
+        }
+        return VStack(alignment: .leading, spacing: 0) {
+            if !coverage.missing.isEmpty {
+                note("Assignments couldn't load for \(names(coverage.missing)). Their work isn't listed.")
+            }
+            if !coverage.saved.isEmpty {
+                note("Couldn't refresh \(names(coverage.saved)). Their saved assignments are shown.")
+            }
+            Button("Retry") {
+                Task { await store.refreshCalendar(force: true) }
+            }
+            .buttonStyle(ActionTextButtonStyle())
+            .disabled(store.calendarLoading)
+            .accessibilityLabel("Retry loading assignments")
+            .accessibilityIdentifier("week.coverage.retry")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("week.coverage")
+    }
+
+    // MARK: - Days
+
+    /// Active assignment rows, then reminders. A reminder for one of the
+    /// day's assignments joins that row instead of repeating it; one for a
+    /// Done assignment is shown with it in Done.
+    @ViewBuilder
+    private func dayGroup(_ day: SchoolWeekDay, plan: SchoolWeekPlan) -> some View {
+        let shown = plan.shownReminders(on: day)
+        let linked = Dictionary(grouping: shown.filter { reminder in
+            day.assignments.contains { Self.isLinked(reminder, to: $0) }
+        }) { $0.assignmentID ?? "" }
+        let unlinked = shown.filter { reminder in
+            !day.assignments.contains { Self.isLinked(reminder, to: $0) }
+        }
+
+        GroupLabel(ThisWeekScope.dayTitle(day.id, in: plan.week))
+            .padding(.horizontal, Metrics.page)
+            .padding(.top, 20)
+            .accessibilityIdentifier("week.day.\(day.id)")
+        ForEach(Array(day.assignments.enumerated()), id: \.element.id) { index, assignment in
+            if index > 0 { InsetDivider(leading: WeekRowMetrics.textInset).padding(.horizontal, Metrics.page) }
+            let reminders = (linked[assignment.id] ?? []).filter { Self.isLinked($0, to: assignment) }
+            assignmentRow(assignment, plan: plan, context: .day,
+                          reminderTimes: reminders.map { ThisWeekScope.time($0.fireDate) }, key: "\(day.id).\(index)")
+        }
+        ForEach(Array(unlinked.enumerated()), id: \.element.id) { index, reminder in
+            if index > 0 || !day.assignments.isEmpty {
+                InsetDivider(leading: WeekRowMetrics.textInset).padding(.horizontal, Metrics.page)
+            }
+            WeekReminderRow(
+                reminder: reminder,
+                onOpen: reminderAction(for: reminder),
+                onManage: reminderManagementAction(for: reminder),
+                identifier: "week.reminder.\(day.id).\(index)"
+            )
+        }
+    }
+
+    private static func isLinked(_ reminder: LocalReminder, to assignment: CalendarAssignment) -> Bool {
+        reminder.assignmentID == assignment.id && reminder.term == assignment.term
+            && reminder.courseID == SchoolNotifications.notificationCourseID(for: assignment.course)
+    }
+
+    /// Collapsed until opened; the chevron turns without motion under
+    /// Reduce Motion.
+    @ViewBuilder
+    private func undatedGroup(_ plan: SchoolWeekPlan) -> some View {
+        let count = plan.undated.count
+        Button {
+            Motion.perform(Motion.select(reduceMotion)) { showsUndated.toggle() }
+        } label: {
+            HStack(alignment: .center, spacing: 8) {
+                Text("No date in Skyward (\(count))")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.forward")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.faint)
+                    .rotationEffect(.degrees(showsUndated ? 90 : 0))
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(ScopePressStyle())
+        .padding(.horizontal, Metrics.page)
+        .padding(.top, 20)
+        .accessibilityLabel(count == 1 ? "No date in Skyward, 1 assignment" : "No date in Skyward, \(count) assignments")
+        .accessibilityValue(showsUndated ? "Expanded" : "Collapsed")
+        .accessibilityHint(showsUndated ? "Hides these assignments" : "Shows these assignments")
+        .accessibilityIdentifier("week.undated.toggle")
+
+        if showsUndated {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(plan.undated.enumerated()), id: \.element.id) { index, assignment in
+                    if index > 0 { InsetDivider(leading: WeekRowMetrics.textInset).padding(.horizontal, Metrics.page) }
+                    assignmentRow(assignment, plan: plan, context: .undated, reminderTimes: [], key: "undated.\(index)")
+                }
+            }
+            .transition(.opacity)
+        }
+    }
+
+    /// Checked-off work, collapsed to its count until opened. Each row keeps
+    /// Skyward's statuses and its reminders, and unchecking returns it to
+    /// its groups above.
+    @ViewBuilder
+    private func doneGroup(_ plan: SchoolWeekPlan) -> some View {
+        let count = plan.done.count
+        Button {
+            Motion.perform(Motion.select(reduceMotion)) { showsDoneList.toggle() }
+        } label: {
+            HStack(alignment: .center, spacing: 8) {
+                Text("Done (\(count))")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(Color.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.forward")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.faint)
+                    .rotationEffect(.degrees(showsDoneList ? 90 : 0))
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(ScopePressStyle())
+        .padding(.horizontal, Metrics.page)
+        .padding(.top, 20)
+        .accessibilityLabel(count == 1 ? "Done, 1 assignment" : "Done, \(count) assignments")
+        .accessibilityValue(showsDoneList ? "Expanded" : "Collapsed")
+        .accessibilityHint(showsDoneList ? "Hides assignments you checked off" : "Shows assignments you checked off")
+        .accessibilityIdentifier("week.completed.toggle")
+
+        if showsDoneList {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(plan.done.enumerated()), id: \.element.id) { index, assignment in
+                    if index > 0 { InsetDivider(leading: WeekRowMetrics.textInset).padding(.horizontal, Metrics.page) }
+                    let reminders = plan.doneReminders[assignment.id] ?? []
+                    assignmentRow(assignment, plan: plan, context: .done,
+                                  reminderTimes: reminders.map { ThisWeekScope.moment($0.fireDate, in: plan.week) },
+                                  key: "completed.\(index)")
+                }
+            }
+            .transition(.opacity)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("week.completed")
+        }
+    }
+
+    private func assignmentRow(_ assignment: CalendarAssignment, plan: SchoolWeekPlan,
+                               context: WeekAssignmentRow.Context, reminderTimes: [String],
+                               key: String) -> some View {
+        let isDuplicate = plan.ambiguousAssignmentIDs.contains(assignment.id)
+        let isDone = showsDone && !isDuplicate && store.planning.completedIDs.contains(assignment.id)
+        return WeekAssignmentRow(
+            assignment: assignment,
+            context: context,
+            isDone: isDone,
+            isDuplicate: isDuplicate,
+            reminderTimes: reminderTimes,
+            onToggleDone: showsDone && !isDuplicate ? { toggleDone(assignment, plan: plan) } : nil,
+            onOpen: openAction(for: assignment),
+            onRemind: canRemind ? { remind(assignment) } : nil,
+            key: key
+        )
+    }
+
+    // MARK: - Actions
+
+    /// Duplicate source rows never take a mark, and a page left open from
+    /// another account never writes. The row moves to Done, or back to its
+    /// groups, as the list settles; Reduce Motion moves it at once.
+    private func toggleDone(_ assignment: CalendarAssignment, plan: SchoolWeekPlan) {
+        guard writableScope != nil, !store.planning.completionUnavailable,
+              !plan.ambiguousAssignmentIDs.contains(assignment.id) else { return }
+        let done = !store.planning.completedIDs.contains(assignment.id)
+        var saved = false
+        Motion.perform(Motion.replace(reduceMotion)) {
+            saved = store.planning.setCompleted(done, assignmentID: assignment.id,
+                                                expectedAccountScope: store.localAccountScope)
+            if saved, done, !didRevealDoneList {
+                showsDoneList = true
+                didRevealDoneList = true
+            }
+        }
+        guard saved else {
+            doneError = "Couldn't save this Done mark. Try again."
+            return
+        }
+        doneError = nil
+        doneRevision += 1
+        // The row leaves where VoiceOver was; say where it went.
+        let title = assignment.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = title.isEmpty ? "Untitled assignment" : title
+        AccessibilityNotification.Announcement(done ? "\(name) moved to Done" : "\(name) moved back to this week").post()
+    }
+
+    private func clearDoneMarks() {
+        guard writableScope != nil else { return }
+        store.planning.clearCompletions(expectedAccountScope: store.localAccountScope)
+        doneError = nil
+    }
+
+    /// The class's current record, only when it has this quarter's gradebook.
+    private func liveCourse(for assignment: CalendarAssignment) -> UnifiedCourseData? {
+        guard let course = SchoolCalendar.eligibleCourses(store.courses ?? [], term: assignment.term)
+            .first(where: { $0.id == assignment.course.id }) else { return nil }
+        return course
+    }
+
+    /// Opens the exact assignment in Courses on its quarter. This page and
+    /// Calendar's quarter stay as they are.
+    private func openAction(for assignment: CalendarAssignment) -> (() -> Void)? {
+        guard currentScope != nil, liveCourse(for: assignment) != nil else { return nil }
+        return {
+            guard currentScope != nil, let course = liveCourse(for: assignment) else { return }
+            store.selectedTerm = assignment.term
+            router.showAssignment(course: course, term: assignment.term, assignmentID: assignment.routeID)
+        }
+    }
+
+    /// A reminder request pinned to the account this page opened for; the
+    /// sheet and the notification service reject it if that changes.
+    private func remind(_ assignment: CalendarAssignment) {
+        guard let scope = openedScope, store.localAccountScope == scope,
+              store.notifications.accountScope == scope else { return }
+        let course = liveCourse(for: assignment)
+            ?? store.courses?.first { $0.id == assignment.course.id }
+            ?? assignment.course
+        reminder = ReminderRequest(accountScope: scope, course: course, term: assignment.term,
+                                   assignmentID: assignment.id, title: assignment.title, dueDay: assignment.date)
+    }
+
+    /// Assignment reminders open the same official focus destination as a
+    /// notification tap. General reminders keep their management sheet.
+    private func reminderAction(for reminder: LocalReminder) -> (() -> Void)? {
+        guard let assignmentID = reminder.assignmentID, !assignmentID.isEmpty,
+              SchoolCalendar.quarters.contains(reminder.term) else {
+            return reminderManagementAction(for: reminder)
+        }
+        guard canRemind,
+              let course = SchoolCalendar.eligibleCourses(store.courses ?? [], term: reminder.term)
+                .first(where: { SchoolNotifications.notificationCourseID(for: $0) == reminder.courseID }) else { return nil }
+        return {
+            guard canRemind, currentScope != nil,
+                  SchoolCalendar.eligibleCourses(store.courses ?? [], term: reminder.term).contains(where: { $0.id == course.id }) else { return }
+            store.selectedTerm = reminder.term
+            router.showAssignment(course: course, term: reminder.term,
+                                  assignmentID: AssignmentLink.assignmentToken(for: assignmentID))
+        }
+    }
+
+    /// Available separately on a reminder row's native context menu.
+    private func reminderManagementAction(for reminder: LocalReminder) -> (() -> Void)? {
+        guard canRemind,
+              let course = store.courses?.first(where: {
+                  SchoolNotifications.notificationCourseID(for: $0) == reminder.courseID
+                      && $0.availableTerms.contains(reminder.term)
+              }) else { return nil }
+        let dueDay = calendarData?.assignments.first { $0.id == reminder.assignmentID }?.date
+        return {
+            guard let scope = openedScope, store.localAccountScope == scope,
+                  store.notifications.accountScope == scope else { return }
+            self.reminder = ReminderRequest(accountScope: scope, course: course, term: reminder.term,
+                                            assignmentID: reminder.assignmentID, title: reminder.title, dueDay: dueDay)
+        }
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Color.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Week scope
+
+/// Dates, labels and summaries shared by This week and its Calendar row.
+/// Everything is in America/Chicago, the zone `SchoolWeek` groups days in,
+/// so a reminder's time and its day always agree.
+enum ThisWeekScope {
+    static let zone = TimeZone(identifier: "America/Chicago")!
+
+    static var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        calendar.locale = .current
+        return calendar
+    }
+
+    /// A school day at noon in the school's zone.
+    static func date(_ iso: String) -> Date? {
+        guard let parts = AttendanceSchoolDate.components(iso) else { return nil }
+        return calendar.date(from: DateComponents(year: parts.year, month: parts.month, day: parts.day, hour: 12))
+    }
+
+    private static func style(_ base: Date.FormatStyle) -> Date.FormatStyle {
+        var style = base
+        style.timeZone = zone
+        style.calendar = calendar
+        return style
+    }
+
+    /// "Today", "Tomorrow", then "Tuesday, Oct 6".
+    static func dayTitle(_ iso: String, in week: SchoolWeek) -> String {
+        if iso == week.days.first { return "Today" }
+        if week.days.count > 1, iso == week.days[1] { return "Tomorrow" }
+        guard let date = date(iso) else { return iso }
+        return date.formatted(style(.dateTime.weekday(.wide).month(.abbreviated).day()))
+    }
+
+    /// "Sat, Oct 10".
+    static func shortDay(_ iso: String) -> String {
+        guard let date = date(iso) else { return iso }
+        return date.formatted(style(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+    }
+
+    /// "7:00 PM", naming the school's zone when this iPhone is in another.
+    static func time(_ date: Date) -> String {
+        let text = date.formatted(style(Date.FormatStyle(date: .omitted, time: .shortened)))
+        guard TimeZone.current.secondsFromGMT(for: date) != zone.secondsFromGMT(for: date),
+              let abbreviation = zone.abbreviation(for: date) else { return text }
+        return "\(text) \(abbreviation)"
+    }
+
+    /// "Today at 7:00 PM" or "Tue, Oct 6 at 7:00 PM", for rows that span days.
+    static func moment(_ date: Date, in week: SchoolWeek) -> String {
+        let iso = SchoolWeek.day(for: date)
+        let day = iso == week.days.first || (week.days.count > 1 && iso == week.days[1])
+            ? dayTitle(iso, in: week) : shortDay(iso)
+        return "\(day) at \(time(date))"
+    }
+
+    /// The Calendar quarters the week's days fall in, in order.
+    static func quarters(for week: SchoolWeek) -> [TermLabel] {
+        var result: [TermLabel] = []
+        for day in week.days {
+            guard let date = date(day) else { continue }
+            let quarter = SchoolCalendar.quarter(for: AcademicCalendar.currentTerm(for: date))
+            if !result.contains(quarter) { result.append(quarter) }
+        }
+        return result
+    }
+
+    /// The current account's reminders, or none while the notification
+    /// service still holds another account's.
+    @MainActor
+    static func reminders(_ store: AppStore) -> [LocalReminder] {
+        guard let scope = store.localAccountScope, store.notifications.accountScope == scope else { return [] }
+        return store.notifications.reminders
+    }
+
+    /// Classes whose assignments are absent, and classes shown from saved
+    /// data after a failed refresh, by source name.
+    static func coverage(_ data: SchoolCalendarData, courses: [UnifiedCourseData]) -> (missing: [String], saved: [String]) {
+        let missing = SchoolCalendar.eligibleCourses(courses, term: data.term)
+            .filter { !data.resolvedCourseIDs.contains($0.id) }
+            .map(\.courseName)
+        let missingNames = Set(missing)
+        return (missing, data.failedCourseNames.filter { !missingNames.contains($0) })
+    }
+
+    static let genericSummary = "Due work, missing work and reminders"
+
+    /// Counts only when `isComplete` (every eligible class loaded in the
+    /// latest refresh) and the week is in the data's quarter.
+    static func summary(data: SchoolCalendarData?, reminders: [LocalReminder], isComplete: Bool,
+                        now: Date = Date()) -> String {
+        guard isComplete, let data else { return genericSummary }
+        let plan = SchoolWeekPlan(data: data, reminders: reminders, now: now)
+        guard quarters(for: plan.week).contains(data.term) else { return genericSummary }
+        let due = plan.days.reduce(0) { $0 + $1.assignments.count }
+        let reminderCount = plan.days.reduce(0) { $0 + $1.reminders.count }
+        var parts = [due == 0 ? "Nothing due" : "\(due) due"]
+        if !plan.missing.isEmpty { parts.append("\(plan.missing.count) marked missing") }
+        if reminderCount > 0 { parts.append(reminderCount == 1 ? "1 reminder" : "\(reminderCount) reminders") }
+        return parts.joined(separator: ", ")
+    }
+}
+
+/// Course names through the shared class-name formatter.
+private enum WeekCourseTitle {
+    static func display(_ raw: String) -> String {
+        ClassNameFormatter.format(
+            raw.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: " ", with: "_")
+        )
+    }
+}
+
+private enum WeekRowMetrics {
+    /// The leading Done or bell column's 44-point target starts this far
+    /// inside the page margin, so its glyph sits on the margin.
+    static let columnOverhang: CGFloat = 8
+    /// Text starts after the 44-point leading column.
+    static let textInset: CGFloat = 44 - columnOverhang
+}
+
+// MARK: - Rows
+
+/// One Skyward assignment: a Done control in the leading column, title,
+/// class and category, Skyward's statuses, and any reminder on that day.
+/// The bell and the class's chevron trail; at larger text the bell moves
+/// beneath the text so the title keeps its width.
+private struct WeekAssignmentRow: View {
+    enum Context {
+        case day
+        /// Shows the due date, since the group spans the quarter.
+        case missing
+        /// Shows Skyward's own date text.
+        case undated
+        /// Checked off; shows the due date, since Done spans the week.
+        case done
+    }
+
+    var assignment: CalendarAssignment
+    var context: Context
+    var isDone: Bool
+    var isDuplicate: Bool
+    var reminderTimes: [String]
+    var onToggleDone: (() -> Void)?
+    var onOpen: (() -> Void)?
+    var onRemind: (() -> Void)?
+    var key: String
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var stacksBell: Bool { dynamicTypeSize >= .xxLarge }
+
+    private struct Status: Hashable {
+        var text: String
+        var isMissing = false
+        var isAbsent = false
+    }
+
+    private var title: String {
+        let text = assignment.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "Untitled assignment" : text
+    }
+
+    /// "Chemistry, Labs", then the due day for missing and Done work.
+    private var detail: String {
+        var parts = [WeekCourseTitle.display(assignment.course.courseName)]
+        let category = assignment.category.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !category.isEmpty { parts.append(category) }
+        if context == .missing || context == .done { parts.append(dueText) }
+        return parts.joined(separator: ", ")
+    }
+
+    private var dueText: String {
+        if let iso = assignment.date { return "due \(ThisWeekScope.shortDay(iso))" }
+        let source = assignment.sourceDate.trimmingCharacters(in: .whitespacesAndNewlines)
+        return source.isEmpty ? "no date in Skyward" : "date in Skyward: \(source)"
+    }
+
+    private var sourceDate: String? {
+        guard context == .undated else { return nil }
+        let text = assignment.sourceDate.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "No date in Skyward" : "Date in Skyward: \(text)"
+    }
+
+    /// Only Skyward's own flags. A personal Done mark never hides them.
+    private var statuses: [Status] {
+        let types = Set(assignment.meta.map { $0.type.lowercased() })
+        var result: [Status] = []
+        if types.contains("missing") { result.append(Status(text: "Missing", isMissing: true)) }
+        if types.contains("absent") { result.append(Status(text: "Absent", isAbsent: true)) }
+        if types.contains("nocount") { result.append(Status(text: "No count")) }
+        return result
+    }
+
+    private var reminderText: String? {
+        reminderTimes.isEmpty ? nil : "Reminder " + ListFormatter.localizedString(byJoining: reminderTimes)
+    }
+
+    private static let duplicateText = "Duplicate row; can't be checked off"
+
+    private var spokenLabel: String {
+        var parts = [title, detail]
+        if isDone { parts.append("marked done") }
+        if let sourceDate { parts.append(sourceDate) }
+        parts += statuses.map(\.text)
+        if let reminderText { parts.append(reminderText) }
+        if isDuplicate { parts.append(Self.duplicateText) }
+        return parts.joined(separator: ", ")
+    }
+
+    var body: some View {
+        mainElement
+            .accessibilityActions {
+                if let onToggleDone {
+                    Button(isDone ? "Mark not done" : "Mark done", action: onToggleDone)
+                }
+                if let onRemind {
+                    Button("Remind me", action: onRemind)
+                }
+            }
+            .overlay(alignment: stacksBell ? .topLeading : .leading) {
+                if let onToggleDone {
+                    doneButton(onToggleDone)
+                        .padding(.leading, Metrics.page - WeekRowMetrics.columnOverhang)
+                        .padding(.top, stacksBell ? 2 : 0)
+                }
+            }
+            .overlay(alignment: stacksBell ? .bottomLeading : .trailing) {
+                if let onRemind {
+                    if stacksBell {
+                        bellButton(onRemind)
+                            .padding(.leading, Metrics.page + WeekRowMetrics.textInset - 12)
+                            .padding(.bottom, Metrics.rowPadding - 6)
+                    } else {
+                        HStack(spacing: 12) {
+                            bellButton(onRemind)
+                            if onOpen != nil { chevron.hidden() }
+                        }
+                        .padding(.trailing, Metrics.page)
+                    }
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var mainElement: some View {
+        if let onOpen {
+            Button(action: onOpen) { content(showsChevron: true) }
+                .buttonStyle(RowPressStyle())
+                .accessibilityLabel(spokenLabel)
+                .accessibilityHint("Opens this assignment in Courses")
+                .accessibilityIdentifier("week.assignment.\(key)")
+        } else {
+            content(showsChevron: false)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(spokenLabel)
+                .accessibilityIdentifier("week.assignment.\(key)")
+        }
+    }
+
+    private func doneButton(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
+                .font(.title3)
+                .foregroundStyle(Color.themeAccent)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(ScopePressStyle())
+        .accessibilityLabel("Done, \(title)")
+        .accessibilityValue(isDone ? "Checked" : "Not checked")
+        .accessibilityHint(isDone ? "Moves it back to this week" : "Moves it to Done")
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityIdentifier("week.done.\(key)")
+    }
+
+    private func bellButton(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: reminderTimes.isEmpty ? "bell" : "bell.fill")
+                .font(.body)
+                .foregroundStyle(Color.muted)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(ScopePressStyle())
+        .accessibilityLabel("Remind me about \(title)")
+        .accessibilityIdentifier("week.remind.\(key)")
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.forward")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(Color.faint)
+            .accessibilityHidden(true)
+    }
+
+    private func content(showsChevron: Bool) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(isDone ? Color.muted : Color.ink)
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.muted)
+                if let sourceDate {
+                    Text(sourceDate)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                }
+                if !statuses.isEmpty {
+                    statusLine
+                }
+                if let reminderText {
+                    Text(reminderText)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                }
+                if isDuplicate {
+                    Text(Self.duplicateText)
+                        .font(.footnote)
+                        .foregroundStyle(Color.muted)
+                }
+                if stacksBell, onRemind != nil {
+                    // The bell's place beneath the text.
+                    Color.clear
+                        .frame(height: 44)
+                        .accessibilityHidden(true)
+                }
+            }
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if !stacksBell, onRemind != nil {
+                Color.clear
+                    .frame(width: 44, height: 44)
+                    .accessibilityHidden(true)
+            }
+            if showsChevron { chevron }
+        }
+        .padding(.leading, Metrics.page + WeekRowMetrics.textInset)
+        .padding(.trailing, Metrics.page)
+        .padding(.vertical, Metrics.rowPadding - 2)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    /// Status as plain words, colored as in Calendar: only Missing and
+    /// Absent take a color.
+    @ViewBuilder
+    private var statusLine: some View {
+        let parts = ForEach(statuses, id: \.self) { status in
+            Text(status.text)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(
+                    status.isMissing ? Color.gradeAttention : (status.isAbsent ? Color.gradeWarning : Color.ink)
+                )
+        }
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 2) { parts }
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 10) { parts }
+        }
+    }
+}
+
+/// A personal reminder that isn't tied to one of the day's assignments: a
+/// muted bell in the leading column, its title, then time and class.
+private struct WeekReminderRow: View {
+    var reminder: LocalReminder
+    var onOpen: (() -> Void)?
+    var onManage: (() -> Void)?
+    var identifier: String
+
+    private var title: String {
+        let text = reminder.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "Reminder" : text
+    }
+
+    private var detail: String {
+        let course = WeekCourseTitle.display(reminder.courseName)
+        let time = ThisWeekScope.time(reminder.fireDate)
+        return course.isEmpty ? "Reminder, \(time)" : "Reminder, \(time), \(course)"
+    }
+
+    var body: some View {
+        if let onOpen {
+            Button(action: onOpen) { content(showsChevron: true) }
+                .buttonStyle(RowPressStyle())
+                .contextMenu {
+                    if let onManage { Button("Manage reminders", systemImage: "bell", action: onManage) }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(title), \(detail)")
+                .accessibilityHint(reminder.assignmentID == nil ? "Shows this class's reminders" : "Opens this assignment in Courses")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier(identifier)
+        } else {
+            content(showsChevron: false)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(title), \(detail)")
+                .accessibilityIdentifier(identifier)
+        }
+    }
+
+    private func content(showsChevron: Bool) -> some View {
+        HStack(alignment: .center, spacing: 0) {
+            Image(systemName: "bell")
+                .font(.body)
+                .foregroundStyle(Color.muted)
+                .frame(width: 44, height: 44)
+                .padding(.leading, Metrics.page - WeekRowMetrics.columnOverhang)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(Color.ink)
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.muted)
+            }
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if showsChevron {
+                Image(systemName: "chevron.forward")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.faint)
+                    .padding(.leading, 12)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.trailing, Metrics.page)
+        .padding(.vertical, Metrics.rowPadding - 2)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+}
