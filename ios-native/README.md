@@ -167,3 +167,143 @@ the corresponding quarters and the existing district formula. Turning What-if of
 shows official scores. Restore returns one score to Skyward's value; Reset clears
 that term's local changes. No grade edits are sent to Skyward.
 
+A verified empty gradebook shows No assignments; a verified empty inbox shows a
+drawn envelope with "You're all caught up", centered on the screen.
+Malformed responses and session failures retain an error/retry state. Saved data
+uses its actual cache timestamp, and a quarter's error cannot appear on another
+quarter. Refresh keeps saved content visible while reporting Updating.
+
+The updated skippable feature introduction appears once for everyone, including
+students who completed the earlier introduction or already have a saved login.
+The new completion version is saved after finishing, so it does not repeat on
+later launches. Connected students can Skip or Continue directly into Elevate.
+Without a saved login, Skip opens the shared Skyward sign-in form; Back returns
+to the introduction, and Not now or a verified login finishes it.
+The ten-page tour covers grades/Inbox, What-if/scenarios/goals, GPA/converter, credits and school records, Calendar/This week/Done, widgets, notifications, the direct Skyward connection, theme choices, and an optional App Lock. Theme and System/Light/Dark selections preview immediately and persist through the same settings used elsewhere. Notification permission is requested only after an explicit tap; grades never appear in alert content.
+
+App Lock is off by default. Enabling it requires successful iOS device-owner authentication, using Face ID, Touch ID, or the device passcode. It covers app screens and accessibility while locked or inactive, relocks in the background, and waits to open notification/widget destinations until unlocked. It does not alter Keychain protection, background refresh, or widget/notification privacy settings. People using iOS's Home Screen Require Face ID must turn that separate setting off themselves to restore detailed previews. The updated completion flag is v3, so people who completed an earlier tour see these additions once. There is no replay button in Settings.
+
+The lock cover uses the standalone E mark and a frosted, theme-aware background. Only a tiny blurred color sample of previously visible content can appear behind it; Reduce Transparency uses a solid background. No cover image is saved.
+
+For Debug simulator previews, launch with `-SampleData` to open synthetic school
+data, or `-SampleData -ShowOnboarding` to force the introduction without changing
+its completion flag. Add `-EmptyAssignments`, `-EmptyInbox`, or
+`-FailSecondQuarter` for bounded empty/error-state checks with synthetic data.
+These arguments do not alter Release behavior. Use a
+separate simulator when capturing account screens to keep saved logins private.
+
+## Course changes and notifications
+
+Courses shows a quiet signed change beside each official average, comparing it
+with the last average actually viewed for that account, course/year, and term.
+The first known grade establishes a baseline silently. The comparison stays
+stable through refreshes and navigation for the current foreground session;
+the next session compares against the latest viewed value. Covered screens,
+other tabs, background hydration, and what-if estimates never advance viewing
+history. Missing grades reset their baseline instead of becoming zero.
+
+Settings → Notifications now provides optional local grade alerts, personal
+reminders and permission status. Alerts always include available class and
+assignment/reminder names, never numeric grades. The former alert-content
+section and its saved flags are retired. Grade changes
+are off until explicitly enabled. Only fresh successful official observations
+advance the separate notification ledger; disk hydration and what-if edits do
+not. First observations seed silently; changes at hundredth-point precision are grouped.
+Foreground checks are silent and retain unseen changes for a later validated background check. Grade banners never present while Elevate is open. Actual visible
+official grades acknowledge their course and term; old caches, offscreen grades and
+What-if estimates never acknowledge newer unseen changes. Assignment updates with
+an unchanged course average are not detected by this observer. iOS chooses background
+execution. Checks request eligibility after 15 minutes and preserve earlier pending
+requests. Skyward credentials and sessions remain in device-only Keychain storage,
+available to background checks after the first unlock following a restart,
+including while the screen is locked. Expired sessions use the normal
+saved-credential login and retry. Existing records upgrade on a successful read.
+The [notification notes](docs/GRADE_NOTIFICATIONS_PLAN.md) explain delivery and
+background limitations. No server, APNs registration, or credential upload is added.
+
+Missing Work, Inbox, and grade-free School Pulse lead the widget gallery; optional GPA and grade widgets remain available. All seven kinds reload the shared selected palette and appearance for their timelines. Full-color Home Screen widgets follow System/Light/Dark; system-rendered lock-screen and accented widgets retain iOS rendering. Incomplete missing-work counts are lower bounds, never verified clear totals. Foreground activation independently retries incomplete assignment snapshots with a five-minute cooldown, including when the course cache is fresh. GPA also
+supports inline, circular, and rectangular lock-screen families. Widgets retain
+section-specific stale indicators and internal completeness tracking, privacy-sensitive content, and their
+existing navigation links. WidgetKit controls timeline refresh scheduling.
+
+All years GPA trends retain each school year separately, from PR1 through SM2,
+including manual semesters only for years without Skyward history. Repeated
+term names include their school year in the chart readout and accessibility.
+Known semester classes offer only their own quarter/semester terms in detail;
+full-year and unknown-duration classes retain all terms.
+
+## App icon
+
+`Elevate/icon_themed.icon` is the original Icon Composer document retained from
+the Expo app, including its light, dark, tinted, and lighting effects. Both native
+build configurations select `icon_themed` as the primary icon. Keep the document
+and its layers intact; do not substitute a flattened PNG for the app icon.
+
+The main tabs are Courses, Calendar and Inbox, with a separate Search destination. Calendar combines
+attendance with official assignment due dates for the selected quarter; Missing
+comes from Skyward assignment metadata, never from an attendance coincidence.
+Settings → School records groups Past courses, read-only Fees (with Payments), Student Info, and Documents.
+Fees also links to Eanes ISD's public RevTrak payment site in the browser.
+Skyward credentials and session tokens are not forwarded; checkout stays on the
+district's payment site.
+Documents preview supported PDFs/images with Quick Look and offer Save or share,
+including Save to Files. All school requests remain direct to Skyward. See
+[school-data integration](docs/SCHOOL_DATA_INTEGRATION.md) for source contracts,
+cache behavior, session recovery, and file lifecycle.
+
+## Grade planning and context
+
+Class detail → Grade goal solves a named assignment or semester exam using the
+same calculator as What-if. Results keep their important input assumptions visible;
+calculation details and scenario explanations start collapsed. Other ungraded work
+and end-of-quarter assumptions are explicit. Required scores are rounded upward to hundredth-point precision
+and checked through the forward calculation. Merely opening a plan never
+changes official or saved hypothetical scores.
+
+GPA → GPA converter shows completed semester grades on both generic scales
+at once: unweighted out of4.0 and weighted out of5.0, with bonuses explained.
+Year details show both; conversion rules and skipped records stay expandable.
+The district percentage GPA is unchanged. My Colleges is temporarily removed
+from navigation and onboarding; its code and saved selections are retained.
+The retained114 college profiles contain sourced
+cohort figures and academic preparation guidance. UC, UGA, UF, FSU and UCF profiles
+estimate completed grades using their published policies with explicit course
+classification and letter-grade assumptions. Unpublished formulas have no
+fabricated college-specific estimate. Unknown subjects or unverified bonus
+rules withhold a total and explain why. Cohort shares are never a student's
+percentile or admission probability. Sources and reporting limits stay in each
+profile and [COLLEGE_GPA.md](docs/COLLEGE_GPA.md). Bundled admissions details add
+separately sourced test ranges, applicant/admission figures and subject preparation.
+Every statistic retains its cohort and population; SAT section ranges are not
+combined into a fabricated total. Personal preparation compares known local
+high-school credit estimates and current enrollment, including saved source-bound
+corrections. It does not certify college eligibility or infer missing course sequences.
+Update `Elevate/Resources/CollegeAdmissions.json` with primary publications;
+keep exact counts, approximate counts, means and middle-50% ranges distinct.
+
+Courses → Missing work reuses official quarter assignment data and teacher
+metadata. It retains checked-course coverage and saved timestamps; an unchecked
+class never becomes a reassuring zero. Personal reminders are available from
+assignment options, Calendar, and Missing work. A reminder is a local date chosen
+by the student, separate from the official due date and submission status.
+Calendar, Search, Missing work, This week, assignment reminders and refreshed
+assignment widgets open the exact official quarter row. Widget links carry opaque
+account/course/assignment identifiers and wait for account activation and App Lock.
+Unavailable rows show a message instead of guessing by title. Grade breakdown
+starts collapsed, and future-quarter/empty gradebooks retain explicit unposted states.
+Pull refresh starts only with a new downward touch at the resting top; returning
+from lower content and momentum bounces do not count as refresh pulls.
+
+The internal grade journal retains fresh official observations. Calendar → This
+week moves checked assignments out of active work into a reversible Done section
+without changing Skyward's Missing status or cancelling reminders. Class detail offers saved What-if scenarios and assignment
+impact estimates. GPA → Course plan estimates credits automatically from completed historical
+semesters, with corrections and separate expected credits from live current
+enrollment and planned courses. Unknown metadata stays reviewable. Settings → App updates checks Apple's public
+version and release notes; native code updates still use App Store/TestFlight.
+My Colleges is temporarily removed from navigation and onboarding. Its implementation
+and account-local selections are retained for a possible return. The shared bottom
+Search searches assignments. The dormant college routes have no app entry point or
+college URL handler. An exact
+4.0 unweighted is the ceiling; published cohort percentages are not personal ranks.
+See [on-device planning](docs/STUDENT_PLANNING.md) for scope, storage and limits.
