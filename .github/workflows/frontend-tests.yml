@@ -4,8 +4,14 @@ on:
   workflow_dispatch:
   push:
     branches: [main, master, develop]
+    paths-ignore:
+      - 'ios-native/**'
+      - '.github/workflows/ios.yml'
   pull_request:
     branches: [main, master, develop]
+    paths-ignore:
+      - 'ios-native/**'
+      - '.github/workflows/ios.yml'
 
 jobs:
   test:
