@@ -121,3 +121,101 @@ is task-specific; do not introduce app-wide grids. The `://gpa` deep link replac
 the Courses path; `://attendance` opens Calendar and `://history` opens Past
 courses inside Settings. The router lives in `Views/AppRouter.swift`.
 
+Automatic term selection uses the official Eanes 2026–27 calendar in Gregorian
+America/Chicago days: Q1 August 13–October 8; Q2 October 13–December 18;
+Q3 January 5–March 12; Q4 March 22–May 21. Keep the preceding quarter across the
+October and March breaks, then semester review after each semester ends.
+The verified schedule is specific to August 2026–July 2027; other years retain
+the documented legacy approximation. Courses and Calendar each follow the
+current term on activation only while the user follows their last automatic
+selection. Preserve independent manual selections and cancel stale Calendar
+requests when its automatically selected quarter changes.
+
+Use clean native sans typography and an open composition: content on the page,
+selective inset hairlines, and safe areas applied once. Courses and Inbox
+use a fixed left-aligned `RootHeader` through `screenTitle` and a top safe-area
+inset, with the root navigation bar hidden. Pushed destinations explicitly restore
+the navigation bar; the root heading keeps its position and size on scroll. GPA
+and message detail keep centered inline titles. Class detail shows its full,
+wrapping centered course heading at the content top; its inline title appears
+after that heading scrolls away. Courses rows wrap complete names at every text
+size. Heights are
+content-driven with no filler spacers, except the Courses list: its rows share
+the visible height above the tab bar through `ViewportFillStack` (measured
+natural heights plus equal shares, capped; natural heights and scrolling on
+small phones, long names, and accessibility sizes). The category breakdown and
+semester composition are open rows/figures, not bordered tables; a category row
+shows its share of the grade, any renormalized share, points, and average. Show
+course level (AP/Honors) only where GPA math is explained. Do not use bordered
+tables, app-wide grids, boxed control or stat strips, course grids, floating cards,
+serif display type, decorative eyebrow labels, middle-dot separators, grade
+rings, or underlined term tabs. Keep headings, numbers, and controls readable
+from 375×667 to large phones and at large text sizes; use explicit
+`dynamicTypeSize` branches, never `ViewThatFits` inside list rows.
+
+The user's later styling request permits a restrained outer ring around each
+Courses average, with an unfilled center and the numeric grade still readable.
+Only the arc clamps to 0–100; source grades above 100 remain visible. Missing
+grades stay unavailable, not zero progress. The former Records root is retired; its destinations use open rows in Settings.
+
+Choices use one family from `Views/Components.swift`: scope buttons (value and
+small muted chevron on the quiet well surface of `QuietButtonStyle`) opening a
+content-fit `ChoiceSheet` of check rows (term, school year), `InlineChoice`
+pairs for two-way choices (chart series), and `ChoiceList` rows elsewhere. The
+user rejected native menus, segmented controls, and up-down chevrons for these scope selectors. Assignment sorting and filtering use native Menu submenus, not a sheet.
+Group labels are quiet sentence-case footnotes, not headings or eyebrows. Format
+people's names with `PersonName`, never the course-title formatter.
+
+Term selection should make quarter/semester relationships explicit. Preserve
+native bottom-tab continuity in detail screens, actual chart scrubbing, and
+Reduce Motion behavior. The Courses GPA line and the GPA screen read the same
+`GPAReport`/`GPACalculator` path. Themes in `Shared/Theme.swift` set every color
+role per appearance; keep IDs and `Color.themeAccent` for widgets. What-if edits remain local and account/quarter scoped;
+turning the mode off shows official grades. An estimate is marked by an inline
+"Estimate" beside the class grade (no eyebrow) and its difference from Skyward;
+Add sits on the Assignments heading in what-if mode. With no field focused, tapping an editable row
+focuses its earned-points field and selects the score. While editing, only a score
+tap continues or switches editing; title, metadata, padding, or blank-space taps
+commit and dismiss. Explicit options retain their own actions. Added assignments default to "What-if assignment" and can
+change category using that assignment's quarter choices, preserving its other
+values.
+Existing assignments also offer Make no count / Count in estimate. Exclusions
+remain local and independent of score edits; a status-only override continues
+following newly fetched Skyward scores. Only an actual score difference shows
+the original-score note and Restore Skyward Score. Restoring that score preserves
+the independent no-count choice; reset clears both changes.
+A verified empty response is an empty state, while session, transport, and
+malformed-response failures remain errors.
+Show cached data's true timestamp and preserve saved content while refreshing.
+
+
+## Grade viewing history and widgets
+
+`GradeChangeTracker` compares official course averages with the last actually
+viewed value, scoped to the account, course/year identity, and term. The Courses
+caller gates observation on active scene, selected tab, empty navigation path,
+and uncovered content, including scope sheets. Keep the foreground comparison
+baseline fixed through navigation and refreshes; end it on background. Fetches
+must not mark hidden grades seen. What-if values never enter this history.
+Notification detection/delivery uses separate account-scoped observation and
+delivery state in GradeNotificationLedger and SchoolNotifications. Accept only
+validated fresh official course observations, never cache hydration or What-if.
+First observations seed silently; pending retries coalesce to current grades.
+Grade notifications detect changes at posted hundredth precision and serialize
+fresh observations through delivery. Foreground fetches stay silent and never
+imply viewing; retain unseen pending changes for a validated background check.
+Only background-origin observations while UIKit is backgrounded can schedule;
+foreground grade presentation stays suppressed with unseen requests retryable.
+Settings records the last successful background observation separately.
+Only active, uncovered viewport-visible official grades acknowledge their own
+course/term and displayed revision; older caches and What-if do not consume
+newer pending changes. Preserve request associations for foreground suppression.
+BGTaskScheduler checks are opportunistic, request eligibility after 15 minutes,
+and preserve an earlier pending request. Skyward credentials and sessions use
+device-only AfterFirstUnlock Keychain protection, enabling normal re-authentication
+while locked after the first unlock following a restart. Existing records upgrade
+protection on a successful decoded read without rewriting their payload. Nonsecret
+scheduling state may resubmit before first unlock but cannot authorize network
+access. Reminders and lock-screen previews are explicit account choices.
+See `docs/GRADE_NOTIFICATIONS_PLAN.md` for delivery limitations.
+
