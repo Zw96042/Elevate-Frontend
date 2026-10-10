@@ -10,7 +10,7 @@ Native Swift/SwiftUI Skyward client, using Apple frameworks only. This iOS 17+ r
 - `Elevate/Views/`: SwiftUI screens.
 - `Shared/`, `ElevateWidgets/`, and `Config/`: theme/snapshot contract, widgets, and entitlements.
 - `Package.swift` and `Tests/ElevateCoreTests/`: the macOS-testable core subset.
-- `.github/workflows/ios.yml`: Swift tests, unsigned Release simulator build, and analysis.
+- `../.github/workflows/ios.yml` (repository root, runs with `ios-native/` as its working directory): Swift tests, unsigned Release simulator build, and analysis.
 
 ## Local commands
 

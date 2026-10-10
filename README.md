@@ -1,5 +1,7 @@
 # Elevate Frontend
 
+> The active app is the native SwiftUI rewrite in [`ios-native/`](ios-native/). The Expo app at the repository root is kept as a legacy reference.
+
 **Elevate** is a modern mobile app designed to reimagine the Skyward gradebook experience. Built with **React Native** and styled with **NativeWind**, it empowers students to track grades, manage assignments, and plan ahead with calendar sync and GPA insights.
 
 🔗 **Backend Repo**: [Elevate-Backend](https://github.com/Zw96042/Elevate-Backend)  

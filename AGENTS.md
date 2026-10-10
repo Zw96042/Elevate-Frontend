@@ -2,8 +2,8 @@
 
 An Expo/React Native student app for Skyward grades, assignments, GPA, inbox, and account sessions. The package name is `liquidglass`; the root README contains older framework-version notes, so use `package.json` for current versions.
 
-This app is retained as a legacy reference. Active product development belongs in
-`../../ios-native/`; consult this code for behavior, parsing, tests, and migration.
+This app is retained as a legacy reference. Active product development belongs in the
+native app under `ios-native/` (see `ios-native/AGENTS.md`); consult this code for behavior, parsing, tests, and migration.
 Only change this reference app when the current task explicitly calls for it.
 
 ## Map
@@ -15,6 +15,7 @@ Only change this reference app when the current task explicitly calls for it.
 - `context/`: shared application/data and bottom-sheet state.
 - `utils/`: grade/GPA/calendar logic; `__tests__/`: unit and context regression tests.
 - `jest.config.js` and `.github/workflows/frontend-tests.yml`: test discovery, coverage, and CI commands.
+- `ios-native/`: the active native SwiftUI app; its CI is `.github/workflows/ios.yml`. Run Expo commands from the repository root and native commands from `ios-native/`.
 
 ## Commands
 

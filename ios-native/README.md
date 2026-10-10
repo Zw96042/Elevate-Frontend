@@ -20,7 +20,7 @@ xcodebuild -project Elevate.xcodeproj -target Elevate -sdk iphonesimulator build
 ```
 
 CI also runs the Swift package tests, an unsigned Release simulator build, and
-Xcode static analysis from `.github/workflows/ios.yml`.
+Xcode static analysis from the repository root `.github/workflows/ios.yml`.
 
 Leave signing enabled when building an app to install and run in the simulator.
 The CI `CODE_SIGNING_ALLOWED=NO` command verifies compilation only; running that
