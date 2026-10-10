@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Use Face ID to unlock your school information in Elevate.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Elevate shows events from your iPhone's calendars, such as Google and iCloud, next to your assignments. Your events stay on this iPhone.</string>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
@@ -33,6 +39,8 @@
             </array>
         </dict>
     </array>
+    <key>CADisableMinimumFrameDurationOnPhone</key>
+    <true/>
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>
@@ -45,6 +53,14 @@
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>
+    </array>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>fetch</string>
+    </array>
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array>
+        <string>com.zachwilson.elevate.grade-refresh</string>
     </array>
 </dict>
 </plist>
