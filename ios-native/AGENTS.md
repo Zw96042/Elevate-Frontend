@@ -219,3 +219,74 @@ scheduling state may resubmit before first unlock but cannot authorize network
 access. Reminders and lock-screen previews are explicit account choices.
 See `docs/GRADE_NOTIFICATIONS_PLAN.md` for delivery limitations.
 
+Widget views share `Shared/Theme.swift` roles and native typography, open rows,
+and restrained chart curves. Preserve every kind, URL, privacy modifier,
+snapshot schema, resolved section completeness, real totals, and true freshness.
+Completeness is internal; do not display "Partial data", "At least", or "found
+so far" as visible status copy. Incomplete counts use `N+`; accessibility spells
+out "At least N" so the lower bound is clear. Nil data under an incomplete status is unavailable, not a verified
+empty result.
+Check every supported family, including GPA lock-screen accessories.
+
+All-years GPA chart points concatenate freshman through senior terms PR1–SM2;
+never pool matching term codes from different years. Keep point IDs and names
+year-qualified. Manual semesters fill only years with no Skyward courses.
+Known half-year class detail choices use `availableTerms`; do not query another
+semester on that course identity or infer companion courses from names.
+The versioned ten-page onboarding introduces features, widgets, notifications, themes and optional in-app device-owner App Lock. Connected students finish directly; without a login, Skip goes to the shared sign-in form, Not now completes, and successful verified save completes. Keep app lock opt-in with authentication proof before saving, and keep widget/notification privacy independent.
+Do not reintroduce Settings replay or a standalone theme preview.
+
+The primary app icon is `Elevate/icon_themed.icon`, the original layered Icon
+Composer file. Debug and Release select `icon_themed`; preserve its appearance
+settings and lighting layers instead of replacing it with a PNG export.
+
+Loading course rows share CourseRowLayout and GPA-line geometry with loaded content. SkeletonText draws quiet bars within real font line boxes; other pages mirror their loaded columns and metadata instead of redacting fake words. Each loading course row participates independently in viewport fill. Keep placeholders static, scalable, noninteractive, and hidden from accessibility except a single loading announcement per screen. A loading grade ring has only its track; no grade, dash, or progress arc. Cached refreshes retain actual rows.
+
+Assignment category labels use a compact theme selection highlight with readable ink. While a score is focused, tapping a row outside its score well or blank space commits and dismisses the keyboard; no Done button. With no score focused, preserve whole-row select-all. Preserve native caret/options gestures, plus VoiceOver/hardware Escape. Reset commits the responder then clears local edits immediately, without confirmation. Haptics follow explicit score commits, reset/add, and mode changes, not refreshes. Pull-to-refresh feedback stays visible below fixed headers. GPA year choices stop at the known current grade year; preserve All years and do not assume a grade when unknown.
+
+Course-detail averages (official, what-if, categories, semester components, and percentage displays) show exactly two decimals including trailing zeros. Assignment point values show up to two decimals, hiding trailing zeros. Preserve full precision in calculation, stored what-if values, and focused inputs. Apply softScrollEdges directly to sheet ScrollViews, including Settings and Theme, so navigation edges remain a soft transition.
+
+Settings → School records contains read-only Fees, Student Info, and Documents. They load lazily
+with independent account caches and true saved timestamps. Preserve source fee
+strings and avoid inferred totals. Fees offers the district's verified public
+RevTrak link in the browser; do not forward Skyward credentials/session tokens or
+perform checkout in the app. Student Info scopes the student's
+own tables and takes official grade only from enrollment. Documents cache only
+metadata and stable IDs; resolve authenticated file locations anew, parse bounded
+literals without JS execution, and do not invoke signature
+handlers. Generated reports use the verified bounded print queue on an explicit
+document tap; queue tokens and commands are transient, never executed. Native Quick Look previews use owned temporary files removed on close,
+account changes, and next launch; Save or share offers Save to Files. Details and
+verified endpoint contracts are in docs/SCHOOL_DATA_INTEGRATION.md.
+
+Weighted category math accumulates decimal earned/possible points, rounds each
+category's weighted contribution to hundredths, then sums. Use original category
+weights for calculation and normalized weights for display. This rule matches
+observed Eanes Skyward gradebooks. Keep stored/focused score precision and the
+semester RC rounding policy. Enabling what-if alone uses posted values; only
+effective local changes produce an estimate. An unavailable quarter with saved
+edits makes the semester estimate unavailable, while an untouched unavailable
+quarter may use its posted grade.
+
+Grade goals use GradeGoalSolver and the existing forward calculator. Preserve
+explicit unknown-work/end-of-quarter assumptions, hundredth-point conservative
+solutions, bound/bonus/unavailable states, and planning separate from What-if.
+GPAConversionCalculator is a named generic policy, not division of percentage
+GPA. Posted semester provenance, equal-record weighting, skipped records, and
+college cohort/definition/source limits must remain visible. College ranges do
+not establish admissions odds. Missing work uses explicit teacher metadata and
+Calendar coverage, never an inferred zero or attendance status.
+
+GPA converter defaults to all completed semester grades. Year details and conversion
+assumptions are secondary disclosures; do not project in-progress semesters.
+College profiles use CollegeGPACalculator and sourced catalog policies/bands.
+My Colleges is temporarily removed from navigation and onboarding. Retain its
+implementation and account-local selections for a possible return; do not restore
+college entry points without a user request. The dormant implementation leads
+with chosen schools and personal comparisons. Preserve selection order, unknown IDs, unreadable
+storage recovery, and expected-account mutation guards.
+UC out-of-state fully weighted estimates grant AP/IB C+ bonuses only, excluding
+local advanced-course exceptions. Private colleges without a published admissions
+formula use a named comparison estimate, never a claimed official GPA or exact
+rank. Preserve cohort year, population, reporting coverage, ties and source links;
+see docs/COLLEGE_GPA.md. Do not add current/future course audits to this feature.
