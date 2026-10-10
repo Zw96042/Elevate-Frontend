@@ -171,7 +171,8 @@ struct CoursePlannerTests {
         ]))
         #expect(projection(report, .generic4Point).projected == 11.0 / 3)
         #expect(projection(report, .generic5Point).projected == 12.5 / 3)
-        #expect(projection(report, .districtWeightedPercentage).projected == (89.99 + 100 + 95) / 3)
+        let weightedAverage: Double = (89.99 + 100 + 95) / 3
+        #expect(projection(report, .districtWeightedPercentage).projected == weightedAverage)
         #expect(projection(report, .districtPercentage).officialBaseline == nil)
     }
 

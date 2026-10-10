@@ -91,11 +91,14 @@ struct GradeGoalTests {
                                               choice: .existingID("a"), ungradedPolicy: .requireAllGraded)
         #expect(result.requiredEarned == 90.01)
         #expect(result.resultingGrade == 92.02)
+        let weights: [String: Double] = ["A": 50, "B": 50]
         var evaluated = assignments
         evaluated[0].grade = try #require(result.requiredEarned)
-        #expect(GradeCalculator.summary(assignments: evaluated, categoryWeights: ["A": 50, "B": 50], sourceCategories: categories).courseTotal == 92.02)
+        let atRequired = GradeCalculator.summary(assignments: evaluated, categoryWeights: weights, sourceCategories: categories)
+        #expect(atRequired.courseTotal == 92.02)
         evaluated[0].grade = 90
-        #expect(GradeCalculator.summary(assignments: evaluated, categoryWeights: ["A": 50, "B": 50], sourceCategories: categories).courseTotal == 92.01)
+        let belowRequired = GradeCalculator.summary(assignments: evaluated, categoryWeights: weights, sourceCategories: categories)
+        #expect(belowRequired.courseTotal == 92.01)
     }
 
     @Test("Original fractional weights retain decimal contribution ties")
