@@ -111,3 +111,96 @@ Primary catalog details checked **2026-10-04**:
   is marked for review: summer/correspondence/credit-by-exam provenance is absent.
   A failing spring semester is never automatically averaged up.
 
+Disjoint fall/spring rows combine only the corresponding credit allocations.
+Duplicate equivalent rows with the same score count once; conflicting scores
+are unresolved. Ordinary repeated equivalent courses cannot earn the same
+semester twice; explicitly repeatable arts/PE catalog entries retain later years.
+AP/Honors aliases do not add duplicate English/introductory credit. Advanced
+courses with distinct catalog identities retain their separate credits.
+
+A correction binds to a deterministic signature containing source year, grade,
+title, terms and original posted grades. It replaces that exact allocation,
+including zero to exclude it; it never adds an extra record. Reordering source
+rows preserves correction identity, while changed grades/source membership
+orphan the old correction for review. This is deliberately independent of random
+unified-course ID suffixes. Corrections may provide an unknown course's subject
+and credit value after the student reviews its source.
+
+## Current enrollment credits
+
+The report keeps `earnedTotal`, `currentTotal` and `plannedTotal` separate.
+Requirement `current` amounts and current totals contribute to expected combined
+coverage and remaining deficits; `earnedRemaining` always uses earned credit only.
+`CurrentCourseCredit` is a read-only enrollment projection with stable catalog/year
+identity, underlying gradebook source identities, known semesters, status and detail.
+It does not add grades to the official or projected GPA.
+
+Current credit requires real gradebook request parameters and independent enrollment
+provenance. The production live-grid merge sets optional `isCurrentEnrollment`,
+`currentEnrollmentSemester`, `currentEnrollmentGradeYear` and
+`currentEnrollmentObservedAt` fields only on actual gradebook memberships, using the
+page's current grade level, scored bucket semesters and actual successful fetch time.
+A later live snapshot clears previous membership flags. Historical source year/grades,
+course duration and GPA inputs remain unchanged; old caches decode absent metadata.
+Blank future grade cells do not prove enrollment duration. Unknown enrollment grade,
+semester or catalog classifications remain reviewable with zero credit.
+
+When independent current school-year evidence is unavailable, a current live membership
+can count only its observed active, unfinished semester. Its displayed academic year is
+nil (Current enrollment); historical merge buckets cannot date it. The observation must
+be within the same academic year and semester as calculation time, so a prior-semester
+or prior-year cache does not remain current indefinitely. The calendar only bounds an
+actual observation; it never manufactures an enrollment or historical source year.
+No upcoming semester is inferred in this path. Independently verified current-year
+provenance from `CourseHistoryReport` and known enrolled terms additionally support
+future semesters within that course year. Historical rows, planning-only carriers,
+latest transcript buckets and What-if data do not establish enrollment on their own.
+
+Known unfinished fall/spring enrollment contributes catalog credit **expected if
+passed**, including an upcoming spring semester only when independently verified current-year enrollment explicitly includes it.
+Live quarter/semester grades, including a failing live score, do not award credit or
+change earned totals. Semester completion follows the existing district calendar.
+Completed semesters and already credited catalog-equivalent semesters cannot also count
+as prospective current credit. Normal annual courses remain capped at their catalog
+credit, AP Physics 1&2 at two annually, Multivariable Calculus at one for its semester,
+and Linear Algebra at 0.5. Robotics II is an elective. Split terms, repeated live source
+identities and equivalent title/rigor aliases contribute only once; earned PE and
+prospective PE together retain the four-credit cap.
+
+## Manual reconciliation and persistence
+
+Manual additions are retained for genuinely missing courses. With transcript
+records present, older aggregate/manual entries remain visible for reconciliation
+and do not silently add to newly detected credits: a saved “English credits = 3”
+and three detected English credits still total three. An explicitly confirmed
+missing-course addition may count only when its catalog-equivalent title does
+not already appear in source records. When no source records exist, legacy manual
+entries remain usable. Manual grades never become official GPA grades.
+
+Future courses remain separate, with planned credit totals assuming successful
+completion and eligibility. Optional `academicYear` and `semester` fields disambiguate
+future entries from a current catalog-equivalent course. A same-year matching semester
+or an unscoped matching entry is held in `manualPlannedReviewCourses`, excluded from
+credits and projected GPA, and retained for review rather than discarded. A known
+different future year or distinct known semester remains usable. When enrollment has
+no year, an explicitly future academic year can still count; the calendar is used only
+to establish that the planned year is future, never to assign enrollment provenance.
+An unknown enrolled semester cannot establish that a manual semester is distinct.
+Unscoped repeats cannot be presumed to mean next year. Manual earned additions matching
+current enrollment also require reconciliation to prevent earned/current duplication.
+Source courses retain their original subject and credit amount. Requirement
+allocation fills each category's actual required amount, then assigns its
+surplus to electives. Earned credits fill capacity first, current expected
+credits next, and future planned credits last; each phase keeps its own totals
+and elective surplus. Thus 5 earned math credits cover 4 math and 1 elective,
+while a 1-credit Health Science course covers 0.5 health and 0.5 elective.
+This never creates a second credit or changes GPA inputs. Category totals
+cannot certify same-language study, named-course requirements, an endorsement,
+EOC, attendance, speech, CPR/AED or cohort-specific graduation conditions.
+
+Plans decode prior payloads without overrides, supplementary flags or future scope fields. Validation
+bounds record/override counts, finite credits, score magnitude, names, identities
+and encoded size. Invalid or corrupt account storage is preserved and blocked
+from overwriting until explicit reset. Account-scope guards prevent stale UI
+writes; no plan writes to Skyward or changes enrollment.
+
